@@ -22,7 +22,7 @@ async function checkFamilyAccess(userId: string, familyId: string) {
 // GET SHOPPING LISTS
 router.get('/:familyId/lists', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });
@@ -44,7 +44,7 @@ router.get('/:familyId/lists', authenticate, async (req: Request, res: Response)
 // CREATE LIST
 router.post('/:familyId/lists', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     const { name, icon } = req.body;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
@@ -69,7 +69,8 @@ router.post('/:familyId/lists', authenticate, async (req: Request, res: Response
 // DELETE LIST
 router.delete('/:familyId/lists/:listId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, listId } = req.params;
+    const familyId = req.params.familyId as string;
+    const listId = req.params.listId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });
@@ -91,7 +92,8 @@ router.delete('/:familyId/lists/:listId', authenticate, async (req: Request, res
 // ADD ITEM TO LIST
 router.post('/:familyId/lists/:listId/items', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, listId } = req.params;
+    const familyId = req.params.familyId as string;
+    const listId = req.params.listId as string;
     const { name, quantity, category, note } = req.body;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
@@ -118,7 +120,9 @@ router.post('/:familyId/lists/:listId/items', authenticate, async (req: Request,
 // TOGGLE ITEM
 router.patch('/:familyId/lists/:listId/items/:itemId/toggle', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, listId, itemId } = req.params;
+    const familyId = req.params.familyId as string;
+    const listId = req.params.listId as string;
+    const itemId = req.params.itemId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });
@@ -159,7 +163,9 @@ router.patch('/:familyId/lists/:listId/items/:itemId/toggle', authenticate, asyn
 // DELETE ITEM
 router.delete('/:familyId/lists/:listId/items/:itemId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, listId, itemId } = req.params;
+    const familyId = req.params.familyId as string;
+    const listId = req.params.listId as string;
+    const itemId = req.params.itemId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });

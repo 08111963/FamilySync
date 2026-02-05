@@ -27,10 +27,9 @@ function getCurrentSeason(): string {
   return 'inverno';
 }
 
-// GET SHOPPING SUGGESTIONS
 router.get('/:familyId/shopping-suggestions', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });
@@ -52,13 +51,12 @@ router.get('/:familyId/shopping-suggestions', authenticate, async (req: Request,
     const sevenDaysFromNow = new Date();
     sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
     const today = new Date().toISOString().split('T')[0];
-    const futureDate = sevenDaysFromNow.toISOString().split('T')[0];
     
     const upcomingEvents = await db.select()
       .from(calendarEvents)
       .where(and(
         eq(calendarEvents.familyId, familyId),
-        gte(calendarEvents.date, today)
+        gte(calendarEvents.date, today!)
       ))
       .limit(10);
     
@@ -76,10 +74,9 @@ router.get('/:familyId/shopping-suggestions', authenticate, async (req: Request,
   }
 });
 
-// GET CHORE OPTIMIZATION
 router.get('/:familyId/chore-optimization', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });
@@ -120,10 +117,9 @@ router.get('/:familyId/chore-optimization', authenticate, async (req: Request, r
   }
 });
 
-// GET FAMILY INSIGHTS
 router.get('/:familyId/insights', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });
@@ -144,10 +140,9 @@ router.get('/:familyId/insights', authenticate, async (req: Request, res: Respon
   }
 });
 
-// GENERATE NEW INSIGHTS
 router.post('/:familyId/insights/generate', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });
@@ -163,7 +158,7 @@ router.post('/:familyId/insights/generate', authenticate, async (req: Request, r
       .from(calendarEvents)
       .where(and(
         eq(calendarEvents.familyId, familyId),
-        gte(calendarEvents.date, weekAgo)
+        gte(calendarEvents.date, weekAgo!)
       ));
     
     const completedChores = await db.select()
@@ -210,10 +205,10 @@ router.post('/:familyId/insights/generate', authenticate, async (req: Request, r
   }
 });
 
-// DISMISS INSIGHT
 router.patch('/:familyId/insights/:insightId/dismiss', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, insightId } = req.params;
+    const familyId = req.params.familyId as string;
+    const insightId = req.params.insightId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });

@@ -22,7 +22,7 @@ async function checkFamilyAccess(userId: string, familyId: string) {
 // GET CHORES
 router.get('/:familyId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });
@@ -39,7 +39,7 @@ router.get('/:familyId', authenticate, async (req: Request, res: Response) => {
 // CREATE CHORE
 router.post('/:familyId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     const { title, description, difficulty, points, estimatedMinutes, assignedTo, dueDate, recurrenceRule } = req.body;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
@@ -71,7 +71,8 @@ router.post('/:familyId', authenticate, async (req: Request, res: Response) => {
 // UPDATE CHORE
 router.put('/:familyId/:choreId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, choreId } = req.params;
+    const familyId = req.params.familyId as string;
+    const choreId = req.params.choreId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });
@@ -105,7 +106,8 @@ router.put('/:familyId/:choreId', authenticate, async (req: Request, res: Respon
 // COMPLETE CHORE
 router.patch('/:familyId/:choreId/complete', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, choreId } = req.params;
+    const familyId = req.params.familyId as string;
+    const choreId = req.params.choreId as string;
     
     const membership = await checkFamilyAccess(req.user!.userId, familyId);
     if (!membership) {
@@ -149,7 +151,8 @@ router.patch('/:familyId/:choreId/complete', authenticate, async (req: Request, 
 // DELETE CHORE
 router.delete('/:familyId/:choreId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, choreId } = req.params;
+    const familyId = req.params.familyId as string;
+    const choreId = req.params.choreId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });

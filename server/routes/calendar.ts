@@ -22,7 +22,7 @@ async function checkFamilyAccess(userId: string, familyId: string) {
 // GET EVENTS
 router.get('/:familyId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     const { startDate, endDate } = req.query;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
@@ -49,7 +49,7 @@ router.get('/:familyId', authenticate, async (req: Request, res: Response) => {
 // CREATE EVENT
 router.post('/:familyId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     const { title, description, date, time, endTime, allDay, category, location, color, memberId, recurrenceRule } = req.body;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
@@ -84,7 +84,8 @@ router.post('/:familyId', authenticate, async (req: Request, res: Response) => {
 // UPDATE EVENT
 router.put('/:familyId/:eventId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, eventId } = req.params;
+    const familyId = req.params.familyId as string;
+    const eventId = req.params.eventId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });
@@ -113,7 +114,8 @@ router.put('/:familyId/:eventId', authenticate, async (req: Request, res: Respon
 // DELETE EVENT
 router.delete('/:familyId/:eventId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, eventId } = req.params;
+    const familyId = req.params.familyId as string;
+    const eventId = req.params.eventId as string;
     
     if (!await checkFamilyAccess(req.user!.userId, familyId)) {
       return res.status(403).json({ error: 'Non autorizzato' });

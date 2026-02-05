@@ -4,10 +4,33 @@ import { verifyAccessToken } from './jwt';
 
 let io: SocketIOServer | null = null;
 
+function getAllowedOrigins(): string[] {
+  const origins: string[] = ['http://localhost:8081'];
+
+  const devDomain = process.env.REPLIT_DEV_DOMAIN;
+  if (devDomain) {
+    origins.push(`https://${devDomain}`);
+  }
+
+  const replitDomains = process.env.REPLIT_DOMAINS;
+  if (replitDomains) {
+    replitDomains.split(',').forEach(d => {
+      origins.push(`https://${d.trim()}`);
+    });
+  }
+
+  const publicDomain = process.env.EXPO_PUBLIC_DOMAIN;
+  if (publicDomain) {
+    origins.push(`https://${publicDomain}`);
+  }
+
+  return origins;
+}
+
 export function setupWebSocket(httpServer: HTTPServer) {
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:8081',
+      origin: getAllowedOrigins(),
       credentials: true,
     },
   });

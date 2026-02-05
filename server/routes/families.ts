@@ -57,7 +57,7 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
 // GET FAMILY DETAILS
 router.get('/:familyId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     
     const membership = await db.select()
       .from(familyMembers)
@@ -107,7 +107,7 @@ router.get('/:familyId', authenticate, async (req: Request, res: Response) => {
 // UPDATE FAMILY
 router.put('/:familyId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     const { name, colorTheme } = req.body;
     
     const membership = await db.select()
@@ -138,7 +138,7 @@ router.put('/:familyId', authenticate, async (req: Request, res: Response) => {
 // CREATE INVITE
 router.post('/:familyId/invite', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId } = req.params;
+    const familyId = req.params.familyId as string;
     const { email, role } = req.body;
     
     const membership = await db.select()
@@ -185,7 +185,7 @@ router.post('/:familyId/invite', authenticate, async (req: Request, res: Respons
 // ACCEPT INVITE
 router.post('/join/:token', authenticate, async (req: Request, res: Response) => {
   try {
-    const { token } = req.params;
+    const token = req.params.token as string;
     const { nickname, color } = req.body;
     
     const [invite] = await db.select()
@@ -244,7 +244,8 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
 // UPDATE MEMBER
 router.put('/:familyId/members/:memberId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, memberId } = req.params;
+    const familyId = req.params.familyId as string;
+    const memberId = req.params.memberId as string;
     const { nickname, color, role } = req.body;
     
     const membership = await db.select()
@@ -286,7 +287,8 @@ router.put('/:familyId/members/:memberId', authenticate, async (req: Request, re
 // REMOVE MEMBER
 router.delete('/:familyId/members/:memberId', authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, memberId } = req.params;
+    const familyId = req.params.familyId as string;
+    const memberId = req.params.memberId as string;
     
     const membership = await db.select()
       .from(familyMembers)
