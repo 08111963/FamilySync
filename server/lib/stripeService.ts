@@ -139,7 +139,7 @@ export class StripeService {
   async updateFamilyStripeInfo(familyId: string, stripeInfo: {
     stripeCustomerId?: string;
     stripeSubscriptionId?: string;
-    subscriptionStatus?: string;
+    subscriptionStatus?: 'free' | 'premium' | 'canceled';
     subscriptionCurrentPeriodEnd?: Date;
   }) {
     const [family] = await db

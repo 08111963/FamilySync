@@ -1,94 +1,144 @@
-# Family Sync - Family Coordination App
+# FamilySync - App di Coordinamento Familiare
 
-## Overview
+## Panoramica
 
-Family Sync is a mobile-first family coordination application built with Expo React Native for the frontend and Express.js for the backend. The app helps families manage their daily activities including calendar events, shopping lists, chores, and family member coordination. The application supports iOS, Android, and web platforms through Expo's cross-platform capabilities.
+FamilySync è un'applicazione mobile-first per il coordinamento familiare costruita con Expo React Native per il frontend e Express.js per il backend. L'app aiuta le famiglie a gestire le attività quotidiane inclusi eventi calendario, liste della spesa, faccende domestiche e coordinamento dei membri familiari. L'applicazione supporta iOS, Android e web attraverso le capacità cross-platform di Expo.
 
-The app is designed to be production-ready for App Store and Google Play deployment, featuring a clean Italian-language interface with haptic feedback, dark mode support, and offline-first data management.
+L'app è progettata per essere production-ready per App Store e Google Play, con un'interfaccia pulita in lingua italiana, feedback tattile, supporto dark mode e gestione dati offline-first.
 
-## User Preferences
+## Preferenze Utente
 
-Preferred communication style: Simple, everyday language.
+Stile di comunicazione preferito: Linguaggio semplice e quotidiano.
 
-## System Architecture
+## Architettura Sistema
 
-### Frontend Architecture
-- **Framework**: Expo SDK 54 with React Native 0.81
-- **Routing**: expo-router v6 with file-based routing and typed routes
-- **State Management**: 
-  - React Context (FamilyContext) for global family data
-  - TanStack React Query for server state management
-  - AsyncStorage for local persistence
-- **UI Components**: Custom component library (Avatar, Button, Card, Input, EmptyState)
-- **Styling**: React Native StyleSheet with theming support (light/dark mode)
-- **Navigation**: Tab-based navigation with 5 main screens (Home, Calendar, Shopping, Chores, Family)
+### Architettura Frontend
+- **Framework**: Expo SDK 54 con React Native 0.81
+- **Routing**: expo-router v6 con file-based routing e typed routes
+- **Gestione Stato**: 
+  - React Context (FamilyContext) per dati famiglia globali
+  - TanStack React Query per gestione stato server
+  - AsyncStorage per persistenza locale
+- **Componenti UI**: Libreria componenti custom (Avatar, Button, Card, Input, EmptyState)
+- **Styling**: React Native StyleSheet con supporto temi (light/dark mode)
+- **Navigazione**: Tab navigation con 5 schermate principali (Home, Calendario, Spesa, Faccende, Famiglia)
 
-### Backend Architecture
+### Architettura Backend
 - **Framework**: Express.js v5
-- **Language**: TypeScript with tsx for development
-- **API Pattern**: RESTful endpoints prefixed with `/api`
-- **Database ORM**: Drizzle ORM with PostgreSQL dialect
-- **Schema Validation**: Zod with drizzle-zod integration
+- **Linguaggio**: TypeScript con tsx per sviluppo
+- **Pattern API**: Endpoints RESTful con prefisso `/api`
+- **Database ORM**: Drizzle ORM con dialetto PostgreSQL
+- **Validazione Schema**: Zod con integrazione drizzle-zod
+- **Autenticazione**: JWT con access token (15 min) e refresh token (7 giorni)
+- **Real-time**: Socket.io per sincronizzazione eventi tra dispositivi
+- **AI**: OpenAI integration per suggerimenti intelligenti
+- **Pagamenti**: Stripe integration per abbonamenti Premium
 
-### Data Storage
-- **Primary Database**: PostgreSQL (configured via DATABASE_URL environment variable)
-- **Local Storage**: AsyncStorage for offline-first family data caching
-- **Schema Location**: `shared/schema.ts` - contains user table definition
-- **Migrations**: Drizzle Kit with migrations output to `./migrations`
+### Storage Dati
+- **Database Principale**: PostgreSQL (Neon) configurato via DATABASE_URL
+- **Storage Locale**: AsyncStorage per caching dati famiglia offline-first
+- **Location Schema**: `shared/schema.ts` - contiene 13 tabelle database
+- **Migrazioni**: Drizzle Kit con output migrazioni in `./migrations`
 
-### Key Design Patterns
-- **Offline-First**: Family data is stored locally via AsyncStorage and synced when available
-- **Cross-Platform**: Single codebase for iOS, Android, and web using Expo
-- **Type Safety**: Full TypeScript coverage with strict mode enabled
-- **Error Boundaries**: React error boundary implementation for graceful error handling
-- **Haptic Feedback**: expo-haptics integration for tactile user feedback
+### Tabelle Database
+1. `users` - Utenti registrati con autenticazione
+2. `families` - Gruppi familiari
+3. `family_members` - Relazioni utente-famiglia
+4. `family_invites` - Inviti in sospeso
+5. `calendar_events` - Eventi calendario condiviso
+6. `shopping_lists` - Liste della spesa
+7. `shopping_items` - Items nelle liste
+8. `chores` - Faccende domestiche con gamification
+9. `chore_completions` - Storico completamenti
+10. `ai_insights` - Suggerimenti AI generati
+11. `refresh_tokens` - Token di sessione
+12. `verification_tokens` - Token verifica email
+13. `password_reset_tokens` - Token reset password
 
-### Project Structure
+### API Routes
+- `/api/auth` - Registrazione, login, refresh token, verifica email
+- `/api/families` - CRUD famiglie, inviti membri
+- `/api/calendar` - Gestione eventi calendario
+- `/api/shopping` - Liste e items spesa
+- `/api/chores` - Faccende con punti e classifiche
+- `/api/ai` - Suggerimenti AI per spesa e ottimizzazione
+- `/api/payments` - Prodotti Stripe, checkout, abbonamenti
+
+### Pattern Design Chiave
+- **Offline-First**: Dati famiglia salvati localmente e sincronizzati quando disponibile
+- **Cross-Platform**: Codebase singola per iOS, Android e web con Expo
+- **Type Safety**: Copertura TypeScript completa con strict mode
+- **Error Boundaries**: Implementazione React error boundary
+- **Haptic Feedback**: Integrazione expo-haptics per feedback tattile
+- **Real-time Sync**: Socket.io per aggiornamenti live tra dispositivi
+
+### Struttura Progetto
 ```
 ├── app/                    # Expo Router file-based routes
-│   ├── (tabs)/            # Tab navigation screens
-│   ├── _layout.tsx        # Root layout with providers
-│   └── [modals].tsx       # Modal screens (add-member, add-event, etc.)
-├── components/            # Reusable UI components
-├── constants/             # Theme colors and constants
+│   ├── (tabs)/            # Schermate tab navigation
+│   ├── _layout.tsx        # Root layout con providers
+│   └── [modals].tsx       # Schermate modali
+├── components/            # Componenti UI riutilizzabili
+├── constants/             # Colori tema e costanti
 ├── context/               # React Context providers
 ├── hooks/                 # Custom React hooks
-├── lib/                   # Utility libraries (query client, API helpers)
+├── lib/                   # Utility libraries
+├── scripts/               # Script utility (seed-stripe-products.ts)
 ├── server/                # Express.js backend
-│   ├── index.ts          # Server entry point
-│   ├── routes.ts         # API route registration
-│   └── storage.ts        # Data storage interface
-├── shared/                # Shared code between frontend/backend
-│   └── schema.ts         # Drizzle database schema
-└── types/                 # TypeScript type definitions
+│   ├── index.ts          # Entry point server
+│   ├── routes.ts         # Registrazione API routes
+│   ├── db.ts             # Connessione database
+│   ├── lib/              # JWT, WebSocket, OpenAI, Stripe clients
+│   ├── middleware/       # Auth middleware
+│   └── routes/           # Route handlers
+├── shared/                # Codice condiviso frontend/backend
+│   └── schema.ts         # Schema database Drizzle
+└── types/                 # Definizioni TypeScript
 ```
 
-## External Dependencies
+## Dipendenze Esterne
 
 ### Database
-- **PostgreSQL**: Primary database, configured via `DATABASE_URL` environment variable
-- **Drizzle ORM**: Database toolkit for type-safe SQL queries
+- **PostgreSQL (Neon)**: Database principale
+- **Drizzle ORM**: Toolkit database per query SQL type-safe
 
-### Core Libraries
-- **Expo SDK**: Cross-platform mobile development framework
-- **Express.js**: Backend HTTP server framework
-- **TanStack React Query**: Server state management
-- **React Native Reanimated**: Animation library
-- **React Native Gesture Handler**: Touch gesture handling
+### Librerie Core
+- **Expo SDK**: Framework sviluppo mobile cross-platform
+- **Express.js**: Framework HTTP server backend
+- **TanStack React Query**: Gestione stato server
+- **Socket.io**: Comunicazione real-time bidirezionale
+- **bcryptjs**: Hashing password
+- **jsonwebtoken**: Gestione JWT
+- **Stripe**: Elaborazione pagamenti
+
+### AI/ML
+- **OpenAI**: API per suggerimenti intelligenti (shopping, chores optimization)
 
 ### UI/UX
-- **@expo-google-fonts/inter**: Inter font family for consistent typography
-- **@expo/vector-icons**: Icon library (Ionicons primarily used)
-- **expo-blur / expo-glass-effect**: Visual effects for modern UI
-- **expo-haptics**: Haptic feedback for tactile interactions
-- **expo-linear-gradient**: Gradient backgrounds
+- **@expo-google-fonts/inter**: Font family Inter
+- **@expo/vector-icons**: Libreria icone (Ionicons)
+- **expo-haptics**: Feedback tattile
+- **expo-linear-gradient**: Gradienti sfondo
 
-### Development Tools
-- **Drizzle Kit**: Database migration and schema management
-- **tsx**: TypeScript execution for development
-- **esbuild**: Production server bundling
+### Sicurezza
+- **helmet**: Headers sicurezza HTTP
+- **express-rate-limit**: Rate limiting API
 
-### Environment Variables Required
-- `DATABASE_URL`: PostgreSQL connection string
-- `EXPO_PUBLIC_DOMAIN`: Public domain for API requests
-- `REPLIT_DEV_DOMAIN`: Development domain (Replit-specific)
+### Variabili Ambiente Richieste
+- `DATABASE_URL`: Connection string PostgreSQL
+- `SESSION_SECRET`: Secret per JWT signing
+- `EXPO_PUBLIC_DOMAIN`: Dominio pubblico per richieste API
+- `REPLIT_DEV_DOMAIN`: Dominio sviluppo (Replit-specific)
+
+### Variabili Opzionali
+- `OPENAI_API_KEY`: Per funzionalità AI (suggerimenti spesa, ottimizzazione faccende)
+- `SENDGRID_API_KEY`: Per email transazionali (verifica, reset password)
+
+## Recenti Modifiche (Febbraio 2026)
+
+- Implementato backend completo con autenticazione JWT multi-utente
+- Creato database PostgreSQL con 13 tabelle via Drizzle ORM
+- Aggiunto WebSocket per sincronizzazione real-time tra dispositivi
+- Integrato OpenAI per suggerimenti AI su spesa e faccende
+- Configurato Stripe per abbonamenti Premium (€4.99/mese o €39.99/anno)
+- Aggiunta sicurezza con helmet e rate limiting
