@@ -1,0 +1,1560 @@
+# FAMILY SYNC - COORDINAMENTO FAMILIARE INTELLIGENTE CON AI
+
+Sei un Senior Full-Stack Engineer specializzato in Expo React Native + Express + PostgreSQL. 
+Devi creare un'app mobile completa per gestione familiare con AI, production-ready per App Store/Google Play.
+
+═══════════════════════════════════════════════════════════════════════════════
+PARTE 0: SETUP INIZIALE PROGETTO
+═══════════════════════════════════════════════════════════════════════════════
+
+TASK: Crea la struttura completa del progetto con tutte le configurazioni necessarie.
+
+STEP 1: Inizializza il progetto Expo
+────────────────────────────────────
+Esegui questi comandi e fornisci l'output:
+````bash
+# Crea progetto Expo
+npx create-expo-app@latest family-sync --template blank-typescript
+
+# Entra nella directory
+cd family-sync
+
+# Installa dipendenze backend
+npm install express pg drizzle-orm drizzle-zod bcryptjs jsonwebtoken zod cors
+npm install openai stripe ws uuid
+
+# Installa dipendenze frontend
+npm install @react-navigation/native @react-navigation/native-stack @react-navigation/bottom-tabs
+npm install @tanstack/react-query zustand
+npm install react-native-calendars react-native-gesture-handler react-native-reanimated
+npm install react-native-safe-area-context react-native-screens
+npm install expo-secure-store expo-haptics expo-notifications
+npm install @expo/vector-icons react-native-svg
+
+# Installa dev dependencies
+npm install -D @types/express @types/bcryptjs @types/jsonwebtoken @types/cors @types/uuid
+npm install -D drizzle-kit tsx vitest @types/node
+npm install -D prettier eslint-config-prettier eslint-plugin-prettier
+````
+
+STEP 2: Crea struttura cartelle
+────────────────────────────────
+Crea questa struttura esatta:
+````
+family-sync/
+├── app.json
+├── package.json
+├── tsconfig.json
+├── .env.example
+├── .gitignore
+├── README.md
+│
+├── client/                    # React Native App
+│   ├── App.tsx
+│   ├── index.js
+│   ├── app.json
+│   │
+│   ├── assets/
+│   │   ├── images/
+│   │   └── fonts/
+│   │
+│   ├── src/
+│   │   ├── components/       # UI Components riutilizzabili
+│   │   │   ├── common/
+│   │   │   │   ├── Button.tsx
+│   │   │   │   ├── Input.tsx
+│   │   │   │   ├── Card.tsx
+│   │   │   │   ├── Avatar.tsx
+│   │   │   │   └── LoadingSpinner.tsx
+│   │   │   ├── calendar/
+│   │   │   │   ├── CalendarView.tsx
+│   │   │   │   ├── EventCard.tsx
+│   │   │   │   └── EventForm.tsx
+│   │   │   ├── shopping/
+│   │   │   │   ├── ShoppingListCard.tsx
+│   │   │   │   ├── ShoppingItem.tsx
+│   │   │   │   └── AISuggestions.tsx
+│   │   │   └── chores/
+│   │   │       ├── ChoreCard.tsx
+│   │   │       ├── ChoreTimer.tsx
+│   │   │       └── Leaderboard.tsx
+│   │   │
+│   │   ├── screens/          # Screens dell'app
+│   │   │   ├── auth/
+│   │   │   │   ├── WelcomeScreen.tsx
+│   │   │   │   ├── LoginScreen.tsx
+│   │   │   │   └── SignupScreen.tsx
+│   │   │   ├── family/
+│   │   │   │   ├── FamilySetupScreen.tsx
+│   │   │   │   ├── InviteMembersScreen.tsx
+│   │   │   │   ├── FamilySettingsScreen.tsx
+│   │   │   │   └── MemberProfileScreen.tsx
+│   │   │   ├── calendar/
+│   │   │   │   ├── CalendarScreen.tsx
+│   │   │   │   ├── EventDetailScreen.tsx
+│   │   │   │   └── CreateEventScreen.tsx
+│   │   │   ├── shopping/
+│   │   │   │   ├── ShoppingScreen.tsx
+│   │   │   │   ├── ShoppingListScreen.tsx
+│   │   │   │   └── AddItemScreen.tsx
+│   │   │   ├── chores/
+│   │   │   │   ├── ChoresScreen.tsx
+│   │   │   │   ├── ChoreDetailScreen.tsx
+│   │   │   │   └── ChoreTemplatesScreen.tsx
+│   │   │   └── insights/
+│   │   │       ├── InsightsScreen.tsx
+│   │   │       └── MealPlanScreen.tsx
+│   │   │
+│   │   ├── navigation/       # React Navigation setup
+│   │   │   ├── AppNavigator.tsx
+│   │   │   ├── AuthNavigator.tsx
+│   │   │   └── MainTabNavigator.tsx
+│   │   │
+│   │   ├── stores/           # Zustand state management
+│   │   │   ├── authStore.ts
+│   │   │   ├── familyStore.ts
+│   │   │   ├── calendarStore.ts
+│   │   │   ├── shoppingStore.ts
+│   │   │   └── choresStore.ts
+│   │   │
+│   │   ├── services/         # API calls & business logic
+│   │   │   ├── api.ts
+│   │   │   ├── authService.ts
+│   │   │   ├── familyService.ts
+│   │   │   ├── calendarService.ts
+│   │   │   ├── shoppingService.ts
+│   │   │   ├── choresService.ts
+│   │   │   └── websocket.ts
+│   │   │
+│   │   ├── hooks/            # Custom React hooks
+│   │   │   ├── useAuth.ts
+│   │   │   ├── useFamily.ts
+│   │   │   ├── useCalendar.ts
+│   │   │   ├── useShopping.ts
+│   │   │   └── useChores.ts
+│   │   │
+│   │   ├── utils/            # Utility functions
+│   │   │   ├── validation.ts
+│   │   │   ├── formatters.ts
+│   │   │   ├── dateUtils.ts
+│   │   │   └── constants.ts
+│   │   │
+│   │   ├── types/            # TypeScript types
+│   │   │   ├── auth.ts
+│   │   │   ├── family.ts
+│   │   │   ├── calendar.ts
+│   │   │   ├── shopping.ts
+│   │   │   └── chores.ts
+│   │   │
+│   │   └── theme/            # Design system
+│   │       ├── colors.ts
+│   │       ├── typography.ts
+│   │       ├── spacing.ts
+│   │       └── index.ts
+│   │
+├── server/                    # Express Backend
+│   ├── index.ts
+│   ├── app.ts
+│   │
+│   ├── config/
+│   │   ├── database.ts
+│   │   ├── env.ts
+│   │   └── constants.ts
+│   │
+│   ├── db/
+│   │   ├── schema.ts         # Drizzle schema completo
+│   │   ├── migrations/       # Migration files
+│   │   └── seed.ts           # Sample data
+│   │
+│   ├── routes/
+│   │   ├── auth.routes.ts
+│   │   ├── family.routes.ts
+│   │   ├── calendar.routes.ts
+│   │   ├── shopping.routes.ts
+│   │   ├── chores.routes.ts
+│   │   ├── ai.routes.ts
+│   │   └── subscription.routes.ts
+│   │
+│   ├── controllers/
+│   │   ├── auth.controller.ts
+│   │   ├── family.controller.ts
+│   │   ├── calendar.controller.ts
+│   │   ├── shopping.controller.ts
+│   │   ├── chores.controller.ts
+│   │   └── ai.controller.ts
+│   │
+│   ├── services/
+│   │   ├── auth.service.ts
+│   │   ├── family.service.ts
+│   │   ├── calendar.service.ts
+│   │   ├── shopping.service.ts
+│   │   ├── chores.service.ts
+│   │   ├── ai.service.ts
+│   │   ├── email.service.ts
+│   │   └── payment.service.ts
+│   │
+│   ├── middleware/
+│   │   ├── auth.middleware.ts
+│   │   ├── validation.middleware.ts
+│   │   ├── errorHandler.middleware.ts
+│   │   └── rateLimiter.middleware.ts
+│   │
+│   ├── lib/
+│   │   ├── jwt.ts
+│   │   ├── openai.ts
+│   │   ├── stripe.ts
+│   │   └── websocket.ts
+│   │
+│   ├── utils/
+│   │   ├── logger.ts
+│   │   └── validators.ts
+│   │
+│   └── types/
+│       ├── express.d.ts
+│       └── api.types.ts
+│
+├── shared/                    # Codice condiviso client/server
+│   ├── types/
+│   │   ├── user.types.ts
+│   │   ├── family.types.ts
+│   │   ├── calendar.types.ts
+│   │   ├── shopping.types.ts
+│   │   └── chores.types.ts
+│   └── validation/
+│       └── schemas.ts        # Zod schemas condivisi
+│
+└── tests/
+    ├── api/
+    └── e2e/
+````
+
+STEP 3: Configura file fondamentali
+────────────────────────────────────
+
+File: `.env.example`
+````env
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/familysync
+
+# JWT
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+JWT_REFRESH_SECRET=your-super-secret-refresh-key
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+# OpenAI
+OPENAI_API_KEY=sk-your-openai-api-key
+
+# Stripe
+STRIPE_SECRET_KEY=sk_test_your-stripe-secret-key
+STRIPE_WEBHOOK_SECRET=whsec_your-webhook-secret
+STRIPE_PRICE_ID=price_your-subscription-price-id
+
+# Email (SendGrid or Gmail)
+EMAIL_SERVICE=gmail
+EMAIL_FROM=noreply@familysync.app
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASSWORD=your-app-password
+
+# App
+NODE_ENV=development
+PORT=3000
+CLIENT_URL=exp://localhost:19000
+
+# WebSocket
+WS_PORT=8080
+````
+
+File: `tsconfig.json`
+````json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "jsx": "react-native",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "outDir": "./dist",
+    "rootDir": "./",
+    "baseUrl": "./",
+    "paths": {
+      "@client/*": ["client/src/*"],
+      "@server/*": ["server/*"],
+      "@shared/*": ["shared/*"]
+    }
+  },
+  "include": ["client/**/*", "server/**/*", "shared/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+````
+
+File: `package.json` (aggiungi scripts)
+````json
+{
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    
+    "server:dev": "NODE_ENV=development tsx watch server/index.ts",
+    "server:prod": "NODE_ENV=production node dist/server/index.js",
+    "server:build": "tsc --project tsconfig.server.json",
+    
+    "db:generate": "drizzle-kit generate:pg",
+    "db:migrate": "tsx server/db/migrate.ts",
+    "db:seed": "tsx server/db/seed.ts",
+    "db:studio": "drizzle-kit studio",
+    
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\""
+  }
+}
+````
+
+File: `drizzle.config.ts`
+````typescript
+import type { Config } from 'drizzle-kit';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
+
+export default {
+  schema: './server/db/schema.ts',
+  out: './server/db/migrations',
+  driver: 'pg',
+  dbCredentials: {
+    connectionString: process.env.DATABASE_URL!,
+  },
+} satisfies Config;
+````
+
+File: `README.md`
+````markdown
+# 🏠 Family Sync - Coordinamento Familiare Intelligente
+
+App mobile per gestione familiare collaborativa con AI.
+
+## Features
+- 📅 Calendario condiviso con sync real-time
+- 🛒 Liste della spesa collaborative con suggerimenti AI
+- 🧹 Gestione turni domestici con auto-scheduling
+- 🤖 AI insights e ottimizzazioni
+- 🏆 Gamification e leaderboard
+
+## Tech Stack
+- **Frontend:** Expo React Native, TypeScript, Zustand, React Query
+- **Backend:** Express, PostgreSQL, Drizzle ORM
+- **AI:** OpenAI GPT-4
+- **Payments:** Stripe
+
+## Setup
+
+### 1. Prerequisiti
+- Node.js 18+
+- PostgreSQL 14+
+- Expo CLI: `npm install -g expo-cli`
+
+### 2. Installazione
+```bash
+npm install
+cp .env.example .env
+# Configura le variabili in .env
+```
+
+### 3. Database
+```bash
+npm run db:migrate
+npm run db:seed
+```
+
+### 4. Sviluppo
+```bash
+# Terminal 1: Backend
+npm run server:dev
+
+# Terminal 2: Mobile app
+npm start
+```
+
+### 5. Testing
+```bash
+npm test
+```
+
+## Deployment
+- **Mobile:** EAS Build (`eas build --platform all`)
+- **Backend:** Replit/Railway/Render
+
+## License
+MIT
+````
+
+DELIVERABLE:
+✅ Output di tutti i comandi npm install
+✅ Struttura cartelle completa creata
+✅ Tutti i file di configurazione creati e verificati
+✅ Conferma che `npm run server:dev` e `npm start` partono senza errori
+
+═══════════════════════════════════════════════════════════════════════════════
+PARTE 1: DATABASE SCHEMA & MIGRATIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+TASK: Crea lo schema completo del database PostgreSQL usando Drizzle ORM.
+
+File: `server/db/schema.ts`
+
+Crea lo schema completo con queste tabelle:
+
+1. **users** - Utenti dell'app
+   - id (UUID, primary key)
+   - email (VARCHAR 255, unique, not null)
+   - password_hash (VARCHAR 255, not null)
+   - name (VARCHAR 255)
+   - avatar_url (TEXT)
+   - created_at (TIMESTAMP, default NOW())
+   - updated_at (TIMESTAMP, default NOW())
+
+2. **families** - Gruppi familiari
+   - id (UUID, primary key)
+   - name (VARCHAR 255, not null)
+   - avatar_url (TEXT)
+   - color_theme (VARCHAR 7, default '#4A90E2')
+   - subscription_status (ENUM: 'free', 'premium', default 'free')
+   - stripe_customer_id (VARCHAR 255)
+   - stripe_subscription_id (VARCHAR 255)
+   - subscription_current_period_end (TIMESTAMP)
+   - created_at (TIMESTAMP, default NOW())
+   - updated_at (TIMESTAMP, default NOW())
+
+3. **family_members** - Membri di una famiglia
+   - id (UUID, primary key)
+   - family_id (UUID, foreign key → families.id, ON DELETE CASCADE)
+   - user_id (UUID, foreign key → users.id, ON DELETE CASCADE)
+   - role (ENUM: 'admin', 'adult', 'teen', 'child')
+   - nickname (VARCHAR 100) -- "Mamma", "Papà", etc.
+   - color (VARCHAR 7) -- colore personale per calendario
+   - joined_at (TIMESTAMP, default NOW())
+   - UNIQUE(family_id, user_id)
+
+4. **family_invites** - Inviti pending
+   - id (UUID, primary key)
+   - family_id (UUID, foreign key → families.id, ON DELETE CASCADE)
+   - token (VARCHAR 255, unique, not null)
+   - invited_by (UUID, foreign key → users.id)
+   - role (ENUM: 'adult', 'teen', 'child')
+   - expires_at (TIMESTAMP, not null)
+   - accepted_at (TIMESTAMP)
+   - created_at (TIMESTAMP, default NOW())
+
+5. **calendar_events** - Eventi calendario
+   - id (UUID, primary key)
+   - family_id (UUID, foreign key → families.id, ON DELETE CASCADE)
+   - title (VARCHAR 255, not null)
+   - description (TEXT)
+   - start_time (TIMESTAMP, not null)
+   - end_time (TIMESTAMP, not null)
+   - all_day (BOOLEAN, default false)
+   - category (VARCHAR 50) -- 'work', 'school', 'sport', 'health', 'social', 'other'
+   - location (VARCHAR 255)
+   - recurrence_rule (TEXT) -- formato iCal RRULE
+   - created_by (UUID, foreign key → users.id)
+   - created_at (TIMESTAMP, default NOW())
+   - updated_at (TIMESTAMP, default NOW())
+
+6. **event_assignees** - Assegnazioni eventi
+   - id (UUID, primary key)
+   - event_id (UUID, foreign key → calendar_events.id, ON DELETE CASCADE)
+   - user_id (UUID, foreign key → users.id, ON DELETE CASCADE)
+   - UNIQUE(event_id, user_id)
+
+7. **event_reminders** - Reminder eventi
+   - id (UUID, primary key)
+   - event_id (UUID, foreign key → calendar_events.id, ON DELETE CASCADE)
+   - user_id (UUID, foreign key → users.id, ON DELETE CASCADE)
+   - reminder_time (TIMESTAMP, not null)
+   - sent (BOOLEAN, default false)
+
+8. **shopping_lists** - Liste della spesa
+   - id (UUID, primary key)
+   - family_id (UUID, foreign key → families.id, ON DELETE CASCADE)
+   - name (VARCHAR 255, not null)
+   - icon (VARCHAR 50) -- emoji o icon name
+   - created_by (UUID, foreign key → users.id)
+   - created_at (TIMESTAMP, default NOW())
+
+9. **shopping_items** - Item nelle liste
+   - id (UUID, primary key)
+   - list_id (UUID, foreign key → shopping_lists.id, ON DELETE CASCADE)
+   - name (VARCHAR 255, not null)
+   - quantity (VARCHAR 50) -- "2 kg", "1 confezione"
+   - category (VARCHAR 50) -- 'fruits', 'vegetables', 'dairy', 'meat', 'pantry', etc.
+   - note (TEXT)
+   - checked (BOOLEAN, default false)
+   - checked_by (UUID, foreign key → users.id)
+   - checked_at (TIMESTAMP)
+   - created_by (UUID, foreign key → users.id)
+   - position (INTEGER) -- per ordinamento custom
+   - created_at (TIMESTAMP, default NOW())
+
+10. **shopping_history** - Storico acquisti (per AI)
+    - id (UUID, primary key)
+    - family_id (UUID, foreign key → families.id)
+    - item_name (VARCHAR 255)
+    - quantity (VARCHAR 50)
+    - category (VARCHAR 50)
+    - purchased_at (TIMESTAMP, default NOW())
+
+11. **chore_templates** - Template faccende domestiche
+    - id (UUID, primary key)
+    - family_id (UUID, foreign key → families.id, ON DELETE CASCADE)
+    - name (VARCHAR 255, not null)
+    - description (TEXT)
+    - estimated_minutes (INTEGER) -- durata stimata
+    - difficulty (INTEGER) -- 1-5 per calcolo punti
+    - recurrence_rule (TEXT) -- iCal RRULE
+    - icon (VARCHAR 50)
+    - created_at (TIMESTAMP, default NOW())
+
+12. **chore_assignments** - Assegnazioni turni
+    - id (UUID, primary key)
+    - template_id (UUID, foreign key → chore_templates.id, ON DELETE CASCADE)
+    - assigned_to (UUID, foreign key → users.id, ON DELETE CASCADE)
+    - due_date (TIMESTAMP, not null)
+    - completed (BOOLEAN, default false)
+    - completed_at (TIMESTAMP)
+    - skipped (BOOLEAN, default false)
+    - skipped_reason (TEXT)
+    - points (INTEGER, default 10)
+    - created_at (TIMESTAMP, default NOW())
+
+13. **chore_points** - Punteggi gamification
+    - id (UUID, primary key)
+    - family_id (UUID, foreign key → families.id)
+    - user_id (UUID, foreign key → users.id)
+    - total_points (INTEGER, default 0)
+    - current_streak (INTEGER, default 0)
+    - longest_streak (INTEGER, default 0)
+    - updated_at (TIMESTAMP, default NOW())
+    - UNIQUE(family_id, user_id)
+
+14. **ai_insights** - Insights generati da AI
+    - id (UUID, primary key)
+    - family_id (UUID, foreign key → families.id)
+    - type (VARCHAR 50) -- 'time_optimization', 'cost_saving', 'wellness', etc.
+    - title (VARCHAR 255)
+    - description (TEXT)
+    - action (TEXT) -- JSON con azione suggerita
+    - dismissed (BOOLEAN, default false)
+    - created_at (TIMESTAMP, default NOW())
+
+REQUISITI IMPLEMENTAZIONE:
+✅ Usa Drizzle ORM syntax completo (pgTable, varchar, text, timestamp, etc.)
+✅ Definisci tutti gli ENUM types
+✅ Crea indici su: family_id, user_id, created_at, start_time, due_date
+✅ Export di tutti gli schema e inserimento schema con createInsertSchema di drizzle-zod
+✅ TypeScript types inferiti (type User = typeof users.$inferSelect)
+
+File: `server/db/migrate.ts`
+Crea script per eseguire migrations:
+````typescript
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { Pool } from 'pg';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
+
+async function runMigrations() {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const db = drizzle(pool);
+  
+  console.log('Running migrations...');
+  await migrate(db, { migrationsFolder: './server/db/migrations' });
+  console.log('Migrations completed!');
+  
+  await pool.end();
+}
+
+runMigrations().catch(console.error);
+````
+
+File: `server/db/seed.ts`
+Crea dati di esempio per testing:
+- 1 utente admin: admin@familysync.app / password123
+- 1 famiglia: "Famiglia Rossi"
+- 4 membri: Admin (genitore), Adulto (genitore), Teen, Child
+- 5 eventi calendario prossimi 7 giorni
+- 2 liste spesa con 10 item totali
+- 5 chore templates comuni
+
+DELIVERABLE:
+✅ File schema.ts completo con tutti i commenti
+✅ Migrations generate: `npm run db:generate`
+✅ Migrations applicate: `npm run db:migrate`
+✅ Seed eseguito: `npm run db:seed`
+✅ Drizzle Studio funzionante: `npm run db:studio`
+
+═══════════════════════════════════════════════════════════════════════════════
+PARTE 2: BACKEND API - AUTENTICAZIONE
+═══════════════════════════════════════════════════════════════════════════════
+
+TASK: Implementa sistema di autenticazione completo con JWT.
+
+File: `server/lib/jwt.ts`
+````typescript
+import jwt from 'jsonwebtoken';
+import { User } from '../db/schema';
+
+const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
+const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+
+export interface TokenPayload {
+  userId: string;
+  email: string;
+}
+
+export function generateAccessToken(user: User): string {
+  // Implementa generazione access token
+}
+
+export function generateRefreshToken(user: User): string {
+  // Implementa generazione refresh token
+}
+
+export function verifyAccessToken(token: string): TokenPayload {
+  // Implementa verifica access token
+}
+
+export function verifyRefreshToken(token: string): TokenPayload {
+  // Implementa verifica refresh token
+}
+````
+
+File: `server/middleware/auth.middleware.ts`
+````typescript
+import { Request, Response, NextFunction } from 'express';
+import { verifyAccessToken } from '../lib/jwt';
+
+// Estendi Express Request type
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        userId: string;
+        email: string;
+      };
+    }
+  }
+}
+
+export function authenticate(req: Request, res: Response, next: NextFunction) {
+  // Implementa middleware autenticazione:
+  // 1. Estrai token da header Authorization: Bearer <token>
+  // 2. Verifica token
+  // 3. Aggiungi user a req.user
+  // 4. Se errore, return 401 Unauthorized
+}
+
+export function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  // Stesso di authenticate ma non blocca se token mancante
+}
+````
+
+File: `server/services/auth.service.ts`
+````typescript
+import bcrypt from 'bcryptjs';
+import { db } from '../db';
+import { users } from '../db/schema';
+import { eq } from 'drizzle-orm';
+
+export class AuthService {
+  async signup(email: string, password: string, name: string) {
+    // 1. Check email già esistente
+    // 2. Hash password (bcrypt, salt rounds 12)
+    // 3. Insert user in DB
+    // 4. Return user (senza password_hash)
+  }
+
+  async login(email: string, password: string) {
+    // 1. Find user by email
+    // 2. Verifica password (bcrypt.compare)
+    // 3. Return user se ok, throw error se no
+  }
+
+  async refreshToken(refreshToken: string) {
+    // 1. Verifica refresh token
+    // 2. Genera nuovo access token
+    // 3. Return nuovo access token
+  }
+}
+````
+
+File: `server/controllers/auth.controller.ts`
+````typescript
+import { Request, Response } from 'express';
+import { AuthService } from '../services/auth.service';
+import { generateAccessToken, generateRefreshToken } from '../lib/jwt';
+import { z } from 'zod';
+
+const authService = new AuthService();
+
+// Zod schemas per validazione
+const signupSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  name: z.string().min(2),
+});
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string(),
+});
+
+export class AuthController {
+  async signup(req: Request, res: Response) {
+    try {
+      // 1. Valida input con Zod
+      // 2. Chiama authService.signup
+      // 3. Genera access + refresh token
+      // 4. Return { user, accessToken, refreshToken }
+    } catch (error) {
+      // Handle errors
+    }
+  }
+
+  async login(req: Request, res: Response) {
+    try {
+      // 1. Valida input
+      // 2. Chiama authService.login
+      // 3. Genera tokens
+      // 4. Return tokens
+    } catch (error) {
+      // Handle errors
+    }
+  }
+
+  async refresh(req: Request, res: Response) {
+    try {
+      // 1. Estrai refresh token da body
+      // 2. Chiama authService.refreshToken
+      // 3. Return nuovo accessToken
+    } catch (error) {
+      // Handle errors
+    }
+  }
+
+  async me(req: Request, res: Response) {
+    // Return req.user (già autenticato dal middleware)
+  }
+}
+````
+
+File: `server/routes/auth.routes.ts`
+````typescript
+import { Router } from 'express';
+import { AuthController } from '../controllers/auth.controller';
+import { authenticate } from '../middleware/auth.middleware';
+
+const router = Router();
+const authController = new AuthController();
+
+router.post('/signup', authController.signup);
+router.post('/login', authController.login);
+router.post('/refresh', authController.refresh);
+router.get('/me', authenticate, authController.me);
+
+export default router;
+````
+
+File: `server/app.ts`
+````typescript
+import express from 'express';
+import cors from 'cors';
+import authRoutes from './routes/auth.routes';
+
+const app = express();
+
+// Middleware
+app.use(cors({
+  origin: process.env.CLIENT_URL,
+  credentials: true,
+}));
+app.use(express.json());
+
+// Routes
+app.use('/api/auth', authRoutes);
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Error handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error(err);
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal server error',
+  });
+});
+
+export default app;
+````
+
+File: `server/index.ts`
+````typescript
+import app from './app';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`📚 API docs: http://localhost:${PORT}/api`);
+});
+````
+
+DELIVERABLE:
+✅ Tutti i file creati con codice completo funzionante
+✅ Test manuale con curl/Postman:
+   - POST /api/auth/signup → 201 con tokens
+   - POST /api/auth/login → 200 con tokens
+   - GET /api/auth/me → 200 con user data
+   - POST /api/auth/refresh → 200 con nuovo token
+✅ Error handling per: email duplicata, password errata, token scaduto
+✅ Password mai tornata in response
+
+═══════════════════════════════════════════════════════════════════════════════
+PARTE 3: BACKEND API - GESTIONE FAMIGLIE
+═══════════════════════════════════════════════════════════════════════════════
+
+TASK: Implementa CRUD famiglie + sistema di inviti.
+
+File: `server/services/family.service.ts`
+Implementa:
+- createFamily(userId, name, avatarUrl?, colorTheme?)
+- getFamiliesByUser(userId)
+- getFamilyMembers(familyId)
+- updateFamily(familyId, updates)
+- deleteFamily(familyId)
+- generateInvite(familyId, invitedBy, role, expiresInHours = 72)
+- acceptInvite(token, userId)
+- updateMemberRole(familyId, userId, newRole)
+- removeMember(familyId, userId)
+
+File: `server/controllers/family.controller.ts`
+Endpoints:
+- POST /api/families → Crea famiglia
+- GET /api/families → Lista famiglie utente
+- GET /api/families/:id → Dettaglio famiglia
+- PUT /api/families/:id → Update famiglia
+- DELETE /api/families/:id → Elimina famiglia (solo admin)
+- GET /api/families/:id/members → Lista membri
+- POST /api/families/:id/invite → Genera invito
+- POST /api/families/join/:token → Accetta invito
+- PUT /api/families/:id/members/:userId → Update ruolo
+- DELETE /api/families/:id/members/:userId → Rimuovi membro
+
+Validazioni Zod per ogni endpoint.
+
+File: `server/routes/family.routes.ts`
+Monta tutte le route con middleware authenticate.
+
+MIDDLEWARE SPECIALE:
+File: `server/middleware/family.middleware.ts`
+````typescript
+export function requireFamilyMember(req: Request, res: Response, next: NextFunction) {
+  // Verifica che req.user.userId sia membro della famiglia req.params.familyId
+}
+
+export function requireFamilyAdmin(req: Request, res: Response, next: NextFunction) {
+  // Verifica che req.user.userId sia admin della famiglia
+}
+````
+
+DELIVERABLE:
+✅ Tutti i file implementati
+✅ Test API completi:
+   - Crea famiglia → ritorna famiglia con creator come admin
+   - Genera invito → ritorna token univoco
+   - Accetta invito → aggiunge utente a family_members
+   - Lista membri → ritorna array con nickname, color, role
+✅ Validazioni: solo admin può delete/update famiglia
+
+═══════════════════════════════════════════════════════════════════════════════
+PARTE 4: FRONTEND - SETUP BASE & DESIGN SYSTEM
+═══════════════════════════════════════════════════════════════════════════════
+
+TASK: Crea il design system e struttura base dell'app React Native.
+
+File: `client/src/theme/colors.ts`
+````typescript
+export const colors = {
+  // Brand
+  primary: '#4A90E2',
+  primaryDark: '#357ABD',
+  primaryLight: '#6BA3E8',
+  
+  secondary: '#F39C12',
+  secondaryDark: '#D68910',
+  secondaryLight: '#F5B041',
+  
+  // Semantic
+  success: '#27AE60',
+  warning: '#E67E22',
+  error: '#E74C3C',
+  info: '#3498DB',
+  
+  // Neutrals
+  background: '#F8F9FA',
+  surface: '#FFFFFF',
+  surfaceElevated: '#FFFFFF',
+  border: '#E0E0E0',
+  
+  text: {
+    primary: '#2C3E50',
+    secondary: '#7F8C8D',
+    disabled: '#BDC3C7',
+    inverse: '#FFFFFF',
+  },
+  
+  // Member colors (per calendario)
+  memberColors: [
+    '#4A90E2', '#E74C3C', '#27AE60', '#F39C12',
+    '#9B59B6', '#1ABC9C', '#E67E22', '#3498DB',
+  ],
+} as const;
+````
+
+File: `client/src/theme/typography.ts`
+````typescript
+export const typography = {
+  h1: {
+    fontSize: 32,
+    fontWeight: '700' as const,
+    lineHeight: 40,
+  },
+  h2: {
+    fontSize: 24,
+    fontWeight: '600' as const,
+    lineHeight: 32,
+  },
+  h3: {
+    fontSize: 18,
+    fontWeight: '600' as const,
+    lineHeight: 24,
+  },
+  body: {
+    fontSize: 16,
+    fontWeight: '400' as const,
+    lineHeight: 24,
+  },
+  bodyBold: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    lineHeight: 24,
+  },
+  caption: {
+    fontSize: 12,
+    fontWeight: '400' as const,
+    lineHeight: 16,
+  },
+  button: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    lineHeight: 24,
+  },
+} as const;
+````
+
+File: `client/src/theme/spacing.ts`
+````typescript
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+  xxl: 48,
+} as const;
+````
+
+File: `client/src/theme/index.ts`
+````typescript
+export * from './colors';
+export * from './typography';
+export * from './spacing';
+````
+
+File: `client/src/components/common/Button.tsx`
+````typescript
+import React from 'react';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { colors, typography, spacing } from '../../theme';
+
+interface ButtonProps {
+  title: string;
+  onPress: () => void;
+  variant?: 'primary' | 'secondary' | 'outline';
+  size?: 'small' | 'medium' | 'large';
+  loading?: boolean;
+  disabled?: boolean;
+  fullWidth?: boolean;
+}
+
+export function Button({
+  title,
+  onPress,
+  variant = 'primary',
+  size = 'medium',
+  loading = false,
+  disabled = false,
+  fullWidth = false,
+}: ButtonProps) {
+  // Implementa componente button riutilizzabile
+  // Con styles dinamici basati su variant/size
+  // ActivityIndicator se loading
+  // Opacity ridotta se disabled
+}
+````
+
+File: `client/src/components/common/Input.tsx`
+````typescript
+interface InputProps {
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  secureTextEntry?: boolean;
+  keyboardType?: 'default' | 'email-address' | 'numeric';
+  error?: string;
+  label?: string;
+  leftIcon?: string; // Feather icon name
+  rightIcon?: string;
+}
+
+export function Input({ /* ... */ }: InputProps) {
+  // Implementa input component con:
+  // - Label opzionale
+  // - Icon sx/dx opzionali (Feather icons)
+  // - Error message sotto input (rosso)
+  // - Border color: grigio default, primary on focus, rosso se error
+}
+````
+
+File: `client/src/components/common/Card.tsx`
+File: `client/src/components/common/Avatar.tsx`
+File: `client/src/components/common/LoadingSpinner.tsx`
+
+Implementa tutti i componenti base riutilizzabili.
+
+DELIVERABLE:
+✅ Design system completo esportato
+✅ Tutti i componenti comuni implementati con TypeScript strict
+✅ Storybook-ready (prop types ben definiti)
+✅ Testabili in isolation
+
+═══════════════════════════════════════════════════════════════════════════════
+PARTE 5: FRONTEND - AUTENTICAZIONE & NAVIGAZIONE
+═══════════════════════════════════════════════════════════════════════════════
+
+TASK: Implementa flow di autenticazione e navigazione completa.
+
+File: `client/src/services/api.ts`
+````typescript
+import axios from 'axios';
+import * as SecureStore from 'expo-secure-store';
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
+
+const api = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor: aggiungi access token
+api.interceptors.request.use(async (config) => {
+  const token = await SecureStore.getItemAsync('accessToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Response interceptor: handle 401 con refresh token
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      // Tenta refresh token
+      const refreshToken = await SecureStore.getItemAsync('refreshToken');
+      if (refreshToken) {
+        try {
+          const { data } = await axios.post(`${API_URL}/auth/refresh`, {
+            refreshToken,
+          });
+          await SecureStore.setItemAsync('accessToken', data.accessToken);
+          // Retry original request
+          error.config.headers.Authorization = `Bearer ${data.accessToken}`;
+          return axios(error.config);
+        } catch {
+          // Refresh failed, logout
+          await SecureStore.deleteItemAsync('accessToken');
+          await SecureStore.deleteItemAsync('refreshToken');
+          // Navigate to login (implementare con navigation ref)
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+````
+
+File: `client/src/services/authService.ts`
+````typescript
+import api from './api';
+import * as SecureStore from 'expo-secure-store';
+
+export interface SignupData {
+  email: string;
+  password: string;
+  name: string;
+}
+
+export interface LoginData {
+  email: string;
+  password: string;
+}
+
+export const authService = {
+  async signup(data: SignupData) {
+    const response = await api.post('/auth/signup', data);
+    await this.saveTokens(response.data.accessToken, response.data.refreshToken);
+    return response.data.user;
+  },
+
+  async login(data: LoginData) {
+    const response = await api.post('/auth/login', data);
+    await this.saveTokens(response.data.accessToken, response.data.refreshToken);
+    return response.data.user;
+  },
+
+  async logout() {
+    await SecureStore.deleteItemAsync('accessToken');
+    await SecureStore.deleteItemAsync('refreshToken');
+  },
+
+  async getCurrentUser() {
+    const response = await api.get('/auth/me');
+    return response.data;
+  },
+
+  async saveTokens(accessToken: string, refreshToken: string) {
+    await SecureStore.setItemAsync('accessToken', accessToken);
+    await SecureStore.setItemAsync('refreshToken', refreshToken);
+  },
+
+  async isAuthenticated() {
+    const token = await SecureStore.getItemAsync('accessToken');
+    return !!token;
+  },
+};
+````
+
+File: `client/src/stores/authStore.ts`
+````typescript
+import { create } from 'zustand';
+import { authService } from '../services/authService';
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+}
+
+interface AuthState {
+  user: User | null;
+  isLoading: boolean;
+  error: string | null;
+  
+  login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string, name: string) => Promise<void>;
+  logout: () => Promise<void>;
+  loadUser: () => Promise<void>;
+}
+
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null,
+  isLoading: false,
+  error: null,
+
+  login: async (email, password) => {
+    set({ isLoading: true, error: null });
+    try {
+      const user = await authService.login({ email, password });
+      set({ user, isLoading: false });
+    } catch (error: any) {
+      set({ error: error.message, isLoading: false });
+      throw error;
+    }
+  },
+
+  signup: async (email, password, name) => {
+    set({ isLoading: true, error: null });
+    try {
+      const user = await authService.signup({ email, password, name });
+      set({ user, isLoading: false });
+    } catch (error: any) {
+      set({ error: error.message, isLoading: false });
+      throw error;
+    }
+  },
+
+  logout: async () => {
+    await authService.logout();
+    set({ user: null });
+  },
+
+  loadUser: async () => {
+    set({ isLoading: true });
+    try {
+      const user = await authService.getCurrentUser();
+      set({ user, isLoading: false });
+    } catch {
+      set({ user: null, isLoading: false });
+    }
+  },
+}));
+````
+
+File: `client/src/screens/auth/WelcomeScreen.tsx`
+````typescript
+import React from 'react';
+import { View, Text, StyleSheet, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Button } from '../../components/common/Button';
+import { colors, typography, spacing } from '../../theme';
+
+export function WelcomeScreen({ navigation }: any) {
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.content}>
+        {/* Hero illustration */}
+        <View style={styles.hero}>
+          <Text style={styles.emoji}>🏠</Text>
+          <Text style={styles.title}>Family Sync</Text>
+          <Text style={styles.subtitle}>
+            Coordinamento familiare intelligente con AI
+          </Text>
+        </View>
+
+        {/* Features */}
+        <View style={styles.features}>
+          <FeatureItem icon="📅" text="Calendario condiviso" />
+          <FeatureItem icon="🛒" text="Liste spesa collaborative" />
+          <FeatureItem icon="🧹" text="Gestione turni domestici" />
+          <FeatureItem icon="🤖" text="Suggerimenti AI" />
+        </View>
+
+        {/* CTAs */}
+        <View style={styles.actions}>
+          <Button
+            title="Crea Account"
+            onPress={() => navigation.navigate('Signup')}
+            fullWidth
+          />
+          <Button
+            title="Accedi"
+            onPress={() => navigation.navigate('Login')}
+            variant="outline"
+            fullWidth
+          />
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function FeatureItem({ icon, text }: { icon: string; text: string }) {
+  // Implementa componente feature item
+}
+
+const styles = StyleSheet.create({
+  // Implementa styles
+});
+````
+
+File: `client/src/screens/auth/LoginScreen.tsx`
+````typescript
+export function LoginScreen({ navigation }: any) {
+  const { login, isLoading, error } = useAuthStore();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const handleLogin = async () => {
+    try {
+      await login(email, password);
+      // Navigation gestita in App.tsx basandosi su authStore.user
+    } catch (error) {
+      // Error già in store
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.content}>
+        <Text style={styles.title}>Bentornato!</Text>
+        
+        <Input
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          leftIcon="mail"
+        />
+        
+        <Input
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          leftIcon="lock"
+        />
+        
+        {error && <Text style={styles.error}>{error}</Text>}
+        
+        <Button
+          title="Accedi"
+          onPress={handleLogin}
+          loading={isLoading}
+          fullWidth
+        />
+        
+        <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
+          <Text style={styles.link}>Non hai un account? Registrati</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+````
+
+File: `client/src/screens/auth/SignupScreen.tsx`
+Simile a LoginScreen ma con campo name aggiuntivo.
+
+File: `client/src/navigation/AuthNavigator.tsx`
+````typescript
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { WelcomeScreen } from '../screens/auth/WelcomeScreen';
+import { LoginScreen } from '../screens/auth/LoginScreen';
+import { SignupScreen } from '../screens/auth/SignupScreen';
+
+const Stack = createNativeStackNavigator();
+
+export function AuthNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Signup" component={SignupScreen} />
+    </Stack.Navigator>
+  );
+}
+````
+
+File: `client/src/navigation/MainTabNavigator.tsx`
+````typescript
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Feather } from '@expo/vector-icons';
+import { CalendarScreen } from '../screens/calendar/CalendarScreen';
+import { ShoppingScreen } from '../screens/shopping/ShoppingScreen';
+import { ChoresScreen } from '../screens/chores/ChoresScreen';
+import { FamilyScreen } from '../screens/family/FamilyScreen';
+import { colors } from '../theme';
+
+const Tab = createBottomTabNavigator();
+
+export function MainTabNavigator() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.text.secondary,
+      }}
+    >
+      <Tab.Screen
+        name="Calendar"
+        component={CalendarScreen}
+        options={{
+          title: 'Calendario',
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="calendar" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Shopping"
+        component={ShoppingScreen}
+        options={{
+          title: 'Spesa',
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="shopping-cart" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Chores"
+        component={ChoresScreen}
+        options={{
+          title: 'Turni',
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="check-square" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Family"
+        component={FamilyScreen}
+        options={{
+          title: 'Famiglia',
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="users" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
+````
+
+File: `client/App.tsx`
+````typescript
+import React, { useEffect } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useAuthStore } from './src/stores/authStore';
+import { AuthNavigator } from './src/navigation/AuthNavigator';
+import { MainTabNavigator } from './src/navigation/MainTabNavigator';
+import { LoadingSpinner } from './src/components/common/LoadingSpinner';
+
+const queryClient = new QueryClient();
+
+export default function App() {
+  const { user, isLoading, loadUser } = useAuthStore();
+
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <QueryClientProvider client={queryClient}>
+          <NavigationContainer>
+            {user ? <MainTabNavigator /> : <AuthNavigator />}
+          </NavigationContainer>
+        </QueryClientProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+}
+````
+
+DELIVERABLE:
+✅ Autenticazione completa funzionante
+✅ Flow signup → login → dashboard
+✅ Token refresh automatico
+✅ Navigazione condizionale (user logged → tabs, user null → auth)
+✅ Gestione errori UI
+✅ Loading states
+
+═══════════════════════════════════════════════════════════════════════════════
+PARTE 6: CONTINUA CON LE PROSSIME SEZIONI
+═══════════════════════════════════════════════════════════════════════════════
+
+Le prossime parti includeranno:
+
+PARTE 7: BACKEND API - CALENDARIO
+PARTE 8: FRONTEND - CALENDARIO
+PARTE 9: BACKEND API - LISTE SPESA + AI
+PARTE 10: FRONTEND - LISTE SPESA
+PARTE 11: BACKEND API - CHORES + AI SCHEDULER
+PARTE 12: FRONTEND - CHORES & GAMIFICATION
+PARTE 13: WEBSOCKET REAL-TIME SYNC
+PARTE 14: STRIPE SUBSCRIPTION
+PARTE 15: PUSH NOTIFICATIONS
+PARTE 16: AI INSIGHTS & MEAL PLANNING
+PARTE 17: TESTING & DEPLOYMENT
+
+═══════════════════════════════════════════════════════════════════════════════
+ISTRUZIONI FINALI
+═══════════════════════════════════════════════════════════════════════════════
+
+COME PROCEDERE:
+1. Esegui PARTE 0-6 nell'ordine indicato
+2. Per ogni parte, VERIFICA che tutto funzioni prima di passare alla successiva
+3. Testa ogni endpoint con Postman/curl
+4. Testa ogni schermata frontend in Expo Go
+
+COSA FORNIRE PER OGNI PARTE:
+✅ Codice completo di ogni file (non snippet)
+✅ Comandi di test
+✅ Output atteso
+✅ Screenshot se UI
+✅ Note su eventuali modifiche necessarie
+
+PRIORITÀ:
+- Codice production-ready (TypeScript strict, error handling completo)
+- Performance (query ottimizzate, lazy loading)
+- UX (loading states, error messages user-friendly)
+- Security (validazione input, rate limiting)
+
+INIZIA ADESSO CON PARTE 0: SETUP INIZIALE
+````
+
+---
+
+## 📋 CHECKLIST PRE-LANCIO
+
+Stampa e spunta man mano che completI:
+````
+□ Setup progetto completo
+□ Database schema + migrations
+□ Autenticazione JWT funzionante
+□ Gestione famiglie + inviti
+□ Calendario con sync real-time
+□ Liste spesa collaborative
+□ Chores con auto-scheduling AI
+□ AI insights implementati
+□ Stripe subscription attivo
+□ Push notifications testate
+□ Testing E2E passato
+□ Deploy backend (Replit/Railway)
+□ Build app (EAS Build)
+□ Submit App Store
+□ Submit Google Play
+□ Landing page live
+□ Analytics integrati (Mixpanel)
+□ Crash reporting (Sentry)
