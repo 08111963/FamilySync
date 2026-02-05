@@ -1,10 +1,13 @@
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform } from "react-native";
+import { useState } from "react";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, TextInput, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
+import { useAuth } from "@/context/AuthContext";
 import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
@@ -12,7 +15,10 @@ import { EmptyState } from "@/components/EmptyState";
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { data, getUpcomingEvents, getPendingChores, getLeaderboard } = useFamily();
+  const { data, isLoading, families, createFamily, getUpcomingEvents, getPendingChores, getLeaderboard } = useFamily();
+  const { user, logout } = useAuth();
+  const [familyName, setFamilyName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const upcomingEvents = getUpcomingEvents(3);
   const pendingChores = getPendingChores().slice(0, 3);
@@ -39,7 +45,99 @@ export default function HomeScreen() {
     return member?.color || colors.primary;
   };
 
+  const handleCreateFamily = async () => {
+    if (!familyName.trim()) return;
+    setCreating(true);
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await createFamily(familyName.trim());
+      setFamilyName("");
+    } catch (error) {
+      console.error("Error creating family:", error);
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const topInset = Platform.OS === "web" ? 67 : insets.top;
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background, justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (families.length === 0) {
+    return (
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={{ paddingTop: topInset + 16, paddingBottom: 100 }}
+      >
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: colors.text }]}>Benvenuto{user?.name ? `, ${user.name}` : ""}!</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Crea la tua famiglia per iniziare
+          </Text>
+        </View>
+        <View style={{ paddingHorizontal: 20 }}>
+          <Card>
+            <View style={{ gap: 16 }}>
+              <Ionicons name="people" size={48} color={colors.primary} style={{ alignSelf: "center" }} />
+              <Text style={{ fontSize: 18, fontFamily: "Inter_600SemiBold", color: colors.text, textAlign: "center" }}>
+                Crea la tua Famiglia
+              </Text>
+              <Text style={{ fontSize: 14, fontFamily: "Inter_400Regular", color: colors.textSecondary, textAlign: "center" }}>
+                Inizia a coordinare eventi, spesa e faccende con la tua famiglia
+              </Text>
+              <TextInput
+                style={{
+                  height: 48,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                  paddingHorizontal: 16,
+                  fontSize: 16,
+                  fontFamily: "Inter_400Regular",
+                  color: colors.text,
+                }}
+                placeholder="Nome della famiglia..."
+                placeholderTextColor={colors.textSecondary}
+                value={familyName}
+                onChangeText={setFamilyName}
+              />
+              <Pressable
+                onPress={handleCreateFamily}
+                disabled={!familyName.trim() || creating}
+                style={({ pressed }) => ({
+                  backgroundColor: familyName.trim() ? colors.primary : colors.border,
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  opacity: pressed ? 0.8 : 1,
+                })}
+              >
+                {creating ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={{ color: "#FFFFFF", fontSize: 16, fontFamily: "Inter_600SemiBold" }}>
+                    Crea Famiglia
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </Card>
+        </View>
+        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+          <Pressable onPress={logout} style={{ alignItems: "center", paddingVertical: 12 }}>
+            <Text style={{ color: colors.error, fontSize: 14, fontFamily: "Inter_500Medium" }}>Esci</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView

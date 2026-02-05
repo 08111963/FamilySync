@@ -37,9 +37,9 @@ export default function AddEventScreen() {
         description: description.trim() || undefined,
         date,
         time: isAllDay ? undefined : time || undefined,
-        memberId: selectedMember,
+        memberId: selectedMember || undefined,
         color: selectedColor,
-        isAllDay,
+        allDay: isAllDay,
       });
       router.back();
     }

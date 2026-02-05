@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
+import { useAuth } from "@/context/AuthContext";
 import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
@@ -15,6 +16,7 @@ export default function FamilyScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { data, setFamilyName, deleteMember, getLeaderboard } = useFamily();
+  const { logout } = useAuth();
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(data.familyName);
 
@@ -48,8 +50,13 @@ export default function FamilyScreen() {
 
   const getRoleBadge = (role: string) => {
     switch (role) {
+      case "admin":
+        return { label: "Admin", color: colors.primary };
+      case "adult":
       case "parent":
         return { label: "Genitore", color: colors.primary };
+      case "teen":
+        return { label: "Adolescente", color: colors.secondary };
       case "child":
         return { label: "Figlio/a", color: colors.secondary };
       default:
@@ -225,6 +232,58 @@ export default function FamilyScreen() {
           </Card>
         </View>
       </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Funzionalita</Text>
+        </View>
+        <View style={{ gap: 12 }}>
+          <Card onPress={() => router.push("/premium")}>
+            <View style={styles.featureLinkRow}>
+              <View style={[styles.featureLinkIcon, { backgroundColor: "#FFD60A30" }]}>
+                <Ionicons name="diamond" size={24} color="#FFD60A" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Premium</Text>
+                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                  Sblocca funzionalita avanzate
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </Card>
+          <Card onPress={() => router.push("/ai-insights")}>
+            <View style={styles.featureLinkRow}>
+              <View style={[styles.featureLinkIcon, { backgroundColor: colors.primary + "20" }]}>
+                <Ionicons name="sparkles" size={24} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Suggerimenti AI</Text>
+                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                  Insights intelligenti per la famiglia
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </Card>
+        </View>
+      </View>
+
+      <View style={[styles.section, { marginBottom: 40 }]}>
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            logout();
+          }}
+          style={({ pressed }) => [
+            styles.logoutButton,
+            { borderColor: colors.error, opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <Ionicons name="log-out-outline" size={20} color={colors.error} />
+          <Text style={[styles.logoutText, { color: colors.error }]}>Esci</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }
@@ -386,5 +445,39 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
     fontFamily: "Inter_400Regular",
+  },
+  featureLinkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  featureLinkIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  featureLinkTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 2,
+  },
+  featureLinkSubtitle: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+  },
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  logoutText: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
   },
 });

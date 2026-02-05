@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useMemo, use
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { useAuth } from "@/context/AuthContext";
+import { useWebSocket } from "@/hooks/useWebSocket";
 
 interface FamilyMember {
   id: string;
@@ -129,9 +130,11 @@ const defaultData: FamilyData = {
 };
 
 export function FamilyProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, accessToken } = useAuth();
   const qc = useQueryClient();
   const [currentFamilyId, setCurrentFamilyId] = useState<string | null>(null);
+
+  useWebSocket(currentFamilyId, accessToken);
 
   const familiesQuery = useQuery<FamilyInfo[]>({
     queryKey: ["/api/families"],
@@ -187,6 +190,8 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     chores: choresList.map(c => ({
       ...c,
       dueDate: c.dueDate ? new Date(c.dueDate).toISOString().split("T")[0] : undefined,
+      isRecurring: !!c.recurrenceRule,
+      frequency: c.recurrenceRule || undefined,
     })),
   }), [currentFamily, currentFamilyId, members, events, shoppingLists, choresList]);
 
