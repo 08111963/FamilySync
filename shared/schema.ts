@@ -16,7 +16,7 @@ import { z } from "zod";
 // Enums
 export const roleEnum = pgEnum("role", ["admin", "adult", "teen", "child"]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["free", "premium", "canceled"]);
-export const eventCategoryEnum = pgEnum("event_category", ["work", "school", "sport", "health", "social", "other"]);
+export const eventCategoryEnum = pgEnum("event_category", ["work", "school", "sport", "health", "social", "family", "other"]);
 export const choreDifficultyEnum = pgEnum("chore_difficulty", ["easy", "medium", "hard"]);
 
 // USERS
