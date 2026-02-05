@@ -13,6 +13,12 @@ import { EmptyState } from "@/components/EmptyState";
 
 type FilterType = "all" | "pending" | "completed";
 
+const FILTER_LABELS: Record<FilterType, string> = {
+  all: "Tutte",
+  pending: "Da fare",
+  completed: "Fatte",
+};
+
 export default function ChoresScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -46,9 +52,9 @@ export default function ChoresScreen() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    if (dateStr === today.toISOString().split("T")[0]) return "Today";
-    if (dateStr === tomorrow.toISOString().split("T")[0]) return "Tomorrow";
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (dateStr === today.toISOString().split("T")[0]) return "Oggi";
+    if (dateStr === tomorrow.toISOString().split("T")[0]) return "Domani";
+    return date.toLocaleDateString("it-IT", { month: "short", day: "numeric" });
   };
 
   const isOverdue = (dateStr?: string) => {
@@ -56,12 +62,21 @@ export default function ChoresScreen() {
     return dateStr < new Date().toISOString().split("T")[0];
   };
 
+  const getFrequencyLabel = (frequency?: string) => {
+    switch (frequency) {
+      case "daily": return "giornaliera";
+      case "weekly": return "settimanale";
+      case "monthly": return "mensile";
+      default: return frequency;
+    }
+  };
+
   const topInset = Platform.OS === "web" ? 67 : insets.top;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Chores</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Faccende</Text>
         <Pressable
           onPress={() => router.push("/add-chore")}
           style={({ pressed }) => [
@@ -95,7 +110,7 @@ export default function ChoresScreen() {
                 { color: filter === f ? "#FFFFFF" : colors.text },
               ]}
             >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
+              {FILTER_LABELS[f]}
             </Text>
           </Pressable>
         ))}
@@ -109,8 +124,8 @@ export default function ChoresScreen() {
         {filteredChores.length === 0 ? (
           <EmptyState
             icon="checkmark-circle-outline"
-            title={filter === "completed" ? "No completed chores" : "No pending chores"}
-            subtitle={filter === "pending" ? "Add a chore to get started" : "Complete some chores to see them here"}
+            title={filter === "completed" ? "Nessuna faccenda completata" : "Nessuna faccenda da fare"}
+            subtitle={filter === "pending" ? "Aggiungi una faccenda per iniziare" : "Completa alcune faccende per vederle qui"}
           />
         ) : (
           <View style={styles.chores}>
@@ -178,7 +193,7 @@ export default function ChoresScreen() {
                           <View style={styles.choreRecurring}>
                             <Ionicons name="repeat" size={14} color={colors.secondary} />
                             <Text style={[styles.choreRecurringText, { color: colors.secondary }]}>
-                              {chore.frequency}
+                              {getFrequencyLabel(chore.frequency)}
                             </Text>
                           </View>
                         )}

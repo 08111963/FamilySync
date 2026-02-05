@@ -7,7 +7,7 @@ import Colors from "@/constants/colors";
 const STORAGE_KEY = "@family_sync_data";
 
 const defaultData: FamilyData = {
-  familyName: "My Family",
+  familyName: "La Mia Famiglia",
   members: [],
   events: [],
   shoppingLists: [],

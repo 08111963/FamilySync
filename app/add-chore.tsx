@@ -13,9 +13,9 @@ import { Avatar } from "@/components/Avatar";
 
 const POINTS_OPTIONS = [5, 10, 15, 20, 25, 50];
 const FREQUENCY_OPTIONS = [
-  { value: "daily", label: "Daily" },
-  { value: "weekly", label: "Weekly" },
-  { value: "monthly", label: "Monthly" },
+  { value: "daily", label: "Giornaliera" },
+  { value: "weekly", label: "Settimanale" },
+  { value: "monthly", label: "Mensile" },
 ];
 
 export default function AddChoreScreen() {
@@ -55,15 +55,15 @@ export default function AddChoreScreen() {
         <Pressable onPress={() => router.back()} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Add Chore</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Aggiungi Faccenda</Text>
         <View style={styles.placeholder} />
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.field}>
           <Input
-            label="Title"
-            placeholder="What needs to be done?"
+            label="Titolo"
+            placeholder="Cosa c'è da fare?"
             value={title}
             onChangeText={setTitle}
             autoFocus
@@ -72,8 +72,8 @@ export default function AddChoreScreen() {
 
         <View style={styles.field}>
           <Input
-            label="Description (optional)"
-            placeholder="Add details..."
+            label="Descrizione (opzionale)"
+            placeholder="Aggiungi dettagli..."
             value={description}
             onChangeText={setDescription}
             multiline
@@ -83,8 +83,8 @@ export default function AddChoreScreen() {
 
         <View style={styles.field}>
           <Input
-            label="Due Date (optional)"
-            placeholder="YYYY-MM-DD"
+            label="Scadenza (opzionale)"
+            placeholder="AAAA-MM-GG"
             value={dueDate}
             onChangeText={setDueDate}
           />
@@ -92,7 +92,7 @@ export default function AddChoreScreen() {
 
         {data.members.length > 0 && (
           <View style={styles.field}>
-            <Text style={[styles.label, { color: colors.text }]}>Assign to</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Assegna a</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScroll}>
               <View style={styles.memberOptions}>
                 {data.members.map((member) => (
@@ -121,7 +121,7 @@ export default function AddChoreScreen() {
         )}
 
         <View style={styles.field}>
-          <Text style={[styles.label, { color: colors.text }]}>Points</Text>
+          <Text style={[styles.label, { color: colors.text }]}>Punti</Text>
           <View style={styles.pointsOptions}>
             {POINTS_OPTIONS.map((p) => (
               <Pressable
@@ -153,9 +153,9 @@ export default function AddChoreScreen() {
 
         <View style={[styles.row, { borderColor: colors.border }]}>
           <View style={styles.rowContent}>
-            <Text style={[styles.rowLabel, { color: colors.text }]}>Recurring</Text>
+            <Text style={[styles.rowLabel, { color: colors.text }]}>Ricorrente</Text>
             <Text style={[styles.rowHint, { color: colors.textSecondary }]}>
-              Automatically repeats
+              Si ripete automaticamente
             </Text>
           </View>
           <Switch
@@ -170,7 +170,7 @@ export default function AddChoreScreen() {
 
         {isRecurring && (
           <View style={styles.field}>
-            <Text style={[styles.label, { color: colors.text }]}>Frequency</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Frequenza</Text>
             <View style={styles.frequencyOptions}>
               {FREQUENCY_OPTIONS.map((f) => (
                 <Pressable
@@ -202,7 +202,7 @@ export default function AddChoreScreen() {
         )}
 
         <Button
-          title="Add Chore"
+          title="Aggiungi Faccenda"
           onPress={handleSave}
           disabled={!title.trim()}
           style={{ marginTop: 24 }}

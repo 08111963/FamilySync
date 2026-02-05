@@ -2,7 +2,6 @@ import { StyleSheet, Text, View, ScrollView, Pressable, Platform } from "react-n
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
@@ -25,14 +24,14 @@ export default function HomeScreen() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    if (dateStr === today.toISOString().split("T")[0]) return "Today";
-    if (dateStr === tomorrow.toISOString().split("T")[0]) return "Tomorrow";
-    return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    if (dateStr === today.toISOString().split("T")[0]) return "Oggi";
+    if (dateStr === tomorrow.toISOString().split("T")[0]) return "Domani";
+    return date.toLocaleDateString("it-IT", { weekday: "short", month: "short", day: "numeric" });
   };
 
   const getMemberName = (memberId: string) => {
     const member = data.members.find((m) => m.id === memberId);
-    return member?.name || "Unassigned";
+    return member?.name || "Non assegnato";
   };
 
   const getMemberColor = (memberId: string) => {
@@ -51,23 +50,23 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.text }]}>{data.familyName}</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          {data.members.length} member{data.members.length !== 1 ? "s" : ""}
+          {data.members.length} membr{data.members.length !== 1 ? "i" : "o"}
         </Text>
       </View>
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Upcoming Events</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Prossimi Eventi</Text>
           <Pressable onPress={() => router.push("/(tabs)/calendar")}>
-            <Text style={[styles.seeAll, { color: colors.primary }]}>See all</Text>
+            <Text style={[styles.seeAll, { color: colors.primary }]}>Vedi tutti</Text>
           </Pressable>
         </View>
         {upcomingEvents.length === 0 ? (
           <Card>
             <EmptyState
               icon="calendar-outline"
-              title="No upcoming events"
-              subtitle="Add events to keep your family in sync"
+              title="Nessun evento in programma"
+              subtitle="Aggiungi eventi per tenere la famiglia sincronizzata"
             />
           </Card>
         ) : (
@@ -80,7 +79,7 @@ export default function HomeScreen() {
                   <View style={styles.eventMeta}>
                     <Text style={[styles.eventDate, { color: colors.textSecondary }]}>
                       {formatDate(event.date)}
-                      {event.time && ` at ${event.time}`}
+                      {event.time && ` alle ${event.time}`}
                     </Text>
                     <Text style={[styles.eventMember, { color: getMemberColor(event.memberId) }]}>
                       {getMemberName(event.memberId)}
@@ -95,17 +94,17 @@ export default function HomeScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Pending Chores</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Faccende da Fare</Text>
           <Pressable onPress={() => router.push("/(tabs)/chores")}>
-            <Text style={[styles.seeAll, { color: colors.primary }]}>See all</Text>
+            <Text style={[styles.seeAll, { color: colors.primary }]}>Vedi tutte</Text>
           </Pressable>
         </View>
         {pendingChores.length === 0 ? (
           <Card>
             <EmptyState
               icon="checkmark-circle-outline"
-              title="All caught up!"
-              subtitle="No pending chores at the moment"
+              title="Tutto fatto!"
+              subtitle="Nessuna faccenda in sospeso al momento"
             />
           </Card>
         ) : (
@@ -118,11 +117,11 @@ export default function HomeScreen() {
                     <View style={styles.choreInfo}>
                       <Text style={[styles.choreTitle, { color: colors.text }]}>{chore.title}</Text>
                       <Text style={[styles.choreAssigned, { color: colors.textSecondary }]}>
-                        {member?.name || "Unassigned"}
+                        {member?.name || "Non assegnato"}
                       </Text>
                     </View>
                     <View style={[styles.chorePoints, { backgroundColor: colors.accent }]}>
-                      <Text style={styles.chorePointsText}>{chore.points} pts</Text>
+                      <Text style={styles.chorePointsText}>{chore.points} pt</Text>
                     </View>
                   </View>
                 </Card>
@@ -134,15 +133,15 @@ export default function HomeScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Leaderboard</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Classifica</Text>
           <Ionicons name="trophy" size={20} color={colors.accent} />
         </View>
         {leaderboard.length === 0 ? (
           <Card>
             <EmptyState
               icon="people-outline"
-              title="No family members yet"
-              subtitle="Add members to start tracking points"
+              title="Nessun membro della famiglia"
+              subtitle="Aggiungi membri per iniziare a tracciare i punti"
             />
           </Card>
         ) : (
@@ -158,7 +157,7 @@ export default function HomeScreen() {
                     <Text style={[styles.leaderboardName, { color: colors.text }]}>{member.name}</Text>
                   </View>
                   <Text style={[styles.leaderboardPoints, { color: colors.primary }]}>
-                    {member.points} pts
+                    {member.points} pt
                   </Text>
                 </View>
               ))}

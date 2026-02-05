@@ -13,9 +13,9 @@ import { Card } from "@/components/Card";
 import Colors from "@/constants/colors";
 
 const ROLES = [
-  { value: "parent", label: "Parent", icon: "person" as const },
-  { value: "child", label: "Child", icon: "happy" as const },
-  { value: "other", label: "Other", icon: "people" as const },
+  { value: "parent", label: "Genitore", icon: "person" as const },
+  { value: "child", label: "Figlio/a", icon: "happy" as const },
+  { value: "other", label: "Altro", icon: "people" as const },
 ];
 
 export default function AddMemberScreen() {
@@ -48,15 +48,15 @@ export default function AddMemberScreen() {
         <Pressable onPress={() => router.back()} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Add Member</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Aggiungi Membro</Text>
         <View style={styles.placeholder} />
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.field}>
           <Input
-            label="Name"
-            placeholder="Enter name"
+            label="Nome"
+            placeholder="Inserisci il nome"
             value={name}
             onChangeText={setName}
             autoFocus
@@ -64,7 +64,7 @@ export default function AddMemberScreen() {
         </View>
 
         <View style={styles.field}>
-          <Text style={[styles.label, { color: colors.text }]}>Role</Text>
+          <Text style={[styles.label, { color: colors.text }]}>Ruolo</Text>
           <View style={styles.roleOptions}>
             {ROLES.map((r) => (
               <Pressable
@@ -100,7 +100,7 @@ export default function AddMemberScreen() {
         </View>
 
         <View style={styles.field}>
-          <Text style={[styles.label, { color: colors.text }]}>Color</Text>
+          <Text style={[styles.label, { color: colors.text }]}>Colore</Text>
           <View style={styles.colorOptions}>
             {Colors.light.memberColors.map((color) => (
               <Pressable
@@ -124,7 +124,7 @@ export default function AddMemberScreen() {
         </View>
 
         <View style={styles.preview}>
-          <Text style={[styles.label, { color: colors.text }]}>Preview</Text>
+          <Text style={[styles.label, { color: colors.text }]}>Anteprima</Text>
           <Card style={styles.previewCard}>
             <View style={styles.previewContent}>
               <View
@@ -139,7 +139,7 @@ export default function AddMemberScreen() {
               </View>
               <View style={styles.previewInfo}>
                 <Text style={[styles.previewName, { color: colors.text }]}>
-                  {name.trim() || "Name"}
+                  {name.trim() || "Nome"}
                 </Text>
                 <Text style={[styles.previewRole, { color: colors.textSecondary }]}>
                   {ROLES.find((r) => r.value === role)?.label}
@@ -150,7 +150,7 @@ export default function AddMemberScreen() {
         </View>
 
         <Button
-          title="Add Member"
+          title="Aggiungi Membro"
           onPress={handleSave}
           disabled={!name.trim()}
           style={{ marginTop: 24 }}

@@ -46,7 +46,7 @@ export default function ShoppingScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Shopping</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Spesa</Text>
         <Pressable
           onPress={() => setShowNewList(true)}
           style={({ pressed }) => [
@@ -60,7 +60,7 @@ export default function ShoppingScreen() {
 
       {showNewList && (
         <Card style={styles.newListCard}>
-          <Text style={[styles.newListTitle, { color: colors.text }]}>New List</Text>
+          <Text style={[styles.newListTitle, { color: colors.text }]}>Nuova Lista</Text>
           <TextInput
             style={[
               styles.newListInput,
@@ -70,7 +70,7 @@ export default function ShoppingScreen() {
                 color: colors.text,
               },
             ]}
-            placeholder="List name..."
+            placeholder="Nome della lista..."
             placeholderTextColor={colors.textSecondary}
             value={newListName}
             onChangeText={setNewListName}
@@ -85,9 +85,9 @@ export default function ShoppingScreen() {
               }}
               style={styles.cancelButton}
             >
-              <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Cancel</Text>
+              <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Annulla</Text>
             </Pressable>
-            <Button title="Create" onPress={handleCreateList} size="small" disabled={!newListName.trim()} />
+            <Button title="Crea" onPress={handleCreateList} size="small" disabled={!newListName.trim()} />
           </View>
         </Card>
       )}
@@ -100,8 +100,8 @@ export default function ShoppingScreen() {
         {data.shoppingLists.length === 0 ? (
           <EmptyState
             icon="cart-outline"
-            title="No shopping lists"
-            subtitle="Create a list to start adding items"
+            title="Nessuna lista della spesa"
+            subtitle="Crea una lista per iniziare ad aggiungere prodotti"
           />
         ) : (
           <View style={styles.lists}>
@@ -118,8 +118,8 @@ export default function ShoppingScreen() {
                     <View style={styles.listInfo}>
                       <Text style={[styles.listName, { color: colors.text }]}>{list.name}</Text>
                       <Text style={[styles.listCount, { color: colors.textSecondary }]}>
-                        {total} item{total !== 1 ? "s" : ""}
-                        {total > 0 && ` · ${completed} done`}
+                        {total} prodott{total !== 1 ? "i" : "o"}
+                        {total > 0 && ` · ${completed} complet${completed !== 1 ? "i" : "o"}`}
                       </Text>
                     </View>
                     <Pressable

@@ -53,15 +53,15 @@ export default function AddEventScreen() {
         <Pressable onPress={() => router.back()} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Add Event</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Aggiungi Evento</Text>
         <View style={styles.placeholder} />
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.field}>
           <Input
-            label="Title"
-            placeholder="Event title"
+            label="Titolo"
+            placeholder="Titolo dell'evento"
             value={title}
             onChangeText={setTitle}
             autoFocus
@@ -70,8 +70,8 @@ export default function AddEventScreen() {
 
         <View style={styles.field}>
           <Input
-            label="Description (optional)"
-            placeholder="Add details..."
+            label="Descrizione (opzionale)"
+            placeholder="Aggiungi dettagli..."
             value={description}
             onChangeText={setDescription}
             multiline
@@ -81,15 +81,15 @@ export default function AddEventScreen() {
 
         <View style={styles.field}>
           <Input
-            label="Date"
-            placeholder="YYYY-MM-DD"
+            label="Data"
+            placeholder="AAAA-MM-GG"
             value={date}
             onChangeText={setDate}
           />
         </View>
 
         <View style={[styles.row, { borderColor: colors.border }]}>
-          <Text style={[styles.rowLabel, { color: colors.text }]}>All Day</Text>
+          <Text style={[styles.rowLabel, { color: colors.text }]}>Tutto il giorno</Text>
           <Switch
             value={isAllDay}
             onValueChange={(value) => {
@@ -103,8 +103,8 @@ export default function AddEventScreen() {
         {!isAllDay && (
           <View style={styles.field}>
             <Input
-              label="Time"
-              placeholder="HH:MM (e.g., 14:30)"
+              label="Orario"
+              placeholder="HH:MM (es. 14:30)"
               value={time}
               onChangeText={setTime}
             />
@@ -113,7 +113,7 @@ export default function AddEventScreen() {
 
         {data.members.length > 0 && (
           <View style={styles.field}>
-            <Text style={[styles.label, { color: colors.text }]}>Assign to</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Assegna a</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScroll}>
               <View style={styles.memberOptions}>
                 {data.members.map((member) => (
@@ -142,7 +142,7 @@ export default function AddEventScreen() {
         )}
 
         <View style={styles.field}>
-          <Text style={[styles.label, { color: colors.text }]}>Color</Text>
+          <Text style={[styles.label, { color: colors.text }]}>Colore</Text>
           <View style={styles.colorOptions}>
             {EVENT_COLORS.map((color) => (
               <Pressable
@@ -166,7 +166,7 @@ export default function AddEventScreen() {
         </View>
 
         <Button
-          title="Add Event"
+          title="Aggiungi Evento"
           onPress={handleSave}
           disabled={!title.trim() || !date}
           style={{ marginTop: 24 }}

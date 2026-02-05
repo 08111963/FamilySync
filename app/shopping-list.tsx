@@ -21,7 +21,7 @@ export default function ShoppingListScreen() {
   if (!list) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Text style={{ color: colors.text }}>List not found</Text>
+        <Text style={{ color: colors.text }}>Lista non trovata</Text>
       </View>
     );
   }
@@ -67,7 +67,7 @@ export default function ShoppingListScreen() {
       <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <TextInput
           style={[styles.input, { color: colors.text }]}
-          placeholder="Add item..."
+          placeholder="Aggiungi prodotto..."
           placeholderTextColor={colors.textSecondary}
           value={newItemName}
           onChangeText={setNewItemName}
@@ -96,14 +96,14 @@ export default function ShoppingListScreen() {
         ListEmptyComponent={
           <EmptyState
             icon="basket-outline"
-            title="List is empty"
-            subtitle="Add items using the input above"
+            title="Lista vuota"
+            subtitle="Aggiungi prodotti usando il campo sopra"
           />
         }
         ListHeaderComponent={
           uncheckedItems.length > 0 ? (
             <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-              To Buy ({uncheckedItems.length})
+              Da Comprare ({uncheckedItems.length})
             </Text>
           ) : null
         }
@@ -114,7 +114,7 @@ export default function ShoppingListScreen() {
             <>
               {isFirstChecked && (
                 <Text style={[styles.sectionTitle, { color: colors.textSecondary, marginTop: 16 }]}>
-                  Done ({checkedItems.length})
+                  Fatto ({checkedItems.length})
                 </Text>
               )}
               <Pressable

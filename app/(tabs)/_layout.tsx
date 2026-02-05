@@ -23,20 +23,20 @@ function NativeTabLayout() {
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="calendar">
         <Icon sf={{ default: "calendar", selected: "calendar" }} />
-        <Label>Calendar</Label>
+        <Label>Calendario</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="shopping">
         <Icon sf={{ default: "cart", selected: "cart.fill" }} />
-        <Label>Shopping</Label>
+        <Label>Spesa</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="chores">
         <Icon sf={{ default: "checkmark.circle", selected: "checkmark.circle.fill" }} />
-        <Label>Chores</Label>
+        <Label>Faccende</Label>
         {pendingCount > 0 && <Badge>{pendingCount}</Badge>}
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="family">
         <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
-        <Label>Family</Label>
+        <Label>Famiglia</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -99,7 +99,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="calendar"
         options={{
-          title: "Calendar",
+          title: "Calendario",
           tabBarIcon: ({ color, focused }) => (
             isIOS ? (
               <SymbolView name="calendar" tintColor={color} size={24} />
@@ -112,7 +112,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="shopping"
         options={{
-          title: "Shopping",
+          title: "Spesa",
           tabBarIcon: ({ color, focused }) => (
             isIOS ? (
               <SymbolView name={focused ? "cart.fill" : "cart"} tintColor={color} size={24} />
@@ -125,7 +125,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="chores"
         options={{
-          title: "Chores",
+          title: "Faccende",
           tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
           tabBarIcon: ({ color, focused }) => (
             isIOS ? (
@@ -139,7 +139,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="family"
         options={{
-          title: "Family",
+          title: "Famiglia",
           tabBarIcon: ({ color, focused }) => (
             isIOS ? (
               <SymbolView name={focused ? "person.2.fill" : "person.2"} tintColor={color} size={24} />

@@ -11,10 +11,10 @@ import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
+  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
 ];
 
 export default function CalendarScreen() {
@@ -106,13 +106,18 @@ export default function CalendarScreen() {
     deleteEvent(eventId);
   };
 
+  const formatSelectedDate = () => {
+    const date = new Date(selectedDate);
+    return date.toLocaleDateString("it-IT", { day: "numeric", month: "long" });
+  };
+
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const calendarDays = generateCalendarDays();
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Calendar</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Calendario</Text>
         <Pressable
           onPress={() => router.push("/add-event")}
           style={({ pressed }) => [
@@ -182,13 +187,13 @@ export default function CalendarScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={[styles.eventsTitle, { color: colors.text }]}>
-          Events for {new Date(selectedDate).toLocaleDateString("en-US", { month: "long", day: "numeric" })}
+          Eventi del {formatSelectedDate()}
         </Text>
         {events.length === 0 ? (
           <EmptyState
             icon="calendar-outline"
-            title="No events"
-            subtitle="Tap the + button to add an event"
+            title="Nessun evento"
+            subtitle="Tocca + per aggiungere un evento"
           />
         ) : (
           <View style={styles.eventsCards}>

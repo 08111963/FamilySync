@@ -10,7 +10,6 @@ import { useFamily } from "@/context/FamilyContext";
 import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/Button";
 
 export default function FamilyScreen() {
   const insets = useSafeAreaInsets();
@@ -32,16 +31,16 @@ export default function FamilyScreen() {
   const handleDeleteMember = (memberId: string, memberName: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (Platform.OS === "web") {
-      if (confirm(`Remove ${memberName} from the family?`)) {
+      if (confirm(`Rimuovere ${memberName} dalla famiglia?`)) {
         deleteMember(memberId);
       }
     } else {
       Alert.alert(
-        "Remove Member",
-        `Are you sure you want to remove ${memberName} from the family?`,
+        "Rimuovi Membro",
+        `Sei sicuro di voler rimuovere ${memberName} dalla famiglia?`,
         [
-          { text: "Cancel", style: "cancel" },
-          { text: "Remove", style: "destructive", onPress: () => deleteMember(memberId) },
+          { text: "Annulla", style: "cancel" },
+          { text: "Rimuovi", style: "destructive", onPress: () => deleteMember(memberId) },
         ]
       );
     }
@@ -50,11 +49,11 @@ export default function FamilyScreen() {
   const getRoleBadge = (role: string) => {
     switch (role) {
       case "parent":
-        return { label: "Parent", color: colors.primary };
+        return { label: "Genitore", color: colors.primary };
       case "child":
-        return { label: "Child", color: colors.secondary };
+        return { label: "Figlio/a", color: colors.secondary };
       default:
-        return { label: "Member", color: colors.textSecondary };
+        return { label: "Membro", color: colors.textSecondary };
     }
   };
 
@@ -100,7 +99,7 @@ export default function FamilyScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Members</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Membri</Text>
           <Pressable
             onPress={() => router.push("/add-member")}
             style={({ pressed }) => [
@@ -109,7 +108,7 @@ export default function FamilyScreen() {
             ]}
           >
             <Ionicons name="add" size={20} color="#FFFFFF" />
-            <Text style={styles.addMemberText}>Add</Text>
+            <Text style={styles.addMemberText}>Aggiungi</Text>
           </Pressable>
         </View>
 
@@ -117,8 +116,8 @@ export default function FamilyScreen() {
           <Card>
             <EmptyState
               icon="people-outline"
-              title="No family members"
-              subtitle="Add your family members to get started"
+              title="Nessun membro della famiglia"
+              subtitle="Aggiungi i membri della tua famiglia per iniziare"
             />
           </Card>
         ) : (
@@ -136,7 +135,7 @@ export default function FamilyScreen() {
                           <Text style={[styles.roleBadgeText, { color: badge.color }]}>{badge.label}</Text>
                         </View>
                         <Text style={[styles.memberPoints, { color: colors.textSecondary }]}>
-                          {member.points} points
+                          {member.points} punti
                         </Text>
                       </View>
                     </View>
@@ -157,7 +156,7 @@ export default function FamilyScreen() {
       {leaderboard.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Leaderboard</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Classifica</Text>
             <Ionicons name="trophy" size={20} color={colors.accent} />
           </View>
 
@@ -187,7 +186,7 @@ export default function FamilyScreen() {
                     <Text style={[styles.leaderboardName, { color: colors.text }]}>{member.name}</Text>
                   </View>
                   <Text style={[styles.leaderboardPoints, { color: colors.primary }]}>
-                    {member.points} pts
+                    {member.points} pt
                   </Text>
                 </View>
               ))}
@@ -198,7 +197,7 @@ export default function FamilyScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Statistics</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Statistiche</Text>
         </View>
         <View style={styles.statsGrid}>
           <Card style={styles.statCard}>
@@ -206,14 +205,14 @@ export default function FamilyScreen() {
               <Ionicons name="calendar" size={24} color={colors.calendar.blue} />
             </View>
             <Text style={[styles.statNumber, { color: colors.text }]}>{data.events.length}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Events</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Eventi</Text>
           </Card>
           <Card style={styles.statCard}>
             <View style={[styles.statIcon, { backgroundColor: colors.calendar.green + "30" }]}>
               <Ionicons name="cart" size={24} color={colors.calendar.green} />
             </View>
             <Text style={[styles.statNumber, { color: colors.text }]}>{data.shoppingLists.length}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Lists</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Liste</Text>
           </Card>
           <Card style={styles.statCard}>
             <View style={[styles.statIcon, { backgroundColor: colors.calendar.purple + "30" }]}>
@@ -222,7 +221,7 @@ export default function FamilyScreen() {
             <Text style={[styles.statNumber, { color: colors.text }]}>
               {data.chores.filter((c) => c.isCompleted).length}
             </Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Done</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Fatte</Text>
           </Card>
         </View>
       </View>
