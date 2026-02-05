@@ -1,12 +1,12 @@
-import { useRef, useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   StyleSheet,
   Text,
   View,
   Pressable,
   Platform,
+  ScrollView,
   Dimensions,
-  FlatList,
   useColorScheme,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,9 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import Animated, {
-  FadeIn,
   FadeInDown,
-  FadeInUp,
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
@@ -33,7 +31,6 @@ interface Feature {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   description: string;
-  color: string;
   gradient: [string, string];
 }
 
@@ -42,29 +39,37 @@ const FEATURES: Feature[] = [
     icon: "calendar",
     title: "Calendario Condiviso",
     description: "Organizza eventi e appuntamenti visibili a tutta la famiglia in tempo reale",
-    color: "#74B9FF",
     gradient: ["#74B9FF", "#0984E3"],
   },
   {
     icon: "cart",
     title: "Liste della Spesa",
     description: "Crea e condividi liste collaborative. Niente piu doppioni al supermercato",
-    color: "#55EFC4",
     gradient: ["#55EFC4", "#00B894"],
   },
   {
     icon: "checkbox",
     title: "Faccende con Punti",
     description: "Assegna compiti, guadagna punti e scala la classifica familiare",
-    color: "#A29BFE",
     gradient: ["#A29BFE", "#6C5CE7"],
   },
   {
     icon: "sparkles",
     title: "Suggerimenti AI",
     description: "Ricevi consigli intelligenti per ottimizzare la gestione della casa",
-    color: "#FFEAA7",
     gradient: ["#FFEAA7", "#FDCB6E"],
+  },
+  {
+    icon: "sync",
+    title: "Sincronizzazione Real-time",
+    description: "Ogni modifica si aggiorna istantaneamente su tutti i dispositivi della famiglia",
+    gradient: ["#FAB1A0", "#E17055"],
+  },
+  {
+    icon: "trophy",
+    title: "Classifica Familiare",
+    description: "Motiva tutti con punti e classifiche per le faccende completate",
+    gradient: ["#FD79A8", "#E84393"],
   },
 ];
 
@@ -83,8 +88,8 @@ function FloatingOrb({ delay, x, size, color }: { delay: number; x: number; size
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: interpolate(progress.value, [0, 1], [0, -30]) }],
-    opacity: interpolate(progress.value, [0, 0.5, 1], [0.15, 0.3, 0.15]),
+    transform: [{ translateY: interpolate(progress.value, [0, 1], [0, -25]) }],
+    opacity: interpolate(progress.value, [0, 0.5, 1], [0.12, 0.25, 0.12]),
   }));
 
   return (
@@ -97,7 +102,7 @@ function FloatingOrb({ delay, x, size, color }: { delay: number; x: number; size
           borderRadius: size / 2,
           backgroundColor: color,
           left: x,
-          bottom: 120,
+          top: 200,
         },
         animatedStyle,
       ]}
@@ -105,20 +110,24 @@ function FloatingOrb({ delay, x, size, color }: { delay: number; x: number; size
   );
 }
 
-function FeatureCard({ item, index }: { item: Feature; index: number }) {
+function FeatureRow({ item, index }: { item: Feature; index: number }) {
   return (
-    <View style={featureStyles.cardWrapper}>
-      <LinearGradient
-        colors={item.gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={featureStyles.iconGradient}
-      >
-        <Ionicons name={item.icon} size={28} color="#FFFFFF" />
-      </LinearGradient>
-      <Text style={featureStyles.title}>{item.title}</Text>
-      <Text style={featureStyles.description}>{item.description}</Text>
-    </View>
+    <Animated.View entering={FadeInDown.delay(300 + index * 100).duration(500)}>
+      <View style={featureStyles.row}>
+        <LinearGradient
+          colors={item.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={featureStyles.iconBox}
+        >
+          <Ionicons name={item.icon} size={24} color="#FFFFFF" />
+        </LinearGradient>
+        <View style={featureStyles.textBlock}>
+          <Text style={featureStyles.title}>{item.title}</Text>
+          <Text style={featureStyles.description}>{item.description}</Text>
+        </View>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -126,8 +135,6 @@ export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
-  const [activeIndex, setActiveIndex] = useState(0);
-  const flatListRef = useRef<FlatList>(null);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
@@ -143,58 +150,42 @@ export default function WelcomeScreen() {
 
   return (
     <LinearGradient colors={gradientColors} style={styles.container}>
-      <FloatingOrb delay={0} x={SCREEN_WIDTH * 0.1} size={120} color="rgba(255,255,255,0.08)" />
-      <FloatingOrb delay={800} x={SCREEN_WIDTH * 0.6} size={80} color="rgba(255,255,255,0.06)" />
-      <FloatingOrb delay={1500} x={SCREEN_WIDTH * 0.35} size={60} color="rgba(255,255,255,0.1)" />
+      <FloatingOrb delay={0} x={SCREEN_WIDTH * 0.05} size={120} color="rgba(255,255,255,0.06)" />
+      <FloatingOrb delay={800} x={SCREEN_WIDTH * 0.6} size={80} color="rgba(255,255,255,0.05)" />
+      <FloatingOrb delay={1500} x={SCREEN_WIDTH * 0.3} size={60} color="rgba(255,255,255,0.08)" />
 
-      <View style={[styles.content, { paddingTop: topInset + 32, paddingBottom: bottomInset + 16 }]}>
-        <Animated.View entering={FadeInDown.delay(200).duration(800)} style={styles.heroSection}>
-          <View style={styles.logoRow}>
-            <LinearGradient
-              colors={["rgba(255,255,255,0.25)", "rgba(255,255,255,0.1)"]}
-              style={styles.logoCircle}
-            >
-              <Ionicons name="people" size={40} color="#FFFFFF" />
-            </LinearGradient>
-          </View>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: topInset + 40, paddingBottom: bottomInset + 24 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View entering={FadeInDown.delay(100).duration(700)} style={styles.heroSection}>
+          <LinearGradient
+            colors={["rgba(255,255,255,0.25)", "rgba(255,255,255,0.1)"]}
+            style={styles.logoCircle}
+          >
+            <Ionicons name="people" size={40} color="#FFFFFF" />
+          </LinearGradient>
           <Text style={styles.appTitle}>FamilySync</Text>
           <Text style={styles.appSubtitle}>La tua famiglia, perfettamente coordinata</Text>
         </Animated.View>
 
-        <Animated.View entering={FadeInUp.delay(500).duration(800)} style={styles.carouselSection}>
-          <FlatList
-            ref={flatListRef}
-            data={FEATURES}
-            renderItem={({ item, index }) => <FeatureCard item={item} index={index} />}
-            keyExtractor={(_, i) => i.toString()}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={SCREEN_WIDTH - 48}
-            decelerationRate="fast"
-            contentContainerStyle={{ paddingHorizontal: 24 }}
-            onMomentumScrollEnd={(e) => {
-              const idx = Math.round(e.nativeEvent.contentOffset.x / (SCREEN_WIDTH - 48));
-              setActiveIndex(idx);
-            }}
-          />
-          <View style={styles.dotsRow}>
-            {FEATURES.map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  {
-                    backgroundColor: i === activeIndex ? "#FFFFFF" : "rgba(255,255,255,0.35)",
-                    width: i === activeIndex ? 24 : 8,
-                  },
-                ]}
-              />
-            ))}
-          </View>
-        </Animated.View>
+        <View style={styles.featuresSection}>
+          <Animated.Text
+            entering={FadeInDown.delay(250).duration(500)}
+            style={styles.sectionLabel}
+          >
+            Cosa puoi fare
+          </Animated.Text>
+          {FEATURES.map((feature, index) => (
+            <FeatureRow key={index} item={feature} index={index} />
+          ))}
+        </View>
 
-        <Animated.View entering={FadeIn.delay(900).duration(600)} style={styles.ctaSection}>
+        <View style={styles.ctaSection}>
           <Pressable
             onPress={handleGetStarted}
             style={({ pressed }) => [
@@ -214,72 +205,70 @@ export default function WelcomeScreen() {
 
           <View style={styles.trustRow}>
             <View style={styles.trustItem}>
-              <Ionicons name="shield-checkmark" size={16} color="rgba(255,255,255,0.7)" />
+              <Ionicons name="shield-checkmark" size={15} color="rgba(255,255,255,0.7)" />
               <Text style={styles.trustText}>Sicuro</Text>
             </View>
             <View style={styles.trustDivider} />
             <View style={styles.trustItem}>
-              <Ionicons name="cloud-done" size={16} color="rgba(255,255,255,0.7)" />
+              <Ionicons name="cloud-done" size={15} color="rgba(255,255,255,0.7)" />
               <Text style={styles.trustText}>Sincronizzato</Text>
             </View>
             <View style={styles.trustDivider} />
             <View style={styles.trustItem}>
-              <Ionicons name="heart" size={16} color="rgba(255,255,255,0.7)" />
+              <Ionicons name="heart" size={15} color="rgba(255,255,255,0.7)" />
               <Text style={styles.trustText}>Gratuito</Text>
             </View>
           </View>
-        </Animated.View>
-      </View>
+        </View>
+      </ScrollView>
     </LinearGradient>
   );
 }
 
 const featureStyles = StyleSheet.create({
-  cardWrapper: {
-    width: SCREEN_WIDTH - 48,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 24,
-    padding: 24,
+  row: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 14,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
-  iconGradient: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
+  iconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
+  },
+  textBlock: {
+    flex: 1,
   },
   title: {
-    fontSize: 20,
-    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
     color: "#FFFFFF",
-    marginBottom: 8,
-    textAlign: "center",
+    marginBottom: 3,
   },
   description: {
-    fontSize: 15,
+    fontSize: 13,
     fontFamily: "Inter_400Regular",
-    color: "rgba(255,255,255,0.8)",
-    textAlign: "center",
-    lineHeight: 22,
+    color: "rgba(255,255,255,0.75)",
+    lineHeight: 18,
   },
 });
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: {
-    flex: 1,
-    justifyContent: "space-between",
+  scroll: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: 24,
   },
   heroSection: {
     alignItems: "center",
-    paddingHorizontal: 24,
-  },
-  logoRow: {
-    marginBottom: 16,
+    marginBottom: 36,
   },
   logoCircle: {
     width: 80,
@@ -287,9 +276,10 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     justifyContent: "center",
     alignItems: "center",
+    marginBottom: 16,
   },
   appTitle: {
-    fontSize: 42,
+    fontSize: 40,
     fontFamily: "Inter_700Bold",
     color: "#FFFFFF",
     letterSpacing: -1.5,
@@ -301,22 +291,19 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: "center",
   },
-  carouselSection: {
-    paddingVertical: 16,
+  featuresSection: {
+    gap: 12,
+    marginBottom: 36,
   },
-  dotsRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 20,
-  },
-  dot: {
-    height: 8,
-    borderRadius: 4,
+  sectionLabel: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    color: "rgba(255,255,255,0.6)",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 4,
   },
   ctaSection: {
-    paddingHorizontal: 24,
     alignItems: "center",
     gap: 20,
   },
@@ -328,11 +315,7 @@ const styles = StyleSheet.create({
     width: "100%",
     paddingVertical: 18,
     borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
+    boxShadow: "0px 4px 12px rgba(0,0,0,0.15)",
   },
   ctaText: {
     fontSize: 18,
