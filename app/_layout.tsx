@@ -20,11 +20,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isLoading) return;
 
-    const inAuthGroup = segments[0] === "login";
+    const inPublicGroup = segments[0] === "login" || segments[0] === "welcome";
 
-    if (!isAuthenticated && !inAuthGroup) {
-      router.replace("/login");
-    } else if (isAuthenticated && inAuthGroup) {
+    if (!isAuthenticated && !inPublicGroup) {
+      router.replace("/welcome");
+    } else if (isAuthenticated && inPublicGroup) {
       router.replace("/");
     }
   }, [isAuthenticated, isLoading, segments]);
@@ -35,6 +35,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
+      <Stack.Screen name="welcome" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="add-member" options={{ presentation: "modal", headerShown: false }} />
