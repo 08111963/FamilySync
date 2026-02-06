@@ -1,32 +1,63 @@
 import { Router } from 'express';
-import { stripeService } from '../lib/stripeService';
-import { getStripePublishableKey } from '../lib/stripeClient';
+import type { Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
+import { config } from '../lib/config';
+import { logger } from '../lib/logger';
 
 const router = Router();
 
-router.get('/publishable-key', async (req, res) => {
+function requirePayments(_req: Request, res: Response, next: Function) {
+  if (!config.premiumPaymentsEnabled) {
+    return res.status(501).json({
+      error: { code: "PAYMENTS_DISABLED", message: "I pagamenti Premium non sono ancora attivi" },
+    });
+  }
+  next();
+}
+
+router.get('/status', (_req: Request, res: Response) => {
+  res.json({
+    paymentsEnabled: config.premiumPaymentsEnabled,
+    plans: [
+      { name: "Premium Mensile", price: "€4,99/mese", interval: "month" },
+      { name: "Premium Annuale", price: "€39,99/anno", interval: "year", badge: "Risparmia 33%" },
+    ],
+    features: [
+      "Suggerimenti AI",
+      "Membri Illimitati",
+      "Sincronizzazione Real-time",
+      "Statistiche Avanzate",
+      "Temi Personalizzati",
+      "Supporto Prioritario",
+    ],
+  });
+});
+
+router.get('/publishable-key', requirePayments, async (_req: Request, res: Response) => {
   try {
+    const { getStripePublishableKey } = await import('../lib/stripeClient');
     const publishableKey = await getStripePublishableKey();
     res.json({ publishableKey });
   } catch (error) {
-    console.error('Error getting publishable key:', error);
-    res.status(500).json({ error: 'Errore nel recupero della chiave Stripe' });
+    logger.error('Error getting publishable key', { error: String(error) });
+    res.status(500).json({ error: { code: "STRIPE_ERROR", message: "Errore nel recupero della chiave Stripe" } });
   }
 });
 
-router.get('/products', async (req, res) => {
+router.get('/products', requirePayments, async (_req: Request, res: Response) => {
   try {
+    const { stripeService } = await import('../lib/stripeService');
     const products = await stripeService.listProducts();
     res.json({ data: products });
   } catch (error) {
-    console.error('Error listing products:', error);
-    res.status(500).json({ error: 'Errore nel recupero dei prodotti' });
+    logger.error('Error listing products', { error: String(error) });
+    res.status(500).json({ error: { code: "STRIPE_ERROR", message: "Errore nel recupero dei prodotti" } });
   }
 });
 
-router.get('/products-with-prices', async (req, res) => {
+router.get('/products-with-prices', requirePayments, async (_req: Request, res: Response) => {
   try {
+    const { stripeService } = await import('../lib/stripeService');
     const rows = await stripeService.listProductsWithPrices();
 
     if (rows.length > 0 && 'prices' in rows[0]) {
@@ -72,81 +103,79 @@ router.get('/products-with-prices', async (req, res) => {
 
     res.json({ data: Array.from(productsMap.values()) });
   } catch (error) {
-    console.error('Error listing products with prices:', error);
-    res.status(500).json({ error: 'Errore nel recupero dei prodotti' });
+    logger.error('Error listing products with prices', { error: String(error) });
+    res.status(500).json({ error: { code: "STRIPE_ERROR", message: "Errore nel recupero dei prodotti" } });
   }
 });
 
-router.get('/prices', async (req, res) => {
+router.get('/prices', requirePayments, async (_req: Request, res: Response) => {
   try {
+    const { stripeService } = await import('../lib/stripeService');
     const prices = await stripeService.listPrices();
     res.json({ data: prices });
   } catch (error) {
-    console.error('Error listing prices:', error);
-    res.status(500).json({ error: 'Errore nel recupero dei prezzi' });
+    logger.error('Error listing prices', { error: String(error) });
+    res.status(500).json({ error: { code: "STRIPE_ERROR", message: "Errore nel recupero dei prezzi" } });
   }
 });
 
 router.use(authenticate);
 
-router.get('/subscription', async (req, res) => {
+router.get('/subscription', requirePayments, async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    
+    const { stripeService } = await import('../lib/stripeService');
     const { db } = await import('../db');
     const { familyMembers } = await import('../../shared/schema');
     const { eq } = await import('drizzle-orm');
-    
+
     const [membership] = await db
       .select()
       .from(familyMembers)
-      .where(eq(familyMembers.userId, user.userId));
-    
+      .where(eq(familyMembers.userId, req.user!.userId));
+
     if (!membership) {
       return res.json({ subscription: null, status: 'free' });
     }
-    
+
     const family = await stripeService.getFamily(membership.familyId);
-    
+
     if (!family?.stripeSubscriptionId) {
       return res.json({ subscription: null, status: 'free' });
     }
 
     const subscription = await stripeService.getSubscription(family.stripeSubscriptionId);
-    res.json({ 
+    res.json({
       subscription,
       status: family.subscriptionStatus || 'free'
     });
   } catch (error) {
-    console.error('Error getting subscription:', error);
-    res.status(500).json({ error: 'Errore nel recupero dell\'abbonamento' });
+    logger.error('Error getting subscription', { error: String(error) });
+    res.status(500).json({ error: { code: "STRIPE_ERROR", message: "Errore nel recupero dell'abbonamento" } });
   }
 });
 
-router.post('/checkout', async (req, res) => {
+router.post('/checkout', requirePayments, async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
+    const { stripeService } = await import('../lib/stripeService');
     const { priceId, familyId } = req.body;
 
     if (!priceId || !familyId) {
-      return res.status(400).json({ error: 'priceId e familyId sono richiesti' });
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "priceId e familyId sono richiesti" } });
     }
 
     const family = await stripeService.getFamily(familyId);
     if (!family) {
-      return res.status(404).json({ error: 'Famiglia non trovata' });
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Famiglia non trovata" } });
     }
 
     let customerId = family.stripeCustomerId;
     if (!customerId) {
-      const customer = await stripeService.createCustomer(user.email, familyId, family.name);
+      const customer = await stripeService.createCustomer(req.user!.email, familyId, family.name);
       await stripeService.updateFamilyStripeInfo(familyId, { stripeCustomerId: customer.id });
       customerId = customer.id;
     }
 
-    const protocol = req.header('x-forwarded-proto') || req.protocol || 'https';
-    const host = req.header('x-forwarded-host') || req.get('host');
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = config.getBaseUrl(req);
 
     const session = await stripeService.createCheckoutSession(
       customerId,
@@ -157,28 +186,26 @@ router.post('/checkout', async (req, res) => {
 
     res.json({ url: session.url });
   } catch (error) {
-    console.error('Error creating checkout session:', error);
-    res.status(500).json({ error: 'Errore nella creazione della sessione di pagamento' });
+    logger.error('Error creating checkout session', { error: String(error) });
+    res.status(500).json({ error: { code: "STRIPE_ERROR", message: "Errore nella creazione della sessione di pagamento" } });
   }
 });
 
-router.post('/portal', async (req, res) => {
+router.post('/portal', requirePayments, async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
+    const { stripeService } = await import('../lib/stripeService');
     const { familyId } = req.body;
 
     if (!familyId) {
-      return res.status(400).json({ error: 'familyId è richiesto' });
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "familyId è richiesto" } });
     }
 
     const family = await stripeService.getFamily(familyId);
     if (!family?.stripeCustomerId) {
-      return res.status(400).json({ error: 'Nessun abbonamento attivo per questa famiglia' });
+      return res.status(400).json({ error: { code: "NO_SUBSCRIPTION", message: "Nessun abbonamento attivo per questa famiglia" } });
     }
 
-    const protocol = req.header('x-forwarded-proto') || req.protocol || 'https';
-    const host = req.header('x-forwarded-host') || req.get('host');
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = config.getBaseUrl(req);
 
     const session = await stripeService.createCustomerPortalSession(
       family.stripeCustomerId,
@@ -187,8 +214,8 @@ router.post('/portal', async (req, res) => {
 
     res.json({ url: session.url });
   } catch (error) {
-    console.error('Error creating portal session:', error);
-    res.status(500).json({ error: 'Errore nella creazione del portale di gestione' });
+    logger.error('Error creating portal session', { error: String(error) });
+    res.status(500).json({ error: { code: "STRIPE_ERROR", message: "Errore nella creazione del portale di gestione" } });
   }
 });
 

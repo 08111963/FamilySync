@@ -1,34 +1,35 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { db } from '../db';
-import { calendarEvents, familyMembers } from '../../shared/schema';
+import { calendarEvents } from '../../shared/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
+import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
+import { logger } from '../lib/logger';
 
 const router = Router();
 
-async function checkFamilyAccess(userId: string, familyId: string) {
-  const membership = await db.select()
-    .from(familyMembers)
-    .where(and(
-      eq(familyMembers.userId, userId),
-      eq(familyMembers.familyId, familyId)
-    ))
-    .limit(1);
-  return membership.length > 0;
-}
+const createEventSchema = z.object({
+  title: z.string().min(1, "Il titolo è obbligatorio"),
+  description: z.string().optional(),
+  date: z.string().min(1, "La data è obbligatoria"),
+  time: z.string().optional(),
+  endTime: z.string().optional(),
+  allDay: z.boolean().optional().default(false),
+  category: z.string().optional().default("other"),
+  location: z.string().optional(),
+  color: z.string().optional().default("#6366F1"),
+  memberId: z.string().optional(),
+  recurrenceRule: z.string().optional(),
+});
 
-// GET EVENTS
-router.get('/:familyId', authenticate, async (req: Request, res: Response) => {
+router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId as string;
+    const familyId = req.params.familyId;
     const { startDate, endDate } = req.query;
-    
-    if (!await checkFamilyAccess(req.user!.userId, familyId)) {
-      return res.status(403).json({ error: 'Non autorizzato' });
-    }
-    
+
     let events;
     if (startDate && endDate) {
       events = await db.select().from(calendarEvents).where(and(
@@ -39,99 +40,71 @@ router.get('/:familyId', authenticate, async (req: Request, res: Response) => {
     } else {
       events = await db.select().from(calendarEvents).where(eq(calendarEvents.familyId, familyId));
     }
-    
+
     res.json(events);
   } catch (error) {
-    res.status(500).json({ error: 'Errore nel recupero eventi' });
+    logger.error('Get events error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero eventi" } });
   }
 });
 
-// CREATE EVENT
-router.post('/:familyId', authenticate, async (req: Request, res: Response) => {
+router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId as string;
-    const { title, description, date, time, endTime, allDay, category, location, color, memberId, recurrenceRule } = req.body;
-    
-    if (!await checkFamilyAccess(req.user!.userId, familyId)) {
-      return res.status(403).json({ error: 'Non autorizzato' });
+    const familyId = req.params.familyId;
+    const parsed = createEventSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
     }
-    
+
     const [event] = await db.insert(calendarEvents).values({
       familyId,
-      title,
-      description,
-      date,
-      time,
-      endTime,
-      allDay: allDay || false,
-      category: category || 'other',
-      location,
-      color: color || '#6366F1',
-      memberId,
-      recurrenceRule,
+      ...parsed.data,
       createdBy: req.user!.userId,
     }).returning();
-    
+
     broadcastToFamily(familyId, 'event_created', event);
-    
     res.status(201).json(event);
   } catch (error) {
-    console.error('Create event error:', error);
-    res.status(500).json({ error: 'Errore nella creazione dell\'evento' });
+    logger.error('Create event error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione dell'evento" } });
   }
 });
 
-// UPDATE EVENT
-router.put('/:familyId/:eventId', authenticate, async (req: Request, res: Response) => {
+router.put('/:familyId/:eventId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId as string;
-    const eventId = req.params.eventId as string;
-    
-    if (!await checkFamilyAccess(req.user!.userId, familyId)) {
-      return res.status(403).json({ error: 'Non autorizzato' });
-    }
-    
+    const { familyId, eventId } = req.params;
+
     const [event] = await db.update(calendarEvents)
       .set({ ...req.body, updatedAt: new Date() })
-      .where(and(
-        eq(calendarEvents.id, eventId),
-        eq(calendarEvents.familyId, familyId)
-      ))
+      .where(and(eq(calendarEvents.id, eventId), eq(calendarEvents.familyId, familyId)))
       .returning();
-    
+
     if (!event) {
-      return res.status(404).json({ error: 'Evento non trovato' });
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Evento non trovato" } });
     }
-    
+
     broadcastToFamily(familyId, 'event_updated', event);
-    
     res.json(event);
   } catch (error) {
-    res.status(500).json({ error: 'Errore nell\'aggiornamento' });
+    logger.error('Update event error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'aggiornamento" } });
   }
 });
 
-// DELETE EVENT
-router.delete('/:familyId/:eventId', authenticate, async (req: Request, res: Response) => {
+router.delete('/:familyId/:eventId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId as string;
-    const eventId = req.params.eventId as string;
-    
-    if (!await checkFamilyAccess(req.user!.userId, familyId)) {
-      return res.status(403).json({ error: 'Non autorizzato' });
-    }
-    
-    await db.delete(calendarEvents)
-      .where(and(
-        eq(calendarEvents.id, eventId),
-        eq(calendarEvents.familyId, familyId)
-      ));
-    
+    const { familyId, eventId } = req.params;
+
+    await db.delete(calendarEvents).where(and(eq(calendarEvents.id, eventId), eq(calendarEvents.familyId, familyId)));
+
     broadcastToFamily(familyId, 'event_deleted', { eventId });
-    
     res.json({ message: 'Evento eliminato' });
   } catch (error) {
-    res.status(500).json({ error: 'Errore nell\'eliminazione' });
+    logger.error('Delete event error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'eliminazione" } });
   }
 });
 
