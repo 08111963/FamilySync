@@ -21,9 +21,14 @@ interface Insight {
   createdAt: string;
 }
 
+interface SuggestionItem {
+  name: string;
+  reason: string;
+}
+
 interface ShoppingSuggestion {
-  items?: string[];
-  suggestions?: string[];
+  items?: (string | SuggestionItem)[];
+  suggestions?: (string | SuggestionItem)[];
 }
 
 export default function AIInsightsScreen() {
@@ -219,14 +224,23 @@ export default function AIInsightsScreen() {
 
             {shoppingSuggestions ? (
               <View style={styles.suggestionsList}>
-                {(shoppingSuggestions.items || shoppingSuggestions.suggestions || []).map((item, index) => (
-                  <Card key={index}>
-                    <View style={styles.suggestionRow}>
-                      <View style={[styles.suggestionDot, { backgroundColor: colors.secondary }]} />
-                      <Text style={[styles.suggestionText, { color: colors.text }]}>{item}</Text>
-                    </View>
-                  </Card>
-                ))}
+                {(shoppingSuggestions.items || shoppingSuggestions.suggestions || []).map((item, index) => {
+                  const itemName = typeof item === "string" ? item : item.name;
+                  const itemReason = typeof item === "string" ? null : item.reason;
+                  return (
+                    <Card key={index}>
+                      <View style={styles.suggestionRow}>
+                        <View style={[styles.suggestionDot, { backgroundColor: colors.secondary }]} />
+                        <View style={styles.suggestionContent}>
+                          <Text style={[styles.suggestionText, { color: colors.text }]}>{itemName}</Text>
+                          {itemReason && (
+                            <Text style={[styles.suggestionReason, { color: colors.textSecondary }]}>{itemReason}</Text>
+                          )}
+                        </View>
+                      </View>
+                    </Card>
+                  );
+                })}
               </View>
             ) : (
               <EmptyState
@@ -295,7 +309,9 @@ const styles = StyleSheet.create({
   insightDescription: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
   dismissButton: { padding: 4 },
   suggestionsList: { gap: 8 },
-  suggestionRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  suggestionDot: { width: 8, height: 8, borderRadius: 4 },
-  suggestionText: { fontSize: 16, fontFamily: "Inter_500Medium", flex: 1 },
+  suggestionRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  suggestionDot: { width: 8, height: 8, borderRadius: 4, marginTop: 7 },
+  suggestionContent: { flex: 1 },
+  suggestionText: { fontSize: 16, fontFamily: "Inter_500Medium" },
+  suggestionReason: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2, lineHeight: 18 },
 });
