@@ -1,0 +1,121 @@
+Obiettivo: migliorare robustezza, UX e coerenza dei flussi “Family” e “Premium” senza completare Stripe. Qualsiasi parte Stripe deve rimanere stub/placeholder e non deve essere resa operativa.
+
+1) Feature flag: disattiva Stripe in modo pulito
+
+Introduci un flag unico, es. PREMIUM_PAYMENTS_ENABLED=false (env o config).
+
+In UI:
+
+se flag false, nascondi o disabilita il CTA “Attiva Premium / Upgrade”.
+
+mostra un messaggio “Premium in arrivo” + cosa include (readonly).
+
+Nel backend:
+
+gli endpoint Stripe (checkout/portal/webhook) devono rispondere con 501 Not Implemented o 403 con JSON chiaro ({ error: "Payments disabled" }) quando il flag è false.
+
+evita crash se mancano env Stripe (no throw in startup).
+
+2) Correggi ambiguità “family selection” (bug logico)
+
+Elimina la logica “prendi la prima membership” come default implicito.
+
+Ogni endpoint che dipende dalla famiglia deve essere scoped:
+
+aggiungi :familyId nelle route (o richiedi familyId nel body) e valida che:
+
+l’utente sia membro della famiglia
+
+e, dove serve, sia role=admin.
+
+Se serve un “contesto famiglia corrente”:
+
+gestisci un activeFamilyId lato client (store) e persistilo (es. AsyncStorage).
+
+fallback: se non impostato, chiede all’utente di scegliere la famiglia.
+
+3) RBAC/authorization centralizzati
+
+Crea middleware/util:
+
+requireAuth
+
+requireFamilyMember(familyId)
+
+requireFamilyAdmin(familyId)
+
+Applica in modo consistente a tutte le route sensibili (creazione eventi, gestione membri, impostazioni famiglia, ecc.).
+
+4) Validazione input + modello errori uniforme
+
+Introduci Zod (o equivalente già presente) su request body/params per tutte le API principali:
+
+familyId formato
+
+pagination
+
+payload creazione/aggiornamento
+
+Standardizza gli errori:
+
+{ error: { code, message, details? } }
+
+mappa 400/401/403/404/409/500 in modo coerente.
+
+5) Migliora UX e consistenza della schermata Premium (senza Stripe)
+
+Premium screen deve:
+
+mostrare stato attuale: Free / Premium (se già gestito nel DB) senza chiamare Stripe.
+
+se i campi DB non esistono o sono null, mostra “Non disponibile” senza rompere la UI.
+
+Aggiungi microcopy e sezioni:
+
+“Cosa include Premium”
+
+“Disponibile prossimamente”
+
+bottone “Avvisami” (solo UI, niente backend, oppure salva preferenza locale).
+
+6) Hardening baseUrl e config runtime
+
+Centralizza API_BASE_URL / APP_BASE_URL in un modulo config:
+
+niente dipendenze da Host header
+
+fallback dev sensato
+
+Gestisci differenze Expo (dev/prod) con una singola fonte di verità.
+
+7) Observability minima (senza Stripe)
+
+Logger strutturato (anche console va bene ma con formato consistente):
+
+requestId per richiesta
+
+log di errori con stack in dev
+
+Aggiungi un endpoint GET /api/health (DB optional) per diagnosi.
+
+8) (Opzionale) Stato client e invalidazione dati
+
+Se usi React Query / SWR:
+
+key sempre include familyId
+
+invalidazione quando cambi famiglia attiva
+
+Se non lo usi:
+
+crea un piccolo data-layer per evitare fetch duplicati e race conditions.
+
+Vincoli
+
+Non implementare checkout, webhook, o sincronizzazione Stripe.
+
+Se esistono file Stripe, possono rimanere ma:
+
+devono essere dietro feature flag
+
+non devono essere necessari per far partire app e backend.
