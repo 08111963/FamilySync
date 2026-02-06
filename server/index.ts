@@ -3,9 +3,8 @@ import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
-import { runMigrations } from 'stripe-replit-sync';
-import { getStripeSync } from './lib/stripeClient';
-import { WebhookHandlers } from './lib/webhookHandlers';
+import { config } from './lib/config';
+import { logger, generateRequestId } from './lib/logger';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -18,52 +17,63 @@ declare module "http" {
 }
 
 async function initStripe() {
+  if (!config.premiumPaymentsEnabled) {
+    logger.info('Premium payments disabled (set PREMIUM_PAYMENTS_ENABLED=true to enable)');
+    return;
+  }
+
   const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
-    console.log('DATABASE_URL not found, skipping Stripe initialization');
+    logger.warn('DATABASE_URL not found, skipping Stripe initialization');
     return;
   }
 
   try {
-    console.log('Initializing Stripe schema...');
+    const { runMigrations } = await import('stripe-replit-sync');
+    const { getStripeSync } = await import('./lib/stripeClient');
+    const { WebhookHandlers } = await import('./lib/webhookHandlers');
+
+    logger.info('Initializing Stripe schema...');
     await runMigrations({ 
       databaseUrl,
       schema: 'stripe'
     });
-    console.log('Stripe schema ready');
+    logger.info('Stripe schema ready');
 
     const stripeSync = await getStripeSync();
 
-    console.log('Setting up managed webhook...');
+    logger.info('Setting up managed webhook...');
     const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(',')[0]}`;
     try {
       const result = await stripeSync.findOrCreateManagedWebhook(
         `${webhookBaseUrl}/api/stripe/webhook`
       );
       if (result?.webhook) {
-        console.log(`Webhook configured: ${result.webhook.url}`);
+        logger.info(`Webhook configured: ${result.webhook.url}`);
       } else {
-        console.log('Webhook setup completed');
+        logger.info('Webhook setup completed');
       }
     } catch (webhookError) {
-      console.log('Webhook setup skipped (sandbox mode or not configured)');
+      logger.warn('Webhook setup skipped (sandbox mode or not configured)');
     }
 
-    console.log('Syncing Stripe data...');
+    logger.info('Syncing Stripe data...');
     stripeSync.syncBackfill()
       .then(() => {
-        console.log('Stripe data synced');
+        logger.info('Stripe data synced');
       })
       .catch((err: any) => {
-        console.error('Error syncing Stripe data:', err);
+        logger.error('Error syncing Stripe data', { error: String(err) });
       });
   } catch (error) {
-    console.error('Failed to initialize Stripe:', error);
+    logger.error('Failed to initialize Stripe', { error: String(error) });
   }
 }
 
 function setupStripeWebhook(app: express.Application) {
+  if (!config.premiumPaymentsEnabled) return;
+
   app.post(
     '/api/stripe/webhook',
     express.raw({ type: 'application/json' }),
@@ -75,10 +85,11 @@ function setupStripeWebhook(app: express.Application) {
       }
 
       try {
+        const { WebhookHandlers } = await import('./lib/webhookHandlers');
         const sig = Array.isArray(signature) ? signature[0] : signature;
 
         if (!Buffer.isBuffer(req.body)) {
-          console.error('STRIPE WEBHOOK ERROR: req.body is not a Buffer');
+          logger.error('STRIPE WEBHOOK ERROR: req.body is not a Buffer');
           return res.status(500).json({ error: 'Webhook processing error' });
         }
 
@@ -86,7 +97,7 @@ function setupStripeWebhook(app: express.Application) {
 
         res.status(200).json({ received: true });
       } catch (error: any) {
-        console.error('Webhook error:', error.message);
+        logger.error('Webhook error', { error: error.message });
         res.status(400).json({ error: 'Webhook processing error' });
       }
     }
@@ -146,31 +157,21 @@ function setupBodyParsing(app: express.Application) {
 
 function setupRequestLogging(app: express.Application) {
   app.use((req, res, next) => {
-    const start = Date.now();
-    const path = req.path;
-    let capturedJsonResponse: Record<string, unknown> | undefined = undefined;
+    const requestId = generateRequestId();
+    (req as any).requestId = requestId;
+    res.setHeader("X-Request-Id", requestId);
 
-    const originalResJson = res.json;
-    res.json = function (bodyJson, ...args) {
-      capturedJsonResponse = bodyJson;
-      return originalResJson.apply(res, [bodyJson, ...args]);
-    };
+    const start = Date.now();
+    const reqPath = req.path;
 
     res.on("finish", () => {
-      if (!path.startsWith("/api")) return;
+      if (!reqPath.startsWith("/api")) return;
 
       const duration = Date.now() - start;
-
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
+      logger.info(`${req.method} ${reqPath} ${res.statusCode}`, {
+        requestId,
+        durationMs: duration,
+      });
     });
 
     next();

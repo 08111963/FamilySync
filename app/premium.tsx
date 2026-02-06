@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator, Linking } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator, Linking, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -9,7 +9,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest } from "@/lib/query-client";
-import { Card } from "@/components/Card";
 
 const FEATURES = [
   { icon: "sparkles" as const, title: "Suggerimenti AI", description: "Ottieni suggerimenti intelligenti per spesa e faccende" },
@@ -26,14 +25,22 @@ export default function PremiumScreen() {
   const { currentFamily } = useFamily();
   const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<"monthly" | "yearly">("yearly");
+  const [notifySet, setNotifySet] = useState(false);
+
+  const statusQuery = useQuery<any>({
+    queryKey: ["/api/payments", "status"],
+  });
+
+  const paymentsEnabled = statusQuery.data?.paymentsEnabled === true;
 
   const productsQuery = useQuery<any>({
     queryKey: ["/api/payments", "products-with-prices"],
+    enabled: paymentsEnabled,
   });
 
   const subscriptionQuery = useQuery<any>({
     queryKey: ["/api/payments", "subscription"],
-    enabled: !!currentFamily,
+    enabled: paymentsEnabled && !!currentFamily,
   });
 
   const products = productsQuery.data?.data || [];
@@ -43,12 +50,8 @@ export default function PremiumScreen() {
   const getPrice = (type: "monthly" | "yearly") => {
     for (const product of products) {
       for (const price of product.prices || []) {
-        if (type === "monthly" && price.recurring?.interval === "month") {
-          return price;
-        }
-        if (type === "yearly" && price.recurring?.interval === "year") {
-          return price;
-        }
+        if (type === "monthly" && price.recurring?.interval === "month") return price;
+        if (type === "yearly" && price.recurring?.interval === "year") return price;
       }
     }
     return null;
@@ -77,9 +80,7 @@ export default function PremiumScreen() {
         familyId: currentFamily.id,
       });
       const { url } = await res.json();
-      if (url) {
-        Linking.openURL(url);
-      }
+      if (url) Linking.openURL(url);
     } catch (error) {
       console.error("Checkout error:", error);
     } finally {
@@ -95,9 +96,7 @@ export default function PremiumScreen() {
         familyId: currentFamily.id,
       });
       const { url } = await res.json();
-      if (url) {
-        Linking.openURL(url);
-      }
+      if (url) Linking.openURL(url);
     } catch (error) {
       console.error("Portal error:", error);
     } finally {
@@ -105,7 +104,14 @@ export default function PremiumScreen() {
     }
   };
 
+  const handleNotifyMe = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setNotifySet(true);
+  };
+
   const topInset = Platform.OS === "web" ? 67 : insets.top;
+  const staticFeatures = statusQuery.data?.features || FEATURES.map(f => f.title);
+  const staticPlans = statusQuery.data?.plans || [];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -128,6 +134,8 @@ export default function PremiumScreen() {
           <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>
             {isSubscribed
               ? "Hai accesso a tutte le funzionalita Premium"
+              : !paymentsEnabled
+              ? "Presto disponibile! Ecco cosa avrai"
               : "Sblocca tutte le funzionalita per la tua famiglia"}
           </Text>
         </View>
@@ -148,7 +156,53 @@ export default function PremiumScreen() {
           ))}
         </View>
 
-        {!isSubscribed && (
+        {!paymentsEnabled && (
+          <View style={styles.comingSoonSection}>
+            {staticPlans.length > 0 && (
+              <View style={[styles.previewPlans, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                {staticPlans.map((plan: any, i: number) => (
+                  <View key={i} style={styles.previewPlanRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.previewPlanName, { color: colors.text }]}>{plan.name}</Text>
+                      <Text style={[styles.previewPlanPrice, { color: colors.primary }]}>{plan.price}</Text>
+                    </View>
+                    {plan.badge && (
+                      <View style={[styles.previewBadge, { backgroundColor: colors.success }]}>
+                        <Text style={styles.previewBadgeText}>{plan.badge}</Text>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <Pressable
+              onPress={handleNotifyMe}
+              disabled={notifySet}
+              style={({ pressed }) => [
+                styles.notifyButton,
+                {
+                  backgroundColor: notifySet ? colors.surface : colors.primary,
+                  borderColor: notifySet ? colors.border : colors.primary,
+                  borderWidth: notifySet ? 1 : 0,
+                  opacity: pressed && !notifySet ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name={notifySet ? "checkmark-circle" : "notifications"}
+                size={20}
+                color={notifySet ? colors.success : "#FFFFFF"}
+                style={{ marginRight: 8 }}
+              />
+              <Text style={[styles.notifyButtonText, { color: notifySet ? colors.text : "#FFFFFF" }]}>
+                {notifySet ? "Ti avviseremo!" : "Avvisami quando disponibile"}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        {paymentsEnabled && !isSubscribed && (
           <>
             <View style={styles.plansSection}>
               <Pressable
@@ -215,7 +269,7 @@ export default function PremiumScreen() {
           </>
         )}
 
-        {isSubscribed && (
+        {paymentsEnabled && isSubscribed && (
           <Pressable
             onPress={handleManageSubscription}
             disabled={loading}
@@ -272,6 +326,21 @@ const styles = StyleSheet.create({
   featureInfo: { flex: 1 },
   featureTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
   featureDescription: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  comingSoonSection: { marginBottom: 24, gap: 16 },
+  previewPlans: { borderRadius: 16, padding: 16, borderWidth: 1, gap: 12 },
+  previewPlanRow: { flexDirection: "row", alignItems: "center" },
+  previewPlanName: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  previewPlanPrice: { fontSize: 14, fontFamily: "Inter_500Medium", marginTop: 2 },
+  previewBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  previewBadgeText: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#FFFFFF" },
+  notifyButton: {
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+  },
+  notifyButtonText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   plansSection: { flexDirection: "row", gap: 12, marginBottom: 24 },
   planCard: {
     flex: 1,

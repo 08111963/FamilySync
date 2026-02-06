@@ -1,8 +1,11 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, useRef, ReactNode, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/hooks/useWebSocket";
+
+const ACTIVE_FAMILY_KEY = "@family_sync_active_family";
 
 interface FamilyMember {
   id: string;
@@ -133,6 +136,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, user, accessToken } = useAuth();
   const qc = useQueryClient();
   const [currentFamilyId, setCurrentFamilyId] = useState<string | null>(null);
+  const restoredRef = useRef(false);
 
   useWebSocket(currentFamilyId, accessToken);
 
@@ -143,9 +147,19 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    if (familiesQuery.data && familiesQuery.data.length > 0 && !currentFamilyId) {
-      setCurrentFamilyId(familiesQuery.data[0].id);
-    }
+    if (restoredRef.current) return;
+    AsyncStorage.getItem(ACTIVE_FAMILY_KEY)
+      .then((stored) => {
+        if (stored) setCurrentFamilyId(stored);
+        restoredRef.current = true;
+      })
+      .catch(() => { restoredRef.current = true; });
+  }, []);
+
+  useEffect(() => {
+    if (!familiesQuery.data || familiesQuery.data.length === 0) return;
+    if (currentFamilyId && familiesQuery.data.some(f => f.id === currentFamilyId)) return;
+    setCurrentFamilyId(familiesQuery.data[0].id);
   }, [familiesQuery.data, currentFamilyId]);
 
   const familyDetailQuery = useQuery<any>({
@@ -210,6 +224,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       const res = await apiRequest("POST", "/api/families", { name });
       const family = await res.json();
       setCurrentFamilyId(family.id);
+      AsyncStorage.setItem(ACTIVE_FAMILY_KEY, family.id).catch(() => {});
       qc.invalidateQueries({ queryKey: ["/api/families"] });
     } catch (error) {
       console.error("Error creating family:", error);
@@ -219,7 +234,12 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
 
   const switchFamily = useCallback((familyId: string) => {
     setCurrentFamilyId(familyId);
-  }, []);
+    AsyncStorage.setItem(ACTIVE_FAMILY_KEY, familyId).catch(() => {});
+    qc.invalidateQueries({ queryKey: ["/api/families", familyId] });
+    qc.invalidateQueries({ queryKey: ["/api/calendar", familyId] });
+    qc.invalidateQueries({ queryKey: ["/api/shopping", familyId, "lists"] });
+    qc.invalidateQueries({ queryKey: ["/api/chores", familyId] });
+  }, [qc]);
 
   const setFamilyName = useCallback((name: string) => {
     if (!currentFamilyId) return;
