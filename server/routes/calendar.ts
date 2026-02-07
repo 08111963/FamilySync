@@ -25,6 +25,20 @@ const createEventSchema = z.object({
   recurrenceRule: z.string().optional(),
 });
 
+const updateEventSchema = z.object({
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  date: z.string().optional(),
+  time: z.string().nullable().optional(),
+  endTime: z.string().nullable().optional(),
+  allDay: z.boolean().optional(),
+  category: z.string().optional(),
+  location: z.string().nullable().optional(),
+  color: z.string().optional(),
+  memberId: z.string().nullable().optional(),
+  recurrenceRule: z.string().nullable().optional(),
+}).strict();
+
 router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;
@@ -77,8 +91,15 @@ router.put('/:familyId/:eventId', authenticate, requireFamilyMember(), async (re
   try {
     const { familyId, eventId } = req.params;
 
+    const parsed = updateEventSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
     const [event] = await db.update(calendarEvents)
-      .set({ ...req.body, updatedAt: new Date() })
+      .set({ ...parsed.data, updatedAt: new Date() })
       .where(and(eq(calendarEvents.id, eventId), eq(calendarEvents.familyId, familyId)))
       .returning();
 

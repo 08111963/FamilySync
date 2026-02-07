@@ -1,12 +1,14 @@
 import { Router } from 'express';
-import type { Request, Response } from 'express';
+import type { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
+import { requireFamilyAdmin } from '../middleware/family';
 import { config } from '../lib/config';
 import { logger } from '../lib/logger';
 
 const router = Router();
 
-function requirePayments(_req: Request, res: Response, next: Function) {
+function requirePayments(_req: Request, res: Response, next: NextFunction) {
   if (!config.premiumPaymentsEnabled) {
     return res.status(501).json({
       error: { code: "PAYMENTS_DISABLED", message: "I pagamenti Premium non sono ancora attivi" },
@@ -19,8 +21,8 @@ router.get('/status', (_req: Request, res: Response) => {
   res.json({
     paymentsEnabled: config.premiumPaymentsEnabled,
     plans: [
-      { name: "Premium Mensile", price: "€4,99/mese", interval: "month" },
-      { name: "Premium Annuale", price: "€39,99/anno", interval: "year", badge: "Risparmia 33%" },
+      { name: "Premium Mensile", price: "\u20AC4,99/mese", interval: "month" },
+      { name: "Premium Annuale", price: "\u20AC39,99/anno", interval: "year", badge: "Risparmia 33%" },
     ],
     features: [
       "Suggerimenti AI",
@@ -154,14 +156,22 @@ router.get('/subscription', requirePayments, async (req: Request, res: Response)
   }
 });
 
-router.post('/checkout', requirePayments, async (req: Request, res: Response) => {
-  try {
-    const { stripeService } = await import('../lib/stripeService');
-    const { priceId, familyId } = req.body;
+const checkoutSchema = z.object({
+  priceId: z.string().min(1, "priceId è obbligatorio"),
+  familyId: z.string().min(1, "familyId è obbligatorio"),
+});
 
-    if (!priceId || !familyId) {
-      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "priceId e familyId sono richiesti" } });
+router.post('/checkout', requirePayments, requireFamilyAdmin("familyId"), async (req: Request, res: Response) => {
+  try {
+    const parsed = checkoutSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
     }
+
+    const { stripeService } = await import('../lib/stripeService');
+    const { priceId, familyId } = parsed.data;
 
     const family = await stripeService.getFamily(familyId);
     if (!family) {
@@ -191,14 +201,21 @@ router.post('/checkout', requirePayments, async (req: Request, res: Response) =>
   }
 });
 
-router.post('/portal', requirePayments, async (req: Request, res: Response) => {
-  try {
-    const { stripeService } = await import('../lib/stripeService');
-    const { familyId } = req.body;
+const portalSchema = z.object({
+  familyId: z.string().min(1, "familyId è obbligatorio"),
+});
 
-    if (!familyId) {
-      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "familyId è richiesto" } });
+router.post('/portal', requirePayments, requireFamilyAdmin("familyId"), async (req: Request, res: Response) => {
+  try {
+    const parsed = portalSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
     }
+
+    const { stripeService } = await import('../lib/stripeService');
+    const { familyId } = parsed.data;
 
     const family = await stripeService.getFamily(familyId);
     if (!family?.stripeCustomerId) {
