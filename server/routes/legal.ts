@@ -124,17 +124,29 @@ router.get('/privacy', (_req: Request, res: Response) => {
       <li><strong>Supporto tecnico:</strong> assistenza nella risoluzione di problemi segnalati dagli utenti</li>
     </ul>
 
-    <h2>4. Condivisione con Terze Parti</h2>
+    <h2>4. Funzionalita di Intelligenza Artificiale (AI)</h2>
+    <p>${APP_NAME} offre funzionalita opzionali basate sull'intelligenza artificiale tramite il servizio OpenAI. L'utilizzo di queste funzionalita e completamente facoltativo e puo essere attivato o disattivato in qualsiasi momento nelle impostazioni dell'app.</p>
+    <p><strong>Dati inviati a OpenAI quando le funzionalita AI sono attive:</strong></p>
+    <ul>
+      <li><strong>Suggerimenti spesa:</strong> numero di membri familiari (senza nomi), nomi dei prodotti acquistati di recente, titoli degli eventi in programma, stagione corrente</li>
+      <li><strong>Ottimizzazione faccende:</strong> soprannomi dei membri, punti accumulati, titoli e durata stimata delle faccende</li>
+      <li><strong>Insights familiari:</strong> conteggi aggregati (numero eventi, faccende completate/in sospeso), soprannome del miglior contributore, punti settimanali</li>
+    </ul>
+    <p><strong>Dati NON inviati a OpenAI:</strong> indirizzi email, password, indirizzi fisici, numeri di telefono, dati di pagamento, contenuto delle descrizioni di eventi o faccende.</p>
+    <p>I dati inviati a OpenAI sono trattati secondo la <a href="https://openai.com/policies/privacy-policy" target="_blank">Privacy Policy di OpenAI</a> e non vengono utilizzati per addestrare i modelli AI.</p>
+    <p><strong>Base giuridica:</strong> il trattamento dei dati tramite AI avviene sulla base del tuo consenso esplicito, che puoi revocare in qualsiasi momento disattivando la funzionalita nelle impostazioni.</p>
+
+    <h2>5. Condivisione con Terze Parti</h2>
     <p>I dati personali possono essere condivisi con i seguenti fornitori di servizi, esclusivamente per le finalita sopra indicate:</p>
     <ul>
       <li><strong>Provider di hosting e database:</strong> i dati sono archiviati su server sicuri gestiti da provider cloud affidabili (Neon/PostgreSQL)</li>
       <li><strong>Servizio email:</strong> per l'invio di email transazionali (verifica account, reset password)</li>
-      <li><strong>OpenAI:</strong> per la generazione di suggerimenti AI (solo dati aggregati e anonimizzati, nessun dato personale identificativo viene trasmesso)</li>
+      <li><strong>OpenAI:</strong> per la generazione di suggerimenti AI (solo dati aggregati come descritto alla sezione 4, funzionalita attivabile/disattivabile dall'utente)</li>
       <li><strong>Stripe:</strong> per l'elaborazione dei pagamenti relativi ad abbonamenti Premium. Nota: il servizio di pagamento non e attualmente attivo e verra comunicato al momento della sua eventuale attivazione</li>
     </ul>
     <p>Non vendiamo, affittiamo o condividiamo i tuoi dati personali con terze parti per finalita di marketing.</p>
 
-    <h2>5. Conservazione dei Dati</h2>
+    <h2>6. Conservazione dei Dati</h2>
     <p>I dati personali vengono conservati per il tempo necessario a fornire il servizio e per adempiere agli obblighi di legge. In particolare:</p>
     <ul>
       <li>I dati dell'account vengono conservati fino alla cancellazione dell'account da parte dell'utente</li>
@@ -143,7 +155,7 @@ router.get('/privacy', (_req: Request, res: Response) => {
       <li>I token di sessione scadono automaticamente dopo 7 giorni di inattivita</li>
     </ul>
 
-    <h2>6. Sicurezza</h2>
+    <h2>7. Sicurezza</h2>
     <p>Adottiamo misure di sicurezza tecniche e organizzative adeguate per proteggere i dati personali, tra cui:</p>
     <ul>
       <li>Crittografia delle password con algoritmo bcrypt</li>
@@ -153,7 +165,7 @@ router.get('/privacy', (_req: Request, res: Response) => {
       <li>Headers di sicurezza HTTP (Helmet)</li>
     </ul>
 
-    <h2>7. Diritti dell'Utente</h2>
+    <h2>8. Diritti dell'Utente</h2>
     <p>In conformita con la normativa vigente (incluso il GDPR), hai il diritto di:</p>
     <ul>
       <li><strong>Accesso:</strong> richiedere una copia dei tuoi dati personali</li>
@@ -164,14 +176,14 @@ router.get('/privacy', (_req: Request, res: Response) => {
     </ul>
     <p>Per esercitare questi diritti, contattaci all'indirizzo <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
 
-    <h2>8. Minori</h2>
+    <h2>9. Minori</h2>
     <p>${APP_NAME} e un'applicazione per il coordinamento familiare. L'utilizzo dell'app da parte di minori di 14 anni e consentito esclusivamente sotto la supervisione e con il consenso di un genitore o tutore legale che sia gia membro della famiglia nell'applicazione.</p>
     <p>Non raccogliamo consapevolmente dati personali di minori di 14 anni senza il consenso verificabile di un genitore o tutore. Se veniamo a conoscenza di aver raccolto dati di un minore senza il consenso appropriato, provvederemo alla loro cancellazione tempestiva.</p>
 
-    <h2>9. Modifiche alla Privacy Policy</h2>
+    <h2>10. Modifiche alla Privacy Policy</h2>
     <p>Ci riserviamo il diritto di aggiornare questa Privacy Policy in qualsiasi momento. Le modifiche saranno comunicate tramite l'applicazione e/o via email. L'uso continuato del servizio dopo la pubblicazione delle modifiche costituisce accettazione della nuova Privacy Policy.</p>
 
-    <h2>10. Contatti</h2>
+    <h2>11. Contatti</h2>
     <p>Per qualsiasi domanda o richiesta relativa a questa Privacy Policy, puoi contattarci all'indirizzo:</p>
     <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
   `;
@@ -211,8 +223,8 @@ router.get('/terms', (_req: Request, res: Response) => {
       <li>L'uscita da un gruppo familiare non comporta la cancellazione dei contenuti precedentemente condivisi</li>
     </ul>
 
-    <h2>5. Responsabilita dei Contenuti</h2>
-    <p>L'utente e l'unico responsabile dei contenuti inseriti nell'applicazione, inclusi ma non limitati a:</p>
+    <h2>5. Responsabilita dei Contenuti (UGC)</h2>
+    <p>L'utente e l'unico responsabile dei contenuti inseriti nell'applicazione (contenuti generati dagli utenti, "UGC"), inclusi ma non limitati a:</p>
     <ul>
       <li>Nomi degli eventi e relative descrizioni</li>
       <li>Articoli nelle liste della spesa</li>
@@ -220,8 +232,20 @@ router.get('/terms', (_req: Request, res: Response) => {
       <li>Informazioni del profilo e del gruppo familiare</li>
     </ul>
     <p>I contenuti non devono essere illegali, offensivi, diffamatori o in violazione dei diritti di terzi.</p>
+    <p>${APP_NAME} non effettua un monitoraggio preventivo dei contenuti generati dagli utenti, ma si riserva il diritto di rimuovere contenuti che violino i presenti Termini a seguito di segnalazione o controllo.</p>
 
-    <h2>6. Uso Corretto</h2>
+    <h2>6. Segnalazione e Moderazione Contenuti</h2>
+    <p>Per garantire un ambiente sicuro e rispettoso per tutte le famiglie, ${APP_NAME} offre strumenti di segnalazione e moderazione:</p>
+    <ul>
+      <li><strong>Segnalazione contenuti:</strong> ogni membro della famiglia puo segnalare contenuti (eventi, articoli spesa, faccende) o utenti che ritiene inappropriati, offensivi o in violazione dei Termini</li>
+      <li><strong>Categorie di segnalazione:</strong> spam, molestie, odio, contenuti sessuali, violenza, altro</li>
+      <li><strong>Gestione segnalazioni:</strong> le segnalazioni vengono esaminate dagli amministratori del gruppo familiare, che possono prendere provvedimenti (azione o archiviazione)</li>
+      <li><strong>Blocco utenti:</strong> ogni membro puo bloccare un altro membro all'interno della propria famiglia. I contenuti degli utenti bloccati non saranno piu visibili al membro che ha effettuato il blocco</li>
+      <li><strong>Sblocco:</strong> e possibile sbloccare un utente in qualsiasi momento dalle impostazioni</li>
+    </ul>
+    <p>L'abuso del sistema di segnalazione (segnalazioni false o ripetute in malafede) puo comportare la sospensione dell'account.</p>
+
+    <h2>7. Uso Corretto</h2>
     <p>L'utente si impegna a:</p>
     <ul>
       <li>Utilizzare l'applicazione esclusivamente per le finalita previste di coordinamento familiare</li>
@@ -231,7 +255,7 @@ router.get('/terms', (_req: Request, res: Response) => {
       <li>Rispettare le leggi applicabili durante l'utilizzo del servizio</li>
     </ul>
 
-    <h2>7. Divieti</h2>
+    <h2>8. Divieti</h2>
     <p>E espressamente vietato:</p>
     <ul>
       <li>Creare account falsi o multipli per finalita abusive</li>
@@ -241,7 +265,7 @@ router.get('/terms', (_req: Request, res: Response) => {
       <li>Interferire con il funzionamento dell'applicazione o dei suoi server</li>
     </ul>
 
-    <h2>8. Sospensione e Chiusura Account</h2>
+    <h2>9. Sospensione e Chiusura Account</h2>
     <p>Ci riserviamo il diritto di:</p>
     <ul>
       <li>Sospendere temporaneamente o chiudere definitivamente un account in caso di violazione dei presenti Termini</li>
@@ -250,10 +274,10 @@ router.get('/terms', (_req: Request, res: Response) => {
     </ul>
     <p>L'utente puo chiudere il proprio account in qualsiasi momento contattandoci all'indirizzo <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
 
-    <h2>9. Abbonamenti Premium</h2>
+    <h2>10. Abbonamenti Premium</h2>
     <p>${APP_NAME} offre funzionalita premium a pagamento. I dettagli specifici relativi a prezzi, modalita di pagamento e politica di rimborso verranno comunicati al momento dell'attivazione del servizio di pagamento. L'utilizzo delle funzionalita base dell'applicazione rimane gratuito.</p>
 
-    <h2>10. Limitazioni di Responsabilita</h2>
+    <h2>11. Limitazioni di Responsabilita</h2>
     <ul>
       <li>Il servizio viene fornito "cosi com'e" senza garanzie di alcun tipo, espresse o implicite</li>
       <li>Non garantiamo che il servizio sia sempre disponibile, privo di errori o sicuro al 100%</li>
@@ -261,16 +285,16 @@ router.get('/terms', (_req: Request, res: Response) => {
       <li>La nostra responsabilita massima e limitata all'importo pagato dall'utente per il servizio nei 12 mesi precedenti l'evento</li>
     </ul>
 
-    <h2>11. Proprieta Intellettuale</h2>
+    <h2>12. Proprieta Intellettuale</h2>
     <p>Tutti i diritti di proprieta intellettuale relativi a ${APP_NAME}, inclusi design, codice, marchi e contenuti originali, sono di proprieta esclusiva di ${DEVELOPER}. L'utente non acquisisce alcun diritto di proprieta intellettuale sull'applicazione.</p>
 
-    <h2>12. Legge Applicabile e Foro Competente</h2>
+    <h2>13. Legge Applicabile e Foro Competente</h2>
     <p>I presenti Termini d'Uso sono regolati dalla legge italiana. Per qualsiasi controversia derivante dall'utilizzo del servizio, sara competente il Foro del luogo di residenza del consumatore, in conformita con il Codice del Consumo italiano.</p>
 
-    <h2>13. Modifiche ai Termini</h2>
+    <h2>14. Modifiche ai Termini</h2>
     <p>Ci riserviamo il diritto di modificare i presenti Termini d'Uso in qualsiasi momento. Le modifiche saranno comunicate tramite l'applicazione e/o via email. L'uso continuato del servizio dopo la pubblicazione delle modifiche costituisce accettazione dei nuovi Termini.</p>
 
-    <h2>14. Contatti</h2>
+    <h2>15. Contatti</h2>
     <p>Per qualsiasi domanda o segnalazione relativa ai presenti Termini d'Uso:</p>
     <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
   `;
