@@ -50,14 +50,16 @@ const TAB_CONFIG: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyp
   { key: "chores", label: "Faccende", icon: "checkmark-circle" },
 ];
 
-async function parseAiError(res: Response): Promise<{ code: string; message: string } | null> {
+function isAiDisabledError(error: unknown): boolean {
   try {
-    if (res.status === 403) {
-      const body = await res.json();
-      if (body?.error?.code) return body.error;
+    const msg = error instanceof Error ? error.message : String(error);
+    const match = msg.match(/^403:\s*(.+)/s);
+    if (match) {
+      const body = JSON.parse(match[1]);
+      return body?.error?.code === "AI_DISABLED";
     }
   } catch {}
-  return null;
+  return false;
 }
 
 export default function AIInsightsScreen() {
@@ -93,28 +95,20 @@ export default function AIInsightsScreen() {
 
   const insights = insightsQuery.data || [];
 
-  const handleApiError = useCallback(async (res: Response) => {
-    const err = await parseAiError(res);
-    if (err?.code === "AI_DISABLED") {
-      setAiDisabledBanner(true);
-      return true;
-    }
-    return false;
-  }, []);
-
   const handleGenerateInsights = async () => {
     if (!currentFamily) return;
     setGeneratingInsights(true);
     setAiDisabledBanner(false);
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      const res = await apiRequest("POST", `/api/ai/${currentFamily.id}/insights/generate`);
-      if (!res.ok) {
-        if (await handleApiError(res)) return;
-      }
+      await apiRequest("POST", `/api/ai/${currentFamily.id}/insights/generate`);
       qc.invalidateQueries({ queryKey: ["/api/ai", currentFamily.id, "insights"] });
     } catch (error) {
-      console.error("Generate insights error:", error);
+      if (isAiDisabledError(error)) {
+        setAiDisabledBanner(true);
+      } else {
+        console.error("Generate insights error:", error);
+      }
     } finally {
       setGeneratingInsights(false);
     }
@@ -138,13 +132,14 @@ export default function AIInsightsScreen() {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const res = await apiRequest("GET", `/api/ai/${currentFamily.id}/shopping-suggestions`);
-      if (!res.ok) {
-        if (await handleApiError(res)) return;
-      }
       const data = await res.json();
       setShoppingSuggestions(data);
     } catch (error) {
-      console.error("Shopping suggestions error:", error);
+      if (isAiDisabledError(error)) {
+        setAiDisabledBanner(true);
+      } else {
+        console.error("Shopping suggestions error:", error);
+      }
     } finally {
       setLoadingSuggestions(false);
     }
@@ -157,14 +152,14 @@ export default function AIInsightsScreen() {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const res = await apiRequest("GET", `/api/ai/${currentFamily.id}/chore-optimization`);
-      if (!res.ok) {
-        if (await handleApiError(res)) return;
-        return;
-      }
       const data = await res.json();
       setChoreOptimization(data);
     } catch (error) {
-      console.error("Chore optimization error:", error);
+      if (isAiDisabledError(error)) {
+        setAiDisabledBanner(true);
+      } else {
+        console.error("Chore optimization error:", error);
+      }
     } finally {
       setLoadingChores(false);
     }
