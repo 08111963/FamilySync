@@ -8,9 +8,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
-import { apiRequest } from "@/lib/query-client";
+import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface Insight {
   id: string;
@@ -60,6 +61,24 @@ function isAiDisabledError(error: unknown): boolean {
     }
   } catch {}
   return false;
+}
+
+async function fetchAiJson<T>(route: string): Promise<T> {
+  const baseUrl = getApiUrl();
+  const url = new URL(route, baseUrl);
+  let token: string | null = null;
+  try {
+    const stored = await AsyncStorage.getItem("@family_sync_auth");
+    if (stored) token = JSON.parse(stored).accessToken || null;
+  } catch {}
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await globalThis.fetch(url.toString(), { headers, credentials: "include" });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status}: ${text}`);
+  }
+  return res.json();
 }
 
 export default function AIInsightsScreen() {
@@ -131,8 +150,7 @@ export default function AIInsightsScreen() {
     setAiDisabledBanner(false);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const res = await apiRequest("GET", `/api/ai/${currentFamily.id}/shopping-suggestions`);
-      const data = await res.json();
+      const data = await fetchAiJson<ShoppingSuggestion>(`/api/ai/${currentFamily.id}/shopping-suggestions`);
       setShoppingSuggestions(data);
     } catch (error) {
       if (isAiDisabledError(error)) {
@@ -151,8 +169,7 @@ export default function AIInsightsScreen() {
     setAiDisabledBanner(false);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const res = await apiRequest("GET", `/api/ai/${currentFamily.id}/chore-optimization`);
-      const data = await res.json();
+      const data = await fetchAiJson<ChoreOptimization>(`/api/ai/${currentFamily.id}/chore-optimization`);
       setChoreOptimization(data);
     } catch (error) {
       if (isAiDisabledError(error)) {
@@ -224,10 +241,15 @@ export default function AIInsightsScreen() {
 
   const shoppingItems = useMemo(() => {
     if (!shoppingSuggestions) return [];
-    return (shoppingSuggestions.items || shoppingSuggestions.suggestions || []).map((item, index) => ({
+    const raw = shoppingSuggestions.items
+      || shoppingSuggestions.suggestions
+      || Object.values(shoppingSuggestions).find(v => Array.isArray(v))
+      || [];
+    const arr = Array.isArray(raw) ? raw : [];
+    return arr.map((item: string | SuggestionItem, index: number) => ({
       key: String(index),
-      name: typeof item === "string" ? item : item.name,
-      reason: typeof item === "string" ? null : item.reason,
+      name: typeof item === "string" ? item : (item?.name || ""),
+      reason: typeof item === "string" ? null : (item?.reason || null),
     }));
   }, [shoppingSuggestions]);
 
@@ -364,8 +386,8 @@ export default function AIInsightsScreen() {
   const renderChoresEmpty = () => (
     <EmptyState
       icon="checkmark-circle-outline"
-      title="Nessuna ottimizzazione"
-      subtitle="Tocca il pulsante per ottimizzare le faccende della famiglia"
+      title={choreOptimization?.message || "Nessuna ottimizzazione"}
+      subtitle={choreOptimization ? "Non ci sono faccende in sospeso da assegnare" : "Tocca il pulsante per ottimizzare le faccende della famiglia"}
     />
   );
 
