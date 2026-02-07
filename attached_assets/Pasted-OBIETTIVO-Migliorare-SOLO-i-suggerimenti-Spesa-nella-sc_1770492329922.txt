@@ -1,0 +1,143 @@
+OBIETTIVO
+Migliorare SOLO i suggerimenti “Spesa” nella schermata AI Insights:
+- Restituire SEMPRE 10 prodotti unici (case-insensitive), mai duplicati nella stessa risposta.
+- Le 10 proposte devono includere ANCHE: pulizia casa + igiene personale (non solo alimentari).
+- Evitare ripetizioni rispetto a:
+  1) acquisti recenti (shopping_history, se presente)
+  2) articoli già in lista (shopping_items non checked)
+  3) articoli già comprati/spuntati di recente (shopping_items checked negli ultimi N giorni)  <-- NUOVO
+  4) suggerimenti recenti generati (ai_insights storico)
+- Mantenere formato compatibile frontend: JSON oggetto con proprietà "items".
+
+VINCOLI
+- Non toccare Stripe/pagamenti.
+- Modifiche limitate a: server/lib/openai.ts e server/routes/ai.ts (eventuale helper in server/lib).
+- Niente nuove librerie.
+
+ENDPOINT
+- GET /api/ai/:familyId/shopping-suggestions (server/routes/ai.ts)
+
+========================================================
+1) OPENAI OUTPUT: JSON OGGETTO + VALIDAZIONE ZOD
+========================================================
+In server/lib/openai.ts, generateShoppingSuggestions deve richiedere e restituire SEMPRE:
+{
+  "items": [
+    { "name": string, "category": "food"|"household_cleaning"|"personal_care"|"other", "reason": string }
+  ]
+}
+
+- Chiedi al modello 12 item (non 10) per filtraggio server-side.
+- Imposta: temperature ~0.7, presence_penalty ~0.8, frequency_penalty ~0.3
+- response_format: { type: "json_object" }
+- Valida con Zod; se fallisce => { items: [] }
+
+Prompt OpenAI vincolante:
+- Genera 12 prodotti TUTTI DIVERSI
+- No brand, solo nomi generici (es “detersivo piatti”, “shampoo”)
+- Includi almeno:
+  - >= 3 household_cleaning
+  - >= 2 personal_care
+- Vietato includere qualunque item presente nelle liste “forbidden” fornite:
+  - recentPurchases
+  - alreadyOnList
+  - completedRecently   <-- NUOVO
+  - recentSuggestions
+
+Signature context:
+generateShoppingSuggestions({
+  familySize,
+  season,
+  upcomingEvents,
+  recentPurchases,     // string[]
+  alreadyOnList,       // string[]
+  completedRecently,   // string[]  <-- NUOVO
+  recentSuggestions    // string[]
+})
+
+========================================================
+2) ROUTE SERVER-SIDE: RACCOLTA FORBIDDEN + POST-PROCESS ROBUSTO
+========================================================
+In server/routes/ai.ts (GET /:familyId/shopping-suggestions):
+
+A) alreadyOnList (shopping_items NON checked)
+- Query: shopping_items join shopping_lists
+- Filtro: shopping_lists.familyId = familyId AND shopping_items.checked = false
+- alreadyOnList = shopping_items.name
+
+B) completedRecently (spesa fatta = shopping_items checked di recente)  <-- NUOVO
+- Query: shopping_items join shopping_lists
+- Filtro: shopping_lists.familyId = familyId AND shopping_items.checked = true AND shopping_items.updatedAt >= now - 30 giorni
+  - Se non hai updatedAt su shopping_items:
+    - usa createdAt come approssimazione (checked true + createdAt >= now-30g)
+    - oppure aggiungi TODO ma non modificare schema qui (preferire i campi già presenti)
+- completedRecently = shopping_items.name
+NOTA: questo serve a evitare di suggerire cose appena “comprate/spuntate”.
+
+C) recentPurchases (shopping_history se esiste già nel progetto)
+- Se nel codice esiste già shopping_history, mantieni la query attuale (es. ultimi 30 giorni).
+- Se non esiste, lascia recentPurchases = [].
+
+D) recentSuggestions (storico suggerimenti)
+- Usa ai_insights per tracciare gli ultimi suggerimenti spesa:
+  - prima di generare: query ultimi 14 giorni di ai_insights per familyId con type='shopping_suggestions'
+  - estrai actionData.items (array) e crea recentSuggestions unique.
+
+E) Generazione AI
+- Chiama generateShoppingSuggestions(...) passando:
+  - alreadyOnList, completedRecently, recentPurchases, recentSuggestions
+  - upcomingEvents + season già esistenti
+
+F) Post-processing OBBLIGATORIO (non fidarti solo del modello)
+- Normalizza nomi: trim, lowercase, collapse spazi, rimuovi punteggiatura base.
+- Dedupe case-insensitive.
+- Filtra OUT se name è in:
+  - alreadyOnList
+  - completedRecently   <-- NUOVO
+  - recentPurchases
+  - recentSuggestions
+
+G) Enforce mix categorie:
+- Costruisci lista finale di 10:
+  - prima household_cleaning fino a 3 (o più se disponibili)
+  - poi personal_care fino a 2 (o più se disponibili)
+  - completa con food/other fino a 10
+
+H) Se dopo filtraggio < 10, completa con fallback pool hardcoded (sempre filtrando forbidden)
+Fallback pool (no brand), per categoria:
+- household_cleaning: detersivo piatti, detersivo lavatrice, ammorbidente, candeggina, sgrassatore, panni microfibra, spugne, sacchetti immondizia, guanti monouso, spray vetri
+- personal_care: shampoo, bagnoschiuma, dentifricio, spazzolini, filo interdentale, deodorante, assorbenti, lamette, sapone mani, crema idratante
+- food/other: latte, uova, pasta, riso, legumi, olio, frutta di stagione, verdure, yogurt, pane, caffè, acqua
+
+I) Persisti storico suggerimenti (ai_insights) per prevenire ripetizioni future
+- Inserisci ai_insights con:
+  - familyId
+  - type = 'shopping_suggestions'
+  - title = 'Shopping suggestions history'
+  - description = 'internal'
+  - dismissed = true
+  - actionData = { items: [nomi finali], categoriesCount: {...}, generatedAt: ISO }
+- Importante: dismissed=true così non appare nel feed insights (che mostra dismissed=false).
+
+J) Response finale
+- Restituisci SEMPRE:
+  { items: [{ name, category, reason }] }
+- items deve avere esattamente 10 elementi (usa fallback pool per garantirlo).
+
+========================================================
+3) CRITERI DI ACCETTAZIONE
+========================================================
+- Ogni risposta ha 10 items, tutti diversi.
+- Include almeno 3 household_cleaning e 2 personal_care.
+- Non suggerisce:
+  - articoli già in lista (checked=false)
+  - articoli spuntati/comprati negli ultimi 30 giorni (checked=true + updatedAt/createdAt)   <-- NUOVO
+  - acquisti recenti da shopping_history (se presente)
+  - suggerimenti degli ultimi 14 giorni (ai_insights)
+- Premendo “Suggerisci Spesa” 3 volte:
+  - overlap tra run <= 3 (grazie a recentSuggestions + completedRecently).
+
+FILE DA MODIFICARE (OBBLIGATORIO)
+- server/lib/openai.ts
+- server/routes/ai.ts
+- (opzionale) server/lib/normalize.ts con normalizeItemName()
