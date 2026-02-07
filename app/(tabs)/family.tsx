@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, TextInput, Platform, Alert } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, TextInput, Platform, Alert, Switch } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { useQuery } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
@@ -11,16 +12,99 @@ import { useAuth } from "@/context/AuthContext";
 import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
+import { apiRequest, queryClient } from "@/lib/query-client";
 
 export default function FamilyScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { data, setFamilyName, deleteMember, getLeaderboard } = useFamily();
-  const { logout } = useAuth();
+  const { data, currentFamily, setFamilyName, deleteMember, getLeaderboard } = useFamily();
+  const { logout, user } = useAuth();
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(data.familyName);
 
   const leaderboard = getLeaderboard();
+  const familyId = currentFamily?.id;
+
+  const { data: prefsData } = useQuery<{ aiFeaturesEnabled: boolean }>({
+    queryKey: ["/api/moderation/preferences"],
+    enabled: !!user,
+  });
+
+  const { data: blocksData } = useQuery<{ id: string; blockedUserId: string; blockedUserName: string }[]>({
+    queryKey: ["/api/moderation/blocks", familyId],
+    enabled: !!familyId,
+  });
+
+  const blockedUserIds = new Set((blocksData || []).map((b) => b.blockedUserId));
+
+  const handleToggleAI = async (value: boolean) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await apiRequest("PATCH", "/api/moderation/preferences", { aiFeaturesEnabled: value });
+      queryClient.invalidateQueries({ queryKey: ["/api/moderation/preferences"] });
+    } catch {}
+  };
+
+  const handleBlockUser = async (blockedUserId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await apiRequest("POST", "/api/moderation/block", { familyId, blockedUserId });
+      queryClient.invalidateQueries({ queryKey: ["/api/moderation/blocks", familyId] });
+    } catch {}
+  };
+
+  const handleUnblockUser = async (blockedUserId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await apiRequest("DELETE", `/api/moderation/block/${familyId}/${blockedUserId}`);
+      queryClient.invalidateQueries({ queryKey: ["/api/moderation/blocks", familyId] });
+    } catch {}
+  };
+
+  const handleMemberAction = (member: { id: string; userId: string; name: string }) => {
+    if (member.userId === user?.id) return;
+    const isBlocked = blockedUserIds.has(member.userId);
+
+    if (Platform.OS === "web") {
+      const choice = confirm(
+        `${member.name}\n\n1. Segnala\n2. ${isBlocked ? "Sblocca" : "Blocca"}\n\nPremi OK per Segnala, Annulla per ${isBlocked ? "Sblocca" : "Blocca"}`
+      );
+      if (choice) {
+        router.push({ pathname: "/report-user", params: { userId: member.userId, familyId: familyId || "" } });
+      } else {
+        if (isBlocked) {
+          handleUnblockUser(member.userId);
+        } else {
+          handleBlockUser(member.userId);
+        }
+      }
+    } else {
+      const options = [
+        "Segnala",
+        isBlocked ? "Sblocca" : "Blocca",
+        "Annulla",
+      ];
+      Alert.alert(member.name, "", [
+        {
+          text: "Segnala",
+          onPress: () =>
+            router.push({ pathname: "/report-user", params: { userId: member.userId, familyId: familyId || "" } }),
+        },
+        {
+          text: isBlocked ? "Sblocca" : "Blocca",
+          style: isBlocked ? "default" : "destructive",
+          onPress: () => {
+            if (isBlocked) {
+              handleUnblockUser(member.userId);
+            } else {
+              handleBlockUser(member.userId);
+            }
+          },
+        },
+        { text: "Annulla", style: "cancel" },
+      ]);
+    }
+  };
 
   const handleSaveName = () => {
     if (editedName.trim()) {
@@ -131,6 +215,7 @@ export default function FamilyScreen() {
           <View style={styles.membersList}>
             {data.members.map((member) => {
               const badge = getRoleBadge(member.role);
+              const isSelf = member.userId === user?.id;
               return (
                 <Card key={member.id}>
                   <View style={styles.memberRow}>
@@ -146,6 +231,14 @@ export default function FamilyScreen() {
                         </Text>
                       </View>
                     </View>
+                    {!isSelf && (
+                      <Pressable
+                        onPress={() => handleMemberAction(member)}
+                        style={styles.actionButton}
+                      >
+                        <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
+                      </Pressable>
+                    )}
                     <Pressable
                       onPress={() => handleDeleteMember(member.id, member.name)}
                       style={styles.deleteButton}
@@ -238,6 +331,25 @@ export default function FamilyScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Funzionalita</Text>
         </View>
         <View style={{ gap: 12 }}>
+          <Card>
+            <View style={styles.featureLinkRow}>
+              <View style={[styles.featureLinkIcon, { backgroundColor: colors.secondary + "20" }]}>
+                <Ionicons name="sparkles-outline" size={24} color={colors.secondary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Funzionalita AI</Text>
+                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                  Consenti suggerimenti intelligenti tramite AI
+                </Text>
+              </View>
+              <Switch
+                value={prefsData?.aiFeaturesEnabled ?? true}
+                onValueChange={handleToggleAI}
+                trackColor={{ false: colors.border, true: colors.secondary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </Card>
           <Card onPress={() => router.push("/premium")}>
             <View style={styles.featureLinkRow}>
               <View style={[styles.featureLinkIcon, { backgroundColor: "#FFD60A30" }]}>
@@ -266,6 +378,36 @@ export default function FamilyScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
           </Card>
+          <Card onPress={() => router.push("/blocked-users")}>
+            <View style={styles.featureLinkRow}>
+              <View style={[styles.featureLinkIcon, { backgroundColor: colors.error + "20" }]}>
+                <Ionicons name="ban-outline" size={24} color={colors.error} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Utenti Bloccati</Text>
+                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                  Gestisci gli utenti bloccati
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </Card>
+          {currentFamily?.myRole === "admin" && (
+            <Card onPress={() => router.push("/admin-reports")}>
+              <View style={styles.featureLinkRow}>
+                <View style={[styles.featureLinkIcon, { backgroundColor: colors.warning + "20" }]}>
+                  <Ionicons name="flag-outline" size={24} color={colors.warning} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Segnalazioni</Text>
+                  <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                    Gestisci le segnalazioni della famiglia
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+              </View>
+            </Card>
+          )}
         </View>
       </View>
 
@@ -421,6 +563,9 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
   },
   deleteButton: {
+    padding: 8,
+  },
+  actionButton: {
     padding: 8,
   },
   leaderboard: {
