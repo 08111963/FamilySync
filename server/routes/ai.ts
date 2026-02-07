@@ -5,6 +5,7 @@ import { familyMembers, shoppingHistory, calendarEvents, chores, aiInsights } fr
 import { eq, and, gte, desc } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
+import { requireAiEnabled } from '../middleware/ai-guard';
 import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights } from '../lib/openai';
 import { logger } from '../lib/logger';
 
@@ -18,7 +19,7 @@ function getCurrentSeason(): string {
   return 'inverno';
 }
 
-router.get('/:familyId/shopping-suggestions', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;
 
@@ -53,7 +54,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireFamilyMember(
   }
 });
 
-router.get('/:familyId/chore-optimization', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;
 
@@ -96,7 +97,7 @@ router.get('/:familyId/insights', authenticate, requireFamilyMember(), async (re
   }
 });
 
-router.post('/:familyId/insights/generate', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;
 
