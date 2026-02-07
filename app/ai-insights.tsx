@@ -24,12 +24,13 @@ interface Insight {
 
 interface SuggestionItem {
   name: string;
+  category?: 'food' | 'household_cleaning' | 'personal_care' | 'other';
   reason: string;
 }
 
 interface ShoppingSuggestion {
-  items?: (string | SuggestionItem)[];
-  suggestions?: (string | SuggestionItem)[];
+  items?: SuggestionItem[];
+  suggestions?: SuggestionItem[];
 }
 
 interface ChoreAssignment {
@@ -241,31 +242,50 @@ export default function AIInsightsScreen() {
 
   const shoppingItems = useMemo(() => {
     if (!shoppingSuggestions) return [];
-    const raw = shoppingSuggestions.items
-      || shoppingSuggestions.suggestions
-      || Object.values(shoppingSuggestions).find(v => Array.isArray(v))
-      || [];
+    const raw = shoppingSuggestions.items || shoppingSuggestions.suggestions || [];
     const arr = Array.isArray(raw) ? raw : [];
-    return arr.map((item: string | SuggestionItem, index: number) => ({
+    return arr.map((item: SuggestionItem, index: number) => ({
       key: String(index),
-      name: typeof item === "string" ? item : (item?.name || ""),
-      reason: typeof item === "string" ? null : (item?.reason || null),
+      name: item?.name || "",
+      category: item?.category || "food",
+      reason: item?.reason || null,
     }));
   }, [shoppingSuggestions]);
 
-  const renderShoppingItem = useCallback(({ item }: { item: { key: string; name: string; reason: string | null } }) => (
+  const getCategoryColor = useCallback((category: string) => {
+    switch (category) {
+      case 'household_cleaning': return '#3B82F6';
+      case 'personal_care': return '#A855F7';
+      default: return colors.secondary;
+    }
+  }, [colors]);
+
+  const getCategoryLabel = useCallback((category: string) => {
+    switch (category) {
+      case 'household_cleaning': return 'Casa';
+      case 'personal_care': return 'Persona';
+      default: return 'Cibo';
+    }
+  }, []);
+
+  const renderShoppingItem = useCallback(({ item }: { item: { key: string; name: string; category: string; reason: string | null } }) => (
     <Card>
       <View style={styles.suggestionRow}>
-        <View style={[styles.suggestionDot, { backgroundColor: colors.secondary }]} />
+        <View style={[styles.suggestionDot, { backgroundColor: getCategoryColor(item.category) }]} />
         <View style={styles.suggestionContent}>
-          <Text style={[styles.suggestionText, { color: colors.text }]}>{item.name}</Text>
+          <View style={styles.suggestionHeader}>
+            <Text style={[styles.suggestionText, { color: colors.text }]}>{item.name}</Text>
+            <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(item.category) + '20' }]}>
+              <Text style={[styles.categoryText, { color: getCategoryColor(item.category) }]}>{getCategoryLabel(item.category)}</Text>
+            </View>
+          </View>
           {item.reason && (
             <Text style={[styles.suggestionReason, { color: colors.textSecondary }]}>{item.reason}</Text>
           )}
         </View>
       </View>
     </Card>
-  ), [colors]);
+  ), [colors, getCategoryColor, getCategoryLabel]);
 
   const choreAssignments = useMemo(() => {
     if (!choreOptimization) return [];
@@ -586,6 +606,9 @@ const styles = StyleSheet.create({
   suggestionDot: { width: 8, height: 8, borderRadius: 4, marginTop: 7 },
   suggestionContent: { flex: 1 },
   suggestionText: { fontSize: 16, fontFamily: "Inter_500Medium" },
+  suggestionHeader: { flexDirection: "row" as const, alignItems: "center" as const, justifyContent: "space-between" as const, gap: 8 },
+  categoryBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  categoryText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   suggestionReason: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2, lineHeight: 18 },
   choreRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   choreIcon: {
