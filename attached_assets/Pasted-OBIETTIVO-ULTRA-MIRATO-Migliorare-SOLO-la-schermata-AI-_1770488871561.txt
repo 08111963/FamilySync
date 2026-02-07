@@ -1,0 +1,81 @@
+OBIETTIVO (ULTRA-MIRATO)
+Migliorare SOLO la schermata AI Insights (Expo Router / React Native) senza toccare il resto dell’app.
+Implementare:
+1) Tab “Faccende” (terza tab) completa e funzionante
+2) Gestione elegante errore AI_DISABLED (403)
+3) FlatList + pull-to-refresh per le liste (Insights / Spesa / Faccende)
+
+VINCOLI
+- NON modificare backend, DB, schema, Stripe o altri flussi.
+- Modificare SOLO il frontend relativo ad AI Insights (tipicamente app/ai-insights.tsx e, se necessario, helper locale).
+- Non cambiare routing o componenti globali se non strettamente necessario.
+
+CONTESTO ATTUALE
+- Nella schermata AI Insights oggi ci sono 2 tab renderizzate: “Insights” (bulb) e “Spesa” (cart).
+- Lo state supporta già "chores" ma non viene mostrato.
+- Endpoint disponibili:
+  - GET /api/ai/:familyId/insights (o equivalente già usato dalla schermata)
+  - GET /api/ai/:familyId/shopping-suggestions
+  - GET /api/ai/:familyId/chore-optimization
+- Quando AI è disabilitata, il server risponde con 403 e JSON error code AI_DISABLED.
+
+========================================================
+1) AGGIUNGI TAB “Faccende”
+========================================================
+- In app/ai-insights.tsx, nel tab switcher sostituire l’array hardcoded ["insights","shopping"] con ["insights","shopping","chores"].
+- Aggiungere label “Faccende” e icona Ionicons "checkmark-circle".
+- Implementare UI e fetch per la tab chores chiamando GET /api/ai/${currentFamily.id}/chore-optimization.
+- Render minimo della tab chores:
+  - Bottone “Ottimizza Faccende” (refetch)
+  - Loading state (ActivityIndicator)
+  - Empty state se non ci sono assignments
+  - Lista assegnazioni: “{titolo faccenda} → {nome membro}” + reason opzionale
+- Risolvere mapping ID→nome:
+  - Usare i dati già disponibili in FamilyContext (membri e chores) per trovare titolo chore e nome membro.
+  - Se non disponibili, mostra fallback (“Faccenda”, “Membro”).
+
+========================================================
+2) GESTIONE AI_DISABLED (403) — UX CHIARA
+========================================================
+- Intercettare l’errore 403 e il code AI_DISABLED (dal JSON) per tutte e 3 le tab.
+- Mostrare un banner non invasivo in cima alla schermata quando ricevi AI_DISABLED:
+  - Testo: “Suggerimenti AI disattivati. Attivali dalle Impostazioni famiglia.”
+  - Bottone: “Vai alle Impostazioni” che naviga alla schermata dove sta lo switch AI
+    - Usa router.push(...) verso la route esistente (es. /(tabs)/family oppure /family) SENZA cambiare routing globale.
+- Non lasciare solo console.error: deve essere visibile all’utente.
+- Dopo che l’utente riattiva AI, la schermata deve poter fare retry (refetch).
+
+Implementazione suggerita:
+- Crea un helper locale parseApiError(e) che:
+  - se error contiene response/status e body JSON con error.code => ritorna {status, code, message}
+  - altrimenti null
+- In ciascun fetch/refetch, se code == "AI_DISABLED" setta uno state showAiDisabledBanner=true.
+
+========================================================
+3) FLATLIST + PULL-TO-REFRESH
+========================================================
+- Sostituire ScrollView con FlatList per la lista principale di ogni tab:
+  - Tab “Insights”: FlatList di insight items
+  - Tab “Spesa”: FlatList di suggestion items
+  - Tab “Faccende”: FlatList di assignments
+- Aggiungere pull-to-refresh:
+  - Usa RefreshControl su FlatList
+  - OnRefresh deve refetchare SOLO la tab attiva:
+    - insights -> refetch insights
+    - shopping -> refetch shopping suggestions
+    - chores -> refetch chore optimization
+- Mantieni header (titolo schermata + tabRow + banner) fuori dalla FlatList oppure usa ListHeaderComponent.
+- Inserisci empty states con ListEmptyComponent.
+
+========================================================
+CRITERI DI ACCETTAZIONE (CHECKLIST)
+========================================================
+- La schermata mostra 3 tab: Insights (bulb), Spesa (cart), Faccende (checkmark-circle).
+- La tab Faccende chiama correttamente /api/ai/:familyId/chore-optimization e renderizza i risultati.
+- Se il server risponde 403 AI_DISABLED, l’utente vede un banner con CTA “Vai alle Impostazioni” e non solo log.
+- Ogni tab usa FlatList e supporta pull-to-refresh che refetcha i dati della tab attiva.
+- Nessuna modifica ad altre parti dell’app o al backend.
+
+NOTE
+- Non introdurre nuove librerie.
+- Mantieni stile/tema e componenti esistenti (colors, Card, EmptyState, ecc.) se presenti.
