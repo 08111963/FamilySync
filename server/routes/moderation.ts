@@ -3,9 +3,9 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { reports, blocks, users, familyMembers } from "../../shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { authenticate } from "../middleware/auth";
-import { requireFamilyMember, requireFamilyAdmin } from "../middleware/family";
+import { requireFamilyAdmin } from "../middleware/family";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -68,32 +68,31 @@ router.post("/report", authenticate, async (req: Request, res: Response) => {
 router.get("/reports/:familyId", authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;
-    const status = req.query.status as string | undefined;
+    const statusFilter = req.query.status as string | undefined;
 
-    let query = db
-      .select({
-        id: reports.id,
-        familyId: reports.familyId,
-        reporterUserId: reports.reporterUserId,
-        targetType: reports.targetType,
-        targetId: reports.targetId,
-        reasonCategory: reports.reasonCategory,
-        reasonText: reports.reasonText,
-        status: reports.status,
-        createdAt: reports.createdAt,
-        reporterName: users.name,
-      })
+    const conditions = [eq(reports.familyId, familyId)];
+    if (statusFilter) {
+      conditions.push(eq(reports.status, statusFilter as any));
+    }
+
+    const reportsList = await db
+      .select()
       .from(reports)
-      .leftJoin(users, eq(users.id, reports.reporterUserId))
-      .where(
-        status
-          ? and(eq(reports.familyId, familyId), eq(reports.status, status as any))
-          : eq(reports.familyId, familyId)
-      )
+      .where(and(...conditions))
       .orderBy(desc(reports.createdAt));
 
-    const results = await query;
-    res.json(results);
+    const enriched = await Promise.all(
+      reportsList.map(async (r) => {
+        const [reporter] = await db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, r.reporterUserId))
+          .limit(1);
+        return { ...r, reporterName: reporter?.name || "Sconosciuto" };
+      })
+    );
+
+    res.json(enriched);
   } catch (error) {
     logger.error("Get reports error", { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero segnalazioni" } });
@@ -182,15 +181,13 @@ router.delete("/block/:familyId/:blockedUserId", authenticate, async (req: Reque
   try {
     const { familyId, blockedUserId } = req.params;
 
-    await db
-      .delete(blocks)
-      .where(
-        and(
-          eq(blocks.familyId, familyId),
-          eq(blocks.blockerUserId, req.user!.userId),
-          eq(blocks.blockedUserId, blockedUserId)
-        )
-      );
+    await db.delete(blocks).where(
+      and(
+        eq(blocks.familyId, familyId),
+        eq(blocks.blockerUserId, req.user!.userId),
+        eq(blocks.blockedUserId, blockedUserId)
+      )
+    );
 
     res.json({ message: "Utente sbloccato" });
   } catch (error) {
@@ -215,18 +212,28 @@ router.get("/blocks/:familyId", authenticate, async (req: Request, res: Response
       });
     }
 
-    const blockedUsers = await db
-      .select({
-        id: blocks.id,
-        blockedUserId: blocks.blockedUserId,
-        blockedUserName: users.name,
-        createdAt: blocks.createdAt,
-      })
+    const userBlocks = await db
+      .select()
       .from(blocks)
-      .leftJoin(users, eq(users.id, blocks.blockedUserId))
       .where(and(eq(blocks.familyId, familyId), eq(blocks.blockerUserId, req.user!.userId)));
 
-    res.json(blockedUsers);
+    const enriched = await Promise.all(
+      userBlocks.map(async (b) => {
+        const [blockedUser] = await db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, b.blockedUserId))
+          .limit(1);
+        return {
+          id: b.id,
+          blockedUserId: b.blockedUserId,
+          blockedUserName: blockedUser?.name || "Sconosciuto",
+          createdAt: b.createdAt,
+        };
+      })
+    );
+
+    res.json(enriched);
   } catch (error) {
     logger.error("Get blocks error", { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero utenti bloccati" } });

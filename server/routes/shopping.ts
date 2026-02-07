@@ -3,10 +3,11 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { shoppingLists, shoppingItems, shoppingHistory } from '../../shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, notInArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
+import { getBlockedUserIds } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -44,10 +45,20 @@ async function verifyItemOwnership(itemId: string, listId: string): Promise<bool
 router.get('/:familyId/lists', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;
-    const lists = await db.select().from(shoppingLists).where(eq(shoppingLists.familyId, familyId));
+    const blockedIds = await getBlockedUserIds(req.user!.userId, familyId);
+
+    const listConditions = [eq(shoppingLists.familyId, familyId)];
+    if (blockedIds.length > 0) {
+      listConditions.push(notInArray(shoppingLists.createdBy, blockedIds));
+    }
+    const lists = await db.select().from(shoppingLists).where(and(...listConditions));
 
     const listsWithItems = await Promise.all(lists.map(async (list) => {
-      const items = await db.select().from(shoppingItems).where(eq(shoppingItems.listId, list.id));
+      const itemConditions = [eq(shoppingItems.listId, list.id)];
+      if (blockedIds.length > 0) {
+        itemConditions.push(notInArray(shoppingItems.createdBy, blockedIds));
+      }
+      const items = await db.select().from(shoppingItems).where(and(...itemConditions));
       return { ...list, items };
     }));
 

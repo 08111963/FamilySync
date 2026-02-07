@@ -3,10 +3,11 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { calendarEvents } from '../../shared/schema';
-import { eq, and, gte, lte } from 'drizzle-orm';
+import { eq, and, gte, lte, notInArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
+import { getBlockedUserIds } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -43,17 +44,18 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
   try {
     const familyId = req.params.familyId;
     const { startDate, endDate } = req.query;
+    const blockedIds = await getBlockedUserIds(req.user!.userId, familyId);
 
-    let events;
+    const conditions = [eq(calendarEvents.familyId, familyId)];
     if (startDate && endDate) {
-      events = await db.select().from(calendarEvents).where(and(
-        eq(calendarEvents.familyId, familyId),
-        gte(calendarEvents.date, startDate as string),
-        lte(calendarEvents.date, endDate as string)
-      ));
-    } else {
-      events = await db.select().from(calendarEvents).where(eq(calendarEvents.familyId, familyId));
+      conditions.push(gte(calendarEvents.date, startDate as string));
+      conditions.push(lte(calendarEvents.date, endDate as string));
     }
+    if (blockedIds.length > 0) {
+      conditions.push(notInArray(calendarEvents.createdBy, blockedIds));
+    }
+
+    const events = await db.select().from(calendarEvents).where(and(...conditions));
 
     res.json(events);
   } catch (error) {

@@ -3,10 +3,11 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { chores, familyMembers } from '../../shared/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, notInArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
+import { getBlockedUserIds } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -37,7 +38,13 @@ const updateChoreSchema = z.object({
 router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;
-    const choresList = await db.select().from(chores).where(eq(chores.familyId, familyId));
+    const blockedIds = await getBlockedUserIds(req.user!.userId, familyId);
+
+    const conditions = [eq(chores.familyId, familyId)];
+    if (blockedIds.length > 0) {
+      conditions.push(notInArray(chores.createdBy, blockedIds));
+    }
+    const choresList = await db.select().from(chores).where(and(...conditions));
     res.json(choresList);
   } catch (error) {
     logger.error('Get chores error', { error: String(error) });
