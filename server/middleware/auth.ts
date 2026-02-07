@@ -13,14 +13,14 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' });
+      return res.status(401).json({ error: { code: "NO_TOKEN", message: "Token di autenticazione mancante" } });
     }
     
     const token = authHeader.substring(7);
     req.user = verifyAccessToken(token);
     next();
   } catch {
-    return res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ error: { code: "INVALID_TOKEN", message: "Token non valido o scaduto" } });
   }
 }
 

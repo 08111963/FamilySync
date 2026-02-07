@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { db } from '../db';
 import { users, emailVerificationTokens, passwordResetTokens } from '../../shared/schema';
@@ -7,22 +8,37 @@ import { eq } from 'drizzle-orm';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../lib/jwt';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../lib/email';
 import { authenticate } from '../middleware/auth';
+import { logger } from '../lib/logger';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
-// SIGNUP
+const signupSchema = z.object({
+  email: z.string().email("Email non valida"),
+  password: z.string().min(6, "La password deve avere almeno 6 caratteri"),
+  name: z.string().min(1, "Il nome è obbligatorio").max(100),
+});
+
+const loginSchema = z.object({
+  email: z.string().email("Email non valida"),
+  password: z.string().min(1, "La password è obbligatoria"),
+});
+
 router.post('/signup', async (req: Request, res: Response) => {
   try {
-    const { email, password, name } = req.body;
-    
-    if (!email || !password || !name) {
-      return res.status(400).json({ error: 'Email, password e nome richiesti' });
+    const parsed = signupSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
     }
-    
+
+    const { email, password, name } = parsed.data;
+
     const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
     if (existing.length > 0) {
-      return res.status(400).json({ error: 'Email già registrata' });
+      return res.status(400).json({ error: { code: "EMAIL_EXISTS", message: "Email già registrata" } });
     }
     
     const passwordHash = await bcrypt.hash(password, 12);
@@ -54,29 +70,32 @@ router.post('/signup', async (req: Request, res: Response) => {
       refreshToken,
     });
   } catch (error) {
-    console.error('Signup error:', error);
-    res.status(500).json({ error: 'Errore durante la registrazione' });
+    logger.error('Signup error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante la registrazione" } });
   }
 });
 
-// LOGIN
 router.post('/login', async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
-    
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email e password richiesti' });
+    const parsed = loginSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
     }
+
+    const { email, password } = parsed.data;
     
     const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
     
     if (!user) {
-      return res.status(401).json({ error: 'Credenziali non valide' });
+      return res.status(401).json({ error: { code: "INVALID_CREDENTIALS", message: "Credenziali non valide" } });
     }
     
     const validPassword = await bcrypt.compare(password, user.passwordHash);
     if (!validPassword) {
-      return res.status(401).json({ error: 'Credenziali non valide' });
+      return res.status(401).json({ error: { code: "INVALID_CREDENTIALS", message: "Credenziali non valide" } });
     }
     
     const accessToken = generateAccessToken(user);
@@ -88,18 +107,17 @@ router.post('/login', async (req: Request, res: Response) => {
       refreshToken,
     });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Errore durante il login' });
+    logger.error('Login error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante il login" } });
   }
 });
 
-// REFRESH TOKEN
 router.post('/refresh', async (req: Request, res: Response) => {
   try {
     const { refreshToken } = req.body;
     
     if (!refreshToken) {
-      return res.status(400).json({ error: 'Refresh token richiesto' });
+      return res.status(400).json({ error: { code: "MISSING_TOKEN", message: "Refresh token richiesto" } });
     }
     
     const payload = verifyRefreshToken(refreshToken);
@@ -107,24 +125,23 @@ router.post('/refresh', async (req: Request, res: Response) => {
     const [user] = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
     
     if (!user) {
-      return res.status(401).json({ error: 'Utente non trovato' });
+      return res.status(401).json({ error: { code: "USER_NOT_FOUND", message: "Utente non trovato" } });
     }
     
     const newAccessToken = generateAccessToken(user);
     
     res.json({ accessToken: newAccessToken });
   } catch (error) {
-    res.status(401).json({ error: 'Refresh token non valido' });
+    res.status(401).json({ error: { code: "INVALID_REFRESH_TOKEN", message: "Refresh token non valido" } });
   }
 });
 
-// ME
 router.get('/me', authenticate, async (req: Request, res: Response) => {
   try {
     const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
     
     if (!user) {
-      return res.status(404).json({ error: 'Utente non trovato' });
+      return res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utente non trovato" } });
     }
     
     res.json({
@@ -135,11 +152,10 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
       emailVerified: user.emailVerified,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Errore nel recupero utente' });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero utente" } });
   }
 });
 
-// VERIFY EMAIL
 router.post('/verify-email', async (req: Request, res: Response) => {
   try {
     const { token } = req.body;
@@ -150,11 +166,11 @@ router.post('/verify-email', async (req: Request, res: Response) => {
       .limit(1);
     
     if (!tokenRecord) {
-      return res.status(400).json({ error: 'Token non valido' });
+      return res.status(400).json({ error: { code: "INVALID_TOKEN", message: "Token non valido" } });
     }
     
     if (new Date() > tokenRecord.expiresAt) {
-      return res.status(400).json({ error: 'Token scaduto' });
+      return res.status(400).json({ error: { code: "TOKEN_EXPIRED", message: "Token scaduto" } });
     }
     
     await db.update(users)
@@ -166,11 +182,10 @@ router.post('/verify-email', async (req: Request, res: Response) => {
     
     res.json({ message: 'Email verificata con successo' });
   } catch (error) {
-    res.status(500).json({ error: 'Errore durante la verifica' });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante la verifica" } });
   }
 });
 
-// REQUEST PASSWORD RESET
 router.post('/request-password-reset', async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
@@ -194,11 +209,10 @@ router.post('/request-password-reset', async (req: Request, res: Response) => {
     
     res.json({ message: 'Se l\'email esiste, riceverai un link' });
   } catch (error) {
-    res.status(500).json({ error: 'Errore durante la richiesta' });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante la richiesta" } });
   }
 });
 
-// RESET PASSWORD
 router.post('/reset-password', async (req: Request, res: Response) => {
   try {
     const { token, newPassword } = req.body;
@@ -209,11 +223,11 @@ router.post('/reset-password', async (req: Request, res: Response) => {
       .limit(1);
     
     if (!tokenRecord) {
-      return res.status(400).json({ error: 'Token non valido' });
+      return res.status(400).json({ error: { code: "INVALID_TOKEN", message: "Token non valido" } });
     }
     
     if (new Date() > tokenRecord.expiresAt) {
-      return res.status(400).json({ error: 'Token scaduto' });
+      return res.status(400).json({ error: { code: "TOKEN_EXPIRED", message: "Token scaduto" } });
     }
     
     const passwordHash = await bcrypt.hash(newPassword, 12);
@@ -227,7 +241,7 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     
     res.json({ message: 'Password reimpostata con successo' });
   } catch (error) {
-    res.status(500).json({ error: 'Errore durante il reset' });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante il reset" } });
   }
 });
 
