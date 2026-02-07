@@ -16,10 +16,10 @@ export async function generateShoppingSuggestions(context: {
       model: 'gpt-4o-mini',
       messages: [{
         role: 'system',
-        content: 'Sei un assistente per la spesa familiare. Suggerisci prodotti in base al contesto.',
+        content: 'Sei un assistente per la lista della spesa al supermercato. Suggerisci ESCLUSIVAMENTE prodotti alimentari e beni di prima necessità che si trovano in un supermercato (cibo, bevande, prodotti per la pulizia della casa, igiene personale). NON suggerire MAI vestiti, scarpe, accessori, candele, libri, elettronica, attrezzature per hobby o qualsiasi altro prodotto non alimentare/supermercato.',
       }, {
         role: 'user',
-        content: `Famiglia di ${context.familySize} persone. Acquisti recenti: ${context.recentPurchases.join(', ')}. Eventi in programma: ${context.upcomingEvents.join(', ')}. Stagione: ${context.season}. Suggerisci 10 prodotti che potrebbero servire. Rispondi con un JSON array: [{"name": "prodotto", "reason": "motivazione"}]`,
+        content: `Famiglia di ${context.familySize} persone. Acquisti recenti: ${context.recentPurchases.join(', ')}. Eventi in programma: ${context.upcomingEvents.join(', ')}. Stagione: ${context.season}. Suggerisci 10 prodotti alimentari o da supermercato che potrebbero servire. Rispondi con un JSON: {"suggestions": [{"name": "prodotto", "reason": "motivazione breve"}]}`,
       }],
       response_format: { type: 'json_object' },
     });
