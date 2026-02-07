@@ -6,7 +6,7 @@ import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
-import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights } from '../lib/openai';
+import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, normalizeItemName, type ShoppingSuggestionItem } from '../lib/openai';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -19,6 +19,44 @@ function getCurrentSeason(): string {
   return 'inverno';
 }
 
+const FALLBACK_POOL: ShoppingSuggestionItem[] = [
+  { name: 'detersivo piatti', category: 'household_cleaning', reason: 'Essenziale per lavare le stoviglie' },
+  { name: 'detersivo lavatrice', category: 'household_cleaning', reason: 'Per il bucato settimanale' },
+  { name: 'ammorbidente', category: 'household_cleaning', reason: 'Rende i tessuti più morbidi' },
+  { name: 'candeggina', category: 'household_cleaning', reason: 'Utile per igienizzare superfici' },
+  { name: 'sgrassatore', category: 'household_cleaning', reason: 'Per pulire cucina e piani cottura' },
+  { name: 'panni microfibra', category: 'household_cleaning', reason: 'Ideali per spolverare senza residui' },
+  { name: 'spugne cucina', category: 'household_cleaning', reason: 'Da sostituire regolarmente per igiene' },
+  { name: 'sacchetti immondizia', category: 'household_cleaning', reason: 'Indispensabili per la raccolta rifiuti' },
+  { name: 'spray vetri', category: 'household_cleaning', reason: 'Per specchi e finestre senza aloni' },
+  { name: 'shampoo', category: 'personal_care', reason: 'Per la cura quotidiana dei capelli' },
+  { name: 'bagnoschiuma', category: 'personal_care', reason: 'Per la doccia di tutta la famiglia' },
+  { name: 'dentifricio', category: 'personal_care', reason: 'Per l\'igiene orale quotidiana' },
+  { name: 'spazzolini da denti', category: 'personal_care', reason: 'Da sostituire ogni 3 mesi' },
+  { name: 'filo interdentale', category: 'personal_care', reason: 'Complemento allo spazzolino' },
+  { name: 'deodorante', category: 'personal_care', reason: 'Per la freschezza quotidiana' },
+  { name: 'sapone mani', category: 'personal_care', reason: 'Per l\'igiene delle mani' },
+  { name: 'crema idratante', category: 'personal_care', reason: 'Per proteggere la pelle' },
+  { name: 'carta igienica', category: 'personal_care', reason: 'Bene di prima necessità' },
+  { name: 'fazzoletti', category: 'personal_care', reason: 'Sempre utili in casa e fuori' },
+  { name: 'latte fresco', category: 'food', reason: 'Per colazione e ricette' },
+  { name: 'uova', category: 'food', reason: 'Versatili per tanti piatti' },
+  { name: 'pasta', category: 'food', reason: 'Base della cucina italiana' },
+  { name: 'riso', category: 'food', reason: 'Alternativa leggera alla pasta' },
+  { name: 'lenticchie', category: 'food', reason: 'Ricche di proteine vegetali' },
+  { name: 'olio extravergine', category: 'food', reason: 'Condimento essenziale' },
+  { name: 'mele', category: 'food', reason: 'Frutta pratica come spuntino' },
+  { name: 'zucchine', category: 'food', reason: 'Verdura leggera e versatile' },
+  { name: 'yogurt bianco', category: 'food', reason: 'Ottimo per colazione e merenda' },
+  { name: 'pane integrale', category: 'food', reason: 'Ricco di fibre' },
+  { name: 'caffè', category: 'food', reason: 'Indispensabile per la mattina' },
+  { name: 'pomodori pelati', category: 'food', reason: 'Base per sughi e condimenti' },
+  { name: 'tonno in scatola', category: 'food', reason: 'Pratico e ricco di proteine' },
+  { name: 'burro', category: 'food', reason: 'Utile per cucinare e condire' },
+  { name: 'parmigiano reggiano', category: 'food', reason: 'Per insaporire primi e secondi' },
+  { name: 'spinaci freschi', category: 'food', reason: 'Verdura ricca di ferro' },
+];
+
 router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;
@@ -27,42 +65,147 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
-    const history = await db.select()
+    const recentPurchasesRows = await db.select()
       .from(shoppingHistory)
       .where(and(eq(shoppingHistory.familyId, familyId), gte(shoppingHistory.purchasedAt, thirtyDaysAgo)))
       .orderBy(desc(shoppingHistory.purchasedAt))
       .limit(50);
+    const recentPurchases = recentPurchasesRows.map(h => h.itemName);
 
     const familyLists = await db.select({ id: shoppingLists.id })
       .from(shoppingLists)
       .where(eq(shoppingLists.familyId, familyId));
 
-    let currentListItems: string[] = [];
+    let alreadyOnList: string[] = [];
+    let completedRecently: string[] = [];
+
     if (familyLists.length > 0) {
       const listIds = familyLists.map(l => l.id);
-      const items = await db.select({ name: shoppingItems.name, isChecked: shoppingItems.isChecked })
+      const allItems = await db.select({
+        name: shoppingItems.name,
+        isChecked: shoppingItems.isChecked,
+        checkedAt: shoppingItems.checkedAt,
+        createdAt: shoppingItems.createdAt,
+      })
         .from(shoppingItems)
         .where(inArray(shoppingItems.listId, listIds));
-      currentListItems = items.map(i => i.name);
+
+      alreadyOnList = allItems.filter(i => !i.isChecked).map(i => i.name);
+
+      completedRecently = allItems
+        .filter(i => {
+          if (!i.isChecked) return false;
+          const refDate = i.checkedAt || i.createdAt;
+          return refDate >= thirtyDaysAgo;
+        })
+        .map(i => i.name);
+    }
+
+    const recentInsights = await db.select()
+      .from(aiInsights)
+      .where(and(
+        eq(aiInsights.familyId, familyId),
+        eq(aiInsights.type, 'shopping_suggestions'),
+        gte(aiInsights.createdAt, fourteenDaysAgo),
+      ))
+      .orderBy(desc(aiInsights.createdAt))
+      .limit(10);
+
+    const recentSuggestions: string[] = [];
+    for (const ins of recentInsights) {
+      const data = ins.actionData as { items?: string[] } | null;
+      if (data?.items && Array.isArray(data.items)) {
+        for (const name of data.items) {
+          if (typeof name === 'string') recentSuggestions.push(name);
+        }
+      }
     }
 
     const today = new Date().toISOString().split('T')[0];
-
     const upcomingEvents = await db.select()
       .from(calendarEvents)
       .where(and(eq(calendarEvents.familyId, familyId), gte(calendarEvents.date, today!)))
       .limit(10);
 
-    const suggestions = await generateShoppingSuggestions({
-      familySize: members.length,
-      recentPurchases: history.map(h => h.itemName),
-      currentListItems,
-      upcomingEvents: upcomingEvents.map(e => e.title),
+    const aiResult = await generateShoppingSuggestions({
+      familySize: members.length || 1,
       season: getCurrentSeason(),
+      upcomingEvents: upcomingEvents.map(e => e.title),
+      recentPurchases,
+      alreadyOnList,
+      completedRecently,
+      recentSuggestions,
     });
 
-    res.json(suggestions);
+    const forbiddenSet = new Set(
+      [...recentPurchases, ...alreadyOnList, ...completedRecently, ...recentSuggestions]
+        .map(normalizeItemName)
+        .filter(n => n.length > 0)
+    );
+
+    const seenNames = new Set<string>();
+    const deduped: ShoppingSuggestionItem[] = [];
+    for (const item of aiResult.items) {
+      const norm = normalizeItemName(item.name);
+      if (!norm || seenNames.has(norm) || forbiddenSet.has(norm)) continue;
+      seenNames.add(norm);
+      deduped.push(item);
+    }
+
+    const household = deduped.filter(i => i.category === 'household_cleaning');
+    const personal = deduped.filter(i => i.category === 'personal_care');
+    const foodOther = deduped.filter(i => i.category === 'food' || i.category === 'other');
+
+    const finalItems: ShoppingSuggestionItem[] = [];
+
+    for (const item of household) {
+      if (finalItems.length >= 10) break;
+      finalItems.push(item);
+    }
+    for (const item of personal) {
+      if (finalItems.length >= 10) break;
+      finalItems.push(item);
+    }
+    for (const item of foodOther) {
+      if (finalItems.length >= 10) break;
+      finalItems.push(item);
+    }
+
+    if (finalItems.length < 10) {
+      const shuffled = [...FALLBACK_POOL].sort(() => Math.random() - 0.5);
+      for (const fb of shuffled) {
+        if (finalItems.length >= 10) break;
+        const norm = normalizeItemName(fb.name);
+        if (seenNames.has(norm) || forbiddenSet.has(norm)) continue;
+        seenNames.add(norm);
+        finalItems.push(fb);
+      }
+    }
+
+    const householdCount = finalItems.filter(i => i.category === 'household_cleaning').length;
+    const personalCount = finalItems.filter(i => i.category === 'personal_care').length;
+
+    try {
+      await db.insert(aiInsights).values({
+        familyId,
+        type: 'shopping_suggestions',
+        title: 'Shopping suggestions history',
+        description: 'internal',
+        dismissed: true,
+        actionData: {
+          items: finalItems.map(i => i.name),
+          categoriesCount: { household_cleaning: householdCount, personal_care: personalCount, food: finalItems.length - householdCount - personalCount },
+          generatedAt: new Date().toISOString(),
+        },
+      });
+    } catch (persistErr) {
+      logger.error('Failed to persist shopping suggestions history', { error: String(persistErr) });
+    }
+
+    res.json({ items: finalItems });
   } catch (error) {
     logger.error('Shopping suggestions error', { error: String(error) });
     res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione suggerimenti" } });
