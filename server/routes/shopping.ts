@@ -23,6 +23,24 @@ const addItemSchema = z.object({
   note: z.string().optional(),
 });
 
+async function verifyListOwnership(listId: string, familyId: string): Promise<boolean> {
+  const [list] = await db
+    .select({ id: shoppingLists.id })
+    .from(shoppingLists)
+    .where(and(eq(shoppingLists.id, listId), eq(shoppingLists.familyId, familyId)))
+    .limit(1);
+  return !!list;
+}
+
+async function verifyItemOwnership(itemId: string, listId: string): Promise<boolean> {
+  const [item] = await db
+    .select({ id: shoppingItems.id })
+    .from(shoppingItems)
+    .where(and(eq(shoppingItems.id, itemId), eq(shoppingItems.listId, listId)))
+    .limit(1);
+  return !!item;
+}
+
 router.get('/:familyId/lists', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;
@@ -70,6 +88,10 @@ router.delete('/:familyId/lists/:listId', authenticate, requireFamilyMember(), a
   try {
     const { familyId, listId } = req.params;
 
+    if (!(await verifyListOwnership(listId, familyId))) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Lista non trovata in questa famiglia" } });
+    }
+
     await db.delete(shoppingLists).where(and(eq(shoppingLists.id, listId), eq(shoppingLists.familyId, familyId)));
 
     broadcastToFamily(familyId, 'shopping_list_deleted', { listId });
@@ -83,6 +105,11 @@ router.delete('/:familyId/lists/:listId', authenticate, requireFamilyMember(), a
 router.post('/:familyId/lists/:listId/items', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const { familyId, listId } = req.params;
+
+    if (!(await verifyListOwnership(listId, familyId))) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Lista non trovata in questa famiglia" } });
+    }
+
     const parsed = addItemSchema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -112,7 +139,17 @@ router.patch('/:familyId/lists/:listId/items/:itemId/toggle', authenticate, requ
   try {
     const { familyId, listId, itemId } = req.params;
 
-    const [currentItem] = await db.select().from(shoppingItems).where(eq(shoppingItems.id, itemId)).limit(1);
+    if (!(await verifyListOwnership(listId, familyId))) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Lista non trovata in questa famiglia" } });
+    }
+
+    if (!(await verifyItemOwnership(itemId, listId))) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Prodotto non trovato in questa lista" } });
+    }
+
+    const [currentItem] = await db.select().from(shoppingItems)
+      .where(and(eq(shoppingItems.id, itemId), eq(shoppingItems.listId, listId)))
+      .limit(1);
 
     if (!currentItem) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Prodotto non trovato" } });
@@ -124,7 +161,7 @@ router.patch('/:familyId/lists/:listId/items/:itemId/toggle', authenticate, requ
         checkedBy: !currentItem.isChecked ? req.user!.userId : null,
         checkedAt: !currentItem.isChecked ? new Date() : null,
       })
-      .where(eq(shoppingItems.id, itemId))
+      .where(and(eq(shoppingItems.id, itemId), eq(shoppingItems.listId, listId)))
       .returning();
 
     if (!currentItem.isChecked) {
@@ -148,7 +185,16 @@ router.delete('/:familyId/lists/:listId/items/:itemId', authenticate, requireFam
   try {
     const { familyId, listId, itemId } = req.params;
 
-    await db.delete(shoppingItems).where(eq(shoppingItems.id, itemId));
+    if (!(await verifyListOwnership(listId, familyId))) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Lista non trovata in questa famiglia" } });
+    }
+
+    if (!(await verifyItemOwnership(itemId, listId))) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Prodotto non trovato in questa lista" } });
+    }
+
+    await db.delete(shoppingItems)
+      .where(and(eq(shoppingItems.id, itemId), eq(shoppingItems.listId, listId)));
 
     broadcastToFamily(familyId, 'shopping_item_deleted', { listId, itemId });
     res.json({ message: 'Prodotto eliminato' });

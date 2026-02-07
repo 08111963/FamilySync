@@ -1,6 +1,10 @@
 import { Server as SocketIOServer } from 'socket.io';
 import type { Server as HTTPServer } from 'http';
 import { verifyAccessToken } from './jwt';
+import { db } from '../db';
+import { familyMembers } from '../../shared/schema';
+import { eq, and } from 'drizzle-orm';
+import { logger } from './logger';
 
 let io: SocketIOServer | null = null;
 
@@ -52,11 +56,50 @@ export function setupWebSocket(httpServer: HTTPServer) {
   });
 
   io.on('connection', (socket) => {
-    console.log('User connected:', socket.data.userId);
+    logger.info('WebSocket user connected', { userId: socket.data.userId });
     
-    socket.on('join_family', (familyId: string) => {
-      socket.join(`family:${familyId}`);
-      console.log(`User ${socket.data.userId} joined family ${familyId}`);
+    socket.on('join_family', async (familyId: string) => {
+      if (!familyId || typeof familyId !== 'string') {
+        socket.emit('error', { code: 'INVALID_FAMILY_ID', message: 'familyId non valido' });
+        return;
+      }
+
+      try {
+        const [membership] = await db
+          .select()
+          .from(familyMembers)
+          .where(
+            and(
+              eq(familyMembers.userId, socket.data.userId),
+              eq(familyMembers.familyId, familyId)
+            )
+          )
+          .limit(1);
+
+        if (!membership) {
+          logger.warn('WebSocket join_family denied: not a member', {
+            userId: socket.data.userId,
+            familyId,
+          });
+          socket.emit('error', {
+            code: 'NOT_FAMILY_MEMBER',
+            message: 'Non fai parte di questa famiglia',
+          });
+          return;
+        }
+
+        socket.join(`family:${familyId}`);
+        logger.info('WebSocket user joined family', {
+          userId: socket.data.userId,
+          familyId,
+        });
+      } catch (err) {
+        logger.error('WebSocket join_family error', { error: String(err) });
+        socket.emit('error', {
+          code: 'SERVER_ERROR',
+          message: 'Errore nel join della famiglia',
+        });
+      }
     });
     
     socket.on('leave_family', (familyId: string) => {
@@ -64,7 +107,7 @@ export function setupWebSocket(httpServer: HTTPServer) {
     });
     
     socket.on('disconnect', () => {
-      console.log('User disconnected:', socket.data.userId);
+      logger.info('WebSocket user disconnected', { userId: socket.data.userId });
     });
   });
 

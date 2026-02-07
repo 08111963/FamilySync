@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { chores, familyMembers } from '../../shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
@@ -21,6 +21,18 @@ const createChoreSchema = z.object({
   dueDate: z.string().optional(),
   recurrenceRule: z.string().optional(),
 });
+
+const updateChoreSchema = z.object({
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  difficulty: z.enum(["easy", "medium", "hard"]).optional(),
+  points: z.number().int().min(1).optional(),
+  estimatedMinutes: z.number().int().optional(),
+  assignedTo: z.string().nullable().optional(),
+  dueDate: z.string().nullable().optional(),
+  recurrenceRule: z.string().nullable().optional(),
+  isCompleted: z.boolean().optional(),
+}).strict();
 
 router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
@@ -69,7 +81,14 @@ router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (re
   try {
     const { familyId, choreId } = req.params;
 
-    const updateData = { ...req.body, updatedAt: new Date() };
+    const parsed = updateChoreSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    const updateData: Record<string, any> = { ...parsed.data, updatedAt: new Date() };
     if (updateData.dueDate) {
       updateData.dueDate = new Date(updateData.dueDate);
     }
@@ -94,9 +113,10 @@ router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (re
 router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const { familyId, choreId } = req.params;
-    const membership = (req as any).membership;
 
-    const [currentChore] = await db.select().from(chores).where(eq(chores.id, choreId)).limit(1);
+    const [currentChore] = await db.select().from(chores)
+      .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
+      .limit(1);
 
     if (!currentChore) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata" } });
@@ -106,6 +126,8 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
       return res.status(400).json({ error: { code: "ALREADY_COMPLETED", message: "Faccenda già completata" } });
     }
 
+    const pointsToAdd = currentChore.points || 10;
+
     const [chore] = await db.update(chores)
       .set({
         isCompleted: true,
@@ -113,12 +135,14 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
         completedBy: req.user!.userId,
         updatedAt: new Date(),
       })
-      .where(eq(chores.id, choreId))
+      .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
       .returning();
 
     if (currentChore.assignedTo) {
       await db.update(familyMembers)
-        .set({ points: (membership.points || 0) + (currentChore.points || 10) })
+        .set({
+          points: sql`COALESCE(${familyMembers.points}, 0) + ${pointsToAdd}`,
+        })
         .where(eq(familyMembers.id, currentChore.assignedTo));
     }
 
