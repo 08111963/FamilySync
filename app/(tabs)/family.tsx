@@ -269,6 +269,42 @@ export default function FamilyScreen() {
         </View>
       </View>
 
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Legale</Text>
+        </View>
+        <View style={{ gap: 12 }}>
+          <Card onPress={() => router.push("/legal/privacy")}>
+            <View style={styles.featureLinkRow}>
+              <View style={[styles.featureLinkIcon, { backgroundColor: colors.textSecondary + "15" }]}>
+                <Ionicons name="shield-checkmark" size={24} color={colors.textSecondary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Privacy Policy</Text>
+                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                  Come trattiamo i tuoi dati
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </Card>
+          <Card onPress={() => router.push("/legal/terms")}>
+            <View style={styles.featureLinkRow}>
+              <View style={[styles.featureLinkIcon, { backgroundColor: colors.textSecondary + "15" }]}>
+                <Ionicons name="document-text" size={24} color={colors.textSecondary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Termini d'Uso</Text>
+                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                  Condizioni di utilizzo del servizio
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </Card>
+        </View>
+      </View>
+
       <View style={[styles.section, { marginBottom: 40 }]}>
         <Pressable
           onPress={() => {

@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 
@@ -195,6 +196,16 @@ export default function LoginScreen() {
                 </Text>
               </Text>
             </TouchableOpacity>
+
+            <View style={styles.legalRow}>
+              <Pressable onPress={() => router.push("/legal/privacy")}>
+                <Text style={[styles.legalLink, { color: colors.textSecondary }]}>Privacy Policy</Text>
+              </Pressable>
+              <Text style={[styles.legalSeparator, { color: colors.textSecondary }]}>|</Text>
+              <Pressable onPress={() => router.push("/legal/terms")}>
+                <Text style={[styles.legalLink, { color: colors.textSecondary }]}>Termini d'Uso</Text>
+              </Pressable>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -326,5 +337,21 @@ const styles = StyleSheet.create({
   },
   toggleTextBold: {
     fontFamily: 'Inter_600SemiBold',
+  },
+  legalRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 8,
+    marginTop: 16,
+  },
+  legalLink: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    textDecorationLine: 'underline' as const,
+  },
+  legalSeparator: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
   },
 });

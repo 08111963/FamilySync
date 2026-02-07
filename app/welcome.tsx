@@ -219,6 +219,16 @@ export default function WelcomeScreen() {
               <Text style={styles.trustText}>Gratuito</Text>
             </View>
           </View>
+
+          <View style={styles.legalRow}>
+            <Pressable onPress={() => router.push("/legal/privacy")}>
+              <Text style={styles.legalLink}>Privacy Policy</Text>
+            </Pressable>
+            <View style={styles.trustDivider} />
+            <Pressable onPress={() => router.push("/legal/terms")}>
+              <Text style={styles.legalLink}>Termini d'Uso</Text>
+            </Pressable>
+          </View>
         </View>
       </ScrollView>
     </LinearGradient>
@@ -340,5 +350,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_500Medium",
     color: "rgba(255,255,255,0.7)",
+  },
+  legalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    marginTop: 8,
+  },
+  legalLink: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: "rgba(255,255,255,0.5)",
+    textDecorationLine: "underline" as const,
   },
 });
