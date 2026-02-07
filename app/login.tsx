@@ -19,6 +19,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -43,12 +44,16 @@ export default function LoginScreen() {
         setError('La password deve avere almeno 6 caratteri');
         return;
       }
+      if (!acceptedTerms) {
+        setError('Devi accettare Privacy Policy e Termini d\'Uso');
+        return;
+      }
     }
 
     setIsSubmitting(true);
     try {
       if (isSignup) {
-        await signup(email.trim(), password, name.trim());
+        await signup(email.trim(), password, name.trim(), acceptedTerms);
       } else {
         await login(email.trim(), password);
       }
@@ -74,6 +79,7 @@ export default function LoginScreen() {
     setError('');
     setPassword('');
     setConfirmPassword('');
+    setAcceptedTerms(false);
   };
 
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
@@ -170,6 +176,43 @@ export default function LoginScreen() {
                   testID="confirm-password-input"
                 />
               </View>
+            )}
+
+            {isSignup && (
+              <Pressable
+                style={styles.termsRow}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setAcceptedTerms(!acceptedTerms);
+                }}
+                testID="terms-checkbox"
+              >
+                <View style={[
+                  styles.checkbox,
+                  { borderColor: colors.border },
+                  acceptedTerms && styles.checkboxChecked,
+                ]}>
+                  {acceptedTerms && (
+                    <Ionicons name="checkmark" size={14} color="#fff" />
+                  )}
+                </View>
+                <Text style={[styles.termsText, { color: colors.textSecondary }]}>
+                  Accetto la{' '}
+                  <Text
+                    style={[styles.termsLink, { color: colors.primary }]}
+                    onPress={(e) => { e.stopPropagation?.(); router.push("/legal/privacy"); }}
+                  >
+                    Privacy Policy
+                  </Text>
+                  {' '}e i{' '}
+                  <Text
+                    style={[styles.termsLink, { color: colors.primary }]}
+                    onPress={(e) => { e.stopPropagation?.(); router.push("/legal/terms"); }}
+                  >
+                    Termini d'Uso
+                  </Text>
+                </Text>
+              </Pressable>
             )}
 
             <TouchableOpacity
@@ -337,6 +380,37 @@ const styles = StyleSheet.create({
   },
   toggleTextBold: {
     fontFamily: 'Inter_600SemiBold',
+  },
+  termsRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: 10,
+    marginBottom: 8,
+    marginTop: 4,
+    paddingHorizontal: 2,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginTop: 1,
+  },
+  checkboxChecked: {
+    backgroundColor: '#FF6B6B',
+    borderColor: '#FF6B6B',
+  },
+  termsText: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    flex: 1,
+    lineHeight: 20,
+  },
+  termsLink: {
+    fontFamily: 'Inter_600SemiBold',
+    textDecorationLine: 'underline' as const,
   },
   legalRow: {
     flexDirection: 'row' as const,

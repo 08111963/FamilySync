@@ -19,7 +19,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   accessToken: string | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string) => Promise<void>;
+  signup: (email: string, password: string, name: string, acceptedTerms: boolean) => Promise<void>;
   logout: () => Promise<void>;
   refreshAccessToken: () => Promise<string | null>;
 }
@@ -202,14 +202,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signup = useCallback(
-    async (email: string, password: string, name: string) => {
+    async (email: string, password: string, name: string, acceptedTerms: boolean) => {
       try {
         const baseUrl = getApiUrl();
         const url = new URL('/api/auth/signup', baseUrl);
         const res = await fetch(url.toString(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, name }),
+          body: JSON.stringify({ email, password, name, acceptedTerms }),
         });
 
         if (!res.ok) {

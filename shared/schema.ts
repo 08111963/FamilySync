@@ -27,6 +27,7 @@ export const users = pgTable("users", {
   name: varchar("name", { length: 255 }).notNull(),
   avatarUrl: text("avatar_url"),
   emailVerified: boolean("email_verified").default(false),
+  termsAcceptedAt: timestamp("terms_accepted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

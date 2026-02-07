@@ -17,6 +17,7 @@ const signupSchema = z.object({
   email: z.string().email("Email non valida"),
   password: z.string().min(6, "La password deve avere almeno 6 caratteri"),
   name: z.string().min(1, "Il nome è obbligatorio").max(100),
+  acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare Privacy Policy e Termini d'Uso" }) }),
 });
 
 const loginSchema = z.object({
@@ -48,6 +49,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       passwordHash,
       name,
       emailVerified: false,
+      termsAcceptedAt: new Date(),
     }).returning();
     
     const verificationToken = uuidv4();
