@@ -137,8 +137,15 @@ Stile di comunicazione preferito: Linguaggio semplice e quotidiano.
 ## Recenti Modifiche (Febbraio 2026)
 
 - Implementato backend completo con autenticazione JWT multi-utente
-- Creato database PostgreSQL con 13 tabelle via Drizzle ORM
+- Creato database PostgreSQL con 15 tabelle via Drizzle ORM (incluse reports e blocks)
 - Aggiunto WebSocket per sincronizzazione real-time tra dispositivi
 - Integrato OpenAI per suggerimenti AI su spesa e faccende
 - Configurato Stripe per abbonamenti Premium (€4.99/mese o €39.99/anno)
 - Aggiunta sicurezza con helmet e rate limiting
+- Implementato sistema moderazione UGC completo:
+  - Tabelle `reports` e `blocks` con enum per categorie e stati
+  - API endpoints per segnalazione contenuti/utenti, blocco/sblocco utenti
+  - Block enforcement: contenuti utenti bloccati filtrati da calendar/shopping/chores
+  - AI guard middleware: funzionalità AI controllata da toggle utente (GDPR consent)
+  - Frontend: toggle AI nelle impostazioni, modal report, lista utenti bloccati, pannello admin segnalazioni
+- Aggiornati Privacy Policy (sezione AI dettagliata) e Termini d'Uso (sezione UGC/moderazione)
