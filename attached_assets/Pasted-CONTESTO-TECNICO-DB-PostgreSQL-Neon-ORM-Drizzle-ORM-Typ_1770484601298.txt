@@ -1,0 +1,185 @@
+CONTESTO TECNICO
+- DB: PostgreSQL (Neon)
+- ORM: Drizzle ORM (TypeScript)
+- Schema Drizzle: shared/schema.ts
+- Validazione: Zod + drizzle-zod
+- Sync schema: npm run db:push (Drizzle Kit)
+- Tabelle esistenti: users, families, family_members, family_invites, calendar_events, shopping_lists, shopping_items, chores, chore_completions, ai_insights, refresh_tokens, email_verification_tokens, password_reset_tokens.
+- Esiste un modulo Stripe MA NON VA ATTIVATO: pagamenti restano disabilitati con feature-flag OFF.
+
+VINCOLO ASSOLUTO (NON NEGOZIABILE)
+- NON completare Stripe: niente checkout/webhook/portal/sync. Mantieni PREMIUM_PAYMENTS_ENABLED=false e se esistono endpoint payments, restano 501/disabled.
+- Lavorare SOLO su: (A) Privacy/OpenAI + toggle AI, (B) Segnala/Blocca UGC.
+
+========================================================
+(A) PRIVACY POLICY / OPENAI: TESTO CORRETTO + TOGGLE AI
+========================================================
+
+A1) Individua dove sono i documenti legali:
+- Se esistono già pagine in-app tipo app/legal/privacy.tsx e app/legal/terms.tsx, modificale; altrimenti creale.
+- Se esistono già endpoint pubblici tipo GET /legal/privacy e GET /legal/terms, modificali; altrimenti aggiungili.
+Requisito: Privacy e Termini devono essere accessibili pubblicamente via URL senza auth e linkati dentro l’app (anche pre-login).
+
+A2) Correggi la Privacy Policy (soprattutto OpenAI)
+- Rimuovi qualsiasi frase del tipo “solo dati aggregati/anonimizzati” SE il codice invia a OpenAI contenuti testuali inseriti dall’utente.
+- Inserisci una sezione “Funzionalità AI (opzionali)” con:
+  - Quali dati possono essere inviati al provider AI (OpenAI): esempi concreti coerenti col codice (titoli eventi, elementi lista spesa, nickname/nomi membri, descrizioni faccende, ecc.).
+  - Finalità: suggerimenti/ottimizzazioni/riassunti.
+  - Controllo utente: toggle in-app per disabilitare AI (A3).
+  - Retention/uso dati del provider: wording prudente e non promesse false (es. “i dati inviati tramite API non vengono usati per addestrare di default salvo opt-in; possono essere conservati per un periodo limitato per sicurezza/abuse monitoring e obblighi di legge”).
+- Correggi terminologia: “password hashata” (non “crittografata”).
+- Allinea testo token/expiry a come funzionano davvero (refresh JWT ecc.).
+- Aggiorna “Ultimo aggiornamento” (data corrente).
+
+A3) Toggle AI “AI features enabled” (persistente e enforced server-side)
+- Aggiungi una preferenza persistente per utente:
+  Opzione MINIMA (consigliata): aggiungere colonna su users:
+    - users.aiFeaturesEnabled boolean NOT NULL default true
+    - users.aiFeaturesEnabledUpdatedAt timestamp (opzionale)
+  (Non introdurre una nuova tabella se non necessario.)
+- Aggiorna shared/schema.ts:
+  - aggiungi la colonna su users via drizzle pg-core.
+  - crea Zod schema per update preferenza (Zod + drizzle-zod).
+- Backend:
+  - aggiungi endpoint:
+    PATCH /api/users/preferences
+      body: { aiFeaturesEnabled: boolean }
+      auth required
+      aggiorna users.aiFeaturesEnabled
+  - In server/routes/ai.ts: prima di chiamare OpenAI, leggi users.aiFeaturesEnabled:
+    - se false => rispondi 403 con { error: { code: 'AI_DISABLED', message: 'AI features disabled' } }
+- Frontend:
+  - in Settings aggiungi uno switch “Suggerimenti AI” (default ON)
+  - al toggle:
+    - chiama PATCH /api/users/preferences
+    - aggiorna stato locale
+  - Se AI off: UI dei pulsanti AI deve disabilitarsi o mostrare un messaggio chiaro.
+
+OUTPUT A (ACCETTAZIONE)
+- Privacy aggiornata (in-app + URL pubblico) con descrizioni vere su OpenAI.
+- Toggle AI presente, persistente, e il server blocca chiamate AI quando è OFF.
+
+========================================================
+(B) UGC COMPLIANCE: SEGNALA + BLOCCA MINIMALE MA REALE
+========================================================
+
+B0) Requisiti minimi UGC (senza over-engineering)
+- “Segnala contenuto” in-app (eventi, items spesa, chores; minimo 2 tipi basta ma idealmente 3)
+- “Segnala utente” in-app
+- “Blocca utente” in-app (deve avere un effetto osservabile: nascondere contenuti e/o ignorare eventi realtime)
+- Pannello “Moderazione” per admin di famiglia: vedere report e applicare almeno 1 azione (dismiss + delete content o remove member)
+
+B1) Schema DB (Drizzle) — aggiungi 2 tabelle nuove + (se serve) creatorUserId ai contenuti
+1) Aggiungi tabella reports:
+- id uuid default random
+- familyId uuid NOT NULL (FK families.id)
+- reporterUserId uuid NOT NULL (FK users.id)
+- targetType enum: 'calendar_event' | 'shopping_item' | 'chore' | 'user'
+- targetId uuid NOT NULL (id del record target o userId se targetType='user')
+- reasonCategory enum: 'spam' | 'harassment' | 'hate' | 'sexual' | 'violence' | 'other'
+- reasonText text nullable (limit lato API, es. 500 chars)
+- status enum: 'open' | 'actioned' | 'dismissed' (default 'open')
+- createdAt timestamp default now
+- updatedAt timestamp default now (auto-update in app)
+Indici:
+- index su (familyId, status, createdAt desc)
+- index su (targetType, targetId)
+
+2) Aggiungi tabella blocks (blocchi family-scoped):
+- id uuid default random
+- familyId uuid NOT NULL (FK families.id)
+- blockerUserId uuid NOT NULL (FK users.id)  // chi blocca (utente corrente)
+- blockedUserId uuid NOT NULL (FK users.id)  // chi è bloccato
+- createdAt timestamp default now
+Constraint:
+- unique(familyId, blockerUserId, blockedUserId)
+
+3) Effetto “block” richiede conoscere il creatore dei contenuti.
+- Verifica se calendar_events / shopping_items / chores hanno già un campo creator/createdBy.
+  - Se NON esiste, aggiungi:
+    - calendar_events.createdByUserId uuid NOT NULL FK users.id
+    - shopping_items.createdByUserId uuid NOT NULL FK users.id
+    - chores.createdByUserId uuid NOT NULL FK users.id
+  - Popolamento:
+    - in creazione contenuti: set createdByUserId = userId autenticato
+    - per righe esistenti: fallback (se impossibile) impostare a un valore noto (es. family admin) con script one-off oppure rendere nullable e gestire null (ma preferisci NOT NULL se greenfield).
+
+4) Aggiorna shared/schema.ts con definizioni Drizzle + drizzle-zod schema per insert/select dove serve.
+5) Esegui npm run db:push e aggiusta eventuali issue di enum (usa pgEnum in Drizzle).
+
+B2) API Moderation (nuovo router server/routes/moderation.ts)
+Aggiungi queste route (tutte JSON con error model uniforme { error: { code, message, details? } }):
+- POST /api/moderation/report
+  body: { familyId, targetType, targetId, reasonCategory, reasonText? }
+  auth required
+  verifica membership in family_members
+  valida che il target esista e appartenga a familyId (per content types), oppure che user sia membro (per targetType='user')
+  crea report status='open'
+- GET /api/moderation/reports?familyId=...
+  auth required + requireFamilyAdmin(familyId)
+  ritorna lista report (open prima)
+- POST /api/moderation/reports/:reportId/action
+  auth required + requireFamilyAdmin(familyId del report)
+  body: { action: 'dismiss' | 'delete_content' | 'remove_member', notes? }
+  Implementazione MINIMA:
+    - dismiss: status='dismissed'
+    - delete_content: se targetType != 'user', elimina target in modo SAFE scoped su familyId
+    - remove_member: se targetType == 'user', rimuovi record family_members della famiglia per quel userId
+  set status='actioned' (tranne dismiss)
+- POST /api/moderation/block
+  body: { familyId, blockedUserId }
+  auth required + membership
+  no self-block
+  insert idempotente (se già esiste, 200)
+- POST /api/moderation/unblock
+  body: { familyId, blockedUserId }
+- GET /api/moderation/blocks?familyId=...
+  auth required + membership
+  ritorna lista utenti bloccati dall’utente corrente in quella famiglia (blockedUserId + info base user)
+
+Validazione:
+- usa Zod (preferibilmente drizzle-zod + refine) per body/params/query.
+- limita reasonText (es. max 500) e impedisci stringhe vuote.
+
+B3) Enforcement blocchi (deve essere “reale”)
+- Quando restituisci UGC lists:
+  - calendar events GET: escludi record dove createdByUserId è in blocks (familyId + blockerUserId=currentUserId)
+  - shopping_items GET: stesso filtro
+  - chores GET: stesso filtro
+Implementazione: prima query blocks per blockedUserIds, poi filtro in WHERE (inArray).
+- Realtime:
+  - Se usi websocket rooms, includi actorUserId in payload eventi creati/modificati e nel client scarta se actorUserId è bloccato (minimo).
+  - (Opzionale meglio) lato server, quando emetti, non inviare a sockets di blockerUserId contenuti di blockedUserId.
+
+B4) UI (Expo Router) — minima ma sufficiente
+- In Settings:
+  - “Privacy Policy” e “Termini d’uso” (se non già presenti)
+  - “Suggerimenti AI” toggle (A3)
+  - “Utenti bloccati”:
+    - lista + pulsante “Sblocca”
+- In schermate contenuti:
+  - Per ogni evento/item/chore: menu “Segnala” -> form semplice (categoria + testo opzionale) -> POST /moderation/report
+- In schermata membri famiglia (o dove mostri membri):
+  - azioni su utente: “Blocca” e “Segnala utente”
+- Pannello admin:
+  - “Moderazione” visibile SOLO agli admin:
+    - lista report
+    - dettaglio report con azioni: dismiss / delete_content / remove_member
+
+B5) Termini d’Uso (update)
+- Aggiungi sezioni:
+  - Contenuti vietati (spam, molestie, hate, sexual, violence, ecc.)
+  - Segnalazioni e blocchi (cosa succede ai report, poteri admin famiglia)
+  - Conseguenze (rimozione contenuti, rimozione da famiglia, sospensione)
+- Aggiorna “Ultimo aggiornamento”.
+
+OUTPUT B (ACCETTAZIONE)
+- Esiste report+block end-to-end: API + DB + UI.
+- Un admin può vedere report e fare almeno dismiss + una azione (delete content o remove member).
+- Bloccare un utente cambia davvero ciò che vedo: contenuti creati da lui spariscono dalle liste e/o gli eventi realtime vengono ignorati.
+- Nessuna modifica che attivi Stripe/pagamenti.
+
+NOTE IMPLEMENTATIVE IMPORTANTI
+- Usa Drizzle transactions dove serve (es. delete_content + update report status).
+- Applica sempre scoping familyId nelle delete per evitare IDOR.
+- Mantieni naming coerente in shared/schema.ts e nel router setup (server/routes.ts).

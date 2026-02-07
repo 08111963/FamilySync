@@ -8,7 +8,9 @@ import {
   integer,
   boolean,
   jsonb,
-  pgEnum
+  pgEnum,
+  index,
+  unique,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -18,6 +20,9 @@ export const roleEnum = pgEnum("role", ["admin", "adult", "teen", "child"]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["free", "premium", "canceled"]);
 export const eventCategoryEnum = pgEnum("event_category", ["work", "school", "sport", "health", "social", "family", "other"]);
 export const choreDifficultyEnum = pgEnum("chore_difficulty", ["easy", "medium", "hard"]);
+export const reportTargetTypeEnum = pgEnum("report_target_type", ["calendar_event", "shopping_item", "chore", "user"]);
+export const reportReasonEnum = pgEnum("report_reason", ["spam", "harassment", "hate", "sexual", "violence", "other"]);
+export const reportStatusEnum = pgEnum("report_status", ["open", "actioned", "dismissed"]);
 
 // USERS
 export const users = pgTable("users", {
@@ -28,6 +33,7 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   emailVerified: boolean("email_verified").default(false),
   termsAcceptedAt: timestamp("terms_accepted_at"),
+  aiFeaturesEnabled: boolean("ai_features_enabled").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -196,6 +202,38 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// REPORTS (UGC moderation)
+export const reports = pgTable("reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  reporterUserId: uuid("reporter_user_id").notNull().references(() => users.id),
+  targetType: reportTargetTypeEnum("target_type").notNull(),
+  targetId: uuid("target_id").notNull(),
+  reasonCategory: reportReasonEnum("reason_category").notNull(),
+  reasonText: text("reason_text"),
+  status: reportStatusEnum("status").default("open").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("reports_family_status_idx").on(table.familyId, table.status, table.createdAt),
+  index("reports_target_idx").on(table.targetType, table.targetId),
+]);
+
+export type Report = typeof reports.$inferSelect;
+
+// BLOCKS (family-scoped user blocks)
+export const blocks = pgTable("blocks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  blockerUserId: uuid("blocker_user_id").notNull().references(() => users.id),
+  blockedUserId: uuid("blocked_user_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  unique("blocks_unique").on(table.familyId, table.blockerUserId, table.blockedUserId),
+]);
+
+export type Block = typeof blocks.$inferSelect;
 
 // Insert schemas for validation
 export const insertUserSchema = createInsertSchema(users).pick({
