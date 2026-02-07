@@ -8,9 +8,17 @@ const openai = new OpenAI({
 export async function generateShoppingSuggestions(context: {
   familySize: number;
   recentPurchases: string[];
+  currentListItems: string[];
   upcomingEvents: string[];
   season: string;
 }) {
+  const allExisting = [...new Set([...context.recentPurchases, ...context.currentListItems])];
+  const excludeList = allExisting.length > 0 
+    ? `\n\nPRODOTTI GIÀ IN LISTA O COMPRATI DI RECENTE (NON suggerirli): ${allExisting.join(', ')}`
+    : '';
+
+  const randomSeed = Math.floor(Math.random() * 10000);
+
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -22,12 +30,17 @@ REGOLE TASSATIVE:
 - Suggerisci SOLO prodotti alimentari che si comprano al supermercato: frutta, verdura, carne, pesce, latticini, pane, pasta, riso, condimenti, surgelati, bevande, snack, cereali, legumi, uova, farina, olio, ecc.
 - VIETATO suggerire: vestiti, scarpe, candele, libri, elettronica, hobby, detersivi, prodotti per la casa, igiene personale o qualsiasi cosa NON alimentare.
 - Le motivazioni devono essere pratiche e concrete (es. "da abbinare con la pasta", "ricco di proteine", "ottimo per la colazione"), MAI generiche o legate alle stagioni in modo banale.
-- Suggerisci prodotti specifici (es. "Mozzarella di bufala" non "Latticini", "Petto di pollo" non "Carne").`,
+- Suggerisci prodotti specifici (es. "Mozzarella di bufala" non "Latticini", "Petto di pollo" non "Carne").
+- OGNI VOLTA che vieni chiamato devi suggerire prodotti DIVERSI dalle volte precedenti. Sii creativo e varia le categorie.
+- NON ripetere MAI prodotti che la famiglia ha già comprato o che sono già nella loro lista della spesa.`,
       }, {
         role: 'user',
-        content: `Famiglia di ${context.familySize} persone.${context.recentPurchases.length > 0 ? ` Hanno comprato di recente: ${context.recentPurchases.join(', ')}.` : ''} ${context.upcomingEvents.length > 0 ? `Eventi in programma: ${context.upcomingEvents.join(', ')}.` : ''} Suggerisci 10 prodotti alimentari da comprare al supermercato. Rispondi SOLO con JSON: {"suggestions": [{"name": "prodotto specifico", "reason": "motivazione pratica e concreta"}]}`,
+        content: `[seed:${randomSeed}] Famiglia di ${context.familySize} persone.${context.recentPurchases.length > 0 ? ` Hanno comprato di recente: ${context.recentPurchases.join(', ')}.` : ''}${context.currentListItems.length > 0 ? ` Hanno già nella lista: ${context.currentListItems.join(', ')}.` : ''}${context.upcomingEvents.length > 0 ? ` Eventi in programma: ${context.upcomingEvents.join(', ')}.` : ''}${excludeList}
+
+Suggerisci 10 prodotti alimentari NUOVI e DIVERSI da quelli già elencati. Rispondi SOLO con JSON: {"suggestions": [{"name": "prodotto specifico", "reason": "motivazione pratica e concreta"}]}`,
       }],
       response_format: { type: 'json_object' },
+      temperature: 1.2,
     });
     
     const content = response.choices[0].message.content || '{"items": []}';

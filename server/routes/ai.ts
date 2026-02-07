@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { db } from '../db';
-import { familyMembers, shoppingHistory, calendarEvents, chores, aiInsights } from '../../shared/schema';
-import { eq, and, gte, desc } from 'drizzle-orm';
+import { familyMembers, shoppingHistory, shoppingLists, shoppingItems, calendarEvents, chores, aiInsights } from '../../shared/schema';
+import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
@@ -31,7 +31,21 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
     const history = await db.select()
       .from(shoppingHistory)
       .where(and(eq(shoppingHistory.familyId, familyId), gte(shoppingHistory.purchasedAt, thirtyDaysAgo)))
+      .orderBy(desc(shoppingHistory.purchasedAt))
       .limit(50);
+
+    const familyLists = await db.select({ id: shoppingLists.id })
+      .from(shoppingLists)
+      .where(eq(shoppingLists.familyId, familyId));
+
+    let currentListItems: string[] = [];
+    if (familyLists.length > 0) {
+      const listIds = familyLists.map(l => l.id);
+      const items = await db.select({ name: shoppingItems.name, isChecked: shoppingItems.isChecked })
+        .from(shoppingItems)
+        .where(inArray(shoppingItems.listId, listIds));
+      currentListItems = items.map(i => i.name);
+    }
 
     const today = new Date().toISOString().split('T')[0];
 
@@ -43,6 +57,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
     const suggestions = await generateShoppingSuggestions({
       familySize: members.length,
       recentPurchases: history.map(h => h.itemName),
+      currentListItems,
       upcomingEvents: upcomingEvents.map(e => e.title),
       season: getCurrentSeason(),
     });
