@@ -250,20 +250,10 @@ Genera ${n} ricette, una per categoria. Solo JSON.`;
   }
 
   try {
-    const batchSize = 4;
-    const batches: string[][] = [];
-    for (let i = 0; i < selectedCats.length; i += batchSize) {
-      batches.push(selectedCats.slice(i, i + batchSize));
-    }
-
     const startTime = Date.now();
-    const results = await Promise.all(
-      batches.map((batch, idx) => fetchRecipeBatch(batch, randomSeed + idx))
-    );
+    const allRecipes = await fetchRecipeBatch(selectedCats, randomSeed);
     const elapsed = Date.now() - startTime;
-
-    let allRecipes = results.flat();
-    console.log(`Parallel generation: ${allRecipes.length} recipes in ${elapsed}ms (${batches.length} batches)`);
+    console.log(`Recipe generation: ${allRecipes.length} recipes in ${elapsed}ms (single call)`);
 
     const seenTitles = new Set<string>();
     const unique = allRecipes.filter(r => {
