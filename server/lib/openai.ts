@@ -218,12 +218,12 @@ export async function generateRecipeSuggestions(context: {
   async function fetchRecipeBatch(cats: string[], seed: number): Promise<RecipeSuggestion[]> {
     const n = cats.length;
     const catList = cats.join(', ');
-    const sysPrompt = `Sei uno chef italiano esperto. DEVI generare esattamente ${n} ricette in un JSON valido.
-FORMATO: {"recipes":[{"title":"...","description":"breve","servings":4,"prepTimeMinutes":15,"cookTimeMinutes":30,"steps":["..."],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"...","quantity":"200","unit":"g","category":"..."}]}]}
-REGOLE: quantity stringa. Genera ${n} ricette, una per categoria: ${catList}. NO spazi nei nomi chiave.`;
+    const sysPrompt = `Chef italiano. Genera ${n} ricette JSON. Formato compatto:
+{"recipes":[{"title":"...","description":"max 15 parole","servings":4,"prepTimeMinutes":10,"cookTimeMinutes":20,"steps":["passo breve max 3-4 steps"],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"...","quantity":"200","unit":"g","category":"..."}]}]}
+Categorie: ${catList}. Max 5-6 ingredienti per ricetta. Quantity stringa.`;
 
-    const userMsg = `[seed:${seed}] ${context.familySize} persone.${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${lastTitlesText}
-Genera ${n} ricette, una per categoria. Solo JSON.`;
+    const userMsg = `[s:${seed}]${context.familySize}pers.${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${lastTitlesText}
+${n} ricette,1 per categoria.JSON.`;
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -232,8 +232,8 @@ Genera ${n} ricette, una per categoria. Solo JSON.`;
         { role: 'user', content: userMsg },
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.9,
-      max_tokens: 8000,
+      temperature: 0.7,
+      max_tokens: 4000,
     });
 
     const content = response.choices[0].message.content || '{"recipes": []}';
