@@ -444,6 +444,20 @@ export default function FamilyScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
           </Card>
+          <Card onPress={() => router.push("/help/user-guide")}>
+            <View style={styles.featureLinkRow}>
+              <View style={[styles.featureLinkIcon, { backgroundColor: "#4A90D920" }]}>
+                <Ionicons name="book-outline" size={24} color="#4A90D9" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Guida Utente</Text>
+                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                  Come usare tutte le funzionalita dell'app
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </Card>
         </View>
       </View>
 

@@ -12,6 +12,7 @@ import choresRoutes from "./routes/chores";
 import aiRoutes from "./routes/ai";
 import paymentsRoutes from "./routes/payments";
 import legalRoutes from "./routes/legal";
+import helpRoutes from "./routes/help";
 import moderationRoutes from "./routes/moderation";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -44,6 +45,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/moderation', moderationRoutes);
 
   app.use('/legal', legalRoutes);
+  app.use('/help', helpRoutes);
 
   const httpServer = createServer(app);
 

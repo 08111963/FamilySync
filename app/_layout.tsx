@@ -20,11 +20,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isLoading) return;
 
-    const inPublicGroup = segments[0] === "login" || segments[0] === "welcome" || segments[0] === "join" || segments[0] === "legal";
+    const inPublicGroup = segments[0] === "login" || segments[0] === "welcome" || segments[0] === "join" || segments[0] === "legal" || segments[0] === "help";
 
     if (!isAuthenticated && !inPublicGroup) {
       router.replace("/welcome");
-    } else if (isAuthenticated && inPublicGroup && segments[0] !== "join" && segments[0] !== "legal") {
+    } else if (isAuthenticated && inPublicGroup && segments[0] !== "join" && segments[0] !== "legal" && segments[0] !== "help") {
       router.replace("/");
     }
   }, [isAuthenticated, isLoading, segments]);
@@ -47,6 +47,7 @@ function RootLayoutNav() {
       <Stack.Screen name="join/[token]" options={{ headerShown: false }} />
       <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
       <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
+      <Stack.Screen name="help/user-guide" options={{ headerShown: false }} />
     </Stack>
   );
 }
