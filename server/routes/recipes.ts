@@ -27,7 +27,7 @@ const createRecipeSchema = z.object({
   source: z.enum(["ai", "manual"]).default("manual"),
   ingredients: z.array(z.object({
     name: z.string().min(1),
-    quantity: z.string().optional(),
+    quantity: z.union([z.number(), z.string(), z.null()]).optional(),
     unit: z.enum(["g", "kg", "ml", "l", "pcs", "tbsp", "tsp", "cup", "pinch", "to_taste"]).optional().nullable(),
     notes: z.string().optional(),
     category: z.string().optional(),
@@ -62,12 +62,15 @@ router.post('/:familyId/recipes', authenticate, requireFamilyMember(), async (re
 
     const insertedIngredients: RecipeIngredient[] = [];
     for (const ing of ingredients) {
+      const rawQty = ing.quantity;
+      const parsedQty = typeof rawQty === 'number' ? rawQty : (typeof rawQty === 'string' ? parseFloat(rawQty) : null);
+      const qty = parsedQty !== null && !isNaN(parsedQty) ? parsedQty : null;
       const [inserted] = await db.insert(recipeIngredients).values({
         recipeId: recipe.id,
         name: ing.name,
-        quantity: ing.quantity,
-        unit: ing.unit,
-        notes: ing.notes,
+        quantity: qty,
+        unit: ing.unit || (qty === null ? 'to_taste' : null),
+        notes: qty === null && typeof rawQty === 'string' && rawQty !== '' ? rawQty : (ing.notes || null),
         category: ing.category,
         normalizedName: ing.name.toLowerCase().trim(),
       }).returning();

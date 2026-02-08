@@ -473,12 +473,17 @@ router.post('/:familyId/recipe-suggestions/save', authenticate, requireAiEnabled
 
     if (recipe.ingredients?.length > 0) {
       for (const ing of recipe.ingredients) {
+        const rawQty = ing.quantity;
+        const parsedQty = typeof rawQty === 'number' ? rawQty : (typeof rawQty === 'string' ? parseFloat(rawQty) : null);
+        const qty = parsedQty !== null && !isNaN(parsedQty) ? parsedQty : null;
+        const ingUnit = ing.unit || (qty === null ? 'to_taste' : null);
+        const ingNotes = qty === null && typeof rawQty === 'string' && rawQty !== '' ? rawQty : (ing.notes || null);
         await db.insert(recipeIngredients).values({
           recipeId: saved.id,
           name: ing.name,
-          quantity: ing.quantity || null,
-          unit: ing.unit || null,
-          notes: ing.notes || null,
+          quantity: qty,
+          unit: ingUnit,
+          notes: ingNotes,
           category: ing.category || null,
           normalizedName: (ing.name || '').toLowerCase().trim(),
         });
