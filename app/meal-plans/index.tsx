@@ -16,11 +16,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
-import { apiRequest, apiFetch, getApiUrl } from "@/lib/query-client";
+import { apiRequest, apiFetch } from "@/lib/query-client";
 
 interface MealPlanItem {
   id?: string;
@@ -44,6 +43,10 @@ interface AiMealPlanResponse {
   title: string;
   weekStartDate: string;
   items: MealPlanItem[];
+}
+
+interface AiMultiPlanResponse {
+  plans: AiMealPlanResponse[];
 }
 
 type TabKey = "plans" | "generate";
@@ -132,7 +135,8 @@ export default function MealPlansScreen() {
   const [allergies, setAllergies] = useState("");
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [aiResult, setAiResult] = useState<AiMealPlanResponse | null>(null);
+  const [aiPlans, setAiPlans] = useState<AiMealPlanResponse[]>([]);
+  const [selectedPlanIndex, setSelectedPlanIndex] = useState(0);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
@@ -194,7 +198,8 @@ export default function MealPlansScreen() {
   const handleGenerate = async () => {
     if (!currentFamily) return;
     setGenerating(true);
-    setAiResult(null);
+    setAiPlans([]);
+    setSelectedPlanIndex(0);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       const preferences: Record<string, string> = {};
@@ -202,11 +207,13 @@ export default function MealPlansScreen() {
       if (allergies.trim()) preferences.allergies = allergies.trim();
       const body: any = { weekStartDate: weekStart };
       if (Object.keys(preferences).length > 0) body.preferences = preferences;
-      const result = await apiFetch<AiMealPlanResponse>(
+      const result = await apiFetch<AiMultiPlanResponse>(
         `/api/ai/${currentFamily.id}/weekly-meal-plan`,
         { method: "POST", body }
       );
-      setAiResult(result);
+      if (result.plans && result.plans.length > 0) {
+        setAiPlans(result.plans);
+      }
     } catch {
       if (Platform.OS === "web") {
         window.alert("Impossibile generare il piano pasti.");
@@ -219,14 +226,15 @@ export default function MealPlansScreen() {
   };
 
   const handleSavePlan = async () => {
-    if (!currentFamily || !aiResult) return;
+    const chosenPlan = aiPlans[selectedPlanIndex];
+    if (!currentFamily || !chosenPlan) return;
     setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       await apiRequest("POST", `/api/meal-plans/${currentFamily.id}/meal-plans`, {
-        title: aiResult.title,
-        weekStartDate: aiResult.weekStartDate ?? weekStart,
-        items: aiResult.items.map((i) => ({
+        title: chosenPlan.title,
+        weekStartDate: chosenPlan.weekStartDate ?? weekStart,
+        items: chosenPlan.items.map((i) => ({
           date: i.date,
           mealType: i.mealType,
           titleOverride: i.title,
@@ -234,7 +242,7 @@ export default function MealPlansScreen() {
         })),
       });
       qc.invalidateQueries({ queryKey: ["/api/meal-plans", currentFamily.id, "meal-plans"] });
-      setAiResult(null);
+      setAiPlans([]);
       setActiveTab("plans");
     } catch {
       if (Platform.OS === "web") {
@@ -247,10 +255,11 @@ export default function MealPlansScreen() {
     }
   };
 
+  const currentPlan = aiPlans[selectedPlanIndex] ?? null;
   const groupedItems: { date: string; items: MealPlanItem[] }[] = [];
-  if (aiResult?.items) {
+  if (currentPlan?.items) {
     const groups = new Map<string, MealPlanItem[]>();
-    for (const item of aiResult.items) {
+    for (const item of currentPlan.items) {
       if (!groups.has(item.date)) groups.set(item.date, []);
       groups.get(item.date)!.push(item);
     }
@@ -403,11 +412,52 @@ export default function MealPlansScreen() {
             )}
           </Pressable>
 
-          {aiResult && (
+          {aiPlans.length > 0 && currentPlan && (
             <View style={styles.resultSection}>
-              <Text style={[styles.resultTitle, { color: colors.text }]}>{aiResult.title}</Text>
+              <Text style={[styles.planChoiceLabel, { color: colors.textSecondary }]}>
+                Scegli il piano che preferisci
+              </Text>
+
+              <View style={styles.planSelectorRow}>
+                {aiPlans.map((plan, idx) => {
+                  const isActive = idx === selectedPlanIndex;
+                  return (
+                    <Pressable
+                      key={idx}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setSelectedPlanIndex(idx);
+                      }}
+                      style={[
+                        styles.planSelectorTab,
+                        {
+                          backgroundColor: isActive ? colors.primary : colors.surface,
+                          borderColor: isActive ? colors.primary : colors.border,
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={idx === 0 ? "restaurant" : "nutrition"}
+                        size={18}
+                        color={isActive ? "#FFFFFF" : colors.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.planSelectorText,
+                          { color: isActive ? "#FFFFFF" : colors.text },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {plan.title || `Piano ${idx + 1}`}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={[styles.resultTitle, { color: colors.text }]}>{currentPlan.title}</Text>
               <Text style={[styles.resultSubtitle, { color: colors.textSecondary }]}>
-                {formatWeekDate(aiResult.weekStartDate ?? weekStart)}
+                {formatWeekDate(currentPlan.weekStartDate ?? weekStart)}
               </Text>
 
               {groupedItems.map((group) => (
@@ -437,24 +487,44 @@ export default function MealPlansScreen() {
                 </View>
               ))}
 
+              <View style={styles.resultActions}>
+                <Pressable
+                  onPress={handleSavePlan}
+                  disabled={saving}
+                  style={({ pressed }) => [
+                    styles.saveButton,
+                    { backgroundColor: colors.success, flex: 1 },
+                    pressed && { opacity: 0.85 },
+                    saving && { opacity: 0.6 },
+                  ]}
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                      <Text style={styles.saveButtonText}>Salva questo piano</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+
               <Pressable
-                onPress={handleSavePlan}
-                disabled={saving}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setAiPlans([]);
+                  setSelectedPlanIndex(0);
+                }}
                 style={({ pressed }) => [
-                  styles.saveButton,
-                  { backgroundColor: colors.success },
-                  pressed && { opacity: 0.85 },
-                  saving && { opacity: 0.6 },
+                  styles.discardButton,
+                  { borderColor: colors.border },
+                  pressed && { opacity: 0.7 },
                 ]}
               >
-                {saving ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                    <Text style={styles.saveButtonText}>Salva Piano</Text>
-                  </>
-                )}
+                <Ionicons name="close-circle-outline" size={18} color={colors.textSecondary} />
+                <Text style={[styles.discardButtonText, { color: colors.textSecondary }]}>
+                  Scarta tutti e rigenera
+                </Text>
               </Pressable>
             </View>
           )}
@@ -672,18 +742,63 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Inter_500Medium",
   },
+  planChoiceLabel: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  planSelectorRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 20,
+  },
+  planSelectorTab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    gap: 6,
+  },
+  planSelectorText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    flexShrink: 1,
+  },
+  resultActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 24,
+  },
   saveButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     height: 50,
     borderRadius: 14,
-    marginTop: 24,
     gap: 8,
   },
   saveButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontFamily: "Inter_600SemiBold",
+  },
+  discardButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 10,
+    gap: 6,
+  },
+  discardButtonText: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
   },
 });
