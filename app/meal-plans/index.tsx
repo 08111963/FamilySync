@@ -242,39 +242,36 @@ export default function MealPlansScreen() {
     return dateStr;
   };
 
-  const renderPlanItem = useCallback(
-    ({ item }: { item: MealPlan }) => (
-      <Card style={styles.planCard}>
-        <View style={styles.planHeader}>
-          <View style={styles.planInfo}>
-            <Text style={[styles.planTitle, { color: colors.text }]}>{item.title}</Text>
-            <Text style={[styles.planDate, { color: colors.textSecondary }]}>
-              {formatWeekDate(item.weekStartDate)}
-            </Text>
-            <Text style={[styles.planCount, { color: colors.textSecondary }]}>
-              {item.items?.length || 0} pasti
-            </Text>
-          </View>
-          <View style={styles.planActions}>
-            <Pressable
-              onPress={() => handleToShoppingList(item.id)}
-              hitSlop={8}
-              style={styles.actionButton}
-            >
-              <Ionicons name="cart-outline" size={22} color={colors.secondary} />
-            </Pressable>
-            <Pressable
-              onPress={() => handleDeletePlan(item.id)}
-              hitSlop={8}
-              style={styles.actionButton}
-            >
-              <Ionicons name="trash-outline" size={22} color={colors.error} />
-            </Pressable>
-          </View>
+  const renderPlanItem = ({ item }: { item: MealPlan }) => (
+    <View style={[styles.planCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.planHeader}>
+        <View style={styles.planInfo}>
+          <Text style={[styles.planTitle, { color: colors.text }]}>{item.title}</Text>
+          <Text style={[styles.planDate, { color: colors.textSecondary }]}>
+            {formatWeekDate(item.weekStartDate)}
+          </Text>
+          <Text style={[styles.planCount, { color: colors.textSecondary }]}>
+            {item.items?.length || 0} pasti
+          </Text>
         </View>
-      </Card>
-    ),
-    [colors, currentFamily]
+        <View style={styles.planActions}>
+          <Pressable
+            onPress={() => handleToShoppingList(item.id)}
+            hitSlop={8}
+            style={styles.actionButton}
+          >
+            <Ionicons name="cart-outline" size={22} color={colors.secondary} />
+          </Pressable>
+          <Pressable
+            onPress={() => handleDeletePlan(item.id)}
+            hitSlop={8}
+            style={styles.actionButton}
+          >
+            <Ionicons name="trash-outline" size={22} color={colors.error} />
+          </Pressable>
+        </View>
+      </View>
+    </View>
   );
 
   return (
@@ -526,6 +523,9 @@ const styles = StyleSheet.create({
   },
   planCard: {
     marginBottom: 12,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
   },
   planHeader: {
     flexDirection: "row",
