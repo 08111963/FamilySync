@@ -221,8 +221,8 @@ export async function generateRecipeSuggestions(context: {
   async function fetchRecipeBatch(cats: string[], seed: number): Promise<RecipeSuggestion[]> {
     const n = cats.length;
     const catList = cats.join(', ');
-    const sysPrompt = `Genera ${n} ricette italiane JSON.{"recipes":[{"title":"nome","description":"10 parole","servings":4,"prepTimeMinutes":10,"cookTimeMinutes":20,"steps":["3 passi brevi"],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"x","quantity":"200","unit":"g","category":"y"}]}]}
-Categorie:${catList}. Max 5 ingredienti. Passi max 3. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni volta.`;
+    const sysPrompt = `Genera ${n} ricette italiane JSON.{"recipes":[{"title":"nome","description":"breve","servings":4,"prepTimeMinutes":10,"cookTimeMinutes":20,"steps":["..."],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"x","quantity":"200","unit":"g","category":"y"}]}]}
+Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni volta.`;
 
     const userMsg = `${seed} ${context.familySize}pers${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${lastTitlesText}`;
 
@@ -234,7 +234,7 @@ Categorie:${catList}. Max 5 ingredienti. Passi max 3. Quantity stringa. INVENTA 
       ],
       response_format: { type: 'json_object' },
       temperature: 1.2,
-      max_tokens: 3000,
+      max_tokens: 5000,
     });
 
     const content = response.choices[0].message.content || '{"recipes": []}';
