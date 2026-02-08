@@ -137,7 +137,7 @@ Stile di comunicazione preferito: Linguaggio semplice e quotidiano.
 ## Recenti Modifiche (Febbraio 2026)
 
 - Implementato backend completo con autenticazione JWT multi-utente
-- Creato database PostgreSQL con 15 tabelle via Drizzle ORM (incluse reports e blocks)
+- Creato database PostgreSQL con 19 tabelle via Drizzle ORM (incluse reports, blocks, recipes, recipe_ingredients, meal_plans, meal_plan_items)
 - Aggiunto WebSocket per sincronizzazione real-time tra dispositivi
 - Integrato OpenAI per suggerimenti AI su spesa e faccende
 - Configurato Stripe per abbonamenti Premium (€4.99/mese o €39.99/anno)
@@ -155,3 +155,10 @@ Stile di comunicazione preferito: Linguaggio semplice e quotidiano.
   - Frontend screen `app/help/user-guide.tsx` con contenuto nativo React Native
   - Link "Guida Utente" aggiunto nella sezione Legale della scheda Famiglia
   - Route `/help` aggiunta come gruppo pubblico in AuthGate (accessibile senza login)
+- Implementato ecosistema completo Ricette & Meal Planning:
+  - Schema DB: 4 nuove tabelle (recipes, recipe_ingredients, meal_plans, meal_plan_items) con 3 enums
+  - Backend CRUD: POST/GET/DELETE ricette, POST/GET/DELETE meal plans, conversione piano a lista spesa
+  - AI endpoints: generazione suggerimenti ricette, generazione piano pasti settimanale
+  - Frontend: schermate ricette (lista + dettaglio), piano pasti (gestione + generazione AI)
+  - Quick-access cards nella home per Ricette e Piano Pasti
+  - Ingredienti con unita italiane, meal types con labels italiani
