@@ -272,6 +272,48 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
   }
 }
 
+export async function searchRecipesByQuery(query: string, context: {
+  familySize: number;
+}): Promise<{ recipes: RecipeSuggestion[] }> {
+  const randomSeed = Math.floor(Math.random() * 100000);
+  try {
+    const startTime = Date.now();
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `Genera ricette italiane basate sulla richiesta dell'utente. JSON:{"recipes":[{"title":"nome","description":"breve","servings":4,"prepTimeMinutes":10,"cookTimeMinutes":20,"steps":["..."],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"x","quantity":"200","unit":"g","category":"y"}]}]}
+Quantity stringa. Genera 3-5 ricette pertinenti alla ricerca.`,
+        },
+        {
+          role: 'user',
+          content: `[s:${randomSeed}] Famiglia ${context.familySize} persone. Cerca: "${query}"`,
+        },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.9,
+      max_tokens: 4000,
+    });
+
+    const content = response.choices[0].message.content || '{"recipes": []}';
+    const elapsed = Date.now() - startTime;
+    console.log(`Recipe search "${query}": ${elapsed}ms, len=${content.length}`);
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      console.error('Recipe search JSON parse error:', content?.slice(0, 300));
+      return { recipes: [] };
+    }
+    return { recipes: parseRecipesResponse(parsed) };
+  } catch (error) {
+    console.error('OpenAI recipe search error:', error);
+    return { recipes: [] };
+  }
+}
+
 export interface MealPlanSuggestion {
   title: string;
   items: Array<{
