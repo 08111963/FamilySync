@@ -109,6 +109,30 @@ const bulkRecipeSchema = z.object({
   })).min(1).max(20),
 });
 
+const VALID_UNITS = new Set(['g', 'kg', 'ml', 'l', 'pcs', 'tbsp', 'tsp', 'cup', 'pinch', 'to_taste']);
+const UNIT_MAP: Record<string, string> = {
+  grammi: 'g', grammo: 'g', gr: 'g',
+  chilogrammi: 'kg', chilogrammo: 'kg',
+  millilitri: 'ml', millilitro: 'ml',
+  litri: 'l', litro: 'l',
+  pezzi: 'pcs', pezzo: 'pcs', pz: 'pcs', spicchi: 'pcs', spicchio: 'pcs',
+  fette: 'pcs', fetta: 'pcs', foglie: 'pcs', foglia: 'pcs',
+  rametti: 'pcs', rametto: 'pcs', mazzi: 'pcs', mazzo: 'pcs',
+  cucchiai: 'tbsp', cucchiaio: 'tbsp',
+  cucchiaini: 'tsp', cucchiaino: 'tsp',
+  tazza: 'cup', tazze: 'cup', bicchiere: 'cup', bicchieri: 'cup',
+  pizzico: 'pinch', pizzichi: 'pinch',
+  'q.b.': 'to_taste', qb: 'to_taste', 'quanto basta': 'to_taste',
+};
+
+function sanitizeUnit(unit: string | null | undefined): string | null {
+  if (!unit) return null;
+  const lower = unit.toLowerCase().trim();
+  if (VALID_UNITS.has(lower)) return lower;
+  if (UNIT_MAP[lower]) return UNIT_MAP[lower];
+  return 'pcs';
+}
+
 router.post('/bulk', authenticate, async (req: Request, res: Response) => {
   try {
     const parsed = bulkRecipeSchema.safeParse(req.body);
@@ -142,11 +166,12 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
         const rawQty = ing.quantity;
         const parsedQty = typeof rawQty === 'number' ? rawQty : (typeof rawQty === 'string' ? parseFloat(rawQty) : null);
         const qty = parsedQty !== null && !isNaN(parsedQty) ? parsedQty : null;
+        const safeUnit = sanitizeUnit(ing.unit) || (qty === null ? 'to_taste' : null);
         await db.insert(recipeIngredients).values({
           recipeId: recipe.id,
           name: ing.name,
           quantity: qty,
-          unit: ing.unit || (qty === null ? 'to_taste' : null),
+          unit: safeUnit,
           notes: qty === null && typeof rawQty === 'string' && rawQty !== '' ? rawQty : (ing.notes || null),
           category: ing.category,
           normalizedName: ing.name.toLowerCase().trim(),
