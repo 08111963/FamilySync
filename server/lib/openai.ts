@@ -122,28 +122,45 @@ export interface RecipeSuggestion {
   ingredients: Array<{ name: string; quantity?: string; unit?: string; category?: string }>;
 }
 
-const recipeSuggestionSchema = z.object({
-  recipes: z.array(z.object({
-    title: z.string(),
-    description: z.string(),
-    servings: z.number().catch(4),
-    prepTimeMinutes: z.number().catch(15),
-    cookTimeMinutes: z.number().catch(30),
-    steps: z.array(z.string()),
-    tags: z.object({
-      diet: z.array(z.string()).optional(),
-      allergens: z.array(z.string()).optional(),
-      cuisine: z.string().optional(),
-      difficulty: z.string().optional(),
-    }).catch({}),
-    ingredients: z.array(z.object({
-      name: z.string(),
-      quantity: z.string().optional(),
-      unit: z.string().optional(),
-      category: z.string().optional(),
-    })),
-  })),
-}).catch({ recipes: [] });
+const singleRecipeSchema = z.object({
+  title: z.string(),
+  description: z.string().catch(''),
+  servings: z.coerce.number().catch(4),
+  prepTimeMinutes: z.coerce.number().catch(15),
+  cookTimeMinutes: z.coerce.number().catch(30),
+  steps: z.array(z.string()).catch([]),
+  tags: z.object({
+    diet: z.array(z.string()).optional(),
+    allergens: z.array(z.string()).optional(),
+    cuisine: z.string().optional(),
+    difficulty: z.string().optional(),
+  }).catch({}),
+  ingredients: z.array(z.object({
+    name: z.string(),
+    quantity: z.coerce.string().optional(),
+    unit: z.coerce.string().optional(),
+    category: z.string().optional(),
+    notes: z.string().optional(),
+  }).catchall(z.unknown())).catch([]),
+}).catchall(z.unknown());
+
+function parseRecipesResponse(raw: unknown): RecipeSuggestion[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const obj = raw as Record<string, unknown>;
+  const arr = Array.isArray(obj.recipes) ? obj.recipes : [];
+  const results: RecipeSuggestion[] = [];
+  for (const item of arr) {
+    try {
+      const parsed = singleRecipeSchema.parse(item);
+      if (parsed.title && (parsed.steps.length > 0 || parsed.ingredients.length > 0)) {
+        results.push(parsed as RecipeSuggestion);
+      }
+    } catch (e) {
+      console.error('Skipping malformed recipe:', JSON.stringify(item)?.slice(0, 200), e);
+    }
+  }
+  return results;
+}
 
 export async function generateRecipeSuggestions(context: {
   familySize: number;
@@ -206,7 +223,16 @@ Genera ${count} ricette italiane TUTTE DIVERSE per la famiglia.`,
     });
 
     const content = response.choices[0].message.content || '{"recipes": []}';
-    return recipeSuggestionSchema.parse(JSON.parse(content));
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch (jsonErr) {
+      console.error('Recipe suggestions JSON parse error:', content?.slice(0, 300));
+      return { recipes: [] };
+    }
+    const recipes = parseRecipesResponse(parsed);
+    console.log(`Recipe suggestions: ${recipes.length} parsed from AI response`);
+    return { recipes };
   } catch (error) {
     console.error('OpenAI recipe suggestions error:', error);
     return { recipes: [] };
