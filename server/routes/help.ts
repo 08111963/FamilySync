@@ -289,6 +289,8 @@ router.get('/user-guide', (_req: Request, res: Response) => {
     const mdContent = fs.readFileSync(mdPath, 'utf-8');
     const bodyHtml = markdownToHtml(mdContent);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.removeHeader('X-Frame-Options');
+    res.setHeader('Content-Security-Policy', "frame-ancestors *");
     res.send(htmlWrapper('Guida Utente', bodyHtml));
   } catch (err) {
     res.status(500).send('Errore nel caricamento della guida utente.');
