@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
@@ -27,6 +28,7 @@ export default function AddMemberScreen() {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const handleCreateInvite = async () => {
     if (!currentFamily) return;
@@ -48,6 +50,14 @@ export default function AddMemberScreen() {
     }
   };
 
+  const handleCopyLink = async () => {
+    if (!inviteLink) return;
+    await Clipboard.setStringAsync(inviteLink);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 3000);
+  };
+
   const handleSendEmail = () => {
     if (!inviteLink) return;
     const familyName = currentFamily?.name || "la famiglia";
@@ -59,17 +69,7 @@ export default function AddMemberScreen() {
     const mailto = to
       ? `mailto:${to}?subject=${subject}&body=${body}`
       : `mailto:?subject=${subject}&body=${body}`;
-    if (Platform.OS === "web") {
-      const a = document.createElement("a");
-      a.href = mailto;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } else {
-      Linking.openURL(mailto).catch(() => {});
-    }
+    Linking.openURL(mailto).catch(() => {});
   };
 
   const handleShareLink = async () => {
@@ -88,6 +88,7 @@ export default function AddMemberScreen() {
     setInviteLink(null);
     setRecipientEmail("");
     setError(null);
+    setCopied(false);
   };
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
@@ -160,64 +161,88 @@ export default function AddMemberScreen() {
                   <Ionicons name="checkmark-circle" size={48} color={colors.success} />
                 </View>
                 <Text style={[styles.successTitle, { color: colors.text }]}>Invito Pronto</Text>
-                <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
-                  Scegli come inviare l'invito
-                </Text>
               </View>
             </Card>
 
-            <View style={styles.sendSection}>
-              <Text style={[styles.sectionLabel, { color: colors.text }]}>Invia per Email</Text>
-              <View style={styles.emailRow}>
-                <View style={{ flex: 1 }}>
-                  <Input
-                    label=""
-                    placeholder="Email del destinatario"
-                    value={recipientEmail}
-                    onChangeText={setRecipientEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                </View>
+            <View style={styles.linkSection}>
+              <Text style={[styles.sectionLabel, { color: colors.text }]}>Link invito</Text>
+              <View style={[styles.linkBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.linkText, { color: colors.text }]} selectable numberOfLines={2}>
+                  {inviteLink}
+                </Text>
               </View>
               <Pressable
-                onPress={handleSendEmail}
+                onPress={handleCopyLink}
                 style={({ pressed }) => [
                   styles.actionButton,
-                  { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+                  { backgroundColor: copied ? colors.success : colors.primary, opacity: pressed ? 0.85 : 1 },
                 ]}
               >
-                <Ionicons name="mail-outline" size={20} color="#FFFFFF" />
+                <Ionicons name={copied ? "checkmark" : "copy-outline"} size={20} color="#FFFFFF" />
                 <Text style={styles.actionButtonText}>
-                  {recipientEmail.trim() ? "Invia Email" : "Apri App Email"}
+                  {copied ? "Copiato!" : "Copia Link"}
                 </Text>
               </Pressable>
-              <Text style={[styles.emailHint, { color: colors.textSecondary }]}>
-                Si apre la tua app email con il messaggio pronto
-              </Text>
             </View>
 
             <View style={[styles.dividerRow, { borderColor: colors.border }]}>
               <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-              <Text style={[styles.dividerText, { color: colors.textSecondary }]}>oppure</Text>
+              <Text style={[styles.dividerText, { color: colors.textSecondary }]}>invia tramite</Text>
               <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
             </View>
 
-            <View style={styles.sendSection}>
-              <Pressable
-                onPress={handleShareLink}
-                style={({ pressed }) => [
-                  styles.actionButton,
-                  { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, opacity: pressed ? 0.85 : 1 },
-                ]}
-              >
-                <Ionicons name="share-outline" size={20} color={colors.text} />
-                <Text style={[styles.actionButtonText, { color: colors.text }]}>Condividi Link</Text>
-              </Pressable>
-              <Text style={[styles.emailHint, { color: colors.textSecondary }]}>
-                WhatsApp, Telegram, SMS o altro
-              </Text>
-            </View>
+            {Platform.OS !== "web" ? (
+              <View style={styles.sendSection}>
+                <Text style={[styles.sectionLabel, { color: colors.text }]}>Email</Text>
+                <Input
+                  label=""
+                  placeholder="Email del destinatario"
+                  value={recipientEmail}
+                  onChangeText={setRecipientEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                <Pressable
+                  onPress={handleSendEmail}
+                  style={({ pressed }) => [
+                    styles.actionButton,
+                    { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, opacity: pressed ? 0.85 : 1 },
+                    { marginTop: 10 },
+                  ]}
+                >
+                  <Ionicons name="mail-outline" size={20} color={colors.text} />
+                  <Text style={[styles.actionButtonText, { color: colors.text }]}>
+                    {recipientEmail.trim() ? "Invia Email" : "Apri App Email"}
+                  </Text>
+                </Pressable>
+
+                <View style={[styles.dividerRow, { borderColor: colors.border }]}>
+                  <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                  <Text style={[styles.dividerText, { color: colors.textSecondary }]}>oppure</Text>
+                  <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                </View>
+
+                <Pressable
+                  onPress={handleShareLink}
+                  style={({ pressed }) => [
+                    styles.actionButton,
+                    { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, opacity: pressed ? 0.85 : 1 },
+                  ]}
+                >
+                  <Ionicons name="share-outline" size={20} color={colors.text} />
+                  <Text style={[styles.actionButtonText, { color: colors.text }]}>Condividi</Text>
+                </Pressable>
+                <Text style={[styles.emailHint, { color: colors.textSecondary }]}>
+                  WhatsApp, Telegram, SMS o altro
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.sendSection}>
+                <Text style={[styles.hintBox, { color: colors.textSecondary }]}>
+                  Copia il link qui sopra e incollalo in un'email, su WhatsApp, Telegram o dove preferisci.
+                </Text>
+              </View>
+            )}
 
             <View style={styles.bottomButtons}>
               <Pressable
@@ -279,10 +304,17 @@ const styles = StyleSheet.create({
   successContainer: { gap: 0 },
   successIcon: { width: 72, height: 72, borderRadius: 36, justifyContent: "center", alignItems: "center" },
   successTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  successSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
-  sendSection: { marginTop: 20 },
+  linkSection: { marginTop: 20 },
   sectionLabel: { fontSize: 15, fontFamily: "Inter_600SemiBold", marginBottom: 10 },
-  emailRow: { flexDirection: "row", gap: 10, alignItems: "flex-end" },
+  linkBox: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  linkText: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  sendSection: { marginTop: 4 },
   actionButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -290,14 +322,14 @@ const styles = StyleSheet.create({
     gap: 8,
     height: 48,
     borderRadius: 14,
-    marginTop: 10,
   },
   actionButtonText: { color: "#FFFFFF", fontSize: 16, fontFamily: "Inter_600SemiBold" },
   emailHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 6, textAlign: "center" },
+  hintBox: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22 },
   dividerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: 20,
+    marginVertical: 18,
     gap: 12,
   },
   dividerLine: { flex: 1, height: 1 },
