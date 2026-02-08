@@ -514,7 +514,7 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
       preferences,
     });
 
-    res.json(result);
+    res.json({ ...result, weekStartDate });
   } catch (error) {
     logger.error('Weekly meal plan error', { error: String(error) });
     res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione del piano pasti" } });

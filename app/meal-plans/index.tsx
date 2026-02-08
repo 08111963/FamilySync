@@ -221,9 +221,11 @@ export default function MealPlansScreen() {
     setAiResult(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
+      const preferences: Record<string, string> = {};
+      if (diet.trim()) preferences.diet = diet.trim();
+      if (allergies.trim()) preferences.allergies = allergies.trim();
       const body: any = { weekStartDate: weekStart };
-      if (diet.trim()) body.diet = diet.trim();
-      if (allergies.trim()) body.allergies = allergies.trim();
+      if (Object.keys(preferences).length > 0) body.preferences = preferences;
       const result = await fetchAiJson<AiMealPlanResponse>(
         `/api/ai/${currentFamily.id}/weekly-meal-plan`,
         { method: "POST", body }
@@ -247,8 +249,13 @@ export default function MealPlansScreen() {
     try {
       await apiRequest("POST", `/api/meal-plans/${currentFamily.id}/meal-plans`, {
         title: aiResult.title,
-        weekStartDate: aiResult.weekStartDate,
-        items: aiResult.items,
+        weekStartDate: aiResult.weekStartDate ?? weekStart,
+        items: aiResult.items.map((i) => ({
+          date: i.date,
+          mealType: i.mealType,
+          titleOverride: i.title,
+          notes: i.description,
+        })),
       });
       qc.invalidateQueries({ queryKey: ["/api/meal-plans", currentFamily.id, "meal-plans"] });
       setAiResult(null);
@@ -424,7 +431,7 @@ export default function MealPlansScreen() {
             <View style={styles.resultSection}>
               <Text style={[styles.resultTitle, { color: colors.text }]}>{aiResult.title}</Text>
               <Text style={[styles.resultSubtitle, { color: colors.textSecondary }]}>
-                {formatWeekDate(aiResult.weekStartDate)}
+                {formatWeekDate(aiResult.weekStartDate ?? weekStart)}
               </Text>
 
               {groupedItems.map((group) => (
