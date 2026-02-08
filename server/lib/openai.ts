@@ -147,37 +147,62 @@ const recipeSuggestionSchema = z.object({
 
 export async function generateRecipeSuggestions(context: {
   familySize: number;
-  preferences?: { diet?: string; allergies?: string; maxTimeMinutes?: number };
-  existingIngredients?: string[];
+  dietaryPreferences?: string[] | string;
+  allergies?: string[] | string;
+  maxTimeMinutes?: number | null;
+  cuisinePreferences?: string[] | null;
+  excludedIngredients?: string[] | null;
+  lastRecipeTitles?: string[];
   count?: number;
 }): Promise<{ recipes: RecipeSuggestion[] }> {
-  const count = context.count || 3;
-  try {
-    const prefText = context.preferences
-      ? `\nPreferenze: ${context.preferences.diet ? `Dieta: ${context.preferences.diet}.` : ''} ${context.preferences.allergies ? `Allergie/intolleranze: ${context.preferences.allergies}.` : ''} ${context.preferences.maxTimeMinutes ? `Tempo max: ${context.preferences.maxTimeMinutes} min.` : ''}`
-      : '';
-    const ingredientsText = context.existingIngredients?.length
-      ? `\nIngredienti già disponibili: ${context.existingIngredients.join(', ')}`
-      : '';
+  const count = context.count || 12;
+  const randomSeed = Math.floor(Math.random() * 100000);
 
+  const dietText = context.dietaryPreferences
+    ? `\nDieta: ${Array.isArray(context.dietaryPreferences) ? context.dietaryPreferences.join(', ') : context.dietaryPreferences}.`
+    : '';
+  const allergyText = context.allergies
+    ? `\nAllergie/intolleranze: ${Array.isArray(context.allergies) ? context.allergies.join(', ') : context.allergies}.`
+    : '';
+  const timeText = context.maxTimeMinutes
+    ? `\nTempo massimo di preparazione+cottura: ${context.maxTimeMinutes} minuti.`
+    : '';
+  const cuisineText = context.cuisinePreferences?.length
+    ? `\nCucine preferite: ${context.cuisinePreferences.join(', ')}.`
+    : '';
+  const excludeText = context.excludedIngredients?.length
+    ? `\nIngredienti da ESCLUDERE: ${context.excludedIngredients.join(', ')}.`
+    : '';
+  const lastTitlesText = context.lastRecipeTitles?.length
+    ? `\n\nTITOLI GIÀ GENERATI (NON ripeterli, inventa piatti COMPLETAMENTE diversi): ${context.lastRecipeTitles.join(', ')}`
+    : '';
+
+  try {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{
         role: 'system',
-        content: `Sei uno chef italiano esperto di cucina familiare. Genera ricette pratiche e gustose per famiglie italiane.
+        content: `Sei uno chef italiano esperto di cucina familiare. Genera ricette pratiche e gustose.
 
-REGOLE:
-- Genera esattamente ${count} ricette DIVERSE.
-- Ogni ricetta deve avere: title, description, servings, prepTimeMinutes, cookTimeMinutes, steps (array di stringhe), tags, ingredients.
-- Gli ingredients devono avere: name, quantity (come stringa es "200"), unit (una tra: g, kg, ml, l, pcs, tbsp, tsp, cup, pinch, to_taste), category (es: "latticini", "verdure", "carne", "pasta", "condimenti").
-- Le ricette devono essere adatte a famiglie con bambini.
+REGOLE TASSATIVE:
+- Genera ESATTAMENTE ${count} ricette TUTTE DIVERSE tra loro.
+- Ogni ricetta deve avere un'IDEA DIVERSA (non varianti minime dello stesso piatto).
+- VARIETÀ obbligatoria: alterna proteine animali/vegetariano, tipologie (pasta, riso, zuppa, forno, insalata, pesce, carne, legumi), tecniche (padella, forno, vapore, crudo).
+- Nomi generici senza brand commerciali.
+- Ogni ricetta deve avere: title, description (2-3 frasi), servings, prepTimeMinutes, cookTimeMinutes, steps (array di stringhe dettagliate), tags, ingredients.
+- tags deve avere: diet (array, es ["vegetariano"]), allergens (array), cuisine (stringa, es "italiana"), difficulty (stringa: "facile"|"media"|"difficile").
+- ingredients deve avere: name, quantity (come stringa es "200"), unit (una tra: g, kg, ml, l, pcs, tbsp, tsp, cup, pinch, to_taste), notes (opzionale), category (es: "latticini", "verdure", "carne", "pesce", "pasta", "condimenti", "frutta").
 - Rispondi SOLO con JSON: {"recipes": [...]}`,
       }, {
         role: 'user',
-        content: `Famiglia di ${context.familySize} persone.${prefText}${ingredientsText}\n\nGenera ${count} ricette italiane per la famiglia.`,
+        content: `[seed:${randomSeed}] Famiglia di ${context.familySize} persone.${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${lastTitlesText}
+
+Genera ${count} ricette italiane TUTTE DIVERSE per la famiglia.`,
       }],
       response_format: { type: 'json_object' },
       temperature: 0.8,
+      presence_penalty: 0.9,
+      frequency_penalty: 0.4,
     });
 
     const content = response.choices[0].message.content || '{"recipes": []}';

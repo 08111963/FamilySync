@@ -84,6 +84,85 @@ router.post('/:familyId/recipes', authenticate, requireFamilyMember(), async (re
   }
 });
 
+const bulkRecipeSchema = z.object({
+  familyId: z.string().uuid(),
+  recipes: z.array(z.object({
+    title: z.string().min(1),
+    description: z.string().optional(),
+    servings: z.number().int().positive().optional(),
+    prepTimeMinutes: z.number().int().nonnegative().optional(),
+    cookTimeMinutes: z.number().int().nonnegative().optional(),
+    steps: z.array(z.string()).min(1),
+    tags: z.object({
+      diet: z.array(z.string()).optional(),
+      allergens: z.array(z.string()).optional(),
+      cuisine: z.string().optional(),
+      difficulty: z.string().optional(),
+    }).optional(),
+    ingredients: z.array(z.object({
+      name: z.string().min(1),
+      quantity: z.union([z.number(), z.string(), z.null()]).optional(),
+      unit: z.string().optional().nullable(),
+      notes: z.string().optional(),
+      category: z.string().optional(),
+    })).min(1),
+  })).min(1).max(20),
+});
+
+router.post('/bulk', authenticate, async (req: Request, res: Response) => {
+  try {
+    const parsed = bulkRecipeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    const { familyId, recipes: recipesToSave } = parsed.data;
+
+    const createdIds: string[] = [];
+
+    for (const recipeData of recipesToSave) {
+      const { ingredients, ...rest } = recipeData;
+
+      const [recipe] = await db.insert(recipes).values({
+        familyId,
+        createdByUserId: req.user!.userId,
+        title: rest.title,
+        description: rest.description,
+        servings: rest.servings,
+        prepTimeMinutes: rest.prepTimeMinutes,
+        cookTimeMinutes: rest.cookTimeMinutes,
+        steps: rest.steps,
+        tags: rest.tags,
+        source: 'ai',
+      }).returning();
+
+      for (const ing of ingredients) {
+        const rawQty = ing.quantity;
+        const parsedQty = typeof rawQty === 'number' ? rawQty : (typeof rawQty === 'string' ? parseFloat(rawQty) : null);
+        const qty = parsedQty !== null && !isNaN(parsedQty) ? parsedQty : null;
+        await db.insert(recipeIngredients).values({
+          recipeId: recipe.id,
+          name: ing.name,
+          quantity: qty,
+          unit: ing.unit || (qty === null ? 'to_taste' : null),
+          notes: qty === null && typeof rawQty === 'string' && rawQty !== '' ? rawQty : (ing.notes || null),
+          category: ing.category,
+          normalizedName: ing.name.toLowerCase().trim(),
+        });
+      }
+
+      createdIds.push(recipe.id);
+    }
+
+    res.status(201).json({ recipeIds: createdIds, count: createdIds.length });
+  } catch (error) {
+    logger.error('Errore bulk creazione ricette', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel salvataggio delle ricette" } });
+  }
+});
+
 router.get('/:familyId/recipes', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;

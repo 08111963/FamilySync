@@ -433,67 +433,38 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
     const familyId = req.params.familyId;
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
-    const { preferences, existingIngredients, count } = req.body || {};
+    const { dietaryPreferences, allergies, maxTimeMinutes, cuisinePreferences, excludedIngredients, count } = req.body || {};
+
+    const existingRecipes = await db.select({ title: recipes.title })
+      .from(recipes)
+      .where(eq(recipes.familyId, familyId))
+      .orderBy(desc(recipes.createdAt))
+      .limit(50);
+    const lastRecipeTitles = existingRecipes.map(r => r.title);
 
     const result = await generateRecipeSuggestions({
       familySize: members.length || 1,
-      preferences,
-      existingIngredients,
-      count: Math.min(count || 3, 5),
+      dietaryPreferences,
+      allergies,
+      maxTimeMinutes: maxTimeMinutes || null,
+      cuisinePreferences: cuisinePreferences || null,
+      excludedIngredients: excludedIngredients || null,
+      lastRecipeTitles,
+      count: Math.min(count || 12, 20),
     });
 
-    res.json(result);
+    const seenTitles = new Set<string>();
+    const dedupedRecipes = result.recipes.filter(r => {
+      const norm = r.title.toLowerCase().trim();
+      if (seenTitles.has(norm)) return false;
+      seenTitles.add(norm);
+      return true;
+    });
+
+    res.json({ recipes: dedupedRecipes, generatedAt: new Date().toISOString() });
   } catch (error) {
     logger.error('Recipe suggestions error', { error: String(error) });
     res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione ricette" } });
-  }
-});
-
-router.post('/:familyId/recipe-suggestions/save', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
-  try {
-    const familyId = req.params.familyId;
-    const recipe = req.body;
-
-    if (!recipe?.title || !recipe?.steps || !recipe?.ingredients) {
-      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dati ricetta mancanti" } });
-    }
-
-    const [saved] = await db.insert(recipes).values({
-      familyId,
-      createdByUserId: req.user!.userId,
-      source: 'ai',
-      title: recipe.title,
-      description: recipe.description || null,
-      servings: recipe.servings || null,
-      prepTimeMinutes: recipe.prepTimeMinutes || null,
-      cookTimeMinutes: recipe.cookTimeMinutes || null,
-      steps: recipe.steps,
-      tags: recipe.tags || null,
-    }).returning();
-
-    if (recipe.ingredients?.length > 0) {
-      for (const ing of recipe.ingredients) {
-        const rawQty = ing.quantity;
-        const parsedQty = typeof rawQty === 'number' ? rawQty : (typeof rawQty === 'string' ? parseFloat(rawQty) : null);
-        const qty = parsedQty !== null && !isNaN(parsedQty) ? parsedQty : null;
-        const ingUnit = ing.unit || (qty === null ? 'to_taste' : null);
-        const ingNotes = qty === null && typeof rawQty === 'string' && rawQty !== '' ? rawQty : (ing.notes || null);
-        await db.insert(recipeIngredients).values({
-          recipeId: saved.id,
-          name: ing.name,
-          quantity: qty,
-          unit: ingUnit,
-          notes: ingNotes,
-          category: ing.category || null,
-          normalizedName: (ing.name || '').toLowerCase().trim(),
-        });
-      }
-    }
-
-    res.status(201).json(saved);
-  } catch (error) {
-    logger.error('Save AI recipe error', { error: String(error) });
-    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel salvataggio della ricetta" } });
   }
 });
 

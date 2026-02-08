@@ -43,32 +43,6 @@ interface Recipe {
   createdAt: string;
 }
 
-interface AiIngredient {
-  name: string;
-  quantity?: string;
-  unit?: string;
-  notes?: string;
-  category?: string;
-}
-
-interface AiRecipeSuggestion {
-  title: string;
-  description?: string;
-  servings?: number;
-  prepTimeMinutes?: number;
-  cookTimeMinutes?: number;
-  steps: string[];
-  tags?: RecipeTag;
-  ingredients: AiIngredient[];
-}
-
-interface AiSuggestionsResponse {
-  recipes?: AiRecipeSuggestion[];
-  suggestions?: AiRecipeSuggestion[];
-}
-
-type TabKey = "my" | "ai";
-
 async function fetchAiJson<T>(route: string, options?: { method?: string; body?: any }): Promise<T> {
   const baseUrl = getApiUrl();
   const url = new URL(route, baseUrl);
@@ -115,12 +89,9 @@ export default function RecipesScreen() {
   const { currentFamily } = useFamily();
   const qc = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<TabKey>("my");
-  const [aiSuggestions, setAiSuggestions] = useState<AiRecipeSuggestion[]>([]);
-  const [savedIndices, setSavedIndices] = useState<Set<number>>(new Set());
   const [generatingAi, setGeneratingAi] = useState(false);
-  const [savingIndex, setSavingIndex] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
@@ -144,37 +115,30 @@ export default function RecipesScreen() {
   const handleGenerateAi = async () => {
     if (!currentFamily) return;
     setGeneratingAi(true);
+    setAiError(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const data = await fetchAiJson<AiSuggestionsResponse>(
+      const data = await fetchAiJson<{ recipes?: any[]; generatedAt?: string }>(
         `/api/ai/${currentFamily.id}/recipe-suggestions`,
-        { method: "POST", body: { count: 3 } }
+        { method: "POST", body: { count: 12 } }
       );
-      const list = data.recipes || data.suggestions || [];
-      setAiSuggestions(Array.isArray(list) ? list : []);
-      setSavedIndices(new Set());
-    } catch (error) {
-      console.error("AI recipe suggestions error:", error);
+      const list = data.recipes || [];
+      if (list.length === 0) {
+        setAiError("Nessuna ricetta generata. Riprova.");
+        return;
+      }
+      router.push({
+        pathname: "/recipes/preview" as any,
+        params: { recipesJson: JSON.stringify(list) },
+      });
+    } catch (error: any) {
+      if (error?.status === 403) {
+        setAiError("Funzionalità AI disabilitata. Attivala nelle Impostazioni.");
+      } else {
+        setAiError("Errore nella generazione. Riprova.");
+      }
     } finally {
       setGeneratingAi(false);
-    }
-  };
-
-  const handleSaveAiRecipe = async (suggestion: AiRecipeSuggestion, index: number) => {
-    if (!currentFamily || savedIndices.has(index)) return;
-    setSavingIndex(index);
-    try {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await fetchAiJson(`/api/ai/${currentFamily.id}/recipe-suggestions/save`, {
-        method: "POST",
-        body: suggestion,
-      });
-      setSavedIndices((prev) => new Set(prev).add(index));
-      qc.invalidateQueries({ queryKey: ["/api/recipes", currentFamily.id, "recipes"] });
-    } catch (error) {
-      console.error("Save AI recipe error:", error);
-    } finally {
-      setSavingIndex(null);
     }
   };
 
@@ -348,102 +312,6 @@ export default function RecipesScreen() {
     [colors, currentFamily]
   );
 
-  const renderAiSuggestionCard = useCallback(
-    ({ item, index }: { item: AiRecipeSuggestion; index: number }) => {
-      const isSaved = savedIndices.has(index);
-      const isSaving = savingIndex === index;
-      const totalTime =
-        (item.prepTimeMinutes || 0) + (item.cookTimeMinutes || 0);
-      const timeStr = formatTime(totalTime || item.cookTimeMinutes);
-
-      return (
-        <View
-          style={[
-            styles.recipeCard,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <View style={styles.recipeCardHeader}>
-            <Text
-              style={[styles.recipeTitle, { color: colors.text, flex: 1 }]}
-              numberOfLines={1}
-            >
-              {item.title}
-            </Text>
-            <Pressable
-              onPress={() => handleSaveAiRecipe(item, index)}
-              disabled={isSaved || isSaving}
-              hitSlop={8}
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Ionicons
-                  name={isSaved ? "bookmark" : "bookmark-outline"}
-                  size={22}
-                  color={isSaved ? colors.success : colors.primary}
-                />
-              )}
-            </Pressable>
-          </View>
-
-          {item.description ? (
-            <Text
-              style={[styles.recipeDescription, { color: colors.textSecondary }]}
-              numberOfLines={3}
-            >
-              {item.description}
-            </Text>
-          ) : null}
-
-          <View style={styles.recipeInfoRow}>
-            {timeStr ? (
-              <View style={styles.infoItem}>
-                <Ionicons
-                  name="time-outline"
-                  size={14}
-                  color={colors.textSecondary}
-                />
-                <Text
-                  style={[styles.infoText, { color: colors.textSecondary }]}
-                >
-                  {timeStr}
-                </Text>
-              </View>
-            ) : null}
-            {item.servings ? (
-              <View style={styles.infoItem}>
-                <Ionicons
-                  name="people-outline"
-                  size={14}
-                  color={colors.textSecondary}
-                />
-                <Text
-                  style={[styles.infoText, { color: colors.textSecondary }]}
-                >
-                  {item.servings}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          {isSaved ? (
-            <View style={[styles.savedBadge, { backgroundColor: colors.success + "15" }]}>
-              <Ionicons name="checkmark-circle" size={14} color={colors.success} />
-              <Text style={[styles.savedText, { color: colors.success }]}>
-                Salvata
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      );
-    },
-    [colors, savedIndices, savingIndex, currentFamily]
-  );
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
@@ -451,157 +319,84 @@ export default function RecipesScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.headerTitle, { color: colors.text }]}>
-          Ricette
+          Le Mie Ricette
         </Text>
-        <View style={styles.headerButton} />
+        <Pressable
+          onPress={handleGenerateAi}
+          disabled={generatingAi}
+          style={styles.headerButton}
+        >
+          {generatingAi ? (
+            <ActivityIndicator size="small" color={colors.secondary} />
+          ) : (
+            <Ionicons name="sparkles" size={24} color={colors.secondary} />
+          )}
+        </Pressable>
       </View>
 
-      <View
-        style={[
-          styles.tabRow,
-          { backgroundColor: colors.surface, borderColor: colors.border },
+      {aiError ? (
+        <View style={[styles.errorBanner, { backgroundColor: colors.error + "15" }]}>
+          <Ionicons name="warning-outline" size={16} color={colors.error} />
+          <Text style={[styles.errorText, { color: colors.error }]}>{aiError}</Text>
+          <Pressable onPress={() => setAiError(null)} hitSlop={8}>
+            <Ionicons name="close" size={16} color={colors.error} />
+          </Pressable>
+        </View>
+      ) : null}
+
+      <Pressable
+        onPress={handleGenerateAi}
+        disabled={generatingAi}
+        style={({ pressed }) => [
+          styles.generateButton,
+          {
+            backgroundColor: colors.secondary,
+            opacity: pressed || generatingAi ? 0.7 : 1,
+            marginHorizontal: 20,
+            marginBottom: 12,
+          },
         ]}
       >
-        <Pressable
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setActiveTab("my");
-          }}
-          style={[
-            styles.tab,
-            activeTab === "my" && [
-              styles.tabActive,
-              { backgroundColor: colors.primary + "15" },
-            ],
-          ]}
-        >
-          <Ionicons
-            name="book"
-            size={18}
-            color={activeTab === "my" ? colors.primary : colors.textSecondary}
-          />
-          <Text
-            style={[
-              styles.tabLabel,
-              {
-                color:
-                  activeTab === "my" ? colors.primary : colors.textSecondary,
-              },
-            ]}
-          >
-            Le Mie Ricette
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setActiveTab("ai");
-          }}
-          style={[
-            styles.tab,
-            activeTab === "ai" && [
-              styles.tabActive,
-              { backgroundColor: colors.secondary + "15" },
-            ],
-          ]}
-        >
-          <Ionicons
-            name="sparkles"
-            size={18}
-            color={
-              activeTab === "ai" ? colors.secondary : colors.textSecondary
-            }
-          />
-          <Text
-            style={[
-              styles.tabLabel,
-              {
-                color:
-                  activeTab === "ai"
-                    ? colors.secondary
-                    : colors.textSecondary,
-              },
-            ]}
-          >
-            Suggerimenti AI
-          </Text>
-        </Pressable>
-      </View>
+        {generatingAi ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <Ionicons name="sparkles" size={20} color="#FFFFFF" />
+        )}
+        <Text style={styles.generateButtonText}>
+          {generatingAi ? "Generazione in corso..." : "Genera Ricette AI"}
+        </Text>
+      </Pressable>
 
-      {activeTab === "my" ? (
-        <FlatList
-          data={recipes}
-          keyExtractor={(item) => item.id}
-          renderItem={renderRecipeCard}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: bottomInset + 24 },
-          ]}
-          scrollEnabled={recipes.length > 0}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
+      <FlatList
+        data={recipes}
+        keyExtractor={(item) => item.id}
+        renderItem={renderRecipeCard}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: bottomInset + 24 },
+        ]}
+        scrollEnabled={recipes.length > 0}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+        ListEmptyComponent={
+          recipesQuery.isLoading ? (
+            <View style={styles.centerContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : (
+            <EmptyState
+              icon="restaurant-outline"
+              title="Nessuna ricetta"
+              subtitle="Genera nuove ricette con l'AI usando il pulsante qui sopra"
             />
-          }
-          ListEmptyComponent={
-            recipesQuery.isLoading ? (
-              <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={colors.primary} />
-              </View>
-            ) : (
-              <EmptyState
-                icon="restaurant-outline"
-                title="Nessuna ricetta"
-                subtitle="Usa la tab Suggerimenti AI per generare nuove ricette"
-              />
-            )
-          }
-        />
-      ) : (
-        <FlatList
-          data={aiSuggestions}
-          keyExtractor={(_, index) => `ai-${index}`}
-          renderItem={renderAiSuggestionCard}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: bottomInset + 24 },
-          ]}
-          scrollEnabled={aiSuggestions.length > 0}
-          ListHeaderComponent={
-            <Pressable
-              onPress={handleGenerateAi}
-              disabled={generatingAi}
-              style={({ pressed }) => [
-                styles.generateButton,
-                {
-                  backgroundColor: colors.secondary,
-                  opacity: pressed || generatingAi ? 0.7 : 1,
-                },
-              ]}
-            >
-              {generatingAi ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Ionicons name="sparkles" size={20} color="#FFFFFF" />
-              )}
-              <Text style={styles.generateButtonText}>
-                {generatingAi ? "Generazione in corso..." : "Genera Ricette"}
-              </Text>
-            </Pressable>
-          }
-          ListEmptyComponent={
-            !generatingAi ? (
-              <EmptyState
-                icon="sparkles-outline"
-                title="Nessun suggerimento"
-                subtitle="Premi il pulsante per generare ricette con l'AI"
-              />
-            ) : null
-          }
-        />
-      )}
+          )
+        }
+      />
     </View>
   );
 }
@@ -629,28 +424,32 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
   },
-  tabRow: {
+  errorBanner: {
     flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginHorizontal: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 4,
-    marginBottom: 12,
+    marginBottom: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
   },
-  tab: {
+  errorText: {
     flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  generateButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
-    borderRadius: 8,
-    gap: 6,
+    paddingVertical: 14,
+    borderRadius: 14,
+    gap: 8,
   },
-  tabActive: {
-    borderRadius: 8,
-  },
-  tabLabel: {
-    fontSize: 13,
+  generateButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
     fontFamily: "Inter_600SemiBold",
   },
   listContent: {
@@ -712,34 +511,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   tagText: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-  },
-  generateButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 14,
-    borderRadius: 14,
-    gap: 8,
-    marginBottom: 16,
-  },
-  generateButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontFamily: "Inter_600SemiBold",
-  },
-  savedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 10,
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  savedText: {
     fontSize: 12,
     fontFamily: "Inter_500Medium",
   },

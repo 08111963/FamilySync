@@ -1,0 +1,162 @@
+OBIETTIVO
+Migliorare la sezione Ricette AI per:
+1) Generare un numero maggiore di ricette (default 12) e SEMPRE diverse tra loro.
+2) Mostrare le ricette generate in “Anteprima” (preview) prima del salvataggio.
+3) Consentire all’utente di salvare solo quelle che vuole in “Le mie ricette”.
+
+VINCOLI
+- NON toccare Stripe/pagamenti.
+- Non cambiare schema DB se non strettamente necessario (preferire riuso tabelle esistenti).
+- Modificare SOLO i file ricette/AI necessari (diff expectation sotto).
+- Rispettare toggle AI: se users.aiFeaturesEnabled=false, nessuna chiamata OpenAI e UI mostra messaggio.
+
+DIFF EXPECTATION (OBBLIGATORIO)
+Toccare SOLO questi file/aree:
+- server/lib/openai.ts:
+  - funzione generateRecipeSuggestions (prompt + output schema + params)
+- server/routes/ai.ts:
+  - endpoint ricette AI (es. /api/ai/:familyId/recipe-suggestions)
+- server/routes/recipes.ts:
+  - aggiungere endpoint “bulk create” o “create from preview”
+- app/recipes/index.tsx:
+  - UI: pulsante “Genera ricette AI” + sezione “Anteprima”
+- app/recipes/[id].tsx:
+  - invariato (serve solo per ricette salvate)
+- (nuovo) app/recipes/ai-preview.tsx oppure app/recipes/preview.tsx:
+  - schermata preview delle ricette AI con selezione + salva
+- (opzionale) server/lib/normalize.ts:
+  - normalizeRecipeTitle (se vuoi dedupe migliore)
+
+NON modificare altri file, non cambiare tab bar globale.
+
+========================================================
+1) BACKEND: GENERAZIONE RICETTE PIÙ NUMEROSE E DIVERSE
+========================================================
+
+1.1 server/lib/openai.ts — generateRecipeSuggestions
+- Aggiorna la funzione per accettare parametri:
+  generateRecipeSuggestions({
+    familySize,
+    dietaryPreferences,     // string[] | string
+    allergies,              // string[] | string
+    maxTimeMinutes,         // number | null
+    cuisinePreferences,     // string[] | null
+    excludedIngredients,    // string[] | null
+    lastRecipeTitles,       // string[] (per evitare ripetizioni tra run)
+    count                  // number (default 12)
+  })
+
+- Output obbligatorio (JSON OGGETTO con array):
+  {
+    "recipes": [
+      {
+        "title": "...",
+        "description": "...",
+        "servings": 4,
+        "prepTimeMinutes": 10,
+        "cookTimeMinutes": 20,
+        "tags": { "diet":[], "allergens":[], "cuisine":"", "difficulty":"" },
+        "ingredients":[ { "name":"", "quantity": 0.0, "unit":"g", "notes":"" } ],
+        "steps":[ "..." ]
+      }
+    ]
+  }
+
+- Requisiti “diversità” (da imporre nel prompt):
+  - Generare ESATTAMENTE {count} ricette.
+  - Tutte con TITOLI diversi e idee diverse (non varianti minime).
+  - Vietato ripetere titoli presenti in lastRecipeTitles.
+  - Varietà: alternare proteine/vegetariano, tipologie (pasta/riso/zuppa/forno/insalata), tecniche (padella/forno/vapore).
+  - No brand.
+
+- Impostazioni call:
+  - response_format: json_object
+  - temperature ~0.8
+  - presence_penalty ~0.9
+  - frequency_penalty ~0.4
+- Validazione Zod: se fallisce return { recipes: [] }.
+
+1.2 server/routes/ai.ts — recipe-suggestions deve RESTITUIRE PREVIEW, NON salvare
+- Modifica endpoint /api/ai/:familyId/recipe-suggestions in modo che:
+  - NON inserisca le ricette in DB automaticamente.
+  - Ritorni solo il JSON preview:
+    { recipes: [...], generatedAt: ISOString }
+- Per evitare ripetizioni tra run:
+  - Leggi gli ultimi N titoli salvati (recipes) o ultimi N preview salvati (se esiste storico) e passali come lastRecipeTitles.
+  - Se non vuoi tabelle nuove, usa titles dalle recipes esistenti (es. ultime 50).
+
+========================================================
+2) BACKEND: SALVATAGGIO SELETTIVO DAL PREVIEW
+========================================================
+In server/routes/recipes.ts:
+- Aggiungi endpoint:
+  POST /api/recipes/bulk
+  body: {
+    familyId: string,
+    recipes: Array<{
+      title: string,
+      description?: string,
+      servings?: number,
+      prepTimeMinutes?: number,
+      cookTimeMinutes?: number,
+      tags?: any,
+      ingredients: Array<{ name: string, quantity?: number, unit?: string, notes?: string }>,
+      steps: string[]
+    }>
+  }
+- Auth + membership required.
+- Validazione Zod forte (no empty title, steps non vuoto, ingredients non vuoto).
+- Inserisci in transaction:
+  - recipes (source='ai', createdByUserId=currentUserId)
+  - recipe_ingredients (normalizedName=normalizeItemName(name))
+- Risposta: array di recipeIds creati.
+
+NOTA: Non serve schema DB nuovo; usi le tabelle recipes e recipe_ingredients già presenti.
+
+========================================================
+3) FRONTEND: PREVIEW PRIMA DEL SALVATAGGIO
+========================================================
+
+3.1 Nuova schermata preview (app/recipes/preview.tsx)
+- UI:
+  - Header: “Ricette suggerite”
+  - Lista (FlatList) di card recipe preview:
+    - titolo, tempi, porzioni, descrizione breve
+    - bottone “Apri” per leggere dettagli (modal o navigazione in-page)
+    - checkbox/toggle “Seleziona per salvare”
+  - CTA in basso: “Salva selezionate (X)”
+- Dettaglio lettura (prima del salvataggio):
+  - Mostra ingredienti + steps completi in una modal o in una view espandibile.
+  - L’utente deve poter leggere tutto PRIMA di salvare.
+
+- Gestione AI_DISABLED:
+  - se il fetch preview riceve 403 AI_DISABLED, mostra banner + bottone “Vai alle Impostazioni”.
+
+3.2 app/recipes/index.tsx
+- Aggiungi pulsante “Genera ricette AI”:
+  - onPress -> chiama GET /api/ai/:familyId/recipe-suggestions?count=12 (se aggiungi query)
+  - poi naviga a /recipes/preview passando payload (in params o state) oppure salva temporaneamente in un state/store (preferire state via router params solo se piccolo).
+- “Le mie ricette” (lista ricette salvate) rimane invariata e mostra solo DB recipes.
+
+3.3 Salvataggio dal preview
+- Quando l’utente tocca “Salva selezionate”:
+  - chiama POST /api/recipes/bulk con familyId + recipes selezionate
+  - on success: naviga a /recipes (index) e refetch lista.
+
+========================================================
+4) REQUISITI DI QUALITÀ / ANTI-DUPLICATI
+========================================================
+- Client-side: prima di mostrare preview, dedupe per titolo case-insensitive (ultima difesa).
+- Server-side: dedupe per titolo normalizzato contro lastRecipeTitles (se match, scarta e sostituisci con altre ricette oppure rigenera una seconda volta per riempire count).
+- Se dopo dedupe < count:
+  - fai una seconda call AI chiedendo solo “N ricette extra” con regole più stringenti, oppure riempi con fallback “manual suggestions” (meglio seconda call se possibile).
+
+========================================================
+CRITERI DI ACCETTAZIONE
+========================================================
+- Premendo “Genera ricette AI” ottengo 12 ricette tutte diverse.
+- Posso aprire e leggere una ricetta completa (ingredienti + steps) PRIMA di salvarla.
+- Posso selezionare solo alcune ricette e salvare “in Le mie ricette”.
+- Nessun salvataggio automatico: DB si popola solo dopo “Salva selezionate”.
+- AI_DISABLED gestito con UI chiara (no crash).
+- Nessuna modifica a Stripe/pagamenti.
