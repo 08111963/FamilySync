@@ -306,7 +306,7 @@ function RecipeDetailModal({
 }
 
 async function fetchAiRecipes(familyId: string, excludeTitles: string[]): Promise<AiRecipe[]> {
-  const body: any = { count: 12 };
+  const body: any = { count: 8 };
   if (excludeTitles.length > 0) body.excludeTitles = excludeTitles;
   const data = await apiFetch<{ recipes?: AiRecipe[] }>(
     `/api/ai/${familyId}/recipe-suggestions`,

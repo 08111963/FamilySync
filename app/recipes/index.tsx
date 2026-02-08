@@ -96,7 +96,7 @@ export default function RecipesScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const data = await apiFetch<{ recipes?: any[]; generatedAt?: string }>(
         `/api/ai/${currentFamily.id}/recipe-suggestions`,
-        { method: "POST", body: { count: 12 } }
+        { method: "POST", body: { count: 8 } }
       );
       const list = data.recipes || [];
       if (list.length === 0) {

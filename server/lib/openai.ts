@@ -186,7 +186,7 @@ export async function generateRecipeSuggestions(context: {
   lastRecipeTitles?: string[];
   count?: number;
 }): Promise<{ recipes: RecipeSuggestion[] }> {
-  const count = context.count || 12;
+  const count = context.count || 8;
   const randomSeed = Math.floor(Math.random() * 100000);
 
   const dietText = context.dietaryPreferences

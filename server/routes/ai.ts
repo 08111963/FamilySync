@@ -452,7 +452,7 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
       cuisinePreferences: cuisinePreferences || null,
       excludedIngredients: excludedIngredients || null,
       lastRecipeTitles,
-      count: Math.min(count || 12, 20),
+      count: Math.min(count || 8, 20),
     });
 
     const seenTitles = new Set<string>();
