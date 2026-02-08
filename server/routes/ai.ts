@@ -471,11 +471,13 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
 });
 
 router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+  const startTime = Date.now();
   try {
     const familyId = req.params.familyId;
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
-    const { weekStartDate, preferences } = req.body || {};
+    const { weekStartDate, preferences, variants: rawVariants } = req.body || {};
+    const variants = rawVariants === 2 ? 2 : 1;
 
     if (!weekStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate)) {
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "weekStartDate è obbligatorio (YYYY-MM-DD)" } });
@@ -487,17 +489,35 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
       preferences,
     };
 
-    const [plan1, plan2] = await Promise.all([
-      generateWeeklyMealPlan({ ...context, planVariant: 1 }),
-      generateWeeklyMealPlan({ ...context, planVariant: 2 }),
-    ]);
+    let resultPlans: any[];
 
-    plan1.title = "Piano A - Classico";
-    plan2.title = "Piano B - Creativo";
+    if (variants === 2) {
+      const [plan1, plan2] = await Promise.all([
+        generateWeeklyMealPlan({ ...context, planVariant: 1 }),
+        generateWeeklyMealPlan({ ...context, planVariant: 2 }),
+      ]);
+      plan1.title = "Piano A - Classico";
+      plan2.title = "Piano B - Creativo";
+      resultPlans = [{ ...plan1, weekStartDate }, { ...plan2, weekStartDate }];
+    } else {
+      const plan = await generateWeeklyMealPlan({ ...context, planVariant: 1 });
+      plan.title = plan.title || "Piano Settimanale";
+      resultPlans = [{ ...plan, weekStartDate }];
+    }
 
-    res.json({ plans: [{ ...plan1, weekStartDate }, { ...plan2, weekStartDate }] });
+    const durationMs = Date.now() - startTime;
+    console.log(JSON.stringify({
+      tag: "AI_MEAL_PLAN",
+      familyId,
+      variants,
+      durationMs,
+      plans: resultPlans.map(p => ({ title: p.title, itemsCount: p.items?.length || 0 })),
+    }));
+
+    res.json({ plans: resultPlans });
   } catch (error) {
-    logger.error('Weekly meal plan error', { error: String(error) });
+    const durationMs = Date.now() - startTime;
+    logger.error('Weekly meal plan error', { error: String(error), durationMs });
     res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione del piano pasti" } });
   }
 });

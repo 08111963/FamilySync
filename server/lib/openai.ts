@@ -319,6 +319,7 @@ export async function generateWeeklyMealPlan(context: {
     ? 'Crea un piano equilibrato e classico con piatti tradizionali italiani.'
     : 'Crea un piano creativo e diverso con piatti più originali e meno convenzionali.';
 
+  const aiStartTime = Date.now();
   try {
     const prefText = context.preferences
       ? `\nPreferenze: ${context.preferences.diet ? `Dieta: ${context.preferences.diet}.` : ''} ${context.preferences.allergies ? `Allergie: ${context.preferences.allergies}.` : ''} ${context.preferences.maxTimeMinutes ? `Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}`
@@ -354,10 +355,26 @@ REGOLE:
       temperature: 0.85,
     });
 
+    const aiDurationMs = Date.now() - aiStartTime;
     const content = response.choices[0].message.content || '{"title":"","items":[]}';
-    return mealPlanSchema.parse(JSON.parse(content));
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(content);
+    } catch (parseErr) {
+      console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_PARSE_FAIL", variant, reason: "json_parse", aiDurationMs, rawLength: content.length }));
+      return { title: '', items: [] };
+    }
+
+    const result = mealPlanSchema.parse(parsed);
+    if (!result.items.length) {
+      console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_PARSE_FAIL", variant, reason: "empty_items", aiDurationMs }));
+    }
+    console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, aiDurationMs, itemsCount: result.items.length }));
+    return result;
   } catch (error) {
-    console.error('OpenAI meal plan error:', error);
+    const aiDurationMs = Date.now() - aiStartTime;
+    console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_PARSE_FAIL", variant, reason: "exception", aiDurationMs, error: String(error) }));
     return { title: '', items: [] };
   }
 }

@@ -1,0 +1,109 @@
+OBIETTIVO (NO STRIPE):
+Rendere (1) Piano Pasti AI più veloce/affidabile e (2) Invito famiglia + sincronizzazione semplici e rapidissimi.
+NON modificare/attivare Stripe, NON toccare file Stripe o config pagamenti.
+
+VINCOLI DI MODIFICA (massima chirurgia):
+- Modifica SOLO questi file:
+  1) server/routes/ai.ts
+  2) server/lib/openai.ts
+  3) app/meal-plans/index.tsx
+  4) app/add-member.tsx
+  5) app/join/[token].tsx
+  6) app/login.tsx
+- NON cambiare schema DB, NON cambiare Drizzle schema, NON aggiungere nuove dipendenze.
+- Mantieni compatibilità con le API esistenti, salvo aggiunta di campi opzionali non-breaking.
+
+========================================
+A) PIANO PASTI: VELOCE E STABILE
+========================================
+PROBLEMA ATTUALE:
+server/routes/ai.ts genera SEMPRE 2 piani in parallelo => lento e più errori.
+
+MODIFICA RICHIESTA (backend):
+1) In POST /api/ai/:familyId/weekly-meal-plan:
+   - Accetta nel body un parametro opzionale:
+     - variants: 1 | 2  (default: 1)
+   - Se variants=1: genera SOLO un piano (planVariant=1) e ritorna:
+     { plans: [{ ...plan, title: "Piano A - Classico", weekStartDate }] }
+   - Se variants=2: genera due piani come oggi (A e B).
+2) Aggiungi logging server-side (solo server logs) per misurare prestazioni:
+   - log JSON con tag "AI_MEAL_PLAN"
+   - durationMs totale endpoint
+   - variants richiesto
+   - itemsCount per ogni piano
+   Esempio: console.log(JSON.stringify({tag:"AI_MEAL_PLAN", familyId, variants, durationMs, plans:[{title, itemsCount}, ...]}))
+
+MODIFICA RICHIESTA (openai helper):
+3) In server/lib/openai.ts dentro generateWeeklyMealPlan:
+   - Aggiungi log della durata della singola chiamata AI (start/end)
+   - In caso di JSON parse error o schema invalid, NON crashare: ritorna { title:'', items:[] } ma logga tag "AI_MEAL_PLAN_PARSE_FAIL".
+
+MODIFICA RICHIESTA (frontend):
+4) In app/meal-plans/index.tsx:
+   - Di default chiama l’endpoint con { weekStartDate, preferences, variants: 1 }
+   - Aggiungi un bottone secondario “Genera alternativa” visibile solo quando esiste un piano generato:
+     - premendolo richiama l’endpoint con variants: 2 e rimpiazza aiPlans con i 2 piani
+   - Gestisci errore 403 AI_DISABLED:
+     - se fetch fallisce con status 403 e error.code=="AI_DISABLED", mostra messaggio “Funzionalità AI disabilitata. Attivala nelle Impostazioni.”
+   - Non cambiare layout generale: solo aggiunta bottone e gestione errori.
+
+========================================
+B) INVITO FAMIGLIA: 2 TAP (LINK) + SINCRONIZZAZIONE IMMEDIATA
+========================================
+PROBLEMA ATTUALE:
+- add-member condivide token invece del link.
+- join se non loggato perde il token.
+- dopo join non sempre si vede subito la nuova famiglia (serve refresh/sync).
+
+MODIFICA RICHIESTA (frontend invito):
+5) In app/add-member.tsx:
+   - Quando crei invito, salva e mostra data.inviteLink (non token).
+   - UI: mostra:
+     - Link invito (primario, selezionabile)
+     - Token (secondario, piccolo “Codice: xxxx”)
+   - Share.share deve inviare il LINK (inviteLink).
+   - Mantieni email opzionale e ruolo come oggi.
+
+MODIFICA RICHIESTA (join + login redirect):
+6) In app/join/[token].tsx:
+   - Se utente NON autenticato:
+     router.replace({ pathname: "/login", params: { redirect: `/join/${token}` } })
+   - Se join va a buon fine:
+     - seleziona subito la nuova famiglia:
+       - usa useFamily() e chiama switchFamily(data.family.id) (o l’equivalente nel progetto)
+     - poi router.replace("/(tabs)") (o home equivalente già usata)
+     - DOPO lo switch, esegui “sincronizzazione post-join” (punto 8).
+
+7) In app/login.tsx:
+   - Leggi redirect da useLocalSearchParams<{ redirect?: string }>()
+   - Dopo login/signup riuscito:
+     - se redirect esiste: router.replace(redirect)
+     - altrimenti comportamento attuale
+   - NON cambiare UI, solo comportamento post-login.
+
+SINCRONIZZAZIONE POST-JOIN (OBBLIGATORIA):
+8) Dopo switchFamily(newFamilyId) nel join success:
+   - Forza refresh dati della famiglia (senza cambiare architettura):
+     a) Se esiste queryClient (React Query): invalidate/refetch query legate alla famiglia (family summary, calendar, shopping, chores).
+     b) Altrimenti: chiama una funzione esistente nel FamilyContext tipo refreshFamilyData()/loadFamilyData().
+   - Se esiste WebSocket client con join room:
+     - emetti join_family(newFamilyId) subito dopo lo switch.
+CRITERIO UX: appena completato join, l’utente vede subito membri/eventi/spesa/faccende della nuova famiglia senza riaprire l’app.
+
+========================================
+DIFF EXPECTATION (per limitare modifiche)
+========================================
+- server/routes/ai.ts: modifica SOLO handler weekly-meal-plan (aggiungi variants + logging)
+- server/lib/openai.ts: aggiungi SOLO logging timing/parse in generateWeeklyMealPlan
+- app/meal-plans/index.tsx: variants=1 default, bottone “Genera alternativa”, gestione 403 AI_DISABLED robusta
+- app/add-member.tsx: usa inviteLink + share link + mostra token secondario
+- app/join/[token].tsx: redirect a login con redirect param + switchFamily + refresh/sync + replace
+- app/login.tsx: supporto redirect param post-login
+
+CRITERI DI ACCETTAZIONE:
+1) “Genera Piano Pasti” (default) fa UNA sola chiamata AI e risulta molto più veloce.
+2) “Genera alternativa” produce 2 piani (A/B).
+3) Invito: share invia un link cliccabile /join/<token>.
+4) Se apro link invito da utente NON loggato: login -> ritorno automatico su join -> join automatico -> entro subito nella famiglia corretta.
+5) Dopo join la famiglia si aggiorna subito (refresh + websocket room se presente).
+6) Stripe rimane invariato e disabilitato.
