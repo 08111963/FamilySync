@@ -6,7 +6,7 @@ import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
-import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateRecipeSuggestions, generateWeeklyMealPlan, type ShoppingSuggestionItem } from '../lib/openai';
+import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, type ShoppingSuggestionItem } from '../lib/openai';
 import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { recipes, recipeIngredients } from '../../shared/schema';
@@ -519,6 +519,28 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
     const durationMs = Date.now() - startTime;
     logger.error('Weekly meal plan error', { error: String(error), durationMs });
     res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione del piano pasti" } });
+  }
+});
+
+router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = req.params.familyId;
+    const { query } = req.body || {};
+
+    if (!query || typeof query !== 'string' || query.trim().length < 2) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Inserisci almeno 2 caratteri per la ricerca" } });
+    }
+
+    const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
+
+    const result = await searchRecipesByQuery(query.trim(), {
+      familySize: members.length || 1,
+    });
+
+    res.json({ recipes: result.recipes, query: query.trim() });
+  } catch (error) {
+    logger.error('Recipe search error', { error: String(error) });
+    res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella ricerca ricette" } });
   }
 });
 
