@@ -149,3 +149,9 @@ Stile di comunicazione preferito: Linguaggio semplice e quotidiano.
   - AI guard middleware: funzionalità AI controllata da toggle utente (GDPR consent)
   - Frontend: toggle AI nelle impostazioni, modal report, lista utenti bloccati, pannello admin segnalazioni
 - Aggiornati Privacy Policy (sezione AI dettagliata) e Termini d'Uso (sezione UGC/moderazione)
+- Implementato sistema guida utente completo:
+  - File markdown `/docs/guida-utente.md` con documentazione completa in italiano
+  - Backend route pubblica `GET /help/user-guide` che serve HTML styled (no auth richiesta)
+  - Frontend screen `app/help/user-guide.tsx` con contenuto nativo React Native
+  - Link "Guida Utente" aggiunto nella sezione Legale della scheda Famiglia
+  - Route `/help` aggiunta come gruppo pubblico in AuthGate (accessibile senza login)
