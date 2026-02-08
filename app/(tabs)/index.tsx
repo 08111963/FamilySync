@@ -263,6 +263,57 @@ export default function HomeScreen() {
           </Card>
         )}
       </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Cucina</Text>
+          <Ionicons name="restaurant" size={20} color={colors.secondary} />
+        </View>
+        <View style={{ gap: 12 }}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/recipes");
+            }}
+            style={({ pressed }) => [
+              styles.quickAction,
+              { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: colors.secondary + "20" }]}>
+              <Ionicons name="book" size={22} color={colors.secondary} />
+            </View>
+            <View style={styles.quickActionInfo}>
+              <Text style={[styles.quickActionTitle, { color: colors.text }]}>Ricette</Text>
+              <Text style={[styles.quickActionSubtitle, { color: colors.textSecondary }]}>
+                Gestisci le ricette della famiglia
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/meal-plans");
+            }}
+            style={({ pressed }) => [
+              styles.quickAction,
+              { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: colors.accent + "20" }]}>
+              <Ionicons name="nutrition" size={22} color={colors.accent} />
+            </View>
+            <View style={styles.quickActionInfo}>
+              <Text style={[styles.quickActionTitle, { color: colors.text }]}>Piano Pasti</Text>
+              <Text style={[styles.quickActionSubtitle, { color: colors.textSecondary }]}>
+                Pianifica i pasti della settimana
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+      </View>
     </ScrollView>
   );
 }
@@ -392,5 +443,32 @@ const styles = StyleSheet.create({
   leaderboardPoints: {
     fontSize: 16,
     fontFamily: "Inter_600SemiBold",
+  },
+  quickAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 14,
+  },
+  quickActionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  quickActionInfo: {
+    flex: 1,
+  },
+  quickActionTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 2,
+  },
+  quickActionSubtitle: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
   },
 });

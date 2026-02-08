@@ -44,6 +44,9 @@ function RootLayoutNav() {
       <Stack.Screen name="shopping-list" options={{ headerShown: false }} />
       <Stack.Screen name="premium" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="ai-insights" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="recipes/index" options={{ headerShown: false }} />
+      <Stack.Screen name="recipes/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="meal-plans/index" options={{ headerShown: false }} />
       <Stack.Screen name="join/[token]" options={{ headerShown: false }} />
       <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
       <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
