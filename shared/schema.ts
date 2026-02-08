@@ -11,6 +11,8 @@ import {
   pgEnum,
   index,
   unique,
+  numeric,
+  date,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -23,6 +25,9 @@ export const choreDifficultyEnum = pgEnum("chore_difficulty", ["easy", "medium",
 export const reportTargetTypeEnum = pgEnum("report_target_type", ["calendar_event", "shopping_item", "chore", "user"]);
 export const reportReasonEnum = pgEnum("report_reason", ["spam", "harassment", "hate", "sexual", "violence", "other"]);
 export const reportStatusEnum = pgEnum("report_status", ["open", "actioned", "dismissed"]);
+export const mealTypeEnum = pgEnum("meal_type", ["breakfast", "lunch", "dinner", "snack"]);
+export const recipeSourceEnum = pgEnum("recipe_source", ["ai", "manual"]);
+export const ingredientUnitEnum = pgEnum("ingredient_unit", ["g", "kg", "ml", "l", "pcs", "tbsp", "tsp", "cup", "pinch", "to_taste"]);
 
 // USERS
 export const users = pgTable("users", {
@@ -234,6 +239,72 @@ export const blocks = pgTable("blocks", {
 ]);
 
 export type Block = typeof blocks.$inferSelect;
+
+// RECIPES
+export const recipes = pgTable("recipes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  createdByUserId: uuid("created_by_user_id").notNull().references(() => users.id),
+  source: recipeSourceEnum("source").notNull().default("ai"),
+  title: text("title").notNull(),
+  description: text("description"),
+  servings: integer("servings"),
+  prepTimeMinutes: integer("prep_time_minutes"),
+  cookTimeMinutes: integer("cook_time_minutes"),
+  steps: jsonb("steps").notNull().$type<string[]>(),
+  tags: jsonb("tags").$type<{ diet?: string[]; allergens?: string[]; cuisine?: string; difficulty?: string }>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type Recipe = typeof recipes.$inferSelect;
+
+// RECIPE INGREDIENTS
+export const recipeIngredients = pgTable("recipe_ingredients", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  recipeId: uuid("recipe_id").notNull().references(() => recipes.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  quantity: numeric("quantity"),
+  unit: ingredientUnitEnum("unit"),
+  notes: text("notes"),
+  category: varchar("category", { length: 50 }),
+  normalizedName: text("normalized_name").notNull(),
+}, (table) => [
+  index("recipe_ingredients_recipe_idx").on(table.recipeId),
+  index("recipe_ingredients_norm_idx").on(table.normalizedName),
+]);
+
+export type RecipeIngredient = typeof recipeIngredients.$inferSelect;
+
+// MEAL PLANS
+export const mealPlans = pgTable("meal_plans", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  createdByUserId: uuid("created_by_user_id").notNull().references(() => users.id),
+  weekStartDate: date("week_start_date").notNull(),
+  title: text("title"),
+  preferences: jsonb("preferences").$type<{ diet?: string; allergies?: string; maxTimeMinutes?: number; mealsPerDay?: number }>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  unique("meal_plans_family_week").on(table.familyId, table.weekStartDate),
+]);
+
+export type MealPlan = typeof mealPlans.$inferSelect;
+
+// MEAL PLAN ITEMS
+export const mealPlanItems = pgTable("meal_plan_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  mealPlanId: uuid("meal_plan_id").notNull().references(() => mealPlans.id, { onDelete: "cascade" }),
+  date: date("date").notNull(),
+  mealType: mealTypeEnum("meal_type").notNull(),
+  recipeId: uuid("recipe_id").references(() => recipes.id),
+  titleOverride: text("title_override"),
+  servings: integer("servings"),
+  notes: text("notes"),
+}, (table) => [
+  index("meal_plan_items_plan_date_idx").on(table.mealPlanId, table.date),
+]);
+
+export type MealPlanItem = typeof mealPlanItems.$inferSelect;
 
 // Insert schemas for validation
 export const insertUserSchema = createInsertSchema(users).pick({

@@ -1,0 +1,262 @@
+OBIETTIVO
+Aggiungere un “ecosistema” Ricette + Meal Planning avanzato, integrato con AI, SENZA appesantire la schermata AI Insights.
+Scelta architetturale consigliata: CREARE UNA NUOVA SEZIONE dedicata (“Ricette & Meal Plan”), accessibile:
+- da AI Insights (CTA “Ricette & Meal Plan”)
+- e/o da una voce Settings/Home (senza toccare tab bar globale se non necessario)
+
+Perché nuova sezione (motivazione tecnica):
+- Ricette/meal planning è un dominio “grande” (liste, dettagli, salvataggi, pianificazione settimanale, generazione shopping list) e in AI Insights diventerebbe ingestibile.
+- AI Insights resta “snackable” (insights rapidi, spesa, faccende). Ricette/Meal Plan è workflow.
+
+VINCOLI
+- NON toccare Stripe/pagamenti.
+- Mantenere le convenzioni esistenti: Expo Router, Node/Express, Drizzle ORM (TS), Neon Postgres, schema in shared/schema.ts, Zod + drizzle-zod, db:push.
+- Riutilizzare il toggle AI già presente (users.aiFeaturesEnabled): se AI OFF, nessuna chiamata OpenAI e UI mostra messaggio/CTA.
+
+SCOPE (MVP “avanzato” ma realistico)
+1) Ricette:
+   - Generazione AI ricette personalizzate
+   - Salvataggio ricette (famiglia) + vista dettagli
+   - Ingredienti strutturati (nome, quantità, unità) e tags (dieta/allergeni/cucina)
+2) Meal Plan:
+   - Pianificazione settimanale (7 giorni) con pasti (colazione/pranzo/cena opzionale)
+   - Generazione AI del piano in base a: dimensione famiglia, preferenze, eventi imminenti, vincoli tempo, varietà, “no ripetizioni”
+   - “Aggiungi ingredienti alla lista spesa”: aggrega ingredienti e crea/aggiorna una shopping list deduplicando ciò che è già in lista e ciò che è stato comprato di recente.
+3) UI:
+   - Schermata “Ricette & Meal Plan” con 2 tab interne: “Ricette” e “Piano”
+   - Flusso: genera piano → salva → genera lista spesa
+
+========================================================
+DIFF EXPECTATION (OBBLIGATORIO — NON ALLARGARTI)
+========================================================
+Modifica SOLO questi file/aree (oltre ai nuovi file di schermate/route esplicitati sotto):
+- shared/schema.ts (aggiunta tabelle/enum)
+- server/routes.ts (mount nuove route)
+- server/routes/recipes.ts (NUOVO)
+- server/routes/meal-plans.ts (NUOVO)
+- server/routes/ai.ts (aggiungere SOLO 2 endpoint AI: recipe-suggestions e meal-plan; non toccare gli altri)
+- server/lib/openai.ts (aggiungere 2 funzioni: generateRecipeSuggestions, generateWeeklyMealPlan)
+- server/lib/normalize.ts (riusa normalizeItemName per dedupe ingredienti)
+- app/ai-insights.tsx (aggiungi SOLO CTA per aprire la nuova sezione; non ristrutturare tabs)
+- app/recipes/index.tsx (NUOVO)
+- app/recipes/[id].tsx (NUOVO)
+- app/meal-plans/index.tsx (NUOVO)
+- app/meal-plans/new.tsx (NUOVO)
+- (opzionale) app/components/IngredientList.tsx (NUOVO, semplice)
+- docs/guida-utente.md (aggiungi sezione Ricette & Meal Plan + aggiorna mappa schermate)
+
+========================================================
+1) DATABASE (DRIZZLE) — NUOVE TABELLE MINIME
+========================================================
+In shared/schema.ts aggiungi:
+
+A) Enum (pgEnum):
+- meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack'
+- recipe_source: 'ai' | 'manual'
+- unit (opzionale): 'g'|'kg'|'ml'|'l'|'pcs'|'tbsp'|'tsp'|'cup'|'pinch'|'to_taste'
+
+B) recipes
+- id uuid pk default random
+- familyId uuid NOT NULL FK families.id
+- createdByUserId uuid NOT NULL FK users.id
+- source recipe_source NOT NULL default 'ai'
+- title text NOT NULL
+- description text nullable
+- servings int nullable
+- prepTimeMinutes int nullable
+- cookTimeMinutes int nullable
+- steps jsonb NOT NULL (array di stringhe)
+- tags jsonb nullable (es. {diet:[], allergens:[], cuisine:"", difficulty:""})
+- createdAt timestamp default now
+
+C) recipe_ingredients
+- id uuid pk
+- recipeId uuid NOT NULL FK recipes.id on delete cascade
+- name text NOT NULL
+- quantity numeric nullable
+- unit unit nullable
+- notes text nullable
+- category text nullable (food/household/personal se vuoi riuso)
+- normalizedName text NOT NULL (per dedupe)
+- index(recipeId)
+- index(normalizedName)
+
+D) meal_plans
+- id uuid pk
+- familyId uuid NOT NULL
+- createdByUserId uuid NOT NULL
+- weekStartDate date NOT NULL (lunedì della settimana)
+- title text nullable (es. “Settimana 12”)
+- preferences jsonb nullable (snapshot preferenze usate per generazione)
+- createdAt timestamp default now
+- unique(familyId, weekStartDate)
+
+E) meal_plan_items
+- id uuid pk
+- mealPlanId uuid NOT NULL FK meal_plans.id on delete cascade
+- date date NOT NULL
+- mealType meal_type NOT NULL
+- recipeId uuid nullable FK recipes.id
+- titleOverride text nullable (se il pasto non è legato a recipe)
+- servings int nullable
+- notes text nullable
+- index(mealPlanId, date)
+
+Esegui npm run db:push.
+
+========================================================
+2) BACKEND ROUTES (EXPRESS)
+========================================================
+
+2.1 /api/recipes (server/routes/recipes.ts)
+- GET /api/recipes?familyId=...
+  - auth + membership (family_members)
+  - lista ricette per famiglia (paginate semplice)
+- GET /api/recipes/:id
+  - auth + membership della familyId associata alla ricetta
+  - include ingredients
+- POST /api/recipes
+  - auth + membership
+  - body validato Zod: familyId, title, steps[], ingredients[], tags
+- DELETE /api/recipes/:id
+  - auth + admin o owner (scelta: admin-only o owner+admin)
+
+2.2 /api/meal-plans (server/routes/meal-plans.ts)
+- GET /api/meal-plans?familyId=...&weekStart=YYYY-MM-DD
+  - auth + membership
+- POST /api/meal-plans
+  - crea o aggiorna piano della settimana (upsert by familyId+weekStartDate)
+  - salva items
+- POST /api/meal-plans/:id/add-to-shopping-list
+  - auth + membership
+  - body: { shoppingListId?: string } (se assente, usa la prima lista o crea “Spesa settimana”)
+  - aggrega ingredienti di tutte le ricette nel piano
+  - dedupe vs:
+    - shopping_items non checked (già in lista)
+    - shopping_items checked negli ultimi 30 giorni (spesa fatta)
+  - usa normalizeItemName su ingredienti
+  - inserisce shopping_items con checked=false
+
+Mount routes in server/routes.ts:
+- app.use('/api/recipes', recipesRoutes)
+- app.use('/api/meal-plans', mealPlansRoutes)
+
+========================================================
+3) AI (OPENAI) — 2 FUNZIONI + 2 ENDPOINT
+========================================================
+
+3.1 server/lib/openai.ts
+Aggiungi:
+A) generateRecipeSuggestions(context) -> { recipes: [...] }
+- output JSON oggetto:
+  {
+    "recipes":[
+      {
+        "title": "...",
+        "description": "...",
+        "servings": 4,
+        "prepTimeMinutes": 10,
+        "cookTimeMinutes": 20,
+        "tags": { "diet":[], "allergens":[], "cuisine":"", "difficulty":"" },
+        "ingredients":[ { "name":"", "quantity": 0.0, "unit":"g", "notes":"" } ],
+        "steps":[ "..." ]
+      }
+    ]
+  }
+- chiedi 6 ricette TUTTE diverse, senza brand
+- vincoli: varietà, bilanciamento tempo, stagionalità
+- response_format json_object + Zod validation
+
+B) generateWeeklyMealPlan(context) -> { weekStartDate, days:[...] }
+- output JSON oggetto:
+  {
+    "weekStartDate":"YYYY-MM-DD",
+    "days":[
+      {
+        "date":"YYYY-MM-DD",
+        "meals":[
+          { "mealType":"lunch", "recipe": { ...ricetta completa come sopra... }, "notes":"" }
+        ]
+      }
+    ]
+  }
+- chiedi piano 7 giorni con almeno 1 pasto/die (minimo) o 2 pasti/die (se vuoi “avanzato”)
+- vincoli “no ripetizioni”: non riusare titolo ricetta nella settimana
+- integra upcomingEvents (se ci sono eventi, suggerire pasti rapidi)
+- response_format json_object + Zod validation
+
+3.2 server/routes/ai.ts
+Aggiungi SOLO:
+- GET /api/ai/:familyId/recipe-suggestions
+- GET /api/ai/:familyId/weekly-meal-plan?weekStart=YYYY-MM-DD
+Entrambe:
+- auth + membership
+- rispettano users.aiFeaturesEnabled (se OFF -> 403 AI_DISABLED)
+- includono nel context:
+  - family size (numero membri)
+  - eventuali preferenze salvate (per MVP: diet/allergies stringhe opzionali nel query o in preferences json in meal_plans)
+  - upcomingEvents (già usato altrove)
+- persistono output in DB:
+  - le ricette generate vengono salvate in recipes + recipe_ingredients con source='ai'
+  - il piano viene salvato in meal_plans + meal_plan_items (con recipeId delle ricette salvate)
+
+========================================================
+4) FRONTEND (EXPO ROUTER)
+========================================================
+
+4.1 AI Insights: aggiungi solo una CTA (app/ai-insights.tsx)
+- In alto o sotto i tab esistenti, aggiungi un bottone:
+  “Ricette & Meal Plan”
+  onPress -> router.push("/meal-plans") (o "/recipes")
+- NON aggiungere una 4a tab in AI Insights.
+
+4.2 Nuove schermate
+A) app/recipes/index.tsx
+- Lista ricette per famiglia attiva
+- Bottoni:
+  - “Suggerisci ricette AI” -> chiama /api/ai/:familyId/recipe-suggestions
+  - naviga su dettaglio
+
+B) app/recipes/[id].tsx
+- Dettaglio ricetta: titolo, tempi, servings, ingredienti, steps
+- Bottone “Aggiungi ingredienti alla lista spesa” (opzionale MVP: crea una lista o chiede selezione lista)
+
+C) app/meal-plans/index.tsx
+- Mostra piano della settimana corrente (calcola weekStart lunedì)
+- Bottone “Genera piano AI” -> router.push("/meal-plans/new")
+
+D) app/meal-plans/new.tsx
+- Form preferenze (MVP):
+  - numero pasti/giorno (1 o 2)
+  - preferenze dieta/allergie (testo libero)
+  - tempo massimo per pasto (15/30/45)
+- Pulsante “Genera” -> GET /api/ai/:familyId/weekly-meal-plan?weekStart=...
+- Mostra preview -> “Salva”
+- Dopo salvataggio -> torna a index
+
+E) Gestione AI_DISABLED
+- Se 403 AI_DISABLED: mostra banner + CTA a Impostazioni famiglia (route già esistente)
+
+========================================================
+5) GUIDA UTENTE (docs/guida-utente.md)
+========================================================
+Aggiungi sezione “Ricette & Meal Plan”:
+- Come generare ricette con AI
+- Come creare un piano settimanale
+- Come aggiungere ingredienti alla lista spesa
+Aggiorna “Mini mappa schermate” con:
+- Ricette
+- Meal Plan
+
+========================================================
+CRITERI DI ACCETTAZIONE (CHECKLIST)
+========================================================
+- Posso generare ricette AI e vederle salvate in lista e dettaglio.
+- Posso generare un piano settimanale AI e rivederlo nella schermata Piano.
+- Posso premere “Aggiungi ingredienti alla lista spesa” e vedere nuovi item inseriti senza duplicati (rispetto a non-checked e checked recenti).
+- Se AI è disabilitata, tutte le chiamate AI mostrano messaggio chiaro e non chiamano OpenAI.
+- Nessuna modifica a Stripe/pagamenti.
+
+NOTE
+- Evitare over-engineering: niente “pantry inventory” in questo MVP.
+- Tenere tutte le query Drizzle scoped su familyId per evitare IDOR.
