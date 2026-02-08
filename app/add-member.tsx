@@ -26,6 +26,7 @@ export default function AddMemberScreen() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"adult" | "teen" | "child">("adult");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +42,8 @@ export default function AddMemberScreen() {
         role,
       });
       const data = await res.json();
-      setInviteLink(data.token);
+      setInviteLink(data.inviteLink || null);
+      setInviteToken(data.token || null);
     } catch (err) {
       setError("Errore nella creazione dell'invito. Riprova.");
       console.error("Invite error:", err);
@@ -51,11 +53,12 @@ export default function AddMemberScreen() {
   };
 
   const handleShareInvite = async () => {
-    if (!inviteLink) return;
+    if (!inviteLink && !inviteToken) return;
     try {
-      await Share.share({
-        message: `Unisciti alla mia famiglia su FamilySync! Usa questo codice invito: ${inviteLink}`,
-      });
+      const shareText = inviteLink
+        ? `Unisciti alla mia famiglia su FamilySync! Clicca qui: ${inviteLink}`
+        : `Unisciti alla mia famiglia su FamilySync! Usa questo codice invito: ${inviteToken}`;
+      await Share.share({ message: shareText });
     } catch (err) {
       console.error("Share error:", err);
     }
@@ -147,13 +150,20 @@ export default function AddMemberScreen() {
                 </View>
                 <Text style={[styles.successTitle, { color: colors.text }]}>Invito Creato!</Text>
                 <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
-                  Condividi il codice invito con il nuovo membro
+                  Condividi il link invito con il nuovo membro
                 </Text>
-                <View style={[styles.codeBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                  <Text style={[styles.codeText, { color: colors.text }]} selectable>
-                    {inviteLink}
+                {inviteLink ? (
+                  <View style={[styles.codeBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <Text style={[styles.codeText, { color: colors.text }]} selectable>
+                      {inviteLink}
+                    </Text>
+                  </View>
+                ) : null}
+                {inviteToken ? (
+                  <Text style={[styles.tokenHint, { color: colors.textSecondary }]}>
+                    Codice: {inviteToken}
                   </Text>
-                </View>
+                ) : null}
                 <Pressable
                   onPress={handleShareInvite}
                   style={({ pressed }) => [
@@ -221,6 +231,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   codeText: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  tokenHint: { fontSize: 12, fontFamily: "Inter_400Regular" },
   shareButton: {
     flexDirection: "row",
     alignItems: "center",

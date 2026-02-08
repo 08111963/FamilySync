@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 
@@ -12,6 +12,7 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { login, signup } = useAuth();
+  const { redirect } = useLocalSearchParams<{ redirect?: string }>();
 
   const [isSignup, setIsSignup] = useState(false);
   const [name, setName] = useState('');
@@ -58,6 +59,10 @@ export default function LoginScreen() {
         await login(email.trim(), password);
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (redirect) {
+        router.replace(redirect as any);
+        return;
+      }
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const msg = err?.message || '';

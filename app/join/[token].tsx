@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/context/AuthContext";
+import { useFamily } from "@/context/FamilyContext";
 import { apiRequest } from "@/lib/query-client";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -16,6 +17,7 @@ export default function JoinFamilyScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { switchFamily, refetchAll } = useFamily();
   const qc = useQueryClient();
 
   const [state, setState] = useState<JoinState>("loading");
@@ -28,7 +30,12 @@ export default function JoinFamilyScreen() {
     if (authLoading) return;
 
     if (!isAuthenticated) {
-      setState("login_required");
+      if (token) {
+        router.replace({ pathname: "/login", params: { redirect: `/join/${token}` } });
+      } else {
+        setState("error");
+        setErrorMessage("Link di invito non valido");
+      }
       return;
     }
 
@@ -46,10 +53,21 @@ export default function JoinFamilyScreen() {
     try {
       const res = await apiRequest("POST", `/api/families/join/${token}`, {});
       const data = await res.json();
-      setFamilyName(data.family?.name || "la famiglia");
+      const newFamilyId = data.family?.id;
+      const newFamilyName = data.family?.name || "la famiglia";
+      setFamilyName(newFamilyName);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      if (newFamilyId) {
+        switchFamily(newFamilyId);
+        qc.invalidateQueries({ queryKey: ["/api/families"] });
+        qc.invalidateQueries({ queryKey: ["/api/families", newFamilyId] });
+        qc.invalidateQueries({ queryKey: ["/api/calendar", newFamilyId] });
+        qc.invalidateQueries({ queryKey: ["/api/shopping", newFamilyId, "lists"] });
+        qc.invalidateQueries({ queryKey: ["/api/chores", newFamilyId] });
+      }
+
       setState("success");
-      qc.invalidateQueries({ queryKey: ["/api/families"] });
     } catch (err: any) {
       setState("error");
       try {
@@ -66,11 +84,7 @@ export default function JoinFamilyScreen() {
   };
 
   const goHome = () => {
-    router.replace("/");
-  };
-
-  const goLogin = () => {
-    router.replace("/login");
+    router.replace("/(tabs)");
   };
 
   return (
@@ -123,27 +137,6 @@ export default function JoinFamilyScreen() {
               ]}
             >
               <Text style={[styles.buttonText, { color: colors.text }]}>Torna alla Home</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {state === "login_required" && (
-          <View style={styles.center}>
-            <View style={[styles.iconCircle, { backgroundColor: colors.primary + "20" }]}>
-              <Ionicons name="person-circle" size={64} color={colors.primary} />
-            </View>
-            <Text style={[styles.title, { color: colors.text }]}>Accedi per Continuare</Text>
-            <Text style={[styles.message, { color: colors.textSecondary }]}>
-              Devi effettuare l'accesso per accettare l'invito alla famiglia
-            </Text>
-            <Pressable
-              onPress={goLogin}
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
-              ]}
-            >
-              <Text style={styles.buttonText}>Accedi</Text>
             </Pressable>
           </View>
         )}

@@ -195,17 +195,26 @@ export default function MealPlansScreen() {
     }
   };
 
-  const handleGenerate = async () => {
+  const [generatingAlt, setGeneratingAlt] = useState(false);
+  const [aiDisabledError, setAiDisabledError] = useState(false);
+
+  const fetchMealPlans = async (variants: 1 | 2) => {
     if (!currentFamily) return;
-    setGenerating(true);
-    setAiPlans([]);
+    const isAlt = variants === 2;
+    if (isAlt) {
+      setGeneratingAlt(true);
+    } else {
+      setGenerating(true);
+      setAiPlans([]);
+    }
     setSelectedPlanIndex(0);
+    setAiDisabledError(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       const preferences: Record<string, string> = {};
       if (diet.trim()) preferences.diet = diet.trim();
       if (allergies.trim()) preferences.allergies = allergies.trim();
-      const body: any = { weekStartDate: weekStart };
+      const body: any = { weekStartDate: weekStart, variants };
       if (Object.keys(preferences).length > 0) body.preferences = preferences;
       const result = await apiFetch<AiMultiPlanResponse>(
         `/api/ai/${currentFamily.id}/weekly-meal-plan`,
@@ -214,16 +223,36 @@ export default function MealPlansScreen() {
       if (result.plans && result.plans.length > 0) {
         setAiPlans(result.plans);
       }
-    } catch {
-      if (Platform.OS === "web") {
-        window.alert("Impossibile generare il piano pasti.");
+    } catch (err: any) {
+      let isAiDisabled = false;
+      try {
+        const msg = err?.message || '';
+        if (msg.includes('403') || msg.includes('AI_DISABLED')) {
+          const jsonPart = msg.split(': ').slice(1).join(': ');
+          if (jsonPart) {
+            const parsed = JSON.parse(jsonPart);
+            if (parsed?.error?.code === 'AI_DISABLED') isAiDisabled = true;
+          }
+          if (!isAiDisabled && msg.includes('403')) isAiDisabled = true;
+        }
+      } catch {}
+      if (isAiDisabled) {
+        setAiDisabledError(true);
       } else {
-        Alert.alert("Errore", "Impossibile generare il piano pasti.");
+        if (Platform.OS === "web") {
+          window.alert("Impossibile generare il piano pasti.");
+        } else {
+          Alert.alert("Errore", "Impossibile generare il piano pasti.");
+        }
       }
     } finally {
       setGenerating(false);
+      setGeneratingAlt(false);
     }
   };
+
+  const handleGenerate = () => fetchMealPlans(1);
+  const handleGenerateAlternative = () => fetchMealPlans(2);
 
   const handleSavePlan = async () => {
     const chosenPlan = aiPlans[selectedPlanIndex];
@@ -412,48 +441,60 @@ export default function MealPlansScreen() {
             )}
           </Pressable>
 
+          {aiDisabledError && (
+            <View style={[styles.aiDisabledBox, { backgroundColor: colors.error + "15", borderColor: colors.error + "40" }]}>
+              <Ionicons name="warning-outline" size={20} color={colors.error} />
+              <Text style={[styles.aiDisabledText, { color: colors.error }]}>
+                Funzionalità AI disabilitata. Attivala nelle Impostazioni.
+              </Text>
+            </View>
+          )}
+
           {aiPlans.length > 0 && currentPlan && (
             <View style={styles.resultSection}>
-              <Text style={[styles.planChoiceLabel, { color: colors.textSecondary }]}>
-                Scegli il piano che preferisci
-              </Text>
-
-              <View style={styles.planSelectorRow}>
-                {aiPlans.map((plan, idx) => {
-                  const isActive = idx === selectedPlanIndex;
-                  return (
-                    <Pressable
-                      key={idx}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setSelectedPlanIndex(idx);
-                      }}
-                      style={[
-                        styles.planSelectorTab,
-                        {
-                          backgroundColor: isActive ? colors.primary : colors.surface,
-                          borderColor: isActive ? colors.primary : colors.border,
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name={idx === 0 ? "restaurant" : "nutrition"}
-                        size={18}
-                        color={isActive ? "#FFFFFF" : colors.textSecondary}
-                      />
-                      <Text
-                        style={[
-                          styles.planSelectorText,
-                          { color: isActive ? "#FFFFFF" : colors.text },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {plan.title || `Piano ${idx + 1}`}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              {aiPlans.length > 1 ? (
+                <>
+                  <Text style={[styles.planChoiceLabel, { color: colors.textSecondary }]}>
+                    Scegli il piano che preferisci
+                  </Text>
+                  <View style={styles.planSelectorRow}>
+                    {aiPlans.map((plan, idx) => {
+                      const isActive = idx === selectedPlanIndex;
+                      return (
+                        <Pressable
+                          key={idx}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            setSelectedPlanIndex(idx);
+                          }}
+                          style={[
+                            styles.planSelectorTab,
+                            {
+                              backgroundColor: isActive ? colors.primary : colors.surface,
+                              borderColor: isActive ? colors.primary : colors.border,
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={idx === 0 ? "restaurant" : "nutrition"}
+                            size={18}
+                            color={isActive ? "#FFFFFF" : colors.textSecondary}
+                          />
+                          <Text
+                            style={[
+                              styles.planSelectorText,
+                              { color: isActive ? "#FFFFFF" : colors.text },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {plan.title || `Piano ${idx + 1}`}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              ) : null}
 
               <Text style={[styles.resultTitle, { color: colors.text }]}>{currentPlan.title}</Text>
               <Text style={[styles.resultSubtitle, { color: colors.textSecondary }]}>
@@ -509,6 +550,30 @@ export default function MealPlansScreen() {
                 </Pressable>
               </View>
 
+              {aiPlans.length === 1 && (
+                <Pressable
+                  onPress={handleGenerateAlternative}
+                  disabled={generatingAlt}
+                  style={({ pressed }) => [
+                    styles.altButton,
+                    { borderColor: colors.primary },
+                    pressed && { opacity: 0.7 },
+                    generatingAlt && { opacity: 0.5 },
+                  ]}
+                >
+                  {generatingAlt ? (
+                    <ActivityIndicator color={colors.primary} size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="swap-horizontal" size={18} color={colors.primary} />
+                      <Text style={[styles.altButtonText, { color: colors.primary }]}>
+                        Genera alternativa
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+              )}
+
               <Pressable
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -523,7 +588,7 @@ export default function MealPlansScreen() {
               >
                 <Ionicons name="close-circle-outline" size={18} color={colors.textSecondary} />
                 <Text style={[styles.discardButtonText, { color: colors.textSecondary }]}>
-                  Scarta tutti e rigenera
+                  Scarta e rigenera
                 </Text>
               </Pressable>
             </View>
@@ -798,6 +863,34 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   discardButtonText: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+  },
+  altButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    marginTop: 10,
+    gap: 6,
+  },
+  altButtonText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  aiDisabledBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 16,
+  },
+  aiDisabledText: {
+    flex: 1,
     fontSize: 14,
     fontFamily: "Inter_500Medium",
   },
