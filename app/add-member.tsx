@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Linking, Share } from "react-native";
+import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Linking, Share, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -48,7 +48,7 @@ export default function AddMemberScreen() {
     }
   };
 
-  const handleSendEmail = () => {
+  const handleSendEmail = async () => {
     if (!inviteLink) return;
     const familyName = currentFamily?.name || "la famiglia";
     const subject = encodeURIComponent(`Ti invito su FamilySync - ${familyName}`);
@@ -59,7 +59,21 @@ export default function AddMemberScreen() {
     const mailto = to
       ? `mailto:${to}?subject=${subject}&body=${body}`
       : `mailto:?subject=${subject}&body=${body}`;
-    Linking.openURL(mailto);
+
+    if (Platform.OS === "web") {
+      window.open(mailto, "_blank");
+    } else {
+      try {
+        const supported = await Linking.canOpenURL(mailto);
+        if (supported) {
+          await Linking.openURL(mailto);
+        } else {
+          Alert.alert("Nessuna app email", "Non è stata trovata un'app email sul dispositivo.");
+        }
+      } catch (err) {
+        console.error("mailto error:", err);
+      }
+    }
   };
 
   const handleShareLink = async () => {
