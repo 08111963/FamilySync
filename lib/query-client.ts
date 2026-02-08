@@ -27,6 +27,33 @@ async function getAccessToken(): Promise<string | null> {
   return null;
 }
 
+async function tryRefreshToken(): Promise<string | null> {
+  try {
+    const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+    if (!stored) return null;
+    const auth = JSON.parse(stored);
+    if (!auth.refreshToken) return null;
+
+    const baseUrl = getApiUrl();
+    const url = new URL("/api/auth/refresh", baseUrl);
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: auth.refreshToken }),
+    });
+
+    if (res.ok) {
+      const { accessToken: newToken } = (await res.json()) as { accessToken: string };
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
+        ...auth,
+        accessToken: newToken,
+      }));
+      return newToken;
+    }
+  } catch {}
+  return null;
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -42,21 +69,73 @@ export async function apiRequest(
   const baseUrl = getApiUrl();
   const url = new URL(route, baseUrl);
 
-  const token = await getAccessToken();
+  let token = await getAccessToken();
 
   const headers: Record<string, string> = {};
   if (data) headers["Content-Type"] = "application/json";
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(url.toString(), {
+  let res = await fetch(url.toString(), {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
 
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      const retryHeaders: Record<string, string> = {};
+      if (data) retryHeaders["Content-Type"] = "application/json";
+      retryHeaders["Authorization"] = `Bearer ${newToken}`;
+      res = await fetch(url.toString(), {
+        method,
+        headers: retryHeaders,
+        body: data ? JSON.stringify(data) : undefined,
+        credentials: "include",
+      });
+    }
+  }
+
   await throwIfResNotOk(res);
   return res;
+}
+
+export async function apiFetch<T>(route: string, options?: { method?: string; body?: any }): Promise<T> {
+  const baseUrl = getApiUrl();
+  const url = new URL(route, baseUrl);
+  let token = await getAccessToken();
+
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (options?.body) headers["Content-Type"] = "application/json";
+
+  let res = await globalThis.fetch(url.toString(), {
+    method: options?.method || "GET",
+    headers,
+    credentials: "include",
+    body: options?.body ? JSON.stringify(options.body) : undefined,
+  });
+
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      headers["Authorization"] = `Bearer ${newToken}`;
+      res = await globalThis.fetch(url.toString(), {
+        method: options?.method || "GET",
+        headers,
+        credentials: "include",
+        body: options?.body ? JSON.stringify(options.body) : undefined,
+      });
+    }
+  }
+
+  if (!res.ok) {
+    let body = null;
+    try { body = await res.json(); } catch { try { await res.text(); } catch {} }
+    throw { status: res.status, body };
+  }
+  return res.json();
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
@@ -68,15 +147,26 @@ export const getQueryFn: <T>(options: {
     const baseUrl = getApiUrl();
     const url = new URL(queryKey.join("/") as string, baseUrl);
 
-    const token = await getAccessToken();
+    let token = await getAccessToken();
 
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(url.toString(), {
+    let res = await fetch(url.toString(), {
       headers,
       credentials: "include",
     });
+
+    if (res.status === 401) {
+      const newToken = await tryRefreshToken();
+      if (newToken) {
+        headers["Authorization"] = `Bearer ${newToken}`;
+        res = await fetch(url.toString(), {
+          headers,
+          credentials: "include",
+        });
+      }
+    }
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;

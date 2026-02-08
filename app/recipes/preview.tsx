@@ -19,7 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
-import { getApiUrl } from "@/lib/query-client";
+import { apiFetch, getApiUrl } from "@/lib/query-client";
 
 interface AiIngredient {
   name: string;
@@ -306,25 +306,12 @@ function RecipeDetailModal({
 }
 
 async function fetchAiRecipes(familyId: string, excludeTitles: string[]): Promise<AiRecipe[]> {
-  const baseUrl = getApiUrl();
-  const url = new URL(`/api/ai/${familyId}/recipe-suggestions`, baseUrl);
-  let token: string | null = null;
-  try {
-    const stored = await AsyncStorage.getItem("@family_sync_auth");
-    if (stored) token = JSON.parse(stored).accessToken || null;
-  } catch {}
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
   const body: any = { count: 12 };
   if (excludeTitles.length > 0) body.excludeTitles = excludeTitles;
-  const res = await globalThis.fetch(url.toString(), {
-    method: "POST",
-    headers,
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error("Errore generazione");
-  const data = await res.json();
+  const data = await apiFetch<{ recipes?: AiRecipe[] }>(
+    `/api/ai/${familyId}/recipe-suggestions`,
+    { method: "POST", body }
+  );
   return data.recipes || [];
 }
 
@@ -425,27 +412,10 @@ export default function RecipePreviewScreen() {
           })),
         }));
 
-      const baseUrl = getApiUrl();
-      const url = new URL("/api/recipes/bulk", baseUrl);
-      let token: string | null = null;
-      try {
-        const stored = await AsyncStorage.getItem("@family_sync_auth");
-        if (stored) token = JSON.parse(stored).accessToken || null;
-      } catch {}
-
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const res = await globalThis.fetch(url.toString(), {
+      await apiFetch("/api/recipes/bulk", {
         method: "POST",
-        headers,
-        credentials: "include",
-        body: JSON.stringify({ familyId: currentFamily.id, recipes: recipesToSave }),
+        body: { familyId: currentFamily.id, recipes: recipesToSave },
       });
-
-      if (!res.ok) {
-        throw new Error("Errore nel salvataggio");
-      }
 
       qc.invalidateQueries({ queryKey: ["/api/recipes", currentFamily.id, "recipes"] });
       router.back();

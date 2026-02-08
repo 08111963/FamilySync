@@ -20,7 +20,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
-import { apiRequest, getApiUrl } from "@/lib/query-client";
+import { apiRequest, apiFetch, getApiUrl } from "@/lib/query-client";
 
 interface MealPlanItem {
   id?: string;
@@ -84,30 +84,6 @@ function getMealTypeColor(mealType: string, primary: string, secondary: string):
   }
 }
 
-async function fetchAiJson<T>(route: string, options?: { method?: string; body?: any }): Promise<T> {
-  const baseUrl = getApiUrl();
-  const url = new URL(route, baseUrl);
-  let token: string | null = null;
-  try {
-    const stored = await AsyncStorage.getItem("@family_sync_auth");
-    if (stored) token = JSON.parse(stored).accessToken || null;
-  } catch {}
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (options?.body) headers["Content-Type"] = "application/json";
-  const res = await globalThis.fetch(url.toString(), {
-    method: options?.method || "GET",
-    headers,
-    credentials: "include",
-    body: options?.body ? JSON.stringify(options.body) : undefined,
-  });
-  if (!res.ok) {
-    let body = null;
-    try { body = await res.json(); } catch { try { await res.text(); } catch {} }
-    throw { status: res.status, body };
-  }
-  return res.json();
-}
 
 function PlanCard({
   plan,
@@ -226,7 +202,7 @@ export default function MealPlansScreen() {
       if (allergies.trim()) preferences.allergies = allergies.trim();
       const body: any = { weekStartDate: weekStart };
       if (Object.keys(preferences).length > 0) body.preferences = preferences;
-      const result = await fetchAiJson<AiMealPlanResponse>(
+      const result = await apiFetch<AiMealPlanResponse>(
         `/api/ai/${currentFamily.id}/weekly-meal-plan`,
         { method: "POST", body }
       );

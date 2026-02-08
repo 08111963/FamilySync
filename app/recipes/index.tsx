@@ -19,7 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
-import { apiRequest, getApiUrl } from "@/lib/query-client";
+import { apiRequest, apiFetch, getApiUrl } from "@/lib/query-client";
 import { EmptyState } from "@/components/EmptyState";
 
 interface RecipeTag {
@@ -43,30 +43,6 @@ interface Recipe {
   createdAt: string;
 }
 
-async function fetchAiJson<T>(route: string, options?: { method?: string; body?: any }): Promise<T> {
-  const baseUrl = getApiUrl();
-  const url = new URL(route, baseUrl);
-  let token: string | null = null;
-  try {
-    const stored = await AsyncStorage.getItem("@family_sync_auth");
-    if (stored) token = JSON.parse(stored).accessToken || null;
-  } catch {}
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (options?.body) headers["Content-Type"] = "application/json";
-  const res = await globalThis.fetch(url.toString(), {
-    method: options?.method || "GET",
-    headers,
-    credentials: "include",
-    body: options?.body ? JSON.stringify(options.body) : undefined,
-  });
-  if (!res.ok) {
-    let body = null;
-    try { body = await res.json(); } catch { try { await res.text(); } catch {} }
-    throw { status: res.status, body };
-  }
-  return res.json();
-}
 
 const TAG_COLORS = [
   "#FF6B6B",
@@ -118,7 +94,7 @@ export default function RecipesScreen() {
     setAiError(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const data = await fetchAiJson<{ recipes?: any[]; generatedAt?: string }>(
+      const data = await apiFetch<{ recipes?: any[]; generatedAt?: string }>(
         `/api/ai/${currentFamily.id}/recipe-suggestions`,
         { method: "POST", body: { count: 12 } }
       );
