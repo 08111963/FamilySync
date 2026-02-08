@@ -305,6 +305,29 @@ function RecipeDetailModal({
   );
 }
 
+async function fetchAiRecipes(familyId: string, excludeTitles: string[]): Promise<AiRecipe[]> {
+  const baseUrl = getApiUrl();
+  const url = new URL(`/api/ai/${familyId}/recipe-suggestions`, baseUrl);
+  let token: string | null = null;
+  try {
+    const stored = await AsyncStorage.getItem("@family_sync_auth");
+    if (stored) token = JSON.parse(stored).accessToken || null;
+  } catch {}
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const body: any = { count: 12 };
+  if (excludeTitles.length > 0) body.excludeTitles = excludeTitles;
+  const res = await globalThis.fetch(url.toString(), {
+    method: "POST",
+    headers,
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("Errore generazione");
+  const data = await res.json();
+  return data.recipes || [];
+}
+
 export default function RecipePreviewScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -312,7 +335,7 @@ export default function RecipePreviewScreen() {
   const qc = useQueryClient();
   const params = useLocalSearchParams<{ recipesJson: string }>();
 
-  const allRecipes = useMemo<AiRecipe[]>(() => {
+  const initialRecipes = useMemo<AiRecipe[]>(() => {
     try {
       const parsed = JSON.parse(params.recipesJson || "[]");
       return Array.isArray(parsed) ? parsed : [];
@@ -321,10 +344,13 @@ export default function RecipePreviewScreen() {
     }
   }, [params.recipesJson]);
 
+  const [allRecipes, setAllRecipes] = useState<AiRecipe[]>(initialRecipes);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [detailIndex, setDetailIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [seenTitles, setSeenTitles] = useState<string[]>(() => initialRecipes.map(r => r.title));
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
@@ -351,6 +377,28 @@ export default function RecipePreviewScreen() {
       return new Set(allRecipes.map((_, i) => i));
     });
   }, [allRecipes.length]);
+
+  const handleRefresh = async () => {
+    if (!currentFamily || refreshing) return;
+    setRefreshing(true);
+    setSaveError(null);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const newRecipes = await fetchAiRecipes(currentFamily.id, seenTitles);
+      if (newRecipes.length === 0) {
+        setSaveError("Nessuna ricetta generata. Riprova.");
+        return;
+      }
+      setSeenTitles(prev => [...prev, ...newRecipes.map(r => r.title)]);
+      setAllRecipes(newRecipes);
+      setSelected(new Set());
+      setDetailIndex(null);
+    } catch {
+      setSaveError("Errore nella generazione. Riprova.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!currentFamily || selected.size === 0) return;
@@ -467,30 +515,54 @@ export default function RecipePreviewScreen() {
         scrollEnabled={allRecipes.length > 0}
       />
 
-      {selected.size > 0 ? (
-        <View style={[styles.bottomBar, { paddingBottom: bottomInset + 12, backgroundColor: colors.background }]}>
+      <View style={[styles.bottomBar, { paddingBottom: bottomInset + 12, backgroundColor: colors.background }]}>
+        <View style={styles.bottomButtons}>
           <Pressable
-            onPress={handleSave}
-            disabled={saving}
+            onPress={handleRefresh}
+            disabled={refreshing || saving}
             style={({ pressed }) => [
-              styles.saveButton,
+              styles.refreshButton,
               {
-                backgroundColor: colors.primary,
-                opacity: pressed || saving ? 0.7 : 1,
+                borderColor: colors.secondary,
+                opacity: pressed || refreshing ? 0.7 : 1,
               },
             ]}
           >
-            {saving ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+            {refreshing ? (
+              <ActivityIndicator size="small" color={colors.secondary} />
             ) : (
-              <Ionicons name="bookmark" size={20} color="#FFFFFF" />
+              <Ionicons name="refresh" size={20} color={colors.secondary} />
             )}
-            <Text style={styles.saveButtonText}>
-              {saving ? "Salvataggio..." : `Salva selezionate (${selected.size})`}
+            <Text style={[styles.refreshButtonText, { color: colors.secondary }]}>
+              {refreshing ? "Caricamento..." : "Altre Ricette"}
             </Text>
           </Pressable>
+
+          {selected.size > 0 ? (
+            <Pressable
+              onPress={handleSave}
+              disabled={saving || refreshing}
+              style={({ pressed }) => [
+                styles.saveButton,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: pressed || saving ? 0.7 : 1,
+                  flex: 1,
+                },
+              ]}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="bookmark" size={20} color="#FFFFFF" />
+              )}
+              <Text style={styles.saveButtonText}>
+                {saving ? "Salvataggio..." : `Salva (${selected.size})`}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
-      ) : null}
+      </View>
 
       <RecipeDetailModal
         recipe={detailRecipe}
@@ -645,6 +717,24 @@ const styles = StyleSheet.create({
     right: 0,
     paddingTop: 12,
     paddingHorizontal: 20,
+  },
+  bottomButtons: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  refreshButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    gap: 8,
+    borderWidth: 2,
+  },
+  refreshButtonText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   saveButton: {
     flexDirection: "row",

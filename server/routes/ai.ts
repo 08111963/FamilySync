@@ -433,14 +433,16 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
     const familyId = req.params.familyId;
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
-    const { dietaryPreferences, allergies, maxTimeMinutes, cuisinePreferences, excludedIngredients, count } = req.body || {};
+    const { dietaryPreferences, allergies, maxTimeMinutes, cuisinePreferences, excludedIngredients, count, excludeTitles } = req.body || {};
 
     const existingRecipes = await db.select({ title: recipes.title })
       .from(recipes)
       .where(eq(recipes.familyId, familyId))
       .orderBy(desc(recipes.createdAt))
       .limit(50);
-    const lastRecipeTitles = existingRecipes.map(r => r.title);
+    const dbTitles = existingRecipes.map(r => r.title);
+    const extraTitles = Array.isArray(excludeTitles) ? excludeTitles : [];
+    const lastRecipeTitles = [...new Set([...dbTitles, ...extraTitles])];
 
     const result = await generateRecipeSuggestions({
       familySize: members.length || 1,
