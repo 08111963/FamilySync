@@ -123,31 +123,45 @@ export interface RecipeSuggestion {
 }
 
 const singleRecipeSchema = z.object({
-  title: z.string(),
-  description: z.string().catch(''),
+  title: z.coerce.string(),
+  description: z.coerce.string().catch(''),
   servings: z.coerce.number().catch(4),
   prepTimeMinutes: z.coerce.number().catch(15),
   cookTimeMinutes: z.coerce.number().catch(30),
-  steps: z.array(z.string()).catch([]),
+  steps: z.array(z.coerce.string()).catch([]),
   tags: z.object({
-    diet: z.array(z.string()).optional(),
-    allergens: z.array(z.string()).optional(),
-    cuisine: z.string().optional(),
-    difficulty: z.string().optional(),
+    diet: z.array(z.coerce.string()).optional(),
+    allergens: z.array(z.coerce.string()).optional(),
+    cuisine: z.coerce.string().optional(),
+    difficulty: z.coerce.string().optional(),
   }).catch({}),
   ingredients: z.array(z.object({
-    name: z.string(),
+    name: z.coerce.string(),
     quantity: z.coerce.string().optional(),
     unit: z.coerce.string().optional(),
-    category: z.string().optional(),
-    notes: z.string().optional(),
+    category: z.coerce.string().optional(),
+    notes: z.coerce.string().optional(),
   }).catchall(z.unknown())).catch([]),
 }).catchall(z.unknown());
 
+function sanitizeKeys(obj: unknown): unknown {
+  if (Array.isArray(obj)) return obj.map(sanitizeKeys);
+  if (obj && typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      const cleanKey = key.replace(/[\s:]+$/g, '').replace(/^[\s:]+/g, '').trim();
+      result[cleanKey] = sanitizeKeys(value);
+    }
+    return result;
+  }
+  if (typeof obj === 'string') return obj.trim();
+  return obj;
+}
+
 function parseRecipesResponse(raw: unknown): RecipeSuggestion[] {
   if (!raw || typeof raw !== 'object') return [];
-  const obj = raw as Record<string, unknown>;
-  const arr = Array.isArray(obj.recipes) ? obj.recipes : [];
+  const sanitized = sanitizeKeys(raw) as Record<string, unknown>;
+  const arr = Array.isArray(sanitized.recipes) ? sanitized.recipes : [];
   const results: RecipeSuggestion[] = [];
   for (const item of arr) {
     try {
@@ -194,45 +208,77 @@ export async function generateRecipeSuggestions(context: {
     ? `\n\nTITOLI GIÀ GENERATI (NON ripeterli, inventa piatti COMPLETAMENTE diversi): ${context.lastRecipeTitles.join(', ')}`
     : '';
 
-  try {
+  const categories = [
+    "pasta", "risotto", "zuppa", "insalata", "carne al forno",
+    "pesce", "contorno", "piatto unico vegetariano", "frittata/torta salata",
+    "legumi", "pizza/focaccia", "secondo di carne in padella"
+  ];
+  const selectedCats = categories.slice(0, count).join(', ');
+
+  const systemPrompt = `Sei uno chef italiano esperto. DEVI generare esattamente ${count} ricette in un JSON valido.
+FORMATO OBBLIGATORIO: {"recipes":[...]}
+Ogni ricetta: {"title":"...","description":"breve","servings":4,"prepTimeMinutes":15,"cookTimeMinutes":30,"steps":["..."],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"...","quantity":"200","unit":"g","category":"..."}]}
+REGOLE: quantity DEVE essere stringa. Genera ESATTAMENTE ${count} ricette, una per ciascuna categoria: ${selectedCats}. NO spazi nei nomi chiave JSON.`;
+
+  const userContent = `[seed:${randomSeed}] Famiglia di ${context.familySize} persone.${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${lastTitlesText}
+
+Genera ESATTAMENTE ${count} ricette, una per ogni categoria elencata. Rispondi SOLO con JSON.`;
+
+  async function fetchRecipeBatch(batchCount: number, batchPrompt: string, batchUser: string): Promise<RecipeSuggestion[]> {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [{
-        role: 'system',
-        content: `Sei uno chef italiano esperto di cucina familiare. Genera ricette pratiche e gustose.
-
-REGOLE TASSATIVE:
-- Genera ESATTAMENTE ${count} ricette TUTTE DIVERSE tra loro.
-- Ogni ricetta deve avere un'IDEA DIVERSA (non varianti minime dello stesso piatto).
-- VARIETÀ obbligatoria: alterna proteine animali/vegetariano, tipologie (pasta, riso, zuppa, forno, insalata, pesce, carne, legumi), tecniche (padella, forno, vapore, crudo).
-- Nomi generici senza brand commerciali.
-- Ogni ricetta deve avere: title, description (2-3 frasi), servings, prepTimeMinutes, cookTimeMinutes, steps (array di stringhe dettagliate), tags, ingredients.
-- tags deve avere: diet (array, es ["vegetariano"]), allergens (array), cuisine (stringa, es "italiana"), difficulty (stringa: "facile"|"media"|"difficile").
-- ingredients deve avere: name, quantity (come stringa es "200"), unit (una tra: g, kg, ml, l, pcs, tbsp, tsp, cup, pinch, to_taste), notes (opzionale), category (es: "latticini", "verdure", "carne", "pesce", "pasta", "condimenti", "frutta").
-- Rispondi SOLO con JSON: {"recipes": [...]}`,
-      }, {
-        role: 'user',
-        content: `[seed:${randomSeed}] Famiglia di ${context.familySize} persone.${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${lastTitlesText}
-
-Genera ${count} ricette italiane TUTTE DIVERSE per la famiglia.`,
-      }],
+      messages: [
+        { role: 'system', content: batchPrompt },
+        { role: 'user', content: batchUser },
+      ],
       response_format: { type: 'json_object' },
-      temperature: 0.8,
-      presence_penalty: 0.9,
-      frequency_penalty: 0.4,
+      temperature: 0.9,
+      max_tokens: 16000,
     });
 
     const content = response.choices[0].message.content || '{"recipes": []}';
+    const finishReason = response.choices[0].finish_reason;
+    console.log(`AI batch: finish_reason=${finishReason}, content_length=${content.length}`);
+
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
     } catch (jsonErr) {
-      console.error('Recipe suggestions JSON parse error:', content?.slice(0, 300));
-      return { recipes: [] };
+      console.error('Recipe JSON parse error:', content?.slice(0, 500));
+      return [];
     }
-    const recipes = parseRecipesResponse(parsed);
-    console.log(`Recipe suggestions: ${recipes.length} parsed from AI response`);
-    return { recipes };
+    return parseRecipesResponse(parsed);
+  }
+
+  try {
+    let allRecipes = await fetchRecipeBatch(count, systemPrompt, userContent);
+    console.log(`Recipe suggestions: ${allRecipes.length} parsed (requested ${count})`);
+
+    if (allRecipes.length < count) {
+      const missing = count - allRecipes.length;
+      const existingTitles = allRecipes.map(r => r.title).join(', ');
+      const extraPrompt = `Sei uno chef italiano. Genera esattamente ${missing} ricette NUOVE e DIVERSE in JSON.
+Formato: {"recipes":[{"title":"...","description":"breve","servings":4,"prepTimeMinutes":15,"cookTimeMinutes":30,"steps":["..."],"tags":{"diet":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"...","quantity":"200","unit":"g"}]}]}
+NO spazi nei nomi chiave JSON. quantity DEVE essere stringa.`;
+      const extraUser = `[seed:${randomSeed + 1}] ${context.familySize} persone.${dietText}${allergyText}
+Ricette già generate (NON ripetere): ${existingTitles}${lastTitlesText ? ', ' + (context.lastRecipeTitles?.join(', ') || '') : ''}
+Genera ${missing} ricette italiane COMPLETAMENTE diverse.`;
+
+      const extra = await fetchRecipeBatch(missing, extraPrompt, extraUser);
+      console.log(`Extra batch: ${extra.length} more recipes`);
+      allRecipes = [...allRecipes, ...extra];
+    }
+
+    const seenTitles = new Set<string>();
+    const unique = allRecipes.filter(r => {
+      const norm = r.title.toLowerCase().trim();
+      if (seenTitles.has(norm)) return false;
+      seenTitles.add(norm);
+      return true;
+    });
+
+    console.log(`Final recipe count: ${unique.length}`);
+    return { recipes: unique };
   } catch (error) {
     console.error('OpenAI recipe suggestions error:', error);
     return { recipes: [] };
