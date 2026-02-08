@@ -1,0 +1,103 @@
+OBIETTIVO
+Creare una “Guida Utente” completa e dettagliata per l’app Family Sync (Family-Sync-Coordination), basata SOLO su feature realmente presenti nel codice. Output in italiano, pronta per web e in-app.
+
+VINCOLI IMPORTANTI
+- NON attivare Stripe/pagamenti. Se esistono schermate premium, descriverle come “in arrivo / non disponibile” quando PREMIUM_PAYMENTS_ENABLED=false.
+- Niente feature inventate: prima fare inventario leggendo il codice.
+- Nessun dettaglio tecnico (endpoint/tabelle) nella guida utente.
+
+DOVE SALVARE L’OUTPUT (OBBLIGATORIO)
+1) File Markdown: /docs/guida-utente.md
+2) Route pubblica web: GET /help/user-guide che serve HTML del contenuto (da markdown o HTML semplice), senza login.
+3) Schermata frontend: app/help/user-guide.tsx, link in Settings -> “Guida Utente”, mostra contenuto (Markdown renderer se esiste, altrimenti WebView verso /help/user-guide).
+
+STEP 1 — INVENTARIO FUNZIONALITÀ (PRIMA DI SCRIVERE)
+Analizza i file chiave e produci una lista di feature ESISTENTI (con riferimenti ai file, ma questi riferimenti non vanno nella guida):
+- Auth: signup/login/logout, refresh token, verifica email, reset password (se presenti)
+- Famiglie: crea famiglia, inviti, join, ruoli (admin/member), cambio famiglia attiva
+- Calendario: lista/crea/modifica/elimina eventi
+- Spesa: liste, items, spuntare “comprato”, storico spesa fatta (se presente), suggerimenti AI (se presenti)
+- Chores: crea/assegna/completa, punti, storico completamenti
+- AI: AI insights + tab, toggle AI enabled, errore AI_DISABLED
+- Moderazione UGC: segnalazioni/blocchi/pannello admin (se presenti)
+- Realtime WebSocket (se presente)
+- Impostazioni: privacy, termini, guida, ecc.
+Qualsiasi feature non completa o dietro flag va etichettata “Disponibile prossimamente” nella guida.
+
+STEP 2 — STRUTTURA GUIDA (INDICE OBBLIGATORIO)
+Il documento /docs/guida-utente.md deve avere:
+
+0) Guida rapida (1 minuto)
+1) Introduzione + a cosa serve l’app
+2) Requisiti (account, connessione, permessi)
+3) Creare account e accedere
+4) Famiglie
+5) Mini “Mappa schermate”  <-- NUOVO (qui, subito dopo le basi)
+6) Calendario condiviso
+7) Lista della spesa
+8) Faccende domestiche (Chores)
+9) Suggerimenti AI
+10) Moderazione e sicurezza (UGC)
+11) Impostazioni
+12) Checklist per Admin famiglia
+13) FAQ (almeno 15 domande)
+14) Risoluzione problemi (troubleshooting)
+15) Supporto e contatti
+16) Changelog breve (versione attuale)
+
+STEP 3 — CONTENUTI DELLE SEZIONI SPECIALI (OBBLIGATORIO)
+
+A) “Guida rapida (1 minuto)”
+- 6–10 passi numerati, pratici.
+- Include box “Se qualcosa non funziona” che rimanda a Troubleshooting.
+
+B) “Mini Mappa schermate” (tabella scansionabile)  <-- NUOVO
+- Inserire una tabella Markdown a 2 colonne:
+  | Schermata | Cosa trovi |
+- Deve includere SOLO schermate reali, scoperte dall’inventario (esempi: Home/Calendario/Spesa/Faccende/Famiglia/AI Insights/Impostazioni/Privacy/Termini/Guida).
+- Ogni riga: descrizione breve (max 1–2 frasi) di cosa si può fare.
+- Se una schermata contiene funzioni disabilitate (es. Premium), indicare “in arrivo”.
+
+Esempio stile (NON fissare contenuti se non esistono):
+| Schermata | Cosa trovi |
+|---|---|
+| Calendario | Eventi della famiglia, creazione e modifica eventi |
+| Spesa | Liste e articoli, spunta “comprato”, gestione liste |
+| AI Insights | Suggerimenti e insight generati (se AI attiva) |
+
+C) “Checklist per Admin famiglia”
+- Markdown task list divisa per aree:
+  Setup iniziale, gestione quotidiana, sicurezza/moderazione, privacy/AI, manutenzione.
+- Ogni voce deve essere concreta e basata su feature ESISTENTI.
+
+STEP 4 — REGOLE DI SCRITTURA (OBBLIGATORIE)
+- Tono: semplice, diretto, step-by-step.
+- Ogni sezione principale deve includere:
+  - “Cosa puoi fare”
+  - “Come farlo” (passi numerati)
+  - “Note e consigli”
+  - “Errori comuni”
+- Placeholder screenshot:
+  ![Screenshot: ...](./images/placeholder.png)
+- Se AI o altre feature sono disabilitate (AI_DISABLED, premium), spiegare chiaramente cosa significa e cosa fare.
+
+STEP 5 — PUBBLICAZIONE IN-APP E WEB
+- Frontend:
+  - Settings -> “Guida Utente”
+  - app/help/user-guide.tsx mostra contenuto (Markdown renderer o WebView)
+- Backend:
+  - GET /help/user-guide serve HTML leggibile
+  - accesso pubblico (no auth)
+- Assicurarsi che non vada in 404 in produzione.
+
+STEP 6 — CHECK FINALE
+- Tutte le funzioni descritte devono esistere realmente (da inventario).
+- Stripe/pagamenti NON descritti come attivi.
+- Link legali e guida funzionano: /legal/privacy, /legal/terms, /help/user-guide.
+- Leggibile su mobile.
+
+OUTPUT ATTESO
+- /docs/guida-utente.md completo con “Guida rapida (1 minuto)”, “Mini Mappa schermate”, e “Checklist Admin”.
+- Route web /help/user-guide funzionante.
+- Schermata in-app “Guida Utente” linkata e funzionante.
+- Nessuna modifica che attivi pagamenti.
