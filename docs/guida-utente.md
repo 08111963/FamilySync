@@ -4,6 +4,40 @@
 
 ---
 
+## Guida Rapida (1 minuto)
+
+1. **Registrati** con nome, email e password
+2. **Crea una famiglia** dalla schermata Home
+3. **Invita i familiari** dalla scheda Famiglia inserendo le loro email
+4. **Usa le 4 schede** per organizzare la vita quotidiana: Home, Calendario, Spesa, Faccende
+5. **(Opzionale)** Attiva i Suggerimenti AI dalla scheda Famiglia per ricevere consigli intelligenti
+
+---
+
+## Mini Mappa Schermate
+
+| Scheda | Cosa puoi fare |
+|--------|----------------|
+| Home | Panoramica rapida: prossimi eventi, faccende urgenti, classifica punti |
+| Calendario | Creare, visualizzare e eliminare eventi condivisi con la famiglia |
+| Spesa | Creare liste della spesa collaborative, aggiungere articoli, segnarli come acquistati |
+| Faccende | Assegnare compiti, completarli, guadagnare punti e scalare la classifica |
+| Famiglia | Gestire membri, inviti, impostazioni, toggle AI, documenti legali, guida utente |
+
+---
+
+## Checklist per Admin Famiglia
+
+- [ ] Creare la famiglia e darle un nome
+- [ ] Invitare tutti i membri della famiglia via email
+- [ ] (Opzionale) Attivare le Funzionalita AI dal toggle nella scheda Famiglia
+- [ ] Creare i primi eventi nel Calendario condiviso
+- [ ] Creare la prima lista della Spesa
+- [ ] Assegnare le prime Faccende ai membri
+- [ ] Controllare periodicamente il pannello Segnalazioni (se presenti)
+
+---
+
 ## Indice
 
 1. [Primi Passi](#1-primi-passi)
@@ -25,9 +59,9 @@
 ### Creare un Account
 Per iniziare ad usare FamilySync:
 - Apri l'app e tocca **Registrati**
-- Inserisci il tuo nome, indirizzo email e una password sicura
-- Riceverai una email di verifica: clicca sul link per confermare il tuo account
-- Dopo la verifica, effettua il login con le tue credenziali
+- Inserisci il tuo nome, indirizzo email e una password sicura (minimo 6 caratteri)
+- Accetta la Privacy Policy e i Termini d'Uso
+- Dopo la registrazione, effettua il login con le tue credenziali
 
 ### Creare una Famiglia
 Dopo il login, puoi creare il tuo gruppo familiare:
@@ -100,8 +134,8 @@ Crea e condividi le liste della spesa con tutta la famiglia.
 
 ### Suggerimenti AI per la Spesa
 Se hai attivato le funzionalita AI, puoi ricevere suggerimenti intelligenti:
-- Nella lista della spesa, tocca l'icona dei suggerimenti
-- L'AI analizzera la tua lista e suggerira articoli utili in base a:
+- Dalla scheda Famiglia, tocca **Suggerimenti AI** per accedere alla schermata dedicata
+- L'AI analizza i dati della famiglia e suggerisce articoli utili in base a:
   - Quello che la tua famiglia compra di solito
   - Gli eventi in programma nel calendario
   - La stagione corrente
@@ -183,7 +217,8 @@ FamilySync integra l'intelligenza artificiale per offrire suggerimenti utili all
 - Vai alla scheda **Famiglia**
 - Nella sezione **Funzionalita**, trovi il toggle per le **Funzionalita AI**
 - Attiva o disattiva a tuo piacimento
-- L'AI e completamente opzionale e rispetta la tua privacy (vedi Privacy Policy)
+- Quando l'AI e attiva, alcune informazioni della famiglia (titoli degli eventi, nomi degli articoli della spesa, titoli delle faccende) vengono inviate al servizio AI per generare suggerimenti personalizzati
+- L'AI e completamente opzionale: se il toggle e disattivato, nessun dato viene inviato
 
 ### Tipi di Suggerimenti
 1. **Suggerimenti Spesa**: articoli consigliati in base alle abitudini, al calendario e alla stagione
@@ -199,9 +234,11 @@ FamilySync integra l'intelligenza artificiale per offrire suggerimenti utili all
   - Consigli personalizzati per migliorare l'organizzazione
 
 ### Privacy e Dati AI
-- I dati inviati all'AI sono **aggregati e anonimizzati**: niente email, password, indirizzi o dati sensibili
-- L'AI non viene usata per addestrare modelli esterni
-- Puoi disattivare le funzionalita AI in qualsiasi momento dalle impostazioni
+- Quando l'AI e attiva, vengono inviate al servizio AI porzioni di contenuto della famiglia: titoli degli eventi, nomi degli articoli della spesa, titoli e descrizioni delle faccende, numero di membri
+- **Non vengono mai inviate** email, password, indirizzi personali o altri dati sensibili
+- I dati non vengono usati per addestrare modelli esterni
+- Puoi controllare l'invio dei dati in qualsiasi momento tramite il **toggle AI** nella scheda Famiglia: con il toggle spento, nessun dato viene inviato
+- Consulta la Privacy Policy per tutti i dettagli
 
 ---
 
@@ -209,17 +246,9 @@ FamilySync integra l'intelligenza artificiale per offrire suggerimenti utili all
 
 FamilySync include strumenti per mantenere un ambiente sicuro e rispettoso.
 
-### Segnalare Contenuti o Utenti
-Se vedi contenuti inappropriati o comportamenti problematici:
-- Tocca l'opzione di segnalazione sull'elemento o sul profilo dell'utente
-- Seleziona la **categoria** della segnalazione: Spam, Molestie, Odio, Contenuti Sessuali, Violenza, Altro
-- Aggiungi una descrizione opzionale per spiegare il motivo
-- La segnalazione verra esaminata dall'amministratore del gruppo
-
 ### Bloccare un Utente
 - Se non vuoi piu vedere i contenuti di un membro della famiglia:
-  - Vai alle impostazioni e tocca **Utenti Bloccati**
-  - Oppure segnala un utente e scegli di bloccarlo
+  - Vai alle impostazioni nella scheda Famiglia e tocca **Utenti Bloccati**
 - Quando blocchi qualcuno:
   - I suoi eventi, articoli spesa e faccende non saranno piu visibili per te
   - La persona bloccata non viene notificata
@@ -250,6 +279,9 @@ Dalla scheda Famiglia, nella sezione **Legale**, puoi consultare:
 - **Privacy Policy**: come vengono trattati i tuoi dati personali
 - **Termini d'Uso**: le condizioni di utilizzo del servizio
 - **Guida Utente**: questa guida (sempre aggiornata)
+
+### Abbonamento Premium
+L'abbonamento Premium non e attualmente disponibile. Resta in arrivo per funzionalita aggiuntive future.
 
 ### Logout
 - Tocca il pulsante **Esci** in fondo alla scheda Famiglia per disconnetterti
@@ -288,7 +320,10 @@ Si. Utilizziamo crittografia avanzata, connessioni protette HTTPS e autenticazio
 I contenuti che ha condiviso (eventi, articoli, faccende) rimangono nel gruppo.
 
 **L'AI e obbligatoria?**
-No. Le funzionalita AI sono completamente opzionali. Puoi attivarle o disattivarle in qualsiasi momento dalle impostazioni nella scheda Famiglia.
+No. Le funzionalita AI sono completamente opzionali. Puoi attivarle o disattivarle in qualsiasi momento tramite il toggle nella scheda Famiglia. Quando il toggle e spento, nessun dato viene inviato al servizio AI.
+
+**Quali dati vengono inviati all'AI?**
+Solo porzioni di contenuto della famiglia: titoli degli eventi, nomi degli articoli, titoli delle faccende, numero di membri. Mai email, password o indirizzi personali.
 
 **Come funziona il sistema di punti?**
 Ogni faccenda ha un valore in punti (da 5 a 50). Quando completi una faccenda, i punti vengono aggiunti al tuo punteggio. La classifica mostra chi ha accumulato piu punti.

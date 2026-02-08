@@ -52,15 +52,16 @@ const TAB_CONFIG: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyp
   { key: "chores", label: "Faccende", icon: "checkmark-circle" },
 ];
 
+interface ApiError {
+  status: number;
+  body: { error?: { code?: string; message?: string } } | null;
+}
+
 function isAiDisabledError(error: unknown): boolean {
-  try {
-    const msg = error instanceof Error ? error.message : String(error);
-    const match = msg.match(/^403:\s*(.+)/s);
-    if (match) {
-      const body = JSON.parse(match[1]);
-      return body?.error?.code === "AI_DISABLED";
-    }
-  } catch {}
+  if (error && typeof error === 'object' && 'status' in error && 'body' in error) {
+    const apiErr = error as ApiError;
+    return apiErr.status === 403 && apiErr.body?.error?.code === "AI_DISABLED";
+  }
   return false;
 }
 
@@ -76,8 +77,14 @@ async function fetchAiJson<T>(route: string): Promise<T> {
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await globalThis.fetch(url.toString(), { headers, credentials: "include" });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${res.status}: ${text}`);
+    let body: ApiError["body"] = null;
+    try {
+      body = await res.json();
+    } catch {
+      try { await res.text(); } catch {}
+    }
+    const err: ApiError = { status: res.status, body };
+    throw err;
   }
   return res.json();
 }

@@ -1,0 +1,166 @@
+OBIETTIVO
+Applicare SOLO fix mirati (P0 + P1 selezionati) su:
+1) Suggerimenti AI Spesa: garantire quota categorie (>=3 household_cleaning e >=2 personal_care) SEMPRE.
+2) Guida utente: eliminare duplicazioni, una sola “source of truth” (docs/guida-utente.md) e correggere contenuti (no affermazioni false su anonimizzazione/AI, no feature inventate).
+3) (P1) Robustezza AI_DISABLED in AI Insights (frontend): niente parsing con regex su error.message.
+4) (P1) Migliorare normalizzazione nomi prodotti per ridurre duplicati semantici.
+
+VINCOLI ASSOLUTI
+- NON toccare Stripe/pagamenti: nessuna modifica a server/routes/payments.ts, config premium, webhook, ecc.
+- Modificare SOLO i file necessari elencati sotto.
+- Non aggiungere nuove librerie.
+- Nessun cambiamento di schema DB.
+
+FILE CHE PUOI MODIFICARE (SOLO QUESTI)
+- server/routes/ai.ts
+- server/lib/openai.ts (solo se serve)
+- server/lib/normalize.ts
+- app/ai-insights.tsx
+- docs/guida-utente.md
+- server/routes/help.ts
+- app/help/user-guide.tsx
+
+========================================================
+DIFF EXPECTATION (OBBLIGATORIO — TOCCA SOLO QUESTE PARTI)
+========================================================
+Replit AI: limita le modifiche ESATTAMENTE a funzioni/metodi/aree sotto. Non creare nuovi file.
+
+1) server/routes/ai.ts
+- Toccare SOLO:
+  - handler del GET "/:familyId/shopping-suggestions"
+  - eventuali helper interni nello stesso file usati da questo handler (es. buildForbiddenLists, filterCandidates, buildFinalItems)
+- NON modificare altri endpoint AI (insights, chore-optimization) salvo import condivisi non evitabili.
+
+2) server/lib/normalize.ts
+- Toccare SOLO:
+  - funzione normalizeItemName (o equivalente)
+  - eventuali costanti di stopword/tokenizer usate da normalizeItemName
+- NON cambiare export/public API del modulo se già usato altrove.
+
+3) server/lib/openai.ts
+- Toccare SOLO SE NECESSARIO:
+  - generateShoppingSuggestions prompt wording / passaggio forbidden originali+normalizzati
+  - NON modificare altre funzioni (insights, chores) se non richiesto.
+
+4) app/ai-insights.tsx
+- Toccare SOLO:
+  - funzione/i di fetch usate dalla schermata (es. fetchAiJson, handleGenerateShoppingSuggestions, handleOptimizeChores, refresh handler)
+  - logica di gestione errori AI_DISABLED
+- NON cambiare navigazione globale, tab bar, o altre schermate.
+
+5) docs/guida-utente.md
+- Toccare SOLO contenuto:
+  - aggiungere in cima “Guida rapida (1 minuto)”
+  - aggiungere “Mini Mappa schermate” (tabella 2 colonne)
+  - aggiungere “Checklist per Admin famiglia” (task list)
+  - correggere sezioni AI/Privacy (rimuovere “anonimizzato”, descrivere toggle AI)
+  - rimuovere o marcare come non disponibile feature non presenti (es. segnala contenuto se non esiste)
+
+6) server/routes/help.ts
+- Toccare SOLO:
+  - handler della route GET "/help/user-guide"
+  - Deve leggere docs/guida-utente.md e servire HTML semplice
+- NON modificare altre route help/legal.
+
+7) app/help/user-guide.tsx
+- Toccare SOLO:
+  - rimozione testo hardcoded
+  - visualizzazione WebView verso `${API_BASE_URL}/help/user-guide` (o config equivalente già usata)
+  - loading/error states
+
+Qualsiasi modifica fuori da queste aree è considerata errore.
+
+========================================================
+1) FIX P0: QUOTE CATEGORIE “SPESA” SEMPRE GARANTITE
+========================================================
+Nel GET /api/ai/:familyId/shopping-suggestions (server/routes/ai.ts):
+- OGGI: può riempire 10 slot con household_cleaning e lasciare 0 personal_care.
+- FIX: algoritmo con “slot riservati”.
+
+A) Dopo candidates (AI + fallback), separa per category:
+- household, personal, other
+
+B) Costruisci finalItems con sequenza:
+1) fino a 3 household (AI prima, poi fallback se mancano)
+2) fino a 2 personal (AI prima, poi fallback se mancano)
+3) riempi fino a 10 con other, poi extra household, poi extra personal
+Sempre: forbidden + dedupe.
+
+C) Se household < 3 o personal < 2 dopo filtraggio, usa fallback pool per completare minimi.
+
+D) finalCount deve essere 10 (se possibile) con fallback, senza duplicati e senza forbidden.
+
+E) LOG OBBLIGATORIO MIGLIORATO (server-only):
+- Traccia origine item aggiunto a finalItems: source='ai'|'fallback'
+- Log JSON per ogni richiesta:
+  tag="AI_SHOPPING_SUGGESTIONS"
+  familyId
+  totalFromAI
+  uniqueAfterNormalize
+  droppedDuplicates
+  droppedAlreadyOnList
+  droppedCompletedRecently
+  droppedRecentPurchases
+  droppedRecentSuggestions
+  keptAfterFilters
+  selectedFromAI
+  selectedFromFallback
+  fallbackUsedForHouseholdMin
+  fallbackUsedForPersonalMin
+  finalCount
+
+Contatori scarto:
+- Applica filtri in ordine fisso:
+  alreadyOnList -> completedRecently -> recentPurchases -> recentSuggestions
+- Se item matcha più liste, conta lo scarto SOLO nella prima regola matchata.
+
+========================================================
+2) P1: NORMALIZZAZIONE “SEMANTICA”
+========================================================
+In server/lib/normalize.ts:
+- Implementare:
+  - stopword removal (italiano) + token sort
+- normalizeItemName deve trasformare:
+  "detersivo per piatti" -> "detersivo piatti"
+  "sapone liquido mani" -> "mani sapone"
+- Usare normalizeItemName per confronti forbidden/duplicates.
+
+========================================================
+3) FIX P0: GUIDA UTENTE SINGLE SOURCE + TESTO CORRETTO
+========================================================
+A) Single source:
+- docs/guida-utente.md è unica fonte.
+- server/routes/help.ts: GET /help/user-guide legge quel file e serve HTML leggibile (conversione minimale).
+- app/help/user-guide.tsx: mostra WebView verso /help/user-guide (no testo hardcoded).
+
+B) Contenuti docs/guida-utente.md:
+- aggiungere:
+  - “Guida rapida (1 minuto)”
+  - “Mini Mappa schermate” (tabella)
+  - “Checklist per Admin famiglia”
+- correggere AI:
+  - rimuovere “anonimizzato”
+  - spiegare che si inviano porzioni di contenuto (titoli/articoli) e che esiste toggle AI
+- rimuovere feature non presenti (es. segnala contenuto se non esiste).
+- Stripe/premium: “non disponibile / in arrivo”.
+
+========================================================
+4) P1: AI_DISABLED HANDLING ROBUSTO
+========================================================
+In app/ai-insights.tsx:
+- Eliminare regex su error.message.
+- Implementare fetch wrapper che lancia error strutturato {status, body}.
+- isAiDisabledError: status===403 && body.error.code==="AI_DISABLED".
+- UI banner/CTA invariati.
+
+========================================================
+CHECK FINALE (OBBLIGATORIO)
+- Nessun file Stripe/pagamenti modificato.
+- Suggerimenti Spesa: sempre 10 items unici con >=3 household_cleaning e >=2 personal_care.
+- Log server presente con campi richiesti.
+- Guida web e in-app mostrano lo stesso contenuto (docs/guida-utente.md).
+- docs/guida-utente.md include: Guida rapida, Mini Mappa schermate, Checklist Admin.
+- AI_DISABLED handling non usa regex.
+
+OUTPUT ATTESO
+- Commit con modifiche SOLO nei file indicati e SOLO nelle aree dichiarate nel “diff expectation”.

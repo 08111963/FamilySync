@@ -58,6 +58,10 @@ const FALLBACK_POOL: ShoppingSuggestionItem[] = [
   { name: 'spinaci freschi', category: 'food', reason: 'Verdura ricca di ferro' },
 ];
 
+interface TaggedItem extends ShoppingSuggestionItem {
+  source: 'ai' | 'fallback';
+}
+
 router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;
@@ -149,7 +153,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
     const totalFromAI = aiResult.items.length;
 
     const seenNames = new Set<string>();
-    const uniqueItems: ShoppingSuggestionItem[] = [];
+    const uniqueItems: TaggedItem[] = [];
     let droppedDuplicates = 0;
     for (const item of aiResult.items) {
       const norm = normalizeItemName(item.name);
@@ -158,7 +162,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
         continue;
       }
       seenNames.add(norm);
-      uniqueItems.push(item);
+      uniqueItems.push({ ...item, source: 'ai' });
     }
     const uniqueAfterNormalize = uniqueItems.length;
 
@@ -166,7 +170,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
     let droppedCompletedRecently = 0;
     let droppedRecentPurchases = 0;
     let droppedRecentSuggestions = 0;
-    const filtered: ShoppingSuggestionItem[] = [];
+    const filtered: TaggedItem[] = [];
 
     for (const item of uniqueItems) {
       const norm = normalizeItemName(item.name);
@@ -184,81 +188,111 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
     }
     for (const n of seenNames) allForbiddenSet.add(n);
 
-    const household = filtered.filter(i => i.category === 'household_cleaning');
-    const personal = filtered.filter(i => i.category === 'personal_care');
-    const foodOther = filtered.filter(i => i.category === 'food' || i.category === 'other');
+    const householdAI = filtered.filter(i => i.category === 'household_cleaning');
+    const personalAI = filtered.filter(i => i.category === 'personal_care');
+    const otherAI = filtered.filter(i => i.category !== 'household_cleaning' && i.category !== 'personal_care');
 
-    const finalItems: ShoppingSuggestionItem[] = [];
+    const finalItems: TaggedItem[] = [];
     const usedNorms = new Set<string>();
 
-    const addItem = (item: ShoppingSuggestionItem) => {
+    const addItem = (item: TaggedItem): boolean => {
       const norm = normalizeItemName(item.name);
-      if (usedNorms.has(norm)) return false;
+      if (usedNorms.has(norm) || allForbiddenSet.has(norm)) return false;
       usedNorms.add(norm);
+      allForbiddenSet.add(norm);
       finalItems.push(item);
       return true;
     };
 
-    for (const item of household) { if (finalItems.length >= 10) break; addItem(item); }
-    const householdFromAI = finalItems.length;
-    if (householdFromAI < 3) {
-      const shuffledHC = [...FALLBACK_POOL].filter(fb => fb.category === 'household_cleaning').sort(() => Math.random() - 0.5);
-      for (const fb of shuffledHC) {
+    let selectedFromAI = 0;
+    let selectedFromFallback = 0;
+    let fallbackUsedForHouseholdMin = 0;
+    let fallbackUsedForPersonalMin = 0;
+
+    for (const item of householdAI) {
+      if (finalItems.filter(i => i.category === 'household_cleaning').length >= 3) break;
+      if (finalItems.length >= 10) break;
+      if (addItem(item)) selectedFromAI++;
+    }
+    const householdCount1 = finalItems.filter(i => i.category === 'household_cleaning').length;
+    if (householdCount1 < 3) {
+      const pool = [...FALLBACK_POOL].filter(fb => fb.category === 'household_cleaning').sort(() => Math.random() - 0.5);
+      for (const fb of pool) {
         if (finalItems.filter(i => i.category === 'household_cleaning').length >= 3) break;
         if (finalItems.length >= 10) break;
-        const norm = normalizeItemName(fb.name);
-        if (usedNorms.has(norm) || allForbiddenSet.has(norm)) continue;
-        addItem(fb);
+        if (addItem({ ...fb, source: 'fallback' })) {
+          selectedFromFallback++;
+          fallbackUsedForHouseholdMin++;
+        }
       }
     }
 
-    for (const item of personal) { if (finalItems.length >= 10) break; addItem(item); }
-    const personalFromAI = finalItems.filter(i => i.category === 'personal_care').length;
-    if (personalFromAI < 2) {
-      const shuffledPC = [...FALLBACK_POOL].filter(fb => fb.category === 'personal_care').sort(() => Math.random() - 0.5);
-      for (const fb of shuffledPC) {
+    for (const item of personalAI) {
+      if (finalItems.filter(i => i.category === 'personal_care').length >= 2) break;
+      if (finalItems.length >= 10) break;
+      if (addItem(item)) selectedFromAI++;
+    }
+    const personalCount1 = finalItems.filter(i => i.category === 'personal_care').length;
+    if (personalCount1 < 2) {
+      const pool = [...FALLBACK_POOL].filter(fb => fb.category === 'personal_care').sort(() => Math.random() - 0.5);
+      for (const fb of pool) {
         if (finalItems.filter(i => i.category === 'personal_care').length >= 2) break;
         if (finalItems.length >= 10) break;
-        const norm = normalizeItemName(fb.name);
-        if (usedNorms.has(norm) || allForbiddenSet.has(norm)) continue;
-        addItem(fb);
+        if (addItem({ ...fb, source: 'fallback' })) {
+          selectedFromFallback++;
+          fallbackUsedForPersonalMin++;
+        }
       }
     }
 
-    for (const item of foodOther) { if (finalItems.length >= 10) break; addItem(item); }
+    for (const item of otherAI) {
+      if (finalItems.length >= 10) break;
+      if (addItem(item)) selectedFromAI++;
+    }
 
-    let filledFromFallback = 0;
+    for (const item of householdAI) {
+      if (finalItems.length >= 10) break;
+      addItem(item) && selectedFromAI++;
+    }
+    for (const item of personalAI) {
+      if (finalItems.length >= 10) break;
+      addItem(item) && selectedFromAI++;
+    }
+
     if (finalItems.length < 10) {
       const shuffled = [...FALLBACK_POOL].sort(() => Math.random() - 0.5);
       for (const fb of shuffled) {
         if (finalItems.length >= 10) break;
-        const norm = normalizeItemName(fb.name);
-        if (usedNorms.has(norm) || allForbiddenSet.has(norm)) continue;
-        addItem(fb);
-        filledFromFallback++;
+        if (addItem({ ...fb, source: 'fallback' })) {
+          selectedFromFallback++;
+        }
       }
     }
-    const fallbackUsedForCategories = finalItems.length - filtered.slice(0, 10).length;
-    filledFromFallback = Math.max(filledFromFallback, finalItems.length - keptAfterFilters);
-    if (filledFromFallback < 0) filledFromFallback = 0;
 
     const householdCount = finalItems.filter(i => i.category === 'household_cleaning').length;
     const personalCount = finalItems.filter(i => i.category === 'personal_care').length;
+    const finalCount = finalItems.length;
 
     console.log(JSON.stringify({
       tag: "AI_SHOPPING_SUGGESTIONS",
       familyId,
       totalFromAI,
       uniqueAfterNormalize,
+      droppedDuplicates,
       droppedAlreadyOnList,
       droppedCompletedRecently,
       droppedRecentPurchases,
       droppedRecentSuggestions,
       keptAfterFilters,
-      filledFromFallback: finalItems.length - Math.min(keptAfterFilters, 10),
-      finalCount: finalItems.length,
-      categoryCounts: { household_cleaning: householdCount, personal_care: personalCount, food: finalItems.length - householdCount - personalCount },
+      selectedFromAI,
+      selectedFromFallback,
+      fallbackUsedForHouseholdMin,
+      fallbackUsedForPersonalMin,
+      finalCount,
+      categoryCounts: { household_cleaning: householdCount, personal_care: personalCount, food: finalCount - householdCount - personalCount },
     }));
+
+    const responseItems: ShoppingSuggestionItem[] = finalItems.map(({ source, ...rest }) => rest);
 
     try {
       await db.insert(aiInsights).values({
@@ -268,8 +302,8 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
         description: 'internal',
         dismissed: true,
         actionData: {
-          items: finalItems.map(i => i.name),
-          categoriesCount: { household_cleaning: householdCount, personal_care: personalCount, food: finalItems.length - householdCount - personalCount },
+          items: responseItems.map(i => i.name),
+          categoriesCount: { household_cleaning: householdCount, personal_care: personalCount, food: finalCount - householdCount - personalCount },
           generatedAt: new Date().toISOString(),
         },
       });
@@ -277,7 +311,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
       logger.error('Failed to persist shopping suggestions history', { error: String(persistErr) });
     }
 
-    res.json({ items: finalItems });
+    res.json({ items: responseItems });
   } catch (error) {
     logger.error('Shopping suggestions error', { error: String(error) });
     res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione suggerimenti" } });
