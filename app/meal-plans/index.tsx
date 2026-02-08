@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -21,8 +21,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
-import { Card } from "@/components/Card";
-import { EmptyState } from "@/components/EmptyState";
 
 interface MealPlanItem {
   id?: string;
@@ -50,11 +48,6 @@ interface AiMealPlanResponse {
 
 type TabKey = "plans" | "generate";
 
-const TAB_CONFIG: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "plans", label: "I Miei Piani", icon: "calendar" },
-  { key: "generate", label: "Genera con AI", icon: "sparkles" },
-];
-
 function getNextMonday(): string {
   const d = new Date();
   const day = d.getDay();
@@ -73,31 +66,21 @@ function formatWeekDate(dateStr: string): string {
 
 function getMealTypeLabel(mealType: string): string {
   switch (mealType) {
-    case "breakfast":
-      return "Colazione";
-    case "lunch":
-      return "Pranzo";
-    case "dinner":
-      return "Cena";
-    case "snack":
-      return "Spuntino";
-    default:
-      return mealType;
+    case "breakfast": return "Colazione";
+    case "lunch": return "Pranzo";
+    case "dinner": return "Cena";
+    case "snack": return "Spuntino";
+    default: return mealType;
   }
 }
 
-function getMealTypeColor(mealType: string, colors: any): string {
+function getMealTypeColor(mealType: string, primary: string, secondary: string): string {
   switch (mealType) {
-    case "breakfast":
-      return "#FFB74D";
-    case "lunch":
-      return colors.secondary;
-    case "dinner":
-      return colors.primary;
-    case "snack":
-      return "#A29BFE";
-    default:
-      return colors.textSecondary;
+    case "breakfast": return "#FFB74D";
+    case "lunch": return secondary;
+    case "dinner": return primary;
+    case "snack": return "#A29BFE";
+    default: return "#999";
   }
 }
 
@@ -120,16 +103,45 @@ async function fetchAiJson<T>(route: string, options?: { method?: string; body?:
   });
   if (!res.ok) {
     let body = null;
-    try {
-      body = await res.json();
-    } catch {
-      try {
-        await res.text();
-      } catch {}
-    }
+    try { body = await res.json(); } catch { try { await res.text(); } catch {} }
     throw { status: res.status, body };
   }
   return res.json();
+}
+
+function PlanCard({
+  plan,
+  onToShoppingList,
+  onDelete,
+}: {
+  plan: MealPlan;
+  onToShoppingList: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.planCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.planHeader}>
+        <View style={styles.planInfo}>
+          <Text style={[styles.planTitle, { color: colors.text }]}>{plan.title}</Text>
+          <Text style={[styles.planDate, { color: colors.textSecondary }]}>
+            {formatWeekDate(plan.weekStartDate)}
+          </Text>
+          <Text style={[styles.planCount, { color: colors.textSecondary }]}>
+            {plan.items?.length || 0} pasti
+          </Text>
+        </View>
+        <View style={styles.planActions}>
+          <Pressable onPress={() => onToShoppingList(plan.id)} hitSlop={8} style={styles.actionButton}>
+            <Ionicons name="cart-outline" size={22} color={colors.secondary} />
+          </Pressable>
+          <Pressable onPress={() => onDelete(plan.id)} hitSlop={8} style={styles.actionButton}>
+            <Ionicons name="trash-outline" size={22} color={colors.error} />
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
 }
 
 export default function MealPlansScreen() {
@@ -161,21 +173,45 @@ export default function MealPlansScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       await apiRequest("POST", `/api/meal-plans/${currentFamily.id}/meal-plans/${planId}/to-shopping-list`);
-      Alert.alert("Lista creata", "La lista della spesa e stata creata dal piano pasti.");
+      if (Platform.OS === "web") {
+        window.alert("La lista della spesa e stata creata dal piano pasti.");
+      } else {
+        Alert.alert("Lista creata", "La lista della spesa e stata creata dal piano pasti.");
+      }
       qc.invalidateQueries({ queryKey: ["/api/shopping", currentFamily.id, "lists"] });
-    } catch (error) {
-      Alert.alert("Errore", "Impossibile creare la lista della spesa.");
+    } catch {
+      if (Platform.OS === "web") {
+        window.alert("Impossibile creare la lista della spesa.");
+      } else {
+        Alert.alert("Errore", "Impossibile creare la lista della spesa.");
+      }
     }
   };
 
   const handleDeletePlan = async (planId: string) => {
     if (!currentFamily) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    try {
-      await apiRequest("DELETE", `/api/meal-plans/${currentFamily.id}/meal-plans/${planId}`);
-      qc.invalidateQueries({ queryKey: ["/api/meal-plans", currentFamily.id, "meal-plans"] });
-    } catch (error) {
-      Alert.alert("Errore", "Impossibile eliminare il piano.");
+    const doDelete = async () => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      try {
+        await apiRequest("DELETE", `/api/meal-plans/${currentFamily.id}/meal-plans/${planId}`);
+        qc.invalidateQueries({ queryKey: ["/api/meal-plans", currentFamily.id, "meal-plans"] });
+      } catch {
+        if (Platform.OS === "web") {
+          window.alert("Impossibile eliminare il piano.");
+        } else {
+          Alert.alert("Errore", "Impossibile eliminare il piano.");
+        }
+      }
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm("Vuoi eliminare questo piano pasti?")) {
+        await doDelete();
+      }
+    } else {
+      Alert.alert("Elimina piano", "Vuoi eliminare questo piano pasti?", [
+        { text: "Annulla", style: "cancel" },
+        { text: "Elimina", style: "destructive", onPress: doDelete },
+      ]);
     }
   };
 
@@ -193,8 +229,12 @@ export default function MealPlansScreen() {
         { method: "POST", body }
       );
       setAiResult(result);
-    } catch (error) {
-      Alert.alert("Errore", "Impossibile generare il piano pasti.");
+    } catch {
+      if (Platform.OS === "web") {
+        window.alert("Impossibile generare il piano pasti.");
+      } else {
+        Alert.alert("Errore", "Impossibile generare il piano pasti.");
+      }
     } finally {
       setGenerating(false);
     }
@@ -213,66 +253,34 @@ export default function MealPlansScreen() {
       qc.invalidateQueries({ queryKey: ["/api/meal-plans", currentFamily.id, "meal-plans"] });
       setAiResult(null);
       setActiveTab("plans");
-      Alert.alert("Salvato", "Il piano pasti e stato salvato.");
-    } catch (error) {
-      Alert.alert("Errore", "Impossibile salvare il piano.");
+    } catch {
+      if (Platform.OS === "web") {
+        window.alert("Impossibile salvare il piano.");
+      } else {
+        Alert.alert("Errore", "Impossibile salvare il piano.");
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  const groupedItems = useMemo(() => {
-    if (!aiResult?.items) return [];
+  const groupedItems: { date: string; items: MealPlanItem[] }[] = [];
+  if (aiResult?.items) {
     const groups = new Map<string, MealPlanItem[]>();
     for (const item of aiResult.items) {
-      const key = item.date;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(item);
+      if (!groups.has(item.date)) groups.set(item.date, []);
+      groups.get(item.date)!.push(item);
     }
-    return Array.from(groups.entries())
+    Array.from(groups.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, items]) => ({ date, items }));
-  }, [aiResult]);
+      .forEach(([date, items]) => groupedItems.push({ date, items }));
+  }
 
   const formatDayDate = (dateStr: string): string => {
     const parts = dateStr.split("-");
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
     return dateStr;
   };
-
-  const renderPlanItem = ({ item }: { item: MealPlan }) => (
-    <View style={[styles.planCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <View style={styles.planHeader}>
-        <View style={styles.planInfo}>
-          <Text style={[styles.planTitle, { color: colors.text }]}>{item.title}</Text>
-          <Text style={[styles.planDate, { color: colors.textSecondary }]}>
-            {formatWeekDate(item.weekStartDate)}
-          </Text>
-          <Text style={[styles.planCount, { color: colors.textSecondary }]}>
-            {item.items?.length || 0} pasti
-          </Text>
-        </View>
-        <View style={styles.planActions}>
-          <Pressable
-            onPress={() => handleToShoppingList(item.id)}
-            hitSlop={8}
-            style={styles.actionButton}
-          >
-            <Ionicons name="cart-outline" size={22} color={colors.secondary} />
-          </Pressable>
-          <Pressable
-            onPress={() => handleDeletePlan(item.id)}
-            hitSlop={8}
-            style={styles.actionButton}
-          >
-            <Ionicons name="trash-outline" size={22} color={colors.error} />
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -285,43 +293,45 @@ export default function MealPlansScreen() {
       </View>
 
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
-        {TAB_CONFIG.map((tab) => (
-          <Pressable
-            key={tab.key}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setActiveTab(tab.key);
-            }}
-            style={[
-              styles.tabItem,
-              activeTab === tab.key && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
-            ]}
-          >
-            <Ionicons
-              name={tab.icon}
-              size={18}
-              color={activeTab === tab.key ? colors.primary : colors.textSecondary}
-            />
-            <Text
-              style={[
-                styles.tabLabel,
-                {
-                  color: activeTab === tab.key ? colors.primary : colors.textSecondary,
-                  fontFamily: activeTab === tab.key ? "Inter_600SemiBold" : "Inter_500Medium",
-                },
-              ]}
-            >
-              {tab.label}
-            </Text>
-          </Pressable>
-        ))}
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setActiveTab("plans");
+          }}
+          style={[
+            styles.tabItem,
+            activeTab === "plans" && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
+          ]}
+        >
+          <Ionicons name="calendar" size={18} color={activeTab === "plans" ? colors.primary : colors.textSecondary} />
+          <Text style={[styles.tabLabel, { color: activeTab === "plans" ? colors.primary : colors.textSecondary, fontFamily: activeTab === "plans" ? "Inter_600SemiBold" : "Inter_500Medium" }]}>
+            I Miei Piani
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setActiveTab("generate");
+          }}
+          style={[
+            styles.tabItem,
+            activeTab === "generate" && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
+          ]}
+        >
+          <Ionicons name="sparkles" size={18} color={activeTab === "generate" ? colors.primary : colors.textSecondary} />
+          <Text style={[styles.tabLabel, { color: activeTab === "generate" ? colors.primary : colors.textSecondary, fontFamily: activeTab === "generate" ? "Inter_600SemiBold" : "Inter_500Medium" }]}>
+            Genera con AI
+          </Text>
+        </Pressable>
       </View>
 
       {activeTab === "plans" && (
         <FlatList
           data={plans}
           keyExtractor={(item) => item.id}
-          renderItem={renderPlanItem}
+          renderItem={({ item }) => (
+            <PlanCard plan={item} onToShoppingList={handleToShoppingList} onDelete={handleDeletePlan} />
+          )}
           contentContainerStyle={[styles.listContent, { paddingBottom: bottomInset + 20 }]}
           scrollEnabled={plans.length > 0}
           ListEmptyComponent={
@@ -330,11 +340,15 @@ export default function MealPlansScreen() {
                 <ActivityIndicator size="large" color={colors.primary} />
               </View>
             ) : (
-              <EmptyState
-                icon="restaurant-outline"
-                title="Nessun piano pasti"
-                subtitle="Genera un piano settimanale con l'AI nella scheda apposita"
-              />
+              <View style={styles.emptyContainer}>
+                <View style={[styles.emptyIcon, { backgroundColor: colors.border }]}>
+                  <Ionicons name="restaurant-outline" size={32} color={colors.textSecondary} />
+                </View>
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>Nessun piano pasti</Text>
+                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                  Genera un piano settimanale con l'AI nella scheda apposita
+                </Text>
+              </View>
             )
           }
         />
@@ -421,29 +435,22 @@ export default function MealPlansScreen() {
                       {formatDayDate(group.date)}
                     </Text>
                   </View>
-                  {group.items.map((meal, idx) => (
-                    <View
-                      key={`${group.date}-${meal.mealType}-${idx}`}
-                      style={[styles.mealRow, { borderLeftColor: getMealTypeColor(meal.mealType, colors) }]}
-                    >
+                  {group.items.map((meal, idx) => {
+                    const mealColor = getMealTypeColor(meal.mealType, colors.primary, colors.secondary);
+                    return (
                       <View
-                        style={[
-                          styles.mealTypeBadge,
-                          { backgroundColor: getMealTypeColor(meal.mealType, colors) + "20" },
-                        ]}
+                        key={`${group.date}-${meal.mealType}-${idx}`}
+                        style={[styles.mealRow, { borderLeftColor: mealColor }]}
                       >
-                        <Text
-                          style={[
-                            styles.mealTypeText,
-                            { color: getMealTypeColor(meal.mealType, colors) },
-                          ]}
-                        >
-                          {getMealTypeLabel(meal.mealType)}
-                        </Text>
+                        <View style={[styles.mealTypeBadge, { backgroundColor: mealColor + "20" }]}>
+                          <Text style={[styles.mealTypeText, { color: mealColor }]}>
+                            {getMealTypeLabel(meal.mealType)}
+                          </Text>
+                        </View>
+                        <Text style={[styles.mealTitle, { color: colors.text }]}>{meal.title}</Text>
                       </View>
-                      <Text style={[styles.mealTitle, { color: colors.text }]}>{meal.title}</Text>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               ))}
 
@@ -560,6 +567,30 @@ const styles = StyleSheet.create({
   loadingContainer: {
     paddingTop: 60,
     alignItems: "center",
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+    gap: 12,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_600SemiBold",
+    textAlign: "center",
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
   },
   generateContainer: {
     flex: 1,
