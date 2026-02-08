@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  TextInput,
+  Keyboard,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -68,6 +70,8 @@ export default function RecipesScreen() {
   const [generatingAi, setGeneratingAi] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searching, setSearching] = useState(false);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
@@ -115,6 +119,37 @@ export default function RecipesScreen() {
       }
     } finally {
       setGeneratingAi(false);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!currentFamily || !searchQuery.trim() || searchQuery.trim().length < 2) return;
+    Keyboard.dismiss();
+    setSearching(true);
+    setAiError(null);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const data = await apiFetch<{ recipes?: any[] }>(
+        `/api/ai/${currentFamily.id}/recipe-search`,
+        { method: "POST", body: { query: searchQuery.trim() } }
+      );
+      const list = data.recipes || [];
+      if (list.length === 0) {
+        setAiError("Nessuna ricetta trovata. Prova con altri termini.");
+        return;
+      }
+      router.push({
+        pathname: "/recipes/preview" as any,
+        params: { recipesJson: JSON.stringify(list) },
+      });
+    } catch (error: any) {
+      if (error?.status === 403) {
+        setAiError("Funzionalità AI disabilitata. Attivala nelle Impostazioni.");
+      } else {
+        setAiError("Errore nella ricerca. Riprova.");
+      }
+    } finally {
+      setSearching(false);
     }
   };
 
@@ -322,14 +357,14 @@ export default function RecipesScreen() {
 
       <Pressable
         onPress={handleGenerateAi}
-        disabled={generatingAi}
+        disabled={generatingAi || searching}
         style={({ pressed }) => [
           styles.generateButton,
           {
             backgroundColor: colors.secondary,
             opacity: pressed || generatingAi ? 0.7 : 1,
             marginHorizontal: 20,
-            marginBottom: 12,
+            marginBottom: 10,
           },
         ]}
       >
@@ -342,6 +377,27 @@ export default function RecipesScreen() {
           {generatingAi ? "Generazione in corso..." : "Genera Ricette AI"}
         </Text>
       </Pressable>
+
+      <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Ionicons name="search" size={20} color={colors.textSecondary} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.text }]}
+          placeholder="Cerca una ricetta... es. pasta al forno"
+          placeholderTextColor={colors.textSecondary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          onSubmitEditing={handleSearch}
+          returnKeyType="search"
+          editable={!searching && !generatingAi}
+        />
+        {searching ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : searchQuery.trim().length >= 2 ? (
+          <Pressable onPress={handleSearch} hitSlop={8}>
+            <Ionicons name="arrow-forward-circle" size={28} color={colors.primary} />
+          </Pressable>
+        ) : null}
+      </View>
 
       <FlatList
         data={recipes}
@@ -427,6 +483,23 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontFamily: "Inter_600SemiBold",
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 20,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+    paddingVertical: 2,
   },
   listContent: {
     paddingHorizontal: 20,
