@@ -208,66 +208,62 @@ export async function generateRecipeSuggestions(context: {
     ? `\n\nTITOLI GIÀ GENERATI (NON ripeterli, inventa piatti COMPLETAMENTE diversi): ${context.lastRecipeTitles.join(', ')}`
     : '';
 
-  const categories = [
+  const allCategories = [
     "pasta", "risotto", "zuppa", "insalata", "carne al forno",
     "pesce", "contorno", "piatto unico vegetariano", "frittata/torta salata",
     "legumi", "pizza/focaccia", "secondo di carne in padella"
   ];
-  const selectedCats = categories.slice(0, count).join(', ');
+  const selectedCats = allCategories.slice(0, count);
 
-  const systemPrompt = `Sei uno chef italiano esperto. DEVI generare esattamente ${count} ricette in un JSON valido.
-FORMATO OBBLIGATORIO: {"recipes":[...]}
-Ogni ricetta: {"title":"...","description":"breve","servings":4,"prepTimeMinutes":15,"cookTimeMinutes":30,"steps":["..."],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"...","quantity":"200","unit":"g","category":"..."}]}
-REGOLE: quantity DEVE essere stringa. Genera ESATTAMENTE ${count} ricette, una per ciascuna categoria: ${selectedCats}. NO spazi nei nomi chiave JSON.`;
+  async function fetchRecipeBatch(cats: string[], seed: number): Promise<RecipeSuggestion[]> {
+    const n = cats.length;
+    const catList = cats.join(', ');
+    const sysPrompt = `Sei uno chef italiano esperto. DEVI generare esattamente ${n} ricette in un JSON valido.
+FORMATO: {"recipes":[{"title":"...","description":"breve","servings":4,"prepTimeMinutes":15,"cookTimeMinutes":30,"steps":["..."],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"...","quantity":"200","unit":"g","category":"..."}]}]}
+REGOLE: quantity stringa. Genera ${n} ricette, una per categoria: ${catList}. NO spazi nei nomi chiave.`;
 
-  const userContent = `[seed:${randomSeed}] Famiglia di ${context.familySize} persone.${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${lastTitlesText}
+    const userMsg = `[seed:${seed}] ${context.familySize} persone.${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${lastTitlesText}
+Genera ${n} ricette, una per categoria. Solo JSON.`;
 
-Genera ESATTAMENTE ${count} ricette, una per ogni categoria elencata. Rispondi SOLO con JSON.`;
-
-  async function fetchRecipeBatch(batchCount: number, batchPrompt: string, batchUser: string): Promise<RecipeSuggestion[]> {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: batchPrompt },
-        { role: 'user', content: batchUser },
+        { role: 'system', content: sysPrompt },
+        { role: 'user', content: userMsg },
       ],
       response_format: { type: 'json_object' },
       temperature: 0.9,
-      max_tokens: 16000,
+      max_tokens: 8000,
     });
 
     const content = response.choices[0].message.content || '{"recipes": []}';
-    const finishReason = response.choices[0].finish_reason;
-    console.log(`AI batch: finish_reason=${finishReason}, content_length=${content.length}`);
+    console.log(`AI batch (${n} cats): finish=${response.choices[0].finish_reason}, len=${content.length}`);
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
-    } catch (jsonErr) {
-      console.error('Recipe JSON parse error:', content?.slice(0, 500));
+    } catch {
+      console.error('Recipe JSON parse error:', content?.slice(0, 300));
       return [];
     }
     return parseRecipesResponse(parsed);
   }
 
   try {
-    let allRecipes = await fetchRecipeBatch(count, systemPrompt, userContent);
-    console.log(`Recipe suggestions: ${allRecipes.length} parsed (requested ${count})`);
-
-    if (allRecipes.length < count) {
-      const missing = count - allRecipes.length;
-      const existingTitles = allRecipes.map(r => r.title).join(', ');
-      const extraPrompt = `Sei uno chef italiano. Genera esattamente ${missing} ricette NUOVE e DIVERSE in JSON.
-Formato: {"recipes":[{"title":"...","description":"breve","servings":4,"prepTimeMinutes":15,"cookTimeMinutes":30,"steps":["..."],"tags":{"diet":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"...","quantity":"200","unit":"g"}]}]}
-NO spazi nei nomi chiave JSON. quantity DEVE essere stringa.`;
-      const extraUser = `[seed:${randomSeed + 1}] ${context.familySize} persone.${dietText}${allergyText}
-Ricette già generate (NON ripetere): ${existingTitles}${lastTitlesText ? ', ' + (context.lastRecipeTitles?.join(', ') || '') : ''}
-Genera ${missing} ricette italiane COMPLETAMENTE diverse.`;
-
-      const extra = await fetchRecipeBatch(missing, extraPrompt, extraUser);
-      console.log(`Extra batch: ${extra.length} more recipes`);
-      allRecipes = [...allRecipes, ...extra];
+    const batchSize = 4;
+    const batches: string[][] = [];
+    for (let i = 0; i < selectedCats.length; i += batchSize) {
+      batches.push(selectedCats.slice(i, i + batchSize));
     }
+
+    const startTime = Date.now();
+    const results = await Promise.all(
+      batches.map((batch, idx) => fetchRecipeBatch(batch, randomSeed + idx))
+    );
+    const elapsed = Date.now() - startTime;
+
+    let allRecipes = results.flat();
+    console.log(`Parallel generation: ${allRecipes.length} recipes in ${elapsed}ms (${batches.length} batches)`);
 
     const seenTitles = new Set<string>();
     const unique = allRecipes.filter(r => {
