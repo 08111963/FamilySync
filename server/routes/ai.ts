@@ -481,13 +481,25 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "weekStartDate è obbligatorio (YYYY-MM-DD)" } });
     }
 
-    const result = await generateWeeklyMealPlan({
+    const context = {
       familySize: members.length || 1,
       weekStartDate,
       preferences,
-    });
+    };
 
-    res.json({ ...result, weekStartDate });
+    const [plan1, plan2] = await Promise.all([
+      generateWeeklyMealPlan({ ...context, planVariant: 1 }),
+      generateWeeklyMealPlan({ ...context, planVariant: 2 }),
+    ]);
+
+    plan1.title = plan1.title || "Piano A - Classico";
+    plan2.title = plan2.title || "Piano B - Alternativo";
+    if (plan1.title === plan2.title) {
+      plan1.title = "Piano A - " + plan1.title;
+      plan2.title = "Piano B - " + plan2.title;
+    }
+
+    res.json({ plans: [{ ...plan1, weekStartDate }, { ...plan2, weekStartDate }] });
   } catch (error) {
     logger.error('Weekly meal plan error', { error: String(error) });
     res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione del piano pasti" } });

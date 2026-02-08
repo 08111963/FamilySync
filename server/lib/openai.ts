@@ -305,6 +305,7 @@ export async function generateWeeklyMealPlan(context: {
   familySize: number;
   weekStartDate: string;
   preferences?: { diet?: string; allergies?: string; maxTimeMinutes?: number; mealsPerDay?: number };
+  planVariant?: number;
 }): Promise<MealPlanSuggestion> {
   const mealsPerDay = context.preferences?.mealsPerDay || 3;
   const mealTypes = mealsPerDay >= 4
@@ -312,6 +313,11 @@ export async function generateWeeklyMealPlan(context: {
     : mealsPerDay >= 3
       ? ['breakfast', 'lunch', 'dinner']
       : ['lunch', 'dinner'];
+
+  const variant = context.planVariant || 1;
+  const variantHint = variant === 1
+    ? 'Crea un piano equilibrato e classico con piatti tradizionali italiani.'
+    : 'Crea un piano creativo e diverso con piatti più originali e meno convenzionali.';
 
   try {
     const prefText = context.preferences
@@ -338,13 +344,14 @@ REGOLE:
 - Totale items: ${7 * mealsPerDay}.
 - Ogni item ha: date (YYYY-MM-DD), mealType (${mealTypes.join('|')}), title (nome piatto in italiano), description (opzionale, breve).
 - Bilancia la varietà: non ripetere lo stesso piatto.
+- ${variantHint}
 - Rispondi con JSON: {"title": "Piano Settimanale [data]", "items": [...]}`,
       }, {
         role: 'user',
         content: `Famiglia di ${context.familySize} persone. Settimana dal ${dates[0]} al ${dates[6]}.${prefText}\n\nGenera il piano pasti settimanale.`,
       }],
       response_format: { type: 'json_object' },
-      temperature: 0.7,
+      temperature: 0.85,
     });
 
     const content = response.choices[0].message.content || '{"title":"","items":[]}';
