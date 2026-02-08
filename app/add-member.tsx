@@ -59,7 +59,17 @@ export default function AddMemberScreen() {
     const mailto = to
       ? `mailto:${to}?subject=${subject}&body=${body}`
       : `mailto:?subject=${subject}&body=${body}`;
-    Linking.openURL(mailto).catch(() => {});
+    if (Platform.OS === "web") {
+      const a = document.createElement("a");
+      a.href = mailto;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else {
+      Linking.openURL(mailto).catch(() => {});
+    }
   };
 
   const handleShareLink = async () => {
