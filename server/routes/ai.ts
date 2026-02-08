@@ -492,12 +492,8 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
       generateWeeklyMealPlan({ ...context, planVariant: 2 }),
     ]);
 
-    plan1.title = plan1.title || "Piano A - Classico";
-    plan2.title = plan2.title || "Piano B - Alternativo";
-    if (plan1.title === plan2.title) {
-      plan1.title = "Piano A - " + plan1.title;
-      plan2.title = "Piano B - " + plan2.title;
-    }
+    plan1.title = "Piano A - Classico";
+    plan2.title = "Piano B - Creativo";
 
     res.json({ plans: [{ ...plan1, weekStartDate }, { ...plan2, weekStartDate }] });
   } catch (error) {
