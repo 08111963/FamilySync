@@ -248,6 +248,10 @@ export default function LoginScreen() {
               <Pressable onPress={() => router.push("/legal/terms")}>
                 <Text style={[styles.legalLink, { color: colors.textSecondary }]}>Termini d'Uso</Text>
               </Pressable>
+              <Text style={[styles.legalSeparator, { color: colors.textSecondary }]}>|</Text>
+              <Pressable onPress={() => router.push("/help/user-guide")}>
+                <Text style={[styles.legalLink, { color: colors.textSecondary }]}>Guida</Text>
+              </Pressable>
             </View>
           </View>
         </ScrollView>

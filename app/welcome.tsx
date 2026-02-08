@@ -228,6 +228,10 @@ export default function WelcomeScreen() {
             <Pressable onPress={() => router.push("/legal/terms")}>
               <Text style={styles.legalLink}>Termini d'Uso</Text>
             </Pressable>
+            <View style={styles.trustDivider} />
+            <Pressable onPress={() => router.push("/help/user-guide")}>
+              <Text style={styles.legalLink}>Guida Utente</Text>
+            </Pressable>
           </View>
         </View>
       </ScrollView>
