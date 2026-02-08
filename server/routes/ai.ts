@@ -6,9 +6,10 @@ import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
-import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, type ShoppingSuggestionItem } from '../lib/openai';
+import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateRecipeSuggestions, generateWeeklyMealPlan, type ShoppingSuggestionItem } from '../lib/openai';
 import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
+import { recipes, recipeIngredients } from '../../shared/schema';
 
 const router = Router();
 
@@ -424,6 +425,94 @@ router.patch('/:familyId/insights/:insightId/dismiss', authenticate, requireFami
   } catch (error) {
     logger.error('Dismiss insight error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore" } });
+  }
+});
+
+router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = req.params.familyId;
+    const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
+
+    const { preferences, existingIngredients, count } = req.body || {};
+
+    const result = await generateRecipeSuggestions({
+      familySize: members.length || 1,
+      preferences,
+      existingIngredients,
+      count: Math.min(count || 3, 5),
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Recipe suggestions error', { error: String(error) });
+    res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione ricette" } });
+  }
+});
+
+router.post('/:familyId/recipe-suggestions/save', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = req.params.familyId;
+    const recipe = req.body;
+
+    if (!recipe?.title || !recipe?.steps || !recipe?.ingredients) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dati ricetta mancanti" } });
+    }
+
+    const [saved] = await db.insert(recipes).values({
+      familyId,
+      createdByUserId: req.user!.userId,
+      source: 'ai',
+      title: recipe.title,
+      description: recipe.description || null,
+      servings: recipe.servings || null,
+      prepTimeMinutes: recipe.prepTimeMinutes || null,
+      cookTimeMinutes: recipe.cookTimeMinutes || null,
+      steps: recipe.steps,
+      tags: recipe.tags || null,
+    }).returning();
+
+    if (recipe.ingredients?.length > 0) {
+      for (const ing of recipe.ingredients) {
+        await db.insert(recipeIngredients).values({
+          recipeId: saved.id,
+          name: ing.name,
+          quantity: ing.quantity || null,
+          unit: ing.unit || null,
+          notes: ing.notes || null,
+          category: ing.category || null,
+          normalizedName: (ing.name || '').toLowerCase().trim(),
+        });
+      }
+    }
+
+    res.status(201).json(saved);
+  } catch (error) {
+    logger.error('Save AI recipe error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel salvataggio della ricetta" } });
+  }
+});
+
+router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = req.params.familyId;
+    const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
+
+    const { weekStartDate, preferences } = req.body || {};
+
+    if (!weekStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate)) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "weekStartDate è obbligatorio (YYYY-MM-DD)" } });
+    }
+
+    const result = await generateWeeklyMealPlan({
+      familySize: members.length || 1,
+      weekStartDate,
+      preferences,
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Weekly meal plan error', { error: String(error) });
+    res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione del piano pasti" } });
   }
 });
 

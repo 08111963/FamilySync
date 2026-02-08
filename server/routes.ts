@@ -14,6 +14,8 @@ import paymentsRoutes from "./routes/payments";
 import legalRoutes from "./routes/legal";
 import helpRoutes from "./routes/help";
 import moderationRoutes from "./routes/moderation";
+import recipesRoutes from "./routes/recipes";
+import mealPlansRoutes from "./routes/meal-plans";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(helmet({
@@ -43,6 +45,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/ai', aiRoutes);
   app.use('/api/payments', paymentsRoutes);
   app.use('/api/moderation', moderationRoutes);
+  app.use('/api/recipes', recipesRoutes);
+  app.use('/api/meal-plans', mealPlansRoutes);
 
   app.use('/legal', legalRoutes);
   app.use('/help', helpRoutes);

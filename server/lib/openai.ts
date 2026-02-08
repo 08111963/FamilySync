@@ -111,6 +111,157 @@ export async function optimizeChoreSchedule(context: {
   }
 }
 
+export interface RecipeSuggestion {
+  title: string;
+  description: string;
+  servings: number;
+  prepTimeMinutes: number;
+  cookTimeMinutes: number;
+  steps: string[];
+  tags: { diet?: string[]; allergens?: string[]; cuisine?: string; difficulty?: string };
+  ingredients: Array<{ name: string; quantity?: string; unit?: string; category?: string }>;
+}
+
+const recipeSuggestionSchema = z.object({
+  recipes: z.array(z.object({
+    title: z.string(),
+    description: z.string(),
+    servings: z.number().catch(4),
+    prepTimeMinutes: z.number().catch(15),
+    cookTimeMinutes: z.number().catch(30),
+    steps: z.array(z.string()),
+    tags: z.object({
+      diet: z.array(z.string()).optional(),
+      allergens: z.array(z.string()).optional(),
+      cuisine: z.string().optional(),
+      difficulty: z.string().optional(),
+    }).catch({}),
+    ingredients: z.array(z.object({
+      name: z.string(),
+      quantity: z.string().optional(),
+      unit: z.string().optional(),
+      category: z.string().optional(),
+    })),
+  })),
+}).catch({ recipes: [] });
+
+export async function generateRecipeSuggestions(context: {
+  familySize: number;
+  preferences?: { diet?: string; allergies?: string; maxTimeMinutes?: number };
+  existingIngredients?: string[];
+  count?: number;
+}): Promise<{ recipes: RecipeSuggestion[] }> {
+  const count = context.count || 3;
+  try {
+    const prefText = context.preferences
+      ? `\nPreferenze: ${context.preferences.diet ? `Dieta: ${context.preferences.diet}.` : ''} ${context.preferences.allergies ? `Allergie/intolleranze: ${context.preferences.allergies}.` : ''} ${context.preferences.maxTimeMinutes ? `Tempo max: ${context.preferences.maxTimeMinutes} min.` : ''}`
+      : '';
+    const ingredientsText = context.existingIngredients?.length
+      ? `\nIngredienti già disponibili: ${context.existingIngredients.join(', ')}`
+      : '';
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'system',
+        content: `Sei uno chef italiano esperto di cucina familiare. Genera ricette pratiche e gustose per famiglie italiane.
+
+REGOLE:
+- Genera esattamente ${count} ricette DIVERSE.
+- Ogni ricetta deve avere: title, description, servings, prepTimeMinutes, cookTimeMinutes, steps (array di stringhe), tags, ingredients.
+- Gli ingredients devono avere: name, quantity (come stringa es "200"), unit (una tra: g, kg, ml, l, pcs, tbsp, tsp, cup, pinch, to_taste), category (es: "latticini", "verdure", "carne", "pasta", "condimenti").
+- Le ricette devono essere adatte a famiglie con bambini.
+- Rispondi SOLO con JSON: {"recipes": [...]}`,
+      }, {
+        role: 'user',
+        content: `Famiglia di ${context.familySize} persone.${prefText}${ingredientsText}\n\nGenera ${count} ricette italiane per la famiglia.`,
+      }],
+      response_format: { type: 'json_object' },
+      temperature: 0.8,
+    });
+
+    const content = response.choices[0].message.content || '{"recipes": []}';
+    return recipeSuggestionSchema.parse(JSON.parse(content));
+  } catch (error) {
+    console.error('OpenAI recipe suggestions error:', error);
+    return { recipes: [] };
+  }
+}
+
+export interface MealPlanSuggestion {
+  title: string;
+  items: Array<{
+    date: string;
+    mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+    title: string;
+    description?: string;
+  }>;
+}
+
+const mealPlanSchema = z.object({
+  title: z.string(),
+  items: z.array(z.object({
+    date: z.string(),
+    mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+    title: z.string(),
+    description: z.string().optional(),
+  })),
+}).catch({ title: '', items: [] });
+
+export async function generateWeeklyMealPlan(context: {
+  familySize: number;
+  weekStartDate: string;
+  preferences?: { diet?: string; allergies?: string; maxTimeMinutes?: number; mealsPerDay?: number };
+}): Promise<MealPlanSuggestion> {
+  const mealsPerDay = context.preferences?.mealsPerDay || 3;
+  const mealTypes = mealsPerDay >= 4
+    ? ['breakfast', 'lunch', 'dinner', 'snack']
+    : mealsPerDay >= 3
+      ? ['breakfast', 'lunch', 'dinner']
+      : ['lunch', 'dinner'];
+
+  try {
+    const prefText = context.preferences
+      ? `\nPreferenze: ${context.preferences.diet ? `Dieta: ${context.preferences.diet}.` : ''} ${context.preferences.allergies ? `Allergie: ${context.preferences.allergies}.` : ''} ${context.preferences.maxTimeMinutes ? `Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}`
+      : '';
+
+    const dates: string[] = [];
+    const start = new Date(context.weekStartDate);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      dates.push(d.toISOString().split('T')[0]!);
+    }
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'system',
+        content: `Sei un nutrizionista italiano esperto di piani alimentari familiari.
+
+REGOLE:
+- Genera un piano pasti per 7 giorni (da ${dates[0]} a ${dates[6]}).
+- Per ogni giorno genera esattamente ${mealsPerDay} pasti: ${mealTypes.join(', ')}.
+- Totale items: ${7 * mealsPerDay}.
+- Ogni item ha: date (YYYY-MM-DD), mealType (${mealTypes.join('|')}), title (nome piatto in italiano), description (opzionale, breve).
+- Bilancia la varietà: non ripetere lo stesso piatto.
+- Rispondi con JSON: {"title": "Piano Settimanale [data]", "items": [...]}`,
+      }, {
+        role: 'user',
+        content: `Famiglia di ${context.familySize} persone. Settimana dal ${dates[0]} al ${dates[6]}.${prefText}\n\nGenera il piano pasti settimanale.`,
+      }],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    });
+
+    const content = response.choices[0].message.content || '{"title":"","items":[]}';
+    return mealPlanSchema.parse(JSON.parse(content));
+  } catch (error) {
+    console.error('OpenAI meal plan error:', error);
+    return { title: '', items: [] };
+  }
+}
+
 export async function generateFamilyInsights(context: {
   events: number;
   completedChores: number;
