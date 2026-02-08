@@ -6,7 +6,8 @@ import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
-import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, normalizeItemName, type ShoppingSuggestionItem } from '../lib/openai';
+import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, type ShoppingSuggestionItem } from '../lib/openai';
+import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -140,53 +141,124 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
       recentSuggestions,
     });
 
-    const forbiddenSet = new Set(
-      [...recentPurchases, ...alreadyOnList, ...completedRecently, ...recentSuggestions]
-        .map(normalizeItemName)
-        .filter(n => n.length > 0)
-    );
+    const alreadyOnListSet = new Set(alreadyOnList.map(normalizeItemName).filter(n => n.length > 0));
+    const completedRecentlySet = new Set(completedRecently.map(normalizeItemName).filter(n => n.length > 0));
+    const recentPurchasesSet = new Set(recentPurchases.map(normalizeItemName).filter(n => n.length > 0));
+    const recentSuggestionsSet = new Set(recentSuggestions.map(normalizeItemName).filter(n => n.length > 0));
+
+    const totalFromAI = aiResult.items.length;
 
     const seenNames = new Set<string>();
-    const deduped: ShoppingSuggestionItem[] = [];
+    const uniqueItems: ShoppingSuggestionItem[] = [];
+    let droppedDuplicates = 0;
     for (const item of aiResult.items) {
       const norm = normalizeItemName(item.name);
-      if (!norm || seenNames.has(norm) || forbiddenSet.has(norm)) continue;
+      if (!norm || seenNames.has(norm)) {
+        if (norm && seenNames.has(norm)) droppedDuplicates++;
+        continue;
+      }
       seenNames.add(norm);
-      deduped.push(item);
+      uniqueItems.push(item);
     }
+    const uniqueAfterNormalize = uniqueItems.length;
 
-    const household = deduped.filter(i => i.category === 'household_cleaning');
-    const personal = deduped.filter(i => i.category === 'personal_care');
-    const foodOther = deduped.filter(i => i.category === 'food' || i.category === 'other');
+    let droppedAlreadyOnList = 0;
+    let droppedCompletedRecently = 0;
+    let droppedRecentPurchases = 0;
+    let droppedRecentSuggestions = 0;
+    const filtered: ShoppingSuggestionItem[] = [];
+
+    for (const item of uniqueItems) {
+      const norm = normalizeItemName(item.name);
+      if (alreadyOnListSet.has(norm)) { droppedAlreadyOnList++; continue; }
+      if (completedRecentlySet.has(norm)) { droppedCompletedRecently++; continue; }
+      if (recentPurchasesSet.has(norm)) { droppedRecentPurchases++; continue; }
+      if (recentSuggestionsSet.has(norm)) { droppedRecentSuggestions++; continue; }
+      filtered.push(item);
+    }
+    const keptAfterFilters = filtered.length;
+
+    const allForbiddenSet = new Set<string>();
+    for (const s of [alreadyOnListSet, completedRecentlySet, recentPurchasesSet, recentSuggestionsSet]) {
+      for (const v of s) allForbiddenSet.add(v);
+    }
+    for (const n of seenNames) allForbiddenSet.add(n);
+
+    const household = filtered.filter(i => i.category === 'household_cleaning');
+    const personal = filtered.filter(i => i.category === 'personal_care');
+    const foodOther = filtered.filter(i => i.category === 'food' || i.category === 'other');
 
     const finalItems: ShoppingSuggestionItem[] = [];
+    const usedNorms = new Set<string>();
 
-    for (const item of household) {
-      if (finalItems.length >= 10) break;
+    const addItem = (item: ShoppingSuggestionItem) => {
+      const norm = normalizeItemName(item.name);
+      if (usedNorms.has(norm)) return false;
+      usedNorms.add(norm);
       finalItems.push(item);
-    }
-    for (const item of personal) {
-      if (finalItems.length >= 10) break;
-      finalItems.push(item);
-    }
-    for (const item of foodOther) {
-      if (finalItems.length >= 10) break;
-      finalItems.push(item);
+      return true;
+    };
+
+    for (const item of household) { if (finalItems.length >= 10) break; addItem(item); }
+    const householdFromAI = finalItems.length;
+    if (householdFromAI < 3) {
+      const shuffledHC = [...FALLBACK_POOL].filter(fb => fb.category === 'household_cleaning').sort(() => Math.random() - 0.5);
+      for (const fb of shuffledHC) {
+        if (finalItems.filter(i => i.category === 'household_cleaning').length >= 3) break;
+        if (finalItems.length >= 10) break;
+        const norm = normalizeItemName(fb.name);
+        if (usedNorms.has(norm) || allForbiddenSet.has(norm)) continue;
+        addItem(fb);
+      }
     }
 
+    for (const item of personal) { if (finalItems.length >= 10) break; addItem(item); }
+    const personalFromAI = finalItems.filter(i => i.category === 'personal_care').length;
+    if (personalFromAI < 2) {
+      const shuffledPC = [...FALLBACK_POOL].filter(fb => fb.category === 'personal_care').sort(() => Math.random() - 0.5);
+      for (const fb of shuffledPC) {
+        if (finalItems.filter(i => i.category === 'personal_care').length >= 2) break;
+        if (finalItems.length >= 10) break;
+        const norm = normalizeItemName(fb.name);
+        if (usedNorms.has(norm) || allForbiddenSet.has(norm)) continue;
+        addItem(fb);
+      }
+    }
+
+    for (const item of foodOther) { if (finalItems.length >= 10) break; addItem(item); }
+
+    let filledFromFallback = 0;
     if (finalItems.length < 10) {
       const shuffled = [...FALLBACK_POOL].sort(() => Math.random() - 0.5);
       for (const fb of shuffled) {
         if (finalItems.length >= 10) break;
         const norm = normalizeItemName(fb.name);
-        if (seenNames.has(norm) || forbiddenSet.has(norm)) continue;
-        seenNames.add(norm);
-        finalItems.push(fb);
+        if (usedNorms.has(norm) || allForbiddenSet.has(norm)) continue;
+        addItem(fb);
+        filledFromFallback++;
       }
     }
+    const fallbackUsedForCategories = finalItems.length - filtered.slice(0, 10).length;
+    filledFromFallback = Math.max(filledFromFallback, finalItems.length - keptAfterFilters);
+    if (filledFromFallback < 0) filledFromFallback = 0;
 
     const householdCount = finalItems.filter(i => i.category === 'household_cleaning').length;
     const personalCount = finalItems.filter(i => i.category === 'personal_care').length;
+
+    console.log(JSON.stringify({
+      tag: "AI_SHOPPING_SUGGESTIONS",
+      familyId,
+      totalFromAI,
+      uniqueAfterNormalize,
+      droppedAlreadyOnList,
+      droppedCompletedRecently,
+      droppedRecentPurchases,
+      droppedRecentSuggestions,
+      keptAfterFilters,
+      filledFromFallback: finalItems.length - Math.min(keptAfterFilters, 10),
+      finalCount: finalItems.length,
+      categoryCounts: { household_cleaning: householdCount, personal_care: personalCount, food: finalItems.length - householdCount - personalCount },
+    }));
 
     try {
       await db.insert(aiInsights).values({
