@@ -1,0 +1,142 @@
+OBIETTIVO
+Rendere i suggerimenti “Spesa” in AI Insights il più “infallibili” possibile:
+- SEMPRE 10 prodotti unici (case-insensitive) nella stessa risposta.
+- Mix categorie: almeno 3 pulizia casa + almeno 2 igiene personale.
+- Evitare ripetizioni rispetto a:
+  1) alreadyOnList = shopping_items NON checked
+  2) completedRecently = shopping_items checked negli ultimi 30 giorni
+  3) recentPurchases = shopping_history ultimi 30 giorni (se presente)
+  4) recentSuggestions = ai_insights(type='shopping_suggestions') ultimi 14 giorni
+- LOG OBBLIGATORIO (solo server logs): contare quanti item vengono scartati per ciascun filtro (alreadyOnList / completedRecently / recentPurchases / recentSuggestions) e stampare un riepilogo per ogni richiesta.
+
+VINCOLI
+- NON attivare Stripe/pagamenti.
+- Non toccare DB schema oltre a ciò che già esiste (se manca updatedAt su shopping_items, usare createdAt come fallback; NON aggiungere colonne).
+- Modificare SOLO: server/lib/openai.ts e server/routes/ai.ts (+ opzionale helper server/lib/normalize.ts).
+- Nessuna nuova libreria.
+
+ENDPOINT
+- GET /api/ai/:familyId/shopping-suggestions (server/routes/ai.ts)
+
+========================================================
+1) OPENAI OUTPUT: JSON OGGETTO + VALIDAZIONE ZOD
+========================================================
+In server/lib/openai.ts, generateShoppingSuggestions deve produrre SEMPRE:
+{
+  "items": [
+    { "name": string, "category": "food"|"household_cleaning"|"personal_care"|"other", "reason": string }
+  ]
+}
+- Chiedi al modello 12 items tutti diversi (per filtraggio server-side).
+- No brand: solo nomi generici.
+- Include >=3 household_cleaning e >=2 personal_care.
+- response_format: { type: "json_object" }
+- Valida con Zod; se fallisce => { items: [] }
+- Imposta temperature ~0.7, presence_penalty ~0.8, frequency_penalty ~0.3
+
+Signature:
+generateShoppingSuggestions({
+  familySize,
+  season,
+  upcomingEvents,
+  alreadyOnList,       // string[]
+  completedRecently,   // string[]
+  recentPurchases,     // string[]
+  recentSuggestions    // string[]
+})
+
+========================================================
+2) ROUTE: RACCOLTA FORBIDDEN + FILTRI + FALLBACK
+========================================================
+In server/routes/ai.ts (GET /:familyId/shopping-suggestions):
+
+A) alreadyOnList:
+- shopping_items join shopping_lists
+- filter: shopping_lists.familyId=familyId AND shopping_items.checked=false
+- alreadyOnList = names
+
+B) completedRecently (spesa fatta):
+- shopping_items join shopping_lists
+- filter: familyId AND checked=true AND (updatedAt >= now-30g) se esiste updatedAt, altrimenti createdAt >= now-30g
+- completedRecently = names
+
+C) recentPurchases:
+- Se nel progetto esiste già shopping_history, usa la query già presente (ultimi 30g). Altrimenti [].
+
+D) recentSuggestions:
+- ai_insights ultimi 14 giorni per familyId e type='shopping_suggestions'
+- estrai actionData.items e rendi unique
+
+E) Generazione:
+- chiama generateShoppingSuggestions(...) con tutte le liste forbidden.
+
+F) Post-processing OBBLIGATORIO:
+- Normalizza name: trim, lowercase, collapse spazi, rimuovi punteggiatura base.
+- Dedupe case-insensitive.
+- Filtra out se name ∈ alreadyOnList OR completedRecently OR recentPurchases OR recentSuggestions.
+
+G) Enforce mix categorie:
+- Costruisci finalItems (10):
+  - >=3 household_cleaning
+  - >=2 personal_care
+  - completa con food/other
+
+H) Se < 10:
+- completa con fallback pool hardcoded (no brand) per categoria, sempre filtrando forbidden.
+
+I) Persisti storico suggerimenti:
+- Inserisci ai_insights:
+  - familyId
+  - type='shopping_suggestions'
+  - dismissed=true
+  - actionData: { items:[names finali], generatedAt, categoriesCount }
+
+J) Response:
+- return { items: finalItems } (sempre 10 se possibile)
+
+========================================================
+3) LOG OBBLIGATORIO (SERVER ONLY) — “ANTI-FILTRO A METÀ”
+========================================================
+Per OGNI richiesta a /shopping-suggestions, loggare un riepilogo conteggi:
+- totalFromAI: quanti item sono arrivati da OpenAI (post-parse)
+- uniqueAfterNormalize: quanti rimangono dopo normalize+dedupe
+- droppedAlreadyOnList: quanti scartati perché presenti in alreadyOnList
+- droppedCompletedRecently: quanti scartati perché presenti in completedRecently
+- droppedRecentPurchases: quanti scartati perché presenti in recentPurchases
+- droppedRecentSuggestions: quanti scartati perché presenti in recentSuggestions
+- keptAfterFilters: quanti rimangono dopo tutti i filtri
+- filledFromFallback: quanti aggiunti dalla fallback pool
+- finalCount: quanti items in risposta (deve essere 10)
+
+Formato log consigliato (una riga JSON per facilità):
+console.log(JSON.stringify({
+  tag: "AI_SHOPPING_SUGGESTIONS",
+  familyId,
+  totalFromAI,
+  uniqueAfterNormalize,
+  droppedAlreadyOnList,
+  droppedCompletedRecently,
+  droppedRecentPurchases,
+  droppedRecentSuggestions,
+  keptAfterFilters,
+  filledFromFallback,
+  finalCount
+}));
+
+ATTENZIONE:
+- I contatori devono riflettere lo scarto reale: implementa il filtro in modo da sapere quale motivo ha causato lo scarto.
+- Se un item è in più liste forbidden, conta lo scarto nella PRIMA regola applicata (ordine fisso) oppure conta multi-causa (ma in tal caso logga anche droppedMultiCause). Scegli UNA strategia e implementala coerentemente.
+
+========================================================
+CRITERI DI ACCETTAZIONE
+========================================================
+- Ogni risposta ha 10 items unici.
+- Include >=3 pulizia casa e >=2 igiene personale.
+- Nessun item già in lista o spuntato recentemente o acquistato recentemente o suggerito recentemente.
+- I log per ogni richiesta mostrano contatori coerenti e finalCount=10 (quasi sempre grazie a fallback).
+- Nessuna modifica a Stripe/pagamenti.
+
+FILE DA MODIFICARE (OBBLIGATORIO)
+- server/lib/openai.ts
+- server/routes/ai.ts
+- (opzionale) server/lib/normalize.ts

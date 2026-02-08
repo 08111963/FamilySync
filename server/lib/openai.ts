@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
+import { normalizeItemName } from './normalize';
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -23,55 +24,6 @@ const suggestionItemSchema = z.object({
 const suggestionsResponseSchema = z.object({
   items: z.array(suggestionItemSchema),
 }).catch({ items: [] });
-
-export function normalizeItemName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/[.,;:!?'"()[\]{}]/g, '');
-}
-
-const FALLBACK_POOL: Record<string, ShoppingSuggestionItem[]> = {
-  household_cleaning: [
-    { name: 'detersivo piatti', category: 'household_cleaning', reason: 'Essenziale per lavare le stoviglie' },
-    { name: 'detersivo lavatrice', category: 'household_cleaning', reason: 'Per il bucato settimanale' },
-    { name: 'ammorbidente', category: 'household_cleaning', reason: 'Rende i tessuti più morbidi' },
-    { name: 'candeggina', category: 'household_cleaning', reason: 'Utile per igienizzare superfici' },
-    { name: 'sgrassatore', category: 'household_cleaning', reason: 'Per pulire cucina e piani cottura' },
-    { name: 'panni microfibra', category: 'household_cleaning', reason: 'Ideali per spolverare senza residui' },
-    { name: 'spugne cucina', category: 'household_cleaning', reason: 'Da sostituire regolarmente per igiene' },
-    { name: 'sacchetti immondizia', category: 'household_cleaning', reason: 'Indispensabili per la raccolta rifiuti' },
-    { name: 'guanti monouso', category: 'household_cleaning', reason: 'Per proteggere le mani durante le pulizie' },
-    { name: 'spray vetri', category: 'household_cleaning', reason: 'Per specchi e finestre senza aloni' },
-  ],
-  personal_care: [
-    { name: 'shampoo', category: 'personal_care', reason: 'Per la cura quotidiana dei capelli' },
-    { name: 'bagnoschiuma', category: 'personal_care', reason: 'Per la doccia di tutta la famiglia' },
-    { name: 'dentifricio', category: 'personal_care', reason: 'Per l\'igiene orale quotidiana' },
-    { name: 'spazzolini da denti', category: 'personal_care', reason: 'Da sostituire ogni 3 mesi' },
-    { name: 'filo interdentale', category: 'personal_care', reason: 'Complemento allo spazzolino' },
-    { name: 'deodorante', category: 'personal_care', reason: 'Per la freschezza quotidiana' },
-    { name: 'sapone mani', category: 'personal_care', reason: 'Per l\'igiene delle mani' },
-    { name: 'crema idratante', category: 'personal_care', reason: 'Per proteggere la pelle' },
-    { name: 'carta igienica', category: 'personal_care', reason: 'Bene di prima necessità' },
-    { name: 'fazzoletti', category: 'personal_care', reason: 'Sempre utili in casa e fuori' },
-  ],
-  food: [
-    { name: 'latte fresco', category: 'food', reason: 'Per colazione e ricette' },
-    { name: 'uova', category: 'food', reason: 'Versatili per tanti piatti' },
-    { name: 'pasta', category: 'food', reason: 'Base della cucina italiana' },
-    { name: 'riso', category: 'food', reason: 'Alternativa leggera alla pasta' },
-    { name: 'lenticchie', category: 'food', reason: 'Ricche di proteine vegetali' },
-    { name: 'olio extravergine', category: 'food', reason: 'Condimento essenziale' },
-    { name: 'mele', category: 'food', reason: 'Frutta pratica come spuntino' },
-    { name: 'zucchine', category: 'food', reason: 'Verdura leggera e versatile' },
-    { name: 'yogurt bianco', category: 'food', reason: 'Ottimo per colazione e merenda' },
-    { name: 'pane integrale', category: 'food', reason: 'Ricco di fibre' },
-    { name: 'caffè', category: 'food', reason: 'Indispensabile per la mattina' },
-    { name: 'pomodori pelati', category: 'food', reason: 'Base per sughi e condimenti' },
-  ],
-};
 
 export async function generateShoppingSuggestions(context: {
   familySize: number;
