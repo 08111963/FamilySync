@@ -178,24 +178,27 @@ export default function RecipesScreen() {
     }
   };
 
-  const handleDeleteRecipe = (recipeId: string, title: string) => {
+  const handleDeleteRecipe = async (recipeId: string, title: string) => {
     if (!currentFamily) return;
-    Alert.alert("Elimina ricetta", `Vuoi eliminare "${title}"?`, [
-      { text: "Annulla", style: "cancel" },
-      {
-        text: "Elimina",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            await apiRequest("DELETE", `/api/recipes/${currentFamily.id}/recipes/${recipeId}`);
-            qc.invalidateQueries({ queryKey: ["/api/recipes", currentFamily.id, "recipes"] });
-          } catch (error) {
-            console.error("Delete recipe error:", error);
-          }
-        },
-      },
-    ]);
+    const doDelete = async () => {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        await apiRequest("DELETE", `/api/recipes/${currentFamily.id}/recipes/${recipeId}`);
+        qc.invalidateQueries({ queryKey: ["/api/recipes", currentFamily.id, "recipes"] });
+      } catch (error) {
+        console.error("Delete recipe error:", error);
+      }
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm(`Vuoi eliminare "${title}"?`)) {
+        await doDelete();
+      }
+    } else {
+      Alert.alert("Elimina ricetta", `Vuoi eliminare "${title}"?`, [
+        { text: "Annulla", style: "cancel" },
+        { text: "Elimina", style: "destructive", onPress: doDelete },
+      ]);
+    }
   };
 
   const handleRecipePress = (recipeId: string) => {
@@ -250,10 +253,18 @@ export default function RecipesScreen() {
               {item.title}
             </Text>
             <Pressable
-              onPress={() => handleDeleteRecipe(item.id, item.title)}
-              hitSlop={8}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                handleDeleteRecipe(item.id, item.title);
+              }}
+              hitSlop={12}
+              style={({ pressed }) => ({
+                padding: 8,
+                borderRadius: 8,
+                backgroundColor: pressed ? colors.error + "15" : "transparent",
+              })}
             >
-              <Ionicons name="trash-outline" size={18} color={colors.error} />
+              <Ionicons name="trash-outline" size={20} color={colors.error} />
             </Pressable>
           </View>
 
