@@ -1,0 +1,247 @@
+OBIETTIVO (PROMPT #2 — RESTO ALLINEAMENTO GUIDA)
+Implementare in modo MINIMO ma reale le funzionalità descritte nella guida utente ma oggi mancanti / diverse:
+1) Spesa: quantità + unità + categoria (food / household_cleaning / personal_care)
+2) Chores: difficoltà + tempo stimato
+3) Famiglia: rinomina famiglia (admin)
+4) Blocco utente: deve filtrare/nascondere contenuti dell’utente bloccato (calendario/spesa/faccende)
+5) Segnalazione contenuti: eventi calendario, item spesa, faccende (oltre a segnalare utente)
+
+VINCOLI ASSOLUTI
+- NON attivare Stripe/pagamenti e NON modificare file Stripe.
+- Intervento minimale, niente refactor grandi.
+- Nessuna nuova dipendenza.
+- Tutto deve essere testabile end-to-end da UI.
+- Preferire riuso di colonne già presenti in DB. Aggiungere colonne SOLO se indispensabile.
+- Ogni query deve essere scoped su familyId per evitare IDOR.
+
+========================================================
+DIFF EXPECTATION (OBBLIGATORIO — MODIFICA SOLO QUESTI FILE)
+========================================================
+Puoi modificare SOLO questi file. Se serve aggiungere UNA schermata, farlo SOLO tra quelle consentite.
+
+DB / SHARED:
+1) shared/schema.ts
+
+BACKEND:
+2) server/routes/shopping.ts (o il router reale usato per shopping; modifica SOLO quello)
+3) server/routes/chores.ts
+4) server/routes/families.ts
+5) server/routes/calendar.ts (o route reale eventi; modifica SOLO quella)
+6) server/routes/moderation.ts
+7) server/lib/normalize.ts
+
+FRONTEND:
+8) app/shopping-list.tsx
+9) app/add-chore.tsx
+10) app/(tabs)/family.tsx
+11) app/(tabs)/calendar.tsx (o dove renderizzi eventi)
+12) app/(tabs)/chores.tsx
+13) app/report-user.tsx (rendila riusabile) OPPURE crea nuova schermata consentita sotto
+
+NUOVO FILE CONSENTITO (UNO SOLO, se necessario):
+- app/report-content.tsx (form di segnalazione contenuti riusabile)
+
+NON modificare altri file.
+
+========================================================
+0) REGOLE DI VALIDAZIONE (APPLICARE OVUNQUE)
+========================================================
+- familyId sempre verificato con membership (family_members).
+- Per update/delete: verificare che la risorsa appartenga alla famiglia corrente.
+- Zod validation per tutte le payload nuove.
+- Nessun comportamento “best effort” silenzioso: mostra errori chiari.
+
+========================================================
+1) SPESA: QUANTITÀ / UNITÀ / CATEGORIA (MVP)
+========================================================
+REQUISITO UX MINIMO
+- Quando aggiungo un articolo, devo poter:
+  - nome
+  - quantità (opzionale, numerica)
+  - unità (opzionale): pcs, g, kg, ml, l
+  - categoria: food / household_cleaning / personal_care (default food)
+- In lista devo vedere: "Latte — 2 L" e badge categoria.
+
+DB (preferito)
+In shared/schema.ts verifica shopping_items:
+- Se mancano, aggiungi:
+  - quantity numeric nullable
+  - unit text nullable
+  - category text NOT NULL default 'food'
+  - createdByUserId uuid NULLABLE (vedi migrazione sotto)
+  - createdAt timestamp default now (se non esiste)
+- Se category già esiste, riusala (non duplicare).
+Esegui npm run db:push.
+
+BACKEND (server/routes/shopping.ts)
+- Create item:
+  - accetta quantity/unit/category
+  - valida: quantity >= 0, unit in enum, category in enum
+  - set createdByUserId = currentUserId (sempre per nuovi record)
+- Update item:
+  - consenti update di quantity/unit/category
+- List items:
+  - includi quantity/unit/category
+  - applica block filtering (sezione 4)
+
+FRONTEND (app/shopping-list.tsx)
+- Nel form add:
+  - input quantity (numeric)
+  - picker unit (pcs,g,kg,ml,l)
+  - picker category (food/casa/persona)
+- Render item:
+  - mostra quantity+unit se presenti
+  - mostra badge categoria
+- Mantieni rapidità: category default food, unit vuota.
+
+========================================================
+2) CHORES: DIFFICOLTÀ + TEMPO STIMATO
+========================================================
+DB
+In shared/schema.ts verifica chores:
+- Se mancano, aggiungi:
+  - difficulty int nullable (1..5)
+  - estimatedMinutes int nullable (>=0)
+  - createdByUserId uuid NULLABLE (vedi migrazione sotto)
+- db:push
+
+BACKEND (server/routes/chores.ts)
+- Create chore:
+  - accetta difficulty 1..5 e estimatedMinutes
+  - set createdByUserId = currentUserId (nuovi record)
+- Update chore:
+  - accetta update difficulty/estimatedMinutes
+- List chores:
+  - include difficulty/estimatedMinutes
+  - applica block filtering (sezione 4)
+
+FRONTEND
+- app/add-chore.tsx:
+  - selettore difficulty (1..5) o facile/medio/difficile mappato a 2/3/4
+  - input estimatedMinutes
+- app/(tabs)/chores.tsx:
+  - mostra difficulty e tempo stimato in card/lista
+
+========================================================
+3) RINOMINA FAMIGLIA (ADMIN)
+========================================================
+BACKEND (server/routes/families.ts)
+- Se PUT /:familyId già esiste, riusalo. Se no, aggiungilo.
+- auth + requireFamilyAdmin
+- body: { name: string min 2 max 50 }
+- update families.name
+
+FRONTEND (app/(tabs)/family.tsx)
+- Se admin:
+  - bottone “Rinomina famiglia”
+  - modal input nome
+  - call PUT /api/families/:id
+  - refresh family context + toast “Nome aggiornato”
+
+========================================================
+4) BLOCCO UTENTE: FILTRARE/NASCONDERE CONTENUTI (EFFECTIVE BLOCK)
+========================================================
+OBIETTIVO
+Se io blocco un membro, non devo vedere i contenuti creati da lui:
+- eventi calendario
+- item spesa
+- chores
+
+REQUISITI TECNICI MINIMI
+- Ogni entità deve avere createdByUserId, almeno per nuovi record.
+- Le GET/list devono filtrare server-side per requester:
+
+ALGORITMO FILTRO (backend):
+- blockedUserIds = SELECT blockedUserId FROM blocks WHERE familyId=? AND blockerUserId=currentUserId
+- Nelle list GET:
+  - WHERE (createdByUserId IS NULL OR createdByUserId NOT IN blockedUserIds)
+  - Motivazione: i dati legacy con NULL non devono sparire “a caso”.
+
+APPLICAZIONE FILTRO:
+- server/routes/calendar.ts (list eventi)
+- server/routes/shopping.ts (list items)
+- server/routes/chores.ts (list chores)
+
+IMPORTANTE:
+- Non modificare ora websocket broadcast. Questo MVP deve funzionare nelle liste principali (reload/refresh).
+
+========================================================
+5) SEGNALAZIONE CONTENUTI (CALENDARIO/SPESA/CHORES) — MINIMO UI + API ESISTENTE
+========================================================
+BACKEND (server/routes/moderation.ts)
+- Verifica che POST /api/moderation/report accetti targetType:
+  - 'calendar_event' | 'shopping_item' | 'chore' | 'user'
+- Validazione: targetId deve appartenere alla familyId indicata.
+  - calendar_event: deve essere evento della familyId
+  - shopping_item: deve appartenere a una lista della familyId
+  - chore: deve essere della familyId
+- Salva report come già fai.
+
+FRONTEND
+A) Creare app/report-content.tsx (NUOVO CONSENTITO) oppure rendere report-user.tsx generico.
+- Params: familyId, targetType, targetId
+- Form:
+  - reasonCategory (picker: spam/harassment/hate/sexual/violence/other)
+  - reasonText (opzionale, max 500)
+- Submit -> POST /api/moderation/report
+- Success -> toast “Segnalazione inviata” e back
+
+B) Aggiungere entry “Segnala” nelle UI:
+- Calendario (app/(tabs)/calendar.tsx): menu/long press su evento -> Segnala (calendar_event)
+- Spesa (app/shopping-list.tsx): long press su item -> Segnala (shopping_item)
+- Chores (app/(tabs)/chores.tsx): menu su chore -> Segnala (chore)
+
+========================================================
+6) MICRO-BLOCCO “MIGRAZIONE DATI ESISTENTI” (createdByUserId NULL)
+========================================================
+Problema: DB già popolati possono avere createdByUserId NULL. Il block filtering usa:
+(createdByUserId IS NULL OR NOT IN blockedUserIds)
+quindi i contenuti legacy restano visibili (coerente), ma dobbiamo evitare incoerenze e facilitare il futuro.
+
+Implementare una migrazione “soft” NON distruttiva, senza script esterni:
+A) In ogni route di CREATE (eventi, shopping items, chores):
+- sempre valorizzare createdByUserId=currentUserId (nuovi record mai NULL)
+
+B) Backfill opportunistico (senza inventare autore):
+- Quando un admin apre la schermata Famiglia (o in una route GET family summary se già esiste):
+  - NON assegnare arbitrariamente createdByUserId per record storici.
+  - Invece:
+    - lascia NULL (trasparente)
+    - ma logga una sola volta (server log) quanti record legacy hanno NULL per ogni tabella:
+      tag="LEGACY_NULL_CREATED_BY" familyId counts:{events, shoppingItems, chores}
+  - Questo evita false attribuzioni e rende auditabile la situazione.
+
+C) Se esistono campi già presenti che indicano autore (es. calendar_events.createdBy o shopping_history.userId):
+- allora e SOLO allora:
+  - backfill createdByUserId = quel campo
+  - altrimenti lascia NULL.
+
+OBIETTIVO MIGRAZIONE:
+- Nessun dato storico viene attribuito a caso.
+- Nuovi dati sono sempre attribuiti.
+- Il filtro blocchi è coerente (non nasconde contenuti legacy “senza autore”).
+
+========================================================
+CRITERI DI ACCETTAZIONE (TEST MANUALI)
+========================================================
+SPESA:
+- aggiungo item con quantity/unit/category -> vedo badge e quantità in lista
+- update item -> persiste
+
+CHORES:
+- creo faccenda con difficulty e estimatedMinutes -> vedo in lista
+
+FAMIGLIA:
+- admin rinomina famiglia -> UI aggiorna subito
+
+BLOCCO:
+- blocco utente B
+- eventi/item/chores creati da B (nuovi, quindi createdByUserId valorizzato) spariscono dalle mie liste
+- contenuti legacy con createdByUserId NULL restano visibili (coerente) e log “LEGACY_NULL_CREATED_BY” appare in server log
+
+SEGNALAZIONI:
+- segnalo evento/item/chore -> report creato e visibile in admin reports
+
+NOTE FINALI
+- Non implementare offline sync, non cambiare routing globale, non toccare Stripe.
+- Se una sezione richiede modifiche fuori dalla lista file consentiti, fermati e NON procedere.

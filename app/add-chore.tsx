@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Switch } from "react-native";
+import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Switch, TextInput, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -10,6 +10,7 @@ import { useFamily } from "@/context/FamilyContext";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
+import { apiRequest, queryClient } from "@/lib/query-client";
 
 const POINTS_OPTIONS = [5, 10, 15, 20, 25, 50];
 const FREQUENCY_OPTIONS = [
@@ -18,32 +19,52 @@ const FREQUENCY_OPTIONS = [
   { value: "monthly", label: "Mensile" },
 ];
 
+const DIFFICULTY_OPTIONS = [
+  { value: "easy", label: "Facile", color: "#4CAF50" },
+  { value: "medium", label: "Medio", color: "#FF9800" },
+  { value: "hard", label: "Difficile", color: "#F44336" },
+];
+
 export default function AddChoreScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { data, addChore } = useFamily();
+  const { data, currentFamily } = useFamily();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [points, setPoints] = useState(10);
+  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
+  const [estimatedMinutes, setEstimatedMinutes] = useState("");
   const [isRecurring, setIsRecurring] = useState(false);
   const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [selectedMember, setSelectedMember] = useState(data.members[0]?.id || "");
 
-  const handleSave = () => {
-    if (title.trim()) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      addChore({
+  const familyId = currentFamily?.id;
+
+  const handleSave = async () => {
+    if (!title.trim() || !familyId) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    try {
+      await apiRequest("POST", `/api/chores/${familyId}`, {
         title: title.trim(),
         description: description.trim() || undefined,
-        assignedTo: selectedMember,
+        assignedTo: selectedMember || undefined,
         dueDate: dueDate || undefined,
         points,
-        isRecurring,
-        frequency: isRecurring ? frequency : undefined,
+        difficulty,
+        estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : undefined,
+        recurrenceRule: isRecurring ? frequency : undefined,
       });
+      queryClient.invalidateQueries({ queryKey: ["/api/chores", familyId] });
       router.back();
+    } catch {
+      if (Platform.OS === "web") {
+        alert("Errore nella creazione della faccenda");
+      } else {
+        Alert.alert("Errore", "Errore nella creazione della faccenda");
+      }
     }
   };
 
@@ -78,6 +99,47 @@ export default function AddChoreScreen() {
             onChangeText={setDescription}
             multiline
             style={{ height: 80, textAlignVertical: "top", paddingTop: 12 }}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: colors.text }]}>Difficoltà</Text>
+          <View style={styles.difficultyOptions}>
+            {DIFFICULTY_OPTIONS.map((d) => (
+              <Pressable
+                key={d.value}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setDifficulty(d.value as "easy" | "medium" | "hard");
+                }}
+                style={[
+                  styles.difficultyOption,
+                  {
+                    backgroundColor: difficulty === d.value ? d.color + "20" : colors.surface,
+                    borderColor: difficulty === d.value ? d.color : colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.difficultyText,
+                    { color: difficulty === d.value ? d.color : colors.text },
+                  ]}
+                >
+                  {d.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.field}>
+          <Input
+            label="Tempo stimato (minuti, opzionale)"
+            placeholder="es. 30"
+            value={estimatedMinutes}
+            onChangeText={setEstimatedMinutes}
+            keyboardType="numeric"
           />
         </View>
 
@@ -247,6 +309,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
     marginBottom: 8,
+  },
+  difficultyOptions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  difficultyOption: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  difficultyText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   row: {
     flexDirection: "row",

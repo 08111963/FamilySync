@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { db } from "../db";
-import { reports, blocks, users, familyMembers } from "../../shared/schema";
+import { reports, blocks, users, familyMembers, calendarEvents, shoppingItems, shoppingLists, chores } from "../../shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { authenticate } from "../middleware/auth";
 import { requireFamilyAdmin } from "../middleware/family";
@@ -44,6 +44,33 @@ router.post("/report", authenticate, async (req: Request, res: Response) => {
       return res.status(403).json({
         error: { code: "NOT_FAMILY_MEMBER", message: "Non fai parte di questa famiglia" },
       });
+    }
+
+    if (targetType === "calendar_event") {
+      const [evt] = await db.select({ id: calendarEvents.id }).from(calendarEvents)
+        .where(and(eq(calendarEvents.id, targetId), eq(calendarEvents.familyId, familyId))).limit(1);
+      if (!evt) {
+        return res.status(404).json({ error: { code: "NOT_FOUND", message: "Evento non trovato in questa famiglia" } });
+      }
+    } else if (targetType === "shopping_item") {
+      const itemWithList = await db.select({ itemId: shoppingItems.id }).from(shoppingItems)
+        .innerJoin(shoppingLists, eq(shoppingItems.listId, shoppingLists.id))
+        .where(and(eq(shoppingItems.id, targetId), eq(shoppingLists.familyId, familyId))).limit(1);
+      if (itemWithList.length === 0) {
+        return res.status(404).json({ error: { code: "NOT_FOUND", message: "Prodotto non trovato in questa famiglia" } });
+      }
+    } else if (targetType === "chore") {
+      const [ch] = await db.select({ id: chores.id }).from(chores)
+        .where(and(eq(chores.id, targetId), eq(chores.familyId, familyId))).limit(1);
+      if (!ch) {
+        return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata in questa famiglia" } });
+      }
+    } else if (targetType === "user") {
+      const [targetMember] = await db.select({ id: familyMembers.id }).from(familyMembers)
+        .where(and(eq(familyMembers.userId, targetId), eq(familyMembers.familyId, familyId))).limit(1);
+      if (!targetMember) {
+        return res.status(404).json({ error: { code: "NOT_FOUND", message: "Utente non trovato in questa famiglia" } });
+      }
     }
 
     const [report] = await db

@@ -17,10 +17,20 @@ const createListSchema = z.object({
   icon: z.string().optional(),
 });
 
+const VALID_UNITS = ["pcs", "g", "kg", "ml", "l"] as const;
+const VALID_CATEGORIES = ["food", "household_cleaning", "personal_care"] as const;
+
 const addItemSchema = z.object({
   name: z.string().min(1, "Il nome del prodotto è obbligatorio"),
   quantity: z.string().optional(),
-  category: z.string().optional(),
+  category: z.enum(VALID_CATEGORIES).optional().default("food"),
+  note: z.string().optional(),
+});
+
+const updateItemSchema = z.object({
+  name: z.string().min(1).optional(),
+  quantity: z.string().optional(),
+  category: z.enum(VALID_CATEGORIES).optional(),
   note: z.string().optional(),
 });
 
@@ -189,6 +199,38 @@ router.patch('/:familyId/lists/:listId/items/:itemId/toggle', authenticate, requ
   } catch (error) {
     logger.error('Toggle shopping item error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'aggiornamento" } });
+  }
+});
+
+router.patch('/:familyId/lists/:listId/items/:itemId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const { familyId, listId, itemId } = req.params;
+
+    if (!(await verifyListOwnership(listId, familyId))) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Lista non trovata in questa famiglia" } });
+    }
+
+    if (!(await verifyItemOwnership(itemId, listId))) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Prodotto non trovato in questa lista" } });
+    }
+
+    const parsed = updateItemSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    const [item] = await db.update(shoppingItems)
+      .set(parsed.data)
+      .where(and(eq(shoppingItems.id, itemId), eq(shoppingItems.listId, listId)))
+      .returning();
+
+    broadcastToFamily(familyId, 'shopping_item_updated', { listId, item });
+    res.json(item);
+  } catch (error) {
+    logger.error('Update shopping item error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'aggiornamento del prodotto" } });
   }
 });
 

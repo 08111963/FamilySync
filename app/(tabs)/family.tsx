@@ -106,8 +106,10 @@ export default function FamilyScreen() {
     }
   };
 
+  const isAdmin = currentFamily?.myRole === "admin";
+
   const handleSaveName = () => {
-    if (editedName.trim()) {
+    if (editedName.trim().length >= 2) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setFamilyName(editedName.trim());
       setIsEditingName(false);
@@ -181,9 +183,11 @@ export default function FamilyScreen() {
         ) : (
           <View style={styles.titleRow}>
             <Text style={[styles.title, { color: colors.text }]}>{data.familyName}</Text>
-            <Pressable onPress={() => setIsEditingName(true)}>
-              <Ionicons name="pencil" size={20} color={colors.textSecondary} />
-            </Pressable>
+            {isAdmin && (
+              <Pressable onPress={() => setIsEditingName(true)}>
+                <Ionicons name="pencil" size={20} color={colors.textSecondary} />
+              </Pressable>
+            )}
           </View>
         )}
       </View>

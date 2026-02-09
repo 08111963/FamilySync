@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -20,7 +20,7 @@ const MONTHS = [
 export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { data, getEventsForDate, deleteEvent } = useFamily();
+  const { data, currentFamily, getEventsForDate, deleteEvent } = useFamily();
   
   const today = new Date();
   const [selectedDate, setSelectedDate] = useState(today.toISOString().split("T")[0]);
@@ -28,6 +28,7 @@ export default function CalendarScreen() {
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
 
   const events = getEventsForDate(selectedDate);
+  const familyId = currentFamily?.id || "";
 
   const getDaysInMonth = (month: number, year: number) => {
     return new Date(year, month + 1, 0).getDate();
@@ -104,6 +105,27 @@ export default function CalendarScreen() {
   const handleDeleteEvent = (eventId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     deleteEvent(eventId);
+  };
+
+  const handleReportEvent = (eventId: string) => {
+    router.push({
+      pathname: "/report-content",
+      params: { targetType: "calendar_event", targetId: eventId, familyId },
+    });
+  };
+
+  const handleEventActions = (eventId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS === "web") {
+      if (confirm("Vuoi segnalare questo evento?")) {
+        handleReportEvent(eventId);
+      }
+    } else {
+      Alert.alert("Azioni", "", [
+        { text: "Segnala", onPress: () => handleReportEvent(eventId) },
+        { text: "Annulla", style: "cancel" },
+      ]);
+    }
   };
 
   const formatSelectedDate = () => {
@@ -205,9 +227,14 @@ export default function CalendarScreen() {
                   <View style={styles.eventContent}>
                     <View style={styles.eventHeader}>
                       <Text style={[styles.eventTitle, { color: colors.text }]}>{event.title}</Text>
-                      <Pressable onPress={() => handleDeleteEvent(event.id)}>
-                        <Ionicons name="trash-outline" size={20} color={colors.error} />
-                      </Pressable>
+                      <View style={styles.eventActions}>
+                        <Pressable onPress={() => handleEventActions(event.id)} style={styles.actionBtn}>
+                          <Ionicons name="flag-outline" size={18} color={colors.textSecondary} />
+                        </Pressable>
+                        <Pressable onPress={() => handleDeleteEvent(event.id)} style={styles.actionBtn}>
+                          <Ionicons name="trash-outline" size={18} color={colors.error} />
+                        </Pressable>
+                      </View>
                     </View>
                     {event.description && (
                       <Text style={[styles.eventDescription, { color: colors.textSecondary }]}>
@@ -350,6 +377,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Inter_600SemiBold",
     flex: 1,
+  },
+  eventActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  actionBtn: {
+    padding: 4,
   },
   eventDescription: {
     fontSize: 14,

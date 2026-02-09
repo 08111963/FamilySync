@@ -41,6 +41,8 @@ export interface Chore {
   assignedTo: string;
   dueDate?: string;
   points: number;
+  difficulty?: string;
+  estimatedMinutes?: number;
   isCompleted: boolean;
   isRecurring: boolean;
   frequency?: "daily" | "weekly" | "monthly";

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -19,11 +19,19 @@ const FILTER_LABELS: Record<FilterType, string> = {
   completed: "Fatte",
 };
 
+const DIFFICULTY_INFO: Record<string, { label: string; color: string }> = {
+  easy: { label: "Facile", color: "#4CAF50" },
+  medium: { label: "Medio", color: "#FF9800" },
+  hard: { label: "Difficile", color: "#F44336" },
+};
+
 export default function ChoresScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { data, completeChore, deleteChore } = useFamily();
+  const { data, currentFamily, completeChore, deleteChore } = useFamily();
   const [filter, setFilter] = useState<FilterType>("pending");
+
+  const familyId = currentFamily?.id || "";
 
   const filteredChores = data.chores.filter((chore) => {
     if (filter === "pending") return !chore.isCompleted;
@@ -43,6 +51,27 @@ export default function ChoresScreen() {
   const handleDeleteChore = (choreId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     deleteChore(choreId);
+  };
+
+  const handleReportChore = (choreId: string) => {
+    router.push({
+      pathname: "/report-content",
+      params: { targetType: "chore", targetId: choreId, familyId },
+    });
+  };
+
+  const handleChoreActions = (choreId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS === "web") {
+      if (confirm("Vuoi segnalare questa faccenda?")) {
+        handleReportChore(choreId);
+      }
+    } else {
+      Alert.alert("Azioni", "", [
+        { text: "Segnala", onPress: () => handleReportChore(choreId) },
+        { text: "Annulla", style: "cancel" },
+      ]);
+    }
   };
 
   const formatDueDate = (dateStr?: string) => {
@@ -133,6 +162,7 @@ export default function ChoresScreen() {
               const member = getMember(chore.assignedTo);
               const dueDate = formatDueDate(chore.dueDate);
               const overdue = isOverdue(chore.dueDate) && !chore.isCompleted;
+              const diffInfo = DIFFICULTY_INFO[chore.difficulty || "medium"];
 
               return (
                 <Card key={chore.id}>
@@ -164,6 +194,21 @@ export default function ChoresScreen() {
                         {chore.title}
                       </Text>
                       <View style={styles.choreMeta}>
+                        {diffInfo && (
+                          <View style={[styles.difficultyBadge, { backgroundColor: diffInfo.color + "20" }]}>
+                            <Text style={[styles.difficultyBadgeText, { color: diffInfo.color }]}>
+                              {diffInfo.label}
+                            </Text>
+                          </View>
+                        )}
+                        {chore.estimatedMinutes ? (
+                          <View style={styles.timeBadge}>
+                            <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
+                            <Text style={[styles.timeText, { color: colors.textSecondary }]}>
+                              {chore.estimatedMinutes} min
+                            </Text>
+                          </View>
+                        ) : null}
                         {member && (
                           <View style={styles.choreAssignee}>
                             <Avatar name={member.name} color={member.color} size={20} />
@@ -203,6 +248,9 @@ export default function ChoresScreen() {
                       <View style={[styles.chorePoints, { backgroundColor: colors.accent }]}>
                         <Text style={styles.chorePointsText}>{chore.points}</Text>
                       </View>
+                      <Pressable onPress={() => handleChoreActions(chore.id)} style={styles.moreButton}>
+                        <Ionicons name="flag-outline" size={16} color={colors.textSecondary} />
+                      </Pressable>
                       <Pressable onPress={() => handleDeleteChore(chore.id)} style={styles.deleteButton}>
                         <Ionicons name="trash-outline" size={18} color={colors.error} />
                       </Pressable>
@@ -287,7 +335,26 @@ const styles = StyleSheet.create({
   choreMeta: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
+    gap: 8,
+    alignItems: "center",
+  },
+  difficultyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  difficultyBadgeText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+  },
+  timeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  timeText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
   },
   choreAssignee: {
     flexDirection: "row",
@@ -318,7 +385,7 @@ const styles = StyleSheet.create({
   },
   choreRight: {
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   chorePoints: {
     paddingHorizontal: 10,
@@ -329,6 +396,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
     color: "#000",
+  },
+  moreButton: {
+    padding: 4,
   },
   deleteButton: {
     padding: 4,

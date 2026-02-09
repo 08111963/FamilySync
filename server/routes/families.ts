@@ -20,7 +20,7 @@ const createFamilySchema = z.object({
 });
 
 const updateFamilySchema = z.object({
-  name: z.string().min(1).max(50).optional(),
+  name: z.string().min(2, "Il nome deve avere almeno 2 caratteri").max(50).optional(),
   colorTheme: z.string().optional(),
 });
 
