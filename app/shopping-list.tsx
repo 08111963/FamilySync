@@ -11,11 +11,11 @@ import { EmptyState } from "@/components/EmptyState";
 
 const UNIT_OPTIONS = [
   { value: "", label: "-" },
-  { value: "pz", label: "pz" },
+  { value: "pcs", label: "pz" },
   { value: "g", label: "g" },
   { value: "kg", label: "kg" },
   { value: "ml", label: "ml" },
-  { value: "L", label: "L" },
+  { value: "l", label: "L" },
 ];
 
 const CATEGORY_OPTIONS = [
@@ -62,13 +62,10 @@ export default function ShoppingListScreen() {
   const handleAddItem = () => {
     if (newItemName.trim()) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      let quantityStr: string | undefined;
-      if (newQuantity.trim()) {
-        quantityStr = newUnit ? `${newQuantity.trim()} ${newUnit}` : newQuantity.trim();
-      }
       addShoppingItem(id, {
         name: newItemName.trim(),
-        quantity: quantityStr,
+        quantity: newQuantity.trim() || undefined,
+        unit: newUnit || undefined,
         category: newCategory,
       });
       setNewItemName("");
@@ -278,7 +275,7 @@ export default function ShoppingListScreen() {
                     </Text>
                     {item.quantity ? (
                       <Text style={[styles.itemQuantity, { color: colors.primary }]}>
-                        {item.quantity}
+                        {item.quantity}{item.unit ? ` ${item.unit === "pcs" ? "pz" : item.unit}` : ""}
                       </Text>
                     ) : null}
                   </View>

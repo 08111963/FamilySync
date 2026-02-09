@@ -20,9 +20,11 @@ const FREQUENCY_OPTIONS = [
 ];
 
 const DIFFICULTY_OPTIONS = [
-  { value: "easy", label: "Facile", color: "#4CAF50" },
-  { value: "medium", label: "Medio", color: "#FF9800" },
-  { value: "hard", label: "Difficile", color: "#F44336" },
+  { value: 1, label: "1", color: "#4CAF50" },
+  { value: 2, label: "2", color: "#8BC34A" },
+  { value: 3, label: "3", color: "#FF9800" },
+  { value: 4, label: "4", color: "#FF5722" },
+  { value: 5, label: "5", color: "#F44336" },
 ];
 
 export default function AddChoreScreen() {
@@ -34,7 +36,7 @@ export default function AddChoreScreen() {
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [points, setPoints] = useState(10);
-  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
+  const [difficulty, setDifficulty] = useState<number>(3);
   const [estimatedMinutes, setEstimatedMinutes] = useState("");
   const [isRecurring, setIsRecurring] = useState(false);
   const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
@@ -110,7 +112,7 @@ export default function AddChoreScreen() {
                 key={d.value}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setDifficulty(d.value as "easy" | "medium" | "hard");
+                  setDifficulty(d.value);
                 }}
                 style={[
                   styles.difficultyOption,

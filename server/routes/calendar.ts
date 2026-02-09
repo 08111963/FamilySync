@@ -3,11 +3,11 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { calendarEvents } from '../../shared/schema';
-import { eq, and, gte, lte, notInArray } from 'drizzle-orm';
+import { eq, and, gte, lte } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
-import { getBlockedUserIds } from '../lib/block-filter';
+import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -46,14 +46,13 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
     const { startDate, endDate } = req.query;
     const blockedIds = await getBlockedUserIds(req.user!.userId, familyId);
 
-    const conditions = [eq(calendarEvents.familyId, familyId)];
+    const conditions: any[] = [eq(calendarEvents.familyId, familyId)];
     if (startDate && endDate) {
       conditions.push(gte(calendarEvents.date, startDate as string));
       conditions.push(lte(calendarEvents.date, endDate as string));
     }
-    if (blockedIds.length > 0) {
-      conditions.push(notInArray(calendarEvents.createdBy, blockedIds));
-    }
+    const blockFilter = applyBlockedFilter(calendarEvents.createdBy, blockedIds);
+    if (blockFilter) conditions.push(blockFilter);
 
     const events = await db.select().from(calendarEvents).where(and(...conditions));
 

@@ -3,11 +3,11 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { chores, familyMembers } from '../../shared/schema';
-import { eq, and, sql, notInArray } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
-import { getBlockedUserIds } from '../lib/block-filter';
+import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -15,9 +15,9 @@ const router = Router();
 const createChoreSchema = z.object({
   title: z.string().min(1, "Il titolo è obbligatorio"),
   description: z.string().optional(),
-  difficulty: z.enum(["easy", "medium", "hard"]).optional().default("medium"),
+  difficulty: z.number().int().min(1).max(5).optional(),
   points: z.number().int().min(1).optional().default(10),
-  estimatedMinutes: z.number().int().optional(),
+  estimatedMinutes: z.number().int().min(0).optional(),
   assignedTo: z.string().optional(),
   dueDate: z.string().optional(),
   recurrenceRule: z.string().optional(),
@@ -26,9 +26,9 @@ const createChoreSchema = z.object({
 const updateChoreSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
-  difficulty: z.enum(["easy", "medium", "hard"]).optional(),
+  difficulty: z.number().int().min(1).max(5).nullable().optional(),
   points: z.number().int().min(1).optional(),
-  estimatedMinutes: z.number().int().optional(),
+  estimatedMinutes: z.number().int().min(0).nullable().optional(),
   assignedTo: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
   recurrenceRule: z.string().nullable().optional(),
@@ -40,10 +40,10 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
     const familyId = req.params.familyId;
     const blockedIds = await getBlockedUserIds(req.user!.userId, familyId);
 
-    const conditions = [eq(chores.familyId, familyId)];
-    if (blockedIds.length > 0) {
-      conditions.push(notInArray(chores.createdBy, blockedIds));
-    }
+    const conditions: any[] = [eq(chores.familyId, familyId)];
+    const blockFilter = applyBlockedFilter(chores.createdBy, blockedIds);
+    if (blockFilter) conditions.push(blockFilter);
+
     const choresList = await db.select().from(chores).where(and(...conditions));
     res.json(choresList);
   } catch (error) {
@@ -67,9 +67,9 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       familyId,
       title: parsed.data.title,
       description: parsed.data.description,
-      difficulty: parsed.data.difficulty,
+      difficulty: parsed.data.difficulty ?? null,
       points: parsed.data.points,
-      estimatedMinutes: parsed.data.estimatedMinutes,
+      estimatedMinutes: parsed.data.estimatedMinutes ?? null,
       assignedTo: parsed.data.assignedTo,
       dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
       recurrenceRule: parsed.data.recurrenceRule,

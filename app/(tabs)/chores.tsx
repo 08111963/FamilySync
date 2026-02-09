@@ -19,10 +19,12 @@ const FILTER_LABELS: Record<FilterType, string> = {
   completed: "Fatte",
 };
 
-const DIFFICULTY_INFO: Record<string, { label: string; color: string }> = {
-  easy: { label: "Facile", color: "#4CAF50" },
-  medium: { label: "Medio", color: "#FF9800" },
-  hard: { label: "Difficile", color: "#F44336" },
+const DIFFICULTY_COLORS: Record<number, string> = {
+  1: "#4CAF50",
+  2: "#8BC34A",
+  3: "#FF9800",
+  4: "#FF5722",
+  5: "#F44336",
 };
 
 export default function ChoresScreen() {
@@ -162,7 +164,8 @@ export default function ChoresScreen() {
               const member = getMember(chore.assignedTo);
               const dueDate = formatDueDate(chore.dueDate);
               const overdue = isOverdue(chore.dueDate) && !chore.isCompleted;
-              const diffInfo = DIFFICULTY_INFO[chore.difficulty || "medium"];
+              const diffLevel = chore.difficulty ?? null;
+              const diffColor = diffLevel ? (DIFFICULTY_COLORS[diffLevel] || "#FF9800") : null;
 
               return (
                 <Card key={chore.id}>
@@ -194,10 +197,10 @@ export default function ChoresScreen() {
                         {chore.title}
                       </Text>
                       <View style={styles.choreMeta}>
-                        {diffInfo && (
-                          <View style={[styles.difficultyBadge, { backgroundColor: diffInfo.color + "20" }]}>
-                            <Text style={[styles.difficultyBadgeText, { color: diffInfo.color }]}>
-                              {diffInfo.label}
+                        {diffLevel && diffColor && (
+                          <View style={[styles.difficultyBadge, { backgroundColor: diffColor + "20" }]}>
+                            <Text style={[styles.difficultyBadgeText, { color: diffColor }]}>
+                              {diffLevel}/5
                             </Text>
                           </View>
                         )}

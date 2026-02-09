@@ -39,10 +39,11 @@ interface ShoppingItem {
   listId: string;
   name: string;
   quantity?: string;
+  unit?: string;
   category?: string;
   note?: string;
   isChecked: boolean;
-  createdBy: string;
+  createdBy?: string;
 }
 
 interface ShoppingList {
@@ -60,7 +61,7 @@ interface Chore {
   familyId: string;
   title: string;
   description?: string;
-  difficulty?: string;
+  difficulty?: number;
   points: number;
   estimatedMinutes?: number;
   assignedTo?: string;
@@ -69,7 +70,7 @@ interface Chore {
   completedAt?: string;
   completedBy?: string;
   recurrenceRule?: string;
-  createdBy: string;
+  createdBy?: string;
 }
 
 interface FamilyInfo {
@@ -106,7 +107,7 @@ interface FamilyContextType {
   deleteEvent: (id: string) => void;
   addShoppingList: (name: string) => void;
   deleteShoppingList: (id: string) => void;
-  addShoppingItem: (listId: string, item: { name: string; addedBy?: string; quantity?: string; category?: string }) => void;
+  addShoppingItem: (listId: string, item: { name: string; addedBy?: string; quantity?: string; unit?: string; category?: string }) => void;
   toggleShoppingItem: (listId: string, itemId: string) => void;
   deleteShoppingItem: (listId: string, itemId: string) => void;
   addChore: (chore: { title: string; description?: string; assignedTo?: string; dueDate?: string; points: number; isRecurring?: boolean; frequency?: string }) => void;
@@ -304,9 +305,9 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       .catch(console.error);
   }, [currentFamilyId, qc]);
 
-  const addShoppingItem = useCallback((listId: string, item: { name: string; addedBy?: string; quantity?: string; category?: string }) => {
+  const addShoppingItem = useCallback((listId: string, item: { name: string; addedBy?: string; quantity?: string; unit?: string; category?: string }) => {
     if (!currentFamilyId) return;
-    apiRequest("POST", `/api/shopping/${currentFamilyId}/lists/${listId}/items`, { name: item.name, quantity: item.quantity, category: item.category })
+    apiRequest("POST", `/api/shopping/${currentFamilyId}/lists/${listId}/items`, { name: item.name, quantity: item.quantity, unit: item.unit, category: item.category })
       .then(() => qc.invalidateQueries({ queryKey: ["/api/shopping", currentFamilyId, "lists"] }))
       .catch(console.error);
   }, [currentFamilyId, qc]);

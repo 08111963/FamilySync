@@ -3,36 +3,49 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { shoppingLists, shoppingItems, shoppingHistory } from '../../shared/schema';
-import { eq, and, notInArray } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
-import { getBlockedUserIds } from '../lib/block-filter';
+import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
+import { parseQuantityString } from '../lib/normalize';
 import { logger } from '../lib/logger';
 
 const router = Router();
+
+const VALID_UNITS = ["pcs", "g", "kg", "ml", "l"] as const;
+const VALID_CATEGORIES = ["food", "household_cleaning", "personal_care"] as const;
 
 const createListSchema = z.object({
   name: z.string().min(1, "Il nome è obbligatorio"),
   icon: z.string().optional(),
 });
 
-const VALID_UNITS = ["pcs", "g", "kg", "ml", "l"] as const;
-const VALID_CATEGORIES = ["food", "household_cleaning", "personal_care"] as const;
-
 const addItemSchema = z.object({
   name: z.string().min(1, "Il nome del prodotto è obbligatorio"),
-  quantity: z.string().optional(),
+  quantity: z.union([z.string(), z.number()]).optional(),
+  unit: z.enum(VALID_UNITS).optional(),
   category: z.enum(VALID_CATEGORIES).optional().default("food"),
   note: z.string().optional(),
 });
 
 const updateItemSchema = z.object({
   name: z.string().min(1).optional(),
-  quantity: z.string().optional(),
+  quantity: z.union([z.string(), z.number()]).optional(),
+  unit: z.enum(VALID_UNITS).nullable().optional(),
   category: z.enum(VALID_CATEGORIES).optional(),
   note: z.string().optional(),
 });
+
+function enrichItemWithLegacyParsing(item: any) {
+  if (item.unit) return item;
+  if (!item.quantity) return item;
+  const parsed = parseQuantityString(String(item.quantity));
+  if (parsed.unit && !item.unit) {
+    return { ...item, quantity: parsed.quantity != null ? String(parsed.quantity) : item.quantity, unit: parsed.unit };
+  }
+  return item;
+}
 
 async function verifyListOwnership(listId: string, familyId: string): Promise<boolean> {
   const [list] = await db
@@ -57,19 +70,19 @@ router.get('/:familyId/lists', authenticate, requireFamilyMember(), async (req: 
     const familyId = req.params.familyId;
     const blockedIds = await getBlockedUserIds(req.user!.userId, familyId);
 
-    const listConditions = [eq(shoppingLists.familyId, familyId)];
-    if (blockedIds.length > 0) {
-      listConditions.push(notInArray(shoppingLists.createdBy, blockedIds));
-    }
+    const listConditions: any[] = [eq(shoppingLists.familyId, familyId)];
+    const blockFilter = applyBlockedFilter(shoppingLists.createdBy, blockedIds);
+    if (blockFilter) listConditions.push(blockFilter);
+
     const lists = await db.select().from(shoppingLists).where(and(...listConditions));
 
     const listsWithItems = await Promise.all(lists.map(async (list) => {
-      const itemConditions = [eq(shoppingItems.listId, list.id)];
-      if (blockedIds.length > 0) {
-        itemConditions.push(notInArray(shoppingItems.createdBy, blockedIds));
-      }
+      const itemConditions: any[] = [eq(shoppingItems.listId, list.id)];
+      const itemBlockFilter = applyBlockedFilter(shoppingItems.createdBy, blockedIds);
+      if (itemBlockFilter) itemConditions.push(itemBlockFilter);
+
       const items = await db.select().from(shoppingItems).where(and(...itemConditions));
-      return { ...list, items };
+      return { ...list, items: items.map(enrichItemWithLegacyParsing) };
     }));
 
     res.json(listsWithItems);
@@ -139,10 +152,13 @@ router.post('/:familyId/lists/:listId/items', authenticate, requireFamilyMember(
       });
     }
 
+    const quantityStr = parsed.data.quantity != null ? String(parsed.data.quantity) : null;
+
     const [item] = await db.insert(shoppingItems).values({
       listId,
       name: parsed.data.name,
-      quantity: parsed.data.quantity,
+      quantity: quantityStr,
+      unit: parsed.data.unit || null,
       category: parsed.data.category,
       note: parsed.data.note,
       createdBy: req.user!.userId,
@@ -221,8 +237,15 @@ router.patch('/:familyId/lists/:listId/items/:itemId', authenticate, requireFami
       });
     }
 
+    const updateData: Record<string, any> = {};
+    if (parsed.data.name !== undefined) updateData.name = parsed.data.name;
+    if (parsed.data.quantity !== undefined) updateData.quantity = String(parsed.data.quantity);
+    if (parsed.data.unit !== undefined) updateData.unit = parsed.data.unit;
+    if (parsed.data.category !== undefined) updateData.category = parsed.data.category;
+    if (parsed.data.note !== undefined) updateData.note = parsed.data.note;
+
     const [item] = await db.update(shoppingItems)
-      .set(parsed.data)
+      .set(updateData)
       .where(and(eq(shoppingItems.id, itemId), eq(shoppingItems.listId, listId)))
       .returning();
 
