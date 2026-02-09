@@ -163,3 +163,11 @@ Lingua di comunicazione: Rispondere SEMPRE in italiano.
   - Frontend: schermate ricette (lista + dettaglio), piano pasti (gestione + generazione AI)
   - Quick-access cards nella home per Ricette e Piano Pasti
   - Ingredienti con unita italiane, meal types con labels italiani
+- Implementato sistema Chat/Messaggi interni in tempo reale:
+  - Tabella `chat_messages` con supporto testo, immagini e file
+  - Backend API: GET/POST/DELETE messaggi, POST upload file con multer
+  - WebSocket events: new_message, message_deleted, typing, stop_typing
+  - Frontend: schermata chat con bolle stile messenger, upload immagini da galleria/fotocamera
+  - Block filtering applicato ai messaggi chat
+  - Tab Chat aggiunto alla navigazione principale (6 tab totali)
+  - File statici serviti da `/uploads` con limite 10MB e filtri MIME type
