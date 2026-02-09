@@ -307,6 +307,27 @@ export const mealPlanItems = pgTable("meal_plan_items", {
 
 export type MealPlanItem = typeof mealPlanItems.$inferSelect;
 
+// CHAT MESSAGES
+export const messageTypeEnum = pgEnum("message_type", ["text", "image", "file"]);
+
+export const chatMessages = pgTable("chat_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  messageType: messageTypeEnum("message_type").notNull().default("text"),
+  content: text("content"),
+  fileUrl: text("file_url"),
+  fileName: text("file_name"),
+  fileMimeType: varchar("file_mime_type", { length: 100 }),
+  fileSize: integer("file_size"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("chat_messages_family_idx").on(table.familyId, table.createdAt),
+  index("chat_messages_user_idx").on(table.userId),
+]);
+
+export type ChatMessage = typeof chatMessages.$inferSelect;
+
 // Insert schemas for validation
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,
