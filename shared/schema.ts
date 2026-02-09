@@ -128,7 +128,7 @@ export const shoppingItems = pgTable("shopping_items", {
   id: uuid("id").primaryKey().defaultRandom(),
   listId: uuid("list_id").notNull().references(() => shoppingLists.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
-  quantity: varchar("quantity", { length: 50 }),
+  quantity: numeric("quantity"),
   unit: varchar("unit", { length: 10 }),
   category: varchar("category", { length: 50 }).default("food").notNull(),
   note: text("note"),

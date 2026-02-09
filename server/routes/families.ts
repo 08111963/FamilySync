@@ -2,8 +2,8 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { families, familyMembers, familyInvites, users } from '../../shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { families, familyMembers, familyInvites, users, calendarEvents, shoppingItems, shoppingLists, chores } from '../../shared/schema';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember, requireFamilyAdmin } from '../middleware/family';
 import { sendFamilyInviteEmail } from '../lib/email';
@@ -90,6 +90,28 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
       .from(familyMembers)
       .innerJoin(users, eq(familyMembers.userId, users.id))
       .where(eq(familyMembers.familyId, familyId));
+
+    const [eventsCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(calendarEvents)
+      .where(and(eq(calendarEvents.familyId, familyId), isNull(calendarEvents.createdBy)));
+
+    const [itemsCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(shoppingItems)
+      .innerJoin(shoppingLists, eq(shoppingItems.listId, shoppingLists.id))
+      .where(and(eq(shoppingLists.familyId, familyId), isNull(shoppingItems.createdBy)));
+
+    const [choresCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(chores)
+      .where(and(eq(chores.familyId, familyId), isNull(chores.createdBy)));
+
+    console.log(JSON.stringify({
+      tag: "LEGACY_NULL_CREATED_BY",
+      familyId,
+      counts: { events: eventsCount.count, shoppingItems: itemsCount.count, chores: choresCount.count }
+    }));
 
     res.json({
       ...family,

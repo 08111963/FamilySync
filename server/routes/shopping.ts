@@ -21,9 +21,18 @@ const createListSchema = z.object({
   icon: z.string().optional(),
 });
 
+const quantitySchema = z.union([
+  z.number().nonnegative(),
+  z.string().min(1),
+]).transform(v => {
+  if (typeof v === "number") return v;
+  const n = parseFloat(v.replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}).nullable().optional();
+
 const addItemSchema = z.object({
   name: z.string().min(1, "Il nome del prodotto è obbligatorio"),
-  quantity: z.union([z.string(), z.number()]).optional(),
+  quantity: quantitySchema,
   unit: z.enum(VALID_UNITS).optional(),
   category: z.enum(VALID_CATEGORIES).optional().default("food"),
   note: z.string().optional(),
@@ -31,7 +40,7 @@ const addItemSchema = z.object({
 
 const updateItemSchema = z.object({
   name: z.string().min(1).optional(),
-  quantity: z.union([z.string(), z.number()]).optional(),
+  quantity: quantitySchema,
   unit: z.enum(VALID_UNITS).nullable().optional(),
   category: z.enum(VALID_CATEGORIES).optional(),
   note: z.string().optional(),
@@ -42,7 +51,7 @@ function enrichItemWithLegacyParsing(item: any) {
   if (!item.quantity) return item;
   const parsed = parseQuantityString(String(item.quantity));
   if (parsed.unit && !item.unit) {
-    return { ...item, quantity: parsed.quantity != null ? String(parsed.quantity) : item.quantity, unit: parsed.unit };
+    return { ...item, quantity: parsed.quantity, unit: parsed.unit };
   }
   return item;
 }
@@ -152,13 +161,22 @@ router.post('/:familyId/lists/:listId/items', authenticate, requireFamilyMember(
       });
     }
 
-    const quantityStr = parsed.data.quantity != null ? String(parsed.data.quantity) : null;
+    let finalQuantity: number | null = parsed.data.quantity ?? null;
+    let finalUnit: string | null = parsed.data.unit || null;
+
+    if (finalQuantity != null && !finalUnit) {
+      const legacyParsed = parseQuantityString(String(finalQuantity));
+      if (legacyParsed.unit) {
+        finalQuantity = legacyParsed.quantity;
+        finalUnit = legacyParsed.unit;
+      }
+    }
 
     const [item] = await db.insert(shoppingItems).values({
       listId,
       name: parsed.data.name,
-      quantity: quantityStr,
-      unit: parsed.data.unit || null,
+      quantity: finalQuantity != null ? String(finalQuantity) : null,
+      unit: finalUnit,
       category: parsed.data.category,
       note: parsed.data.note,
       createdBy: req.user!.userId,
@@ -239,7 +257,7 @@ router.patch('/:familyId/lists/:listId/items/:itemId', authenticate, requireFami
 
     const updateData: Record<string, any> = {};
     if (parsed.data.name !== undefined) updateData.name = parsed.data.name;
-    if (parsed.data.quantity !== undefined) updateData.quantity = String(parsed.data.quantity);
+    if (parsed.data.quantity !== undefined) updateData.quantity = parsed.data.quantity != null ? String(parsed.data.quantity) : null;
     if (parsed.data.unit !== undefined) updateData.unit = parsed.data.unit;
     if (parsed.data.category !== undefined) updateData.category = parsed.data.category;
     if (parsed.data.note !== undefined) updateData.note = parsed.data.note;

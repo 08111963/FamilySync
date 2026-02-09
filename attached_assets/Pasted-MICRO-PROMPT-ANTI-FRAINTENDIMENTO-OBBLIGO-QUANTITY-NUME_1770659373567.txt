@@ -1,0 +1,109 @@
+MICRO-PROMPT “ANTI-FRAINTENDIMENTO” (OBBLIGO: QUANTITY NUMERIC + LOG LEGACY)
+Scopo: completare DAVVERO 4 modifiche precise, senza interpretazioni creative.
+
+VINCOLI
+- NON toccare Stripe/pagamenti.
+- Nessuna nuova dipendenza.
+- Modificare SOLO questi file:
+  1) shared/schema.ts
+  2) server/routes/shopping.ts
+  3) app/shopping-list.tsx
+  4) server/routes/families.ts
+- NON modificare altri file. Se serve altro, fermati.
+
+CHECK PRIMA DI COMMIT (OBBLIGATORIO)
+- In shared/schema.ts deve comparire letteralmente `numeric("quantity"` o equivalente Drizzle numeric per shopping_items.quantity.
+- In server/routes/shopping.ts lo schema Zod deve accettare quantity come `number | null` (string solo in compat con parse).
+- In app/shopping-list.tsx il payload inviato deve contenere `quantity` come number (non string).
+- In server/routes/families.ts deve esistere un `console.log(JSON.stringify({ tag: "LEGACY_NULL_CREATED_BY", ... }))`.
+
+========================================================
+1) DB: shopping_items.quantity DEVE essere numeric() (non varchar)
+========================================================
+In shared/schema.ts:
+- Trova la definizione della tabella shopping_items (o shoppingItems).
+- Cambia la colonna quantity da varchar/text a numeric.
+Esempio atteso (adatta allo stile del file):
+  quantity: numeric("quantity"),
+oppure
+  quantity: numeric("quantity", { precision: 10, scale: 2 }),
+- Deve restare nullable (nonNotNull).
+- NON rinominare la colonna.
+- Lascia `unit` separata come text/varchar.
+
+IMPORTANTE MIGRAZIONE:
+- Non scrivere script esterni. Solo schema change + compat parsing lato API.
+- Dopo la modifica, assicurati che l’app non crashi con record legacy (che potrebbero diventare null o fallire conversione).
+
+========================================================
+2) API: Zod deve accettare quantity: number|null (string solo compat)
+========================================================
+In server/routes/shopping.ts:
+A) Definisci enum unit e category come già esistono.
+B) Zod schema per create/update item:
+- quantity deve essere:
+  - z.number().nonnegative().nullable().optional()
+- e SOLO per backward compatibility:
+  - accetta anche z.string() in union e PARSALA in number.
+Esempio (obbligatorio concetto):
+  const quantitySchema = z.union([
+    z.number().nonnegative(),
+    z.string().min(1)
+  ]).transform(v => {
+     if (typeof v === "number") return v;
+     const n = parseFloat(v.replace(",", "."));
+     return Number.isFinite(n) ? n : null;
+  }).nullable().optional();
+
+C) La logica di persistenza deve salvare in DB:
+- quantity: number|null (non String(quantity))
+- unit: enum|null
+Non deve restare nessuna conversione a string per quantity.
+
+D) Compat parse unit (se string legacy tipo “2 L”):
+- Se arriva quantity come string e unit è assente:
+  - prova a estrarre unit (l/ml/kg/g/pcs) e quantità numerica.
+- Salva in campi separati.
+
+========================================================
+3) FRONTEND: app/shopping-list.tsx deve inviare quantity come number
+========================================================
+In app/shopping-list.tsx:
+- newQuantity è input stringa.
+- Prima di inviare:
+  - const q = parseFloat(newQuantity.replace(",", "."));
+  - const quantity = Number.isFinite(q) ? q : undefined;
+- Invia payload:
+  { name, quantity, unit, category }
+- NON inviare più quantity come stringa (vietato: newQuantity.trim()).
+- Se l’input è vuoto o non parsabile: non inviare quantity (undefined).
+
+========================================================
+4) LOG: LEGACY_NULL_CREATED_BY in GET /api/families/:familyId (o route equivalente)
+========================================================
+In server/routes/families.ts:
+- Dentro la route GET /:familyId (o la route effettiva chiamata spesso per caricare la famiglia):
+  - dopo aver verificato membership e prima di res.json
+  - esegui 3 count:
+    - calendar_events WHERE familyId=? AND createdByUserId IS NULL (o createdBy se questo è il nome)
+    - shopping_items JOIN shopping_lists WHERE shopping_lists.familyId=? AND shopping_items.createdByUserId IS NULL
+    - chores WHERE familyId=? AND createdByUserId IS NULL
+- Logga sempre:
+  console.log(JSON.stringify({
+    tag: "LEGACY_NULL_CREATED_BY",
+    familyId,
+    counts: { events: <n>, shoppingItems: <n>, chores: <n> }
+  }));
+- NON fare backfill e NON aggiornare i record. Solo audit/log.
+
+========================================================
+CRITERI DI ACCETTAZIONE (OBBLIGATORI)
+========================================================
+1) shared/schema.ts: quantity è numeric() e NON varchar.
+2) server/routes/shopping.ts: quantity viene salvato come number/null e mai convertito in string.
+3) app/shopping-list.tsx: payload quantity è number (verificabile con console/log).
+4) server/routes/families.ts: log LEGACY_NULL_CREATED_BY appare nei server logs su chiamata GET family.
+5) Nessun crash in lista spesa con dati legacy (se quantity diventa null, UI mostra solo nome + unit/badge).
+
+STOP CONDITION
+- Se non riesci a rispettare ESATTAMENTE queste 4 modifiche nei soli file consentiti, NON fare modifiche parziali: annulla.

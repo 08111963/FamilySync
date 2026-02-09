@@ -62,9 +62,11 @@ export default function ShoppingListScreen() {
   const handleAddItem = () => {
     if (newItemName.trim()) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const q = parseFloat(newQuantity.replace(",", "."));
+      const quantity = Number.isFinite(q) ? q : undefined;
       addShoppingItem(id, {
         name: newItemName.trim(),
-        quantity: newQuantity.trim() || undefined,
+        quantity: quantity as any,
         unit: newUnit || undefined,
         category: newCategory,
       });
