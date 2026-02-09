@@ -1,0 +1,165 @@
+OBIETTIVO (P0 SOLO)
+Rendere davvero funzionante “Piano Pasti → Converti in Lista Spesa” come descritto in guida:
+- Dopo aver generato e salvato un piano pasti, l’utente può convertire il piano in una lista spesa popolata con TUTTI gli ingredienti.
+- Deve funzionare anche quando i mealPlanItems NON hanno recipeId (caso attuale più frequente).
+- Dedupe: non aggiungere ingredienti già presenti in lista (checked=false) o già spuntati/comprati di recente (checked=true ultimi 30 giorni).
+- Nessun crash, UX chiara (loading + conferma + apri lista).
+
+VINCOLI ASSOLUTI
+- NON attivare Stripe/pagamenti e NON modificare file Stripe.
+- Modificare SOLO i file elencati (diff expectation).
+- No nuove dipendenze.
+- Intervento minimo, ma robusto end-to-end.
+
+========================================================
+DIFF EXPECTATION (OBBLIGATORIO)
+========================================================
+Puoi modificare SOLO questi file:
+
+BACKEND:
+1) shared/schema.ts   (solo se serve aggiungere una colonna JSONB su meal_plan_items)
+2) server/routes/ai.ts
+3) server/routes/meal-plans.ts
+4) server/lib/openai.ts
+5) server/lib/normalize.ts
+
+FRONTEND:
+6) app/meal-plans/index.tsx
+
+NUOVO FILE CONSENTITO (solo se utile):
+- server/lib/ingredients.ts (helper per aggregare/dedupe ingredienti)
+
+Non modificare altri file.
+
+========================================================
+1) PRINCIPIO CHIAVE (PER FUNZIONARE SEMPRE)
+========================================================
+La conversione in lista spesa NON deve dipendere da recipeId.
+Quindi: ogni mealPlanItem salvato deve avere ingredienti disponibili in DB (inline) anche se non c’è recipeId.
+
+========================================================
+2) BACKEND — AI WEEKLY MEAL PLAN: INCLUDERE INGREDIENTI STRUTTURATI
+========================================================
+2.1 server/lib/openai.ts
+Aggiorna generateWeeklyMealPlan per restituire items con ingredienti:
+Output JSON obbligatorio:
+{
+  "title": string,
+  "items": [
+    {
+      "date": "YYYY-MM-DD",
+      "mealType": "breakfast"|"lunch"|"dinner"|"snack",
+      "title": string,
+      "description": string,
+      "servings": number,
+      "ingredients": [
+        { "name": string, "quantity": number|null, "unit": string|null }
+      ]
+    }
+  ]
+}
+
+Regole prompt AI:
+- Ingredients sempre presenti (>=5 per pasto, salvo snack >=2)
+- No brand
+- Nomi ingredienti generici e puliti (es. “pomodori”, “pasta”, “petto di pollo”)
+- response_format json_object + Zod validation
+- fallback: se parse fallisce, return { title:"", items:[] } (senza crash)
+
+2.2 server/routes/ai.ts
+Nella route weekly-meal-plan:
+- assicurati di includere weekStartDate in risposta (per coerenza frontend):
+  res.json({ ...result, weekStartDate })
+
+========================================================
+3) DB — PERSISTERE INGREDIENTI SUL PIANO SALVATO
+========================================================
+3.1 shared/schema.ts (SOLO SE NECESSARIO)
+Se meal_plan_items non ha un campo per ingredienti, aggiungi:
+- meal_plan_items.ingredients jsonb NULL
+Formato salvato:
+[{ name, quantity, unit, normalizedName }]
+
+Esegui npm run db:push.
+
+3.2 server/lib/normalize.ts
+Riusa normalizeItemName e applicalo ai nomi ingredienti.
+normalizeItemName deve essere usata per:
+- salvare normalizedName
+- dedupe ingredienti
+- confronti con shopping_items già presenti/spuntati
+
+3.3 server/routes/meal-plans.ts
+- Aggiorna lo schema Zod di creazione piano per accettare item.ingredients opzionale:
+  ingredients?: Array<{ name: string, quantity?: number|null, unit?: string|null }>
+- In insert meal_plan_items:
+  - salva ingredients in JSONB aggiungendo normalizedName via normalizeItemName
+- Non richiedere recipeId.
+
+========================================================
+4) ENDPOINT CONVERSIONE: USARE INGREDIENTI INLINE (E RECIPE SE PRESENTE)
+========================================================
+In server/routes/meal-plans.ts, endpoint convert-to-shopping-list (esistente):
+- Carica meal plan items + relative ingredients:
+  - Se item.recipeId presente: carica ingredienti da recipe_ingredients e includili
+  - Se item.ingredients presente: includili
+- Aggrega ingredienti:
+  - dedupe per normalizedName
+  - se quantity numerica e unit uguale: somma
+  - altrimenti mantieni un’unica entry (senza somma) e lascia quantity null (o conserva la prima)
+- Prima di inserire in shopping_items, filtra via:
+  A) già in lista: shopping_items checked=false (famiglia) con normalizeItemName(name)
+  B) spesa fatta recente: shopping_items checked=true ultimi 30 giorni (usa updatedAt se esiste, altrimenti createdAt)
+- Crea o seleziona shopping list:
+  - se body.shoppingListId presente -> usa quella
+  - altrimenti crea una lista: "Spesa Piano <weekStartDate>" (o "<YYYY-MM-DD>")
+- Inserisci shopping_items (checked=false):
+  - name: string display ben leggibile, es.:
+    - se quantity+unit: "Latte 2 L"
+    - se solo name: "Latte"
+- Risposta JSON:
+  { shoppingListId, createdItemsCount, skippedAlreadyInList, skippedCompletedRecently }
+
+========================================================
+5) FRONTEND — UX: SALVA + CONVERTI FUNZIONANTI
+========================================================
+In app/meal-plans/index.tsx:
+
+5.1 Generazione AI
+- Assicurati che lo state del piano generato conservi items.ingredients.
+- Se l’AI torna items senza ingredients o items vuoto:
+  - mostra errore “Piano non valido, riprova” (no crash).
+
+5.2 Salvataggio piano
+- Quando salvi il piano (POST /api/meal-plans ...):
+  - includi ingredients per ogni item:
+    items: aiItems.map(i => ({
+      date: i.date,
+      mealType: i.mealType,
+      titleOverride: i.title,
+      notes: i.description,
+      ingredients: i.ingredients
+    }))
+
+5.3 Converti in lista spesa
+- Aggiungi (o correggi) bottone “Converti in lista spesa” sul piano salvato:
+  - chiama POST /api/meal-plans/:mealPlanId/to-shopping-list
+  - mostra loader
+  - on success:
+    - toast: “Creati X articoli. Saltati Y già presenti.”
+    - naviga alla lista creata se esiste una route shopping list (altrimenti mostra bottone “Apri lista” e usa router.push con id)
+- Gestisci errori con messaggio chiaro (no console-only).
+
+========================================================
+CRITERI DI ACCETTAZIONE (OBBLIGATORI)
+========================================================
+1) Genero piano pasti AI -> vedo che ogni pasto ha ingredienti (UI o almeno in risposta).
+2) Salvo il piano -> DB contiene ingredients su meal_plan_items.
+3) Converto in lista spesa -> ottengo una lista con ingredienti reali (non vuota).
+4) Se ripeto conversione subito:
+   - non duplica item già in lista
+5) Nessun crash o schermata bloccata.
+
+NOTE
+- Non implementare altre discrepanze (spesa quantità, rename famiglia, blocchi ecc.) in questo prompt: rimandare.
+- Nessuna modifica a Stripe/pagamenti.
