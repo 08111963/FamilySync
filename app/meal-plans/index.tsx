@@ -21,6 +21,12 @@ import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiFetch } from "@/lib/query-client";
 
+interface MealPlanIngredient {
+  name: string;
+  quantity?: string;
+  unit?: string;
+}
+
 interface MealPlanItem {
   id?: string;
   date: string;
@@ -28,6 +34,7 @@ interface MealPlanItem {
   title: string;
   description?: string;
   servings?: number;
+  ingredients?: MealPlanIngredient[];
 }
 
 interface MealPlan {
@@ -268,6 +275,7 @@ export default function MealPlansScreen() {
           mealType: i.mealType,
           titleOverride: i.title,
           notes: i.description,
+          ingredients: i.ingredients || null,
         })),
       });
       qc.invalidateQueries({ queryKey: ["/api/meal-plans", currentFamily.id, "meal-plans"] });
