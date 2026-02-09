@@ -8,6 +8,7 @@ import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { logger } from '../lib/logger';
 import { broadcastToFamily } from '../lib/websocket';
+import { normalizeItemName } from '../lib/normalize';
 
 const router = Router();
 
@@ -27,6 +28,11 @@ const createMealPlanSchema = z.object({
     titleOverride: z.string().optional().nullable(),
     servings: z.number().int().positive().optional(),
     notes: z.string().optional(),
+    ingredients: z.array(z.object({
+      name: z.string(),
+      quantity: z.string().optional(),
+      unit: z.string().optional(),
+    })).optional().nullable(),
   })),
 });
 
@@ -62,6 +68,7 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
           titleOverride: item.titleOverride ?? null,
           servings: item.servings,
           notes: item.notes,
+          ingredients: item.ingredients ?? null,
         }))
       ).returning();
     }
@@ -170,30 +177,54 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
       .from(mealPlanItems)
       .where(eq(mealPlanItems.mealPlanId, planId));
 
+    const uniqueIngredients = new Map<string, { name: string; quantity: string | null; category: string | null }>();
+
+    for (const item of items) {
+      const inlineIngredients = item.ingredients as Array<{ name: string; quantity?: string; unit?: string }> | null;
+      if (inlineIngredients && Array.isArray(inlineIngredients)) {
+        for (const ing of inlineIngredients) {
+          if (!ing.name) continue;
+          const norm = normalizeItemName(ing.name);
+          if (!norm) continue;
+          if (!uniqueIngredients.has(norm)) {
+            const qtyStr = ing.quantity && ing.unit
+              ? `${ing.quantity} ${ing.unit}`
+              : ing.quantity || ing.unit || null;
+            uniqueIngredients.set(norm, {
+              name: ing.name,
+              quantity: qtyStr,
+              category: 'food',
+            });
+          }
+        }
+      }
+    }
+
     const recipeIds = items
       .map((item) => item.recipeId)
       .filter((id): id is string => !!id);
 
-    if (recipeIds.length === 0) {
-      return res.status(400).json({ error: { code: "NO_RECIPES", message: "Nessuna ricetta associata al piano pasti" } });
-    }
+    if (recipeIds.length > 0) {
+      const recipeIngs = await db.select()
+        .from(recipeIngredients)
+        .where(inArray(recipeIngredients.recipeId, recipeIds));
 
-    const ingredients = await db.select()
-      .from(recipeIngredients)
-      .where(inArray(recipeIngredients.recipeId, recipeIds));
-
-    const uniqueIngredients = new Map<string, { name: string; quantity: string | null; category: string | null }>();
-    for (const ing of ingredients) {
-      if (!uniqueIngredients.has(ing.normalizedName)) {
-        uniqueIngredients.set(ing.normalizedName, {
-          name: ing.name,
-          quantity: ing.quantity,
-          category: ing.category,
-        });
+      for (const ing of recipeIngs) {
+        if (!uniqueIngredients.has(ing.normalizedName)) {
+          uniqueIngredients.set(ing.normalizedName, {
+            name: ing.name,
+            quantity: ing.quantity,
+            category: ing.category,
+          });
+        }
       }
     }
 
-    const listName = `Spesa per Piano ${plan.title || plan.weekStartDate}`;
+    if (uniqueIngredients.size === 0) {
+      return res.status(400).json({ error: { code: "NO_INGREDIENTS", message: "Nessun ingrediente trovato nel piano pasti" } });
+    }
+
+    const listName = `Spesa per ${plan.title || 'Piano ' + plan.weekStartDate}`;
 
     const [shoppingList] = await db.insert(shoppingLists).values({
       familyId,
@@ -202,21 +233,20 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
       createdBy: req.user!.userId,
     }).returning();
 
-    if (uniqueIngredients.size > 0) {
-      const shoppingItemValues = Array.from(uniqueIngredients.values()).map((ing) => ({
-        listId: shoppingList.id,
-        name: ing.name,
-        quantity: ing.quantity,
-        category: ing.category,
-        createdBy: req.user!.userId,
-      }));
+    const shoppingItemValues = Array.from(uniqueIngredients.values()).map((ing) => ({
+      listId: shoppingList.id,
+      name: ing.name,
+      quantity: ing.quantity,
+      category: ing.category,
+      createdBy: req.user!.userId,
+    }));
 
-      await db.insert(shoppingItems).values(shoppingItemValues);
-    }
+    await db.insert(shoppingItems).values(shoppingItemValues);
 
     broadcastToFamily(familyId, 'shopping:updated', {});
 
-    res.status(201).json({ shoppingListId: shoppingList.id });
+    logger.info('Meal plan converted to shopping list', { planId, ingredientCount: uniqueIngredients.size });
+    res.status(201).json({ shoppingListId: shoppingList.id, ingredientCount: uniqueIngredients.size });
   } catch (error) {
     logger.error('Convert meal plan to shopping list error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella conversione in lista della spesa" } });

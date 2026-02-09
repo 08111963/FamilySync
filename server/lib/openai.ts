@@ -314,6 +314,12 @@ Quantity stringa. Genera 3-5 ricette pertinenti alla ricerca.`,
   }
 }
 
+export interface MealPlanIngredient {
+  name: string;
+  quantity?: string;
+  unit?: string;
+}
+
 export interface MealPlanSuggestion {
   title: string;
   items: Array<{
@@ -321,8 +327,15 @@ export interface MealPlanSuggestion {
     mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
     title: string;
     description?: string;
+    ingredients?: MealPlanIngredient[];
   }>;
 }
+
+const mealPlanIngredientSchema = z.object({
+  name: z.coerce.string(),
+  quantity: z.coerce.string().optional(),
+  unit: z.coerce.string().optional(),
+}).catchall(z.unknown());
 
 const mealPlanSchema = z.object({
   title: z.string(),
@@ -331,6 +344,7 @@ const mealPlanSchema = z.object({
     mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
     title: z.string(),
     description: z.string().optional(),
+    ingredients: z.array(mealPlanIngredientSchema).optional().catch([]),
   })),
 }).catch({ title: '', items: [] });
 
@@ -376,16 +390,19 @@ REGOLE:
 - Genera un piano pasti per 7 giorni (da ${dates[0]} a ${dates[6]}).
 - Per ogni giorno genera esattamente ${mealsPerDay} pasti: ${mealTypes.join(', ')}.
 - Totale items: ${7 * mealsPerDay}.
-- Ogni item ha: date (YYYY-MM-DD), mealType (${mealTypes.join('|')}), title (nome piatto in italiano), description (opzionale, breve).
+- Ogni item ha: date (YYYY-MM-DD), mealType (${mealTypes.join('|')}), title (nome piatto in italiano), description (opzionale, breve), ingredients (array di ingredienti).
+- Ogni ingrediente ha: name (nome in italiano), quantity (stringa, es. "200"), unit (stringa, es. "g", "ml", "pezzi").
+- Includi TUTTI gli ingredienti necessari per ogni piatto.
 - Bilancia la varietà: non ripetere lo stesso piatto.
 - ${variantHint}
-- Rispondi con JSON: {"title": "Piano Settimanale [data]", "items": [...]}`,
+- Rispondi con JSON: {"title": "Piano Settimanale [data]", "items": [{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}]}]}`,
       }, {
         role: 'user',
         content: `Famiglia di ${context.familySize} persone. Settimana dal ${dates[0]} al ${dates[6]}.${prefText}\n\nGenera il piano pasti settimanale.`,
       }],
       response_format: { type: 'json_object' },
       temperature: 0.85,
+      max_tokens: 8000,
     });
 
     const aiDurationMs = Date.now() - aiStartTime;

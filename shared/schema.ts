@@ -300,6 +300,7 @@ export const mealPlanItems = pgTable("meal_plan_items", {
   titleOverride: text("title_override"),
   servings: integer("servings"),
   notes: text("notes"),
+  ingredients: jsonb("ingredients").$type<Array<{ name: string; quantity?: string; unit?: string }>>(),
 }, (table) => [
   index("meal_plan_items_plan_date_idx").on(table.mealPlanId, table.date),
 ]);
