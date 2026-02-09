@@ -34,6 +34,10 @@ function NativeTabLayout() {
         <Label>Faccende</Label>
         {pendingCount > 0 && <Badge>{pendingCount}</Badge>}
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="chat">
+        <Icon sf={{ default: "bubble.left.and.bubble.right", selected: "bubble.left.and.bubble.right.fill" }} />
+        <Label>Chat</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="family">
         <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
         <Label>Famiglia</Label>
@@ -132,6 +136,19 @@ function ClassicTabLayout() {
               <SymbolView name={focused ? "checkmark.circle.fill" : "checkmark.circle"} tintColor={color} size={24} />
             ) : (
               <Ionicons name={focused ? "checkmark-circle" : "checkmark-circle-outline"} size={24} color={color} />
+            )
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: "Chat",
+          tabBarIcon: ({ color, focused }) => (
+            isIOS ? (
+              <SymbolView name={focused ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right"} tintColor={color} size={24} />
+            ) : (
+              <Ionicons name={focused ? "chatbubbles" : "chatbubbles-outline"} size={24} color={color} />
             )
           ),
         }}
