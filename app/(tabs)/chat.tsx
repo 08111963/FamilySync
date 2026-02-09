@@ -21,7 +21,7 @@ import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/context/AuthContext";
 import { useFamily } from "@/context/FamilyContext";
-import { getApiUrl } from "@/lib/query-client";
+import { getApiUrl, apiFetch, apiRequest } from "@/lib/query-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { io as socketIO, Socket } from "socket.io-client";
 
@@ -146,6 +146,7 @@ function MessageBubble({ msg, isOwn, colors, isDark, showDateHeader }: {
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = Platform.OS === "web" ? 84 : (49 + insets.bottom);
   const { colors, isDark } = useTheme();
   const { user, accessToken } = useAuth();
   const { currentFamily, data } = useFamily();
@@ -165,6 +166,7 @@ export default function ChatScreen() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
   const flatListRef = useRef<FlatList>(null);
+  const inputRef = useRef<TextInput>(null);
 
   const baseUrl = getApiUrl();
 
@@ -180,29 +182,24 @@ export default function ChatScreen() {
   const fetchMessages = useCallback(async (cursor?: string) => {
     if (!familyId) return;
     try {
-      const headers = await getHeaders();
-      const url = new URL(`/api/chat/${familyId}/messages`, baseUrl);
-      if (cursor) url.searchParams.set("cursor", cursor);
-      url.searchParams.set("limit", "50");
+      let route = `/api/chat/${familyId}/messages?limit=50`;
+      if (cursor) route += `&cursor=${encodeURIComponent(cursor)}`;
 
-      const res = await globalThis.fetch(url.toString(), { headers });
-      if (!res.ok) throw new Error("Errore nel caricamento");
-
-      const data = await res.json();
+      const result = await apiFetch<{ messages: ChatMsg[]; hasMore: boolean; nextCursor: string | null }>(route);
       if (cursor) {
-        setMessages(prev => [...prev, ...data.messages]);
+        setMessages(prev => [...prev, ...result.messages]);
       } else {
-        setMessages(data.messages);
+        setMessages(result.messages);
       }
-      setHasMore(data.hasMore);
-      setNextCursor(data.nextCursor);
+      setHasMore(result.hasMore);
+      setNextCursor(result.nextCursor);
     } catch (error) {
       console.error("Errore fetch messaggi:", error);
     } finally {
       setIsLoading(false);
       setLoadingMore(false);
     }
-  }, [familyId, baseUrl, getHeaders]);
+  }, [familyId]);
 
   useEffect(() => {
     if (!familyId || !accessToken) return;
@@ -257,10 +254,17 @@ export default function ChatScreen() {
     };
   }, [familyId, accessToken]);
 
+  const inputTextRef = useRef(inputText);
+  inputTextRef.current = inputText;
+
   const handleSend = useCallback(async () => {
-    if (!inputText.trim() || !familyId || isSending) return;
-    const text = inputText.trim();
+    const currentText = inputTextRef.current;
+    if (!currentText.trim() || !familyId || isSending) return;
+    const text = currentText.trim();
     setInputText("");
+    if (inputRef.current) {
+      inputRef.current.clear();
+    }
     setIsSending(true);
 
     if (isTypingRef.current && socketRef.current) {
@@ -269,21 +273,20 @@ export default function ChatScreen() {
     }
 
     try {
-      const headers = await getHeaders();
-      const url = new URL(`/api/chat/${familyId}/messages`, baseUrl);
-      const res = await globalThis.fetch(url.toString(), {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text }),
+      const res = await apiRequest("POST", `/api/chat/${familyId}/messages`, { content: text });
+      const sentMsg = await res.json() as ChatMsg;
+      setMessages(prev => {
+        if (prev.some(m => m.id === sentMsg.id)) return prev;
+        return [sentMsg, ...prev];
       });
-      if (!res.ok) throw new Error("Errore invio");
     } catch (error) {
+      console.error("Errore invio messaggio:", error);
       Alert.alert("Errore", "Impossibile inviare il messaggio");
       setInputText(text);
     } finally {
       setIsSending(false);
     }
-  }, [inputText, familyId, isSending, baseUrl, getHeaders]);
+  }, [familyId, isSending]);
 
   const handleTyping = useCallback((text: string) => {
     setInputText(text);
@@ -342,11 +345,18 @@ export default function ChatScreen() {
       const res = await globalThis.fetch(url.toString(), {
         method: "POST",
         headers: { ...headers },
+        credentials: "include",
         body: formData,
-      });
+      } as any);
 
       if (!res.ok) throw new Error("Errore upload");
+      const sentMsg = await res.json() as ChatMsg;
+      setMessages(prev => {
+        if (prev.some(m => m.id === sentMsg.id)) return prev;
+        return [sentMsg, ...prev];
+      });
     } catch (error) {
+      console.error("Errore upload immagine:", error);
       Alert.alert("Errore", "Impossibile caricare l'immagine");
     } finally {
       setIsUploading(false);
@@ -388,11 +398,18 @@ export default function ChatScreen() {
       const res = await globalThis.fetch(url.toString(), {
         method: "POST",
         headers: { ...headers },
+        credentials: "include",
         body: formData,
-      });
+      } as any);
 
       if (!res.ok) throw new Error("Errore upload");
+      const sentMsg = await res.json() as ChatMsg;
+      setMessages(prev => {
+        if (prev.some(m => m.id === sentMsg.id)) return prev;
+        return [sentMsg, ...prev];
+      });
     } catch (error) {
+      console.error("Errore upload foto:", error);
       Alert.alert("Errore", "Impossibile caricare la foto");
     } finally {
       setIsUploading(false);
@@ -408,10 +425,7 @@ export default function ChatScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            const headers = await getHeaders();
-            const url = new URL(`/api/chat/${familyId}/messages/${messageId}`, baseUrl);
-            const res = await globalThis.fetch(url.toString(), { method: "DELETE", headers });
-            if (!res.ok) throw new Error("Errore eliminazione");
+            await apiRequest("DELETE", `/api/chat/${familyId}/messages/${messageId}`);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           } catch {
             Alert.alert("Errore", "Impossibile eliminare il messaggio");
@@ -419,7 +433,7 @@ export default function ChatScreen() {
         },
       },
     ]);
-  }, [familyId, baseUrl, getHeaders]);
+  }, [familyId]);
 
   const handleLoadMore = useCallback(() => {
     if (!hasMore || loadingMore || !nextCursor) return;
@@ -538,7 +552,7 @@ export default function ChatScreen() {
       <View style={[styles.inputBar, {
         backgroundColor: colors.surface,
         borderTopColor: colors.border,
-        paddingBottom: Platform.OS === "web" ? 34 : Math.max(insets.bottom, 8),
+        paddingBottom: tabBarHeight + 8,
       }]}>
         <TouchableOpacity onPress={handleAttachmentMenu} style={styles.attachButton} disabled={isUploading}>
           {isUploading ? (
@@ -550,6 +564,7 @@ export default function ChatScreen() {
 
         <View style={[styles.inputContainer, { backgroundColor: isDark ? "#2A2A2A" : "#F0F0F0", borderColor: colors.border }]}>
           <TextInput
+            ref={inputRef}
             style={[styles.input, { color: colors.text }]}
             placeholder="Scrivi un messaggio..."
             placeholderTextColor={colors.textSecondary}
