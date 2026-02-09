@@ -21,7 +21,6 @@ import { z } from "zod";
 export const roleEnum = pgEnum("role", ["admin", "adult", "teen", "child"]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["free", "premium", "canceled"]);
 export const eventCategoryEnum = pgEnum("event_category", ["work", "school", "sport", "health", "social", "family", "other"]);
-export const choreDifficultyEnum = pgEnum("chore_difficulty", ["easy", "medium", "hard"]);
 export const reportTargetTypeEnum = pgEnum("report_target_type", ["calendar_event", "shopping_item", "chore", "user"]);
 export const reportReasonEnum = pgEnum("report_reason", ["spam", "harassment", "hate", "sexual", "violence", "other"]);
 export const reportStatusEnum = pgEnum("report_status", ["open", "actioned", "dismissed"]);
@@ -130,12 +129,13 @@ export const shoppingItems = pgTable("shopping_items", {
   listId: uuid("list_id").notNull().references(() => shoppingLists.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   quantity: varchar("quantity", { length: 50 }),
-  category: varchar("category", { length: 50 }),
+  unit: varchar("unit", { length: 10 }),
+  category: varchar("category", { length: 50 }).default("food").notNull(),
   note: text("note"),
   isChecked: boolean("is_checked").default(false),
   checkedBy: uuid("checked_by").references(() => users.id, { onDelete: "set null" }),
   checkedAt: timestamp("checked_at"),
-  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdBy: uuid("created_by").references(() => users.id),
   position: integer("position").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -160,7 +160,7 @@ export const chores = pgTable("chores", {
   familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
-  difficulty: choreDifficultyEnum("difficulty").default("medium"),
+  difficulty: integer("difficulty"),
   points: integer("points").default(10),
   estimatedMinutes: integer("estimated_minutes"),
   assignedTo: uuid("assigned_to").references(() => familyMembers.id, { onDelete: "set null" }),
@@ -169,7 +169,7 @@ export const chores = pgTable("chores", {
   completedAt: timestamp("completed_at"),
   completedBy: uuid("completed_by").references(() => users.id, { onDelete: "set null" }),
   recurrenceRule: text("recurrence_rule"),
-  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

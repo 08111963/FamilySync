@@ -12,6 +12,32 @@ const ITALIAN_STOPWORDS = new Set([
   'anche', 'ci', 'ne', 'si',
 ]);
 
+const UNIT_MAP: Record<string, string> = {
+  pz: "pcs", pcs: "pcs", pezzo: "pcs", pezzi: "pcs",
+  g: "g", gr: "g", grammi: "g",
+  kg: "kg", kilo: "kg", chilo: "kg",
+  ml: "ml", millilitri: "ml",
+  l: "l", lt: "l", litro: "l", litri: "l",
+};
+
+export function parseQuantityString(raw: string | null | undefined): { quantity: number | null; unit: string | null } {
+  if (!raw || raw.trim() === "") return { quantity: null, unit: null };
+  const trimmed = raw.trim();
+
+  const match = trimmed.match(/^(\d+(?:[.,]\d+)?)\s*([a-zA-Z]+)?$/);
+  if (match) {
+    const num = parseFloat(match[1].replace(",", "."));
+    const rawUnit = (match[2] || "").toLowerCase();
+    const unit = UNIT_MAP[rawUnit] || (rawUnit || null);
+    return { quantity: isNaN(num) ? null : num, unit };
+  }
+
+  const numOnly = parseFloat(trimmed.replace(",", "."));
+  if (!isNaN(numOnly)) return { quantity: numOnly, unit: null };
+
+  return { quantity: null, unit: null };
+}
+
 export function normalizeItemName(name: string): string {
   const cleaned = name
     .trim()
