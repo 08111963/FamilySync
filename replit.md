@@ -9,6 +9,7 @@ L'app è progettata per essere production-ready per App Store e Google Play, con
 ## Preferenze Utente
 
 Stile di comunicazione preferito: Linguaggio semplice e quotidiano.
+Lingua di comunicazione: Rispondere SEMPRE in italiano.
 
 ## Architettura Sistema
 
