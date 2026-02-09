@@ -105,6 +105,23 @@ export function setupWebSocket(httpServer: HTTPServer) {
     socket.on('leave_family', (familyId: string) => {
       socket.leave(`family:${familyId}`);
     });
+
+    socket.on('chat:typing', (data: { familyId: string; userName: string }) => {
+      if (data.familyId && data.userName) {
+        socket.to(`family:${data.familyId}`).emit('chat:typing', {
+          userId: socket.data.userId,
+          userName: data.userName,
+        });
+      }
+    });
+
+    socket.on('chat:stop_typing', (data: { familyId: string }) => {
+      if (data.familyId) {
+        socket.to(`family:${data.familyId}`).emit('chat:stop_typing', {
+          userId: socket.data.userId,
+        });
+      }
+    });
     
     socket.on('disconnect', () => {
       logger.info('WebSocket user disconnected', { userId: socket.data.userId });

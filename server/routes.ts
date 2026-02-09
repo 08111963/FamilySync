@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import express, { type Express } from "express";
 import { createServer, type Server } from "node:http";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -16,6 +16,7 @@ import helpRoutes from "./routes/help";
 import moderationRoutes from "./routes/moderation";
 import recipesRoutes from "./routes/recipes";
 import mealPlansRoutes from "./routes/meal-plans";
+import chatRoutes from "./routes/chat";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(helmet({
@@ -47,6 +48,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/moderation', moderationRoutes);
   app.use('/api/recipes', recipesRoutes);
   app.use('/api/meal-plans', mealPlansRoutes);
+  app.use('/api/chat', chatRoutes);
+
+  app.use('/uploads', express.static('uploads'));
 
   app.use('/legal', legalRoutes);
   app.use('/help', helpRoutes);
