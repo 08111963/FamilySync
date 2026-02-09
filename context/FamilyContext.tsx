@@ -110,7 +110,7 @@ interface FamilyContextType {
   addShoppingItem: (listId: string, item: { name: string; addedBy?: string; quantity?: string; unit?: string; category?: string }) => void;
   toggleShoppingItem: (listId: string, itemId: string) => void;
   deleteShoppingItem: (listId: string, itemId: string) => void;
-  addChore: (chore: { title: string; description?: string; assignedTo?: string; dueDate?: string; points: number; isRecurring?: boolean; frequency?: string }) => void;
+  addChore: (chore: { title: string; description?: string; assignedTo?: string; dueDate?: string; points: number; difficulty?: number; estimatedMinutes?: number; isRecurring?: boolean; frequency?: string }) => void;
   updateChore: (id: string, updates: Partial<Chore>) => void;
   deleteChore: (id: string) => void;
   completeChore: (id: string) => void;
@@ -326,7 +326,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       .catch(console.error);
   }, [currentFamilyId, qc]);
 
-  const addChore = useCallback((chore: { title: string; description?: string; assignedTo?: string; dueDate?: string; points: number; isRecurring?: boolean; frequency?: string }) => {
+  const addChore = useCallback((chore: { title: string; description?: string; assignedTo?: string; dueDate?: string; points: number; difficulty?: number; estimatedMinutes?: number; isRecurring?: boolean; frequency?: string }) => {
     if (!currentFamilyId) return;
     apiRequest("POST", `/api/chores/${currentFamilyId}`, {
       title: chore.title,
@@ -334,6 +334,8 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       assignedTo: chore.assignedTo,
       dueDate: chore.dueDate,
       points: chore.points,
+      difficulty: chore.difficulty,
+      estimatedMinutes: chore.estimatedMinutes,
       recurrenceRule: chore.isRecurring ? chore.frequency : undefined,
     })
       .then(() => qc.invalidateQueries({ queryKey: ["/api/chores", currentFamilyId] }))
