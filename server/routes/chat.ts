@@ -13,6 +13,61 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
+interface ChatStorageResult {
+  url: string;
+  mime: string;
+  size: number;
+  filename: string;
+}
+
+interface ChatStorage {
+  save(file: Express.Multer.File, req: Request): Promise<ChatStorageResult>;
+}
+
+function getUploadBaseUrl(req: Request): string {
+  const proto = req.headers["x-forwarded-proto"] || req.protocol || "http";
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:5000";
+  return `${proto}://${host}`;
+}
+
+const localDiskStorage: ChatStorage = {
+  async save(file, req) {
+    const relativeUrl = `/uploads/${file.filename}`;
+    return {
+      url: relativeUrl,
+      mime: file.mimetype,
+      size: file.size,
+      filename: file.originalname,
+    };
+  },
+};
+
+// TODO: Future storage implementations (no new dependencies needed to add):
+// - S3Storage: implements ChatStorage using AWS SDK
+// - R2Storage: implements ChatStorage using Cloudflare R2
+// - SupabaseStorage: implements ChatStorage using Supabase Storage
+
+function getChatStorage(): ChatStorage {
+  // const mode = process.env.STORAGE_MODE || "local";
+  // switch (mode) {
+  //   case "s3": return s3Storage;
+  //   case "r2": return r2Storage;
+  //   default: return localDiskStorage;
+  // }
+  return localDiskStorage;
+}
+
+const chatFileStorage = getChatStorage();
+
+let uploadWarningLogged = false;
+if (process.env.NODE_ENV === "production" && !process.env.STORAGE_MODE) {
+  logger.warn("UPLOAD_STORAGE_WARNING", {
+    tag: "UPLOAD_STORAGE_WARNING",
+    msg: "Using local disk uploads in production is fragile. Consider S3/R2/Supabase by setting STORAGE_MODE env var.",
+  });
+  uploadWarningLogged = true;
+}
+
 const uploadsDir = path.resolve("uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -184,8 +239,16 @@ router.post("/:familyId/upload", authenticate, upload.single("file"), async (req
 
     const [user] = await db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);
 
-    const isImage = req.file.mimetype.startsWith("image/");
-    const fileUrl = `/uploads/${req.file.filename}`;
+    if (process.env.NODE_ENV === "production" && !process.env.STORAGE_MODE && !uploadWarningLogged) {
+      logger.warn("UPLOAD_STORAGE_WARNING", {
+        tag: "UPLOAD_STORAGE_WARNING",
+        msg: "Using local disk uploads in production is fragile. Consider S3/R2/Supabase by setting STORAGE_MODE env var.",
+      });
+      uploadWarningLogged = true;
+    }
+
+    const stored = await chatFileStorage.save(req.file, req);
+    const isImage = stored.mime.startsWith("image/");
 
     const [message] = await db
       .insert(chatMessages)
@@ -194,10 +257,10 @@ router.post("/:familyId/upload", authenticate, upload.single("file"), async (req
         userId,
         messageType: isImage ? "image" : "file",
         content: caption?.trim() || null,
-        fileUrl,
-        fileName: req.file.originalname,
-        fileMimeType: req.file.mimetype,
-        fileSize: req.file.size,
+        fileUrl: stored.url,
+        fileName: stored.filename,
+        fileMimeType: stored.mime,
+        fileSize: stored.size,
       })
       .returning();
 
