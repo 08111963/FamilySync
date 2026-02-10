@@ -1,0 +1,102 @@
+OBIETTIVO
+Applicare SOLO 3 interventi mirati sulla feature Chat:
+(A) Eliminare o isolare il vecchio codice chat “replit integration” non usato.
+(B) Rendere sicuri gli eventi websocket chat:typing / chat:stop_typing (anti-spam) verificando che il socket sia nella room della famiglia.
+(C) Rendere l’upload meno fragile: aggiungere un “guardrail” di produzione (warning + fallback) e preparare un’interfaccia storage per migrazione futura (S3/R2/Supabase), SENZA introdurre nuove dipendenze e SENZA cambiare comportamento in dev.
+
+VINCOLI ASSOLUTI
+- NON toccare Stripe/pagamenti.
+- Nessuna nuova dipendenza.
+- Modificare SOLO i file elencati nel DIFF EXPECTATION.
+- Niente refactor ampi: patch minimali e testabili.
+
+========================================================
+DIFF EXPECTATION (OBBLIGATORIO — MODIFICA SOLO QUESTI FILE)
+========================================================
+1) server/lib/websocket.ts
+2) server/routes/chat.ts
+3) server/routes.ts (solo se serve per static /uploads o config)
+4) shared/models/chat.ts
+5) server/replit_integrations/chat/* (solo rimozione o “unused”)
+6) README.md oppure docs/ (uno solo) per documentare scelta (opzionale, ma se modifichi docs modifica SOLO 1 file)
+
+STOP: Se per completare ti servono altri file, NON procedere.
+
+========================================================
+A) CODICE CHAT DUPLICATO / RESIDUO — ELIMINA O ISOLA (SCELTA OBBLIGATORIA)
+========================================================
+Nel repo esistono due sistemi:
+- Chat reale: chat_messages + server/routes/chat.ts + app/(tabs)/chat.tsx (DA NON TOCCARE)
+- Vecchio replit integration: server/replit_integrations/chat/* e shared/models/chat.ts (NON USATO)
+
+Richiesta:
+1) Verifica che server/replit_integrations/chat/* e shared/models/chat.ts NON siano importati da nessuna parte.
+2) Se non sono importati:
+   - Opzione preferita: RIMUOVILI (delete files/folder).
+   - Se non vuoi cancellare: isola chiaramente come “unused”:
+     - rinomina cartella in server/replit_integrations/_unused_chat/
+     - aggiungi commento top-file: “UNUSED/LEGACY — do not import”
+     - esporta nulla (o export type-only) per evitare import accidentali.
+3) Assicurati che build TS non rompa per riferimenti rimasti (nessun import spezzato).
+
+CRITERIO:
+- Deve rimanere SOLO il sistema chat reale.
+- Nessun file legacy deve poter essere importato per errore senza che sia evidente.
+
+========================================================
+B) WEBSOCKET: chat:typing / chat:stop_typing CON CHECK ROOM (ANTI-SPAM)
+========================================================
+Problema:
+In server/lib/websocket.ts, gli handler per chat:typing e chat:stop_typing inoltrano l’evento senza verificare che il socket sia effettivamente “joinato” alla famiglia.
+
+Fix minimo richiesto:
+1) In ogni handler typing:
+   - estrai familyId dal payload
+   - calcola roomName = `family:${familyId}`
+   - verifica:
+     - if (!socket.rooms.has(roomName)) return;  // ignora silenziosamente (o log debug)
+2) Solo se nella room, esegui:
+   - socket.to(roomName).emit("chat:typing", {...})
+   - socket.to(roomName).emit("chat:stop_typing", {...})
+
+Opzionale (ma utile):
+- Se vuoi loggare, fallo solo debug e senza spam:
+  console.log(JSON.stringify({tag:"CHAT_TYPING_DENIED", userId, familyId}))
+  ma NON loggare ogni keypress (usa rate limit o logga massimo 1 volta per socket). Se non sai farlo in modo pulito, NON loggare.
+
+CRITERIO:
+- Un client che non ha joinato la room non può far apparire typing ad altri.
+
+========================================================
+C) UPLOAD SU DISCO: GUARDRAIL PROD + INTERFACCIA STORAGE (SENZA DEPENDENZE)
+========================================================
+Obiettivo: mantenere comportamento attuale (uploads su disco) in dev/Replit, ma evitare “illusioni” in produzione e preparare migrazione futura.
+
+Richiesta (minimale, no deps):
+1) In server/routes/chat.ts (upload handler):
+   - centralizza in una funzione `getUploadBaseUrl(req)` che costruisce URL assoluto per /uploads
+   - se in production e non esiste env STORAGE_MODE:
+     - logga UNA volta all’avvio (o alla prima upload) un warning:
+       tag="UPLOAD_STORAGE_WARNING"
+       msg="Using local disk uploads in production is fragile. Consider S3/R2/Supabase."
+     - NON cambiare comportamento: continua a salvare su disco.
+2) Introduci una mini interfaccia interna (nello stesso file chat.ts o in un piccolo helper) senza nuove deps:
+   - `interface ChatStorage { save(file): Promise<{ url, mime, size, filename }> }`
+   - Implementazione default: LocalDiskStorage (quella attuale).
+   - Se env STORAGE_MODE === "local" usa LocalDiskStorage.
+   - Per ora NON implementare S3/R2/Supabase (solo TODO commentato e placeholder) per evitare dipendenze.
+3) Verifica che server/routes.ts continui a servire /uploads come static e che path sia corretto.
+
+CRITERIO:
+- Dev/Replit: tutto continua a funzionare identico.
+- Prod: compare un warning chiaro nei server logs, ma nessun comportamento cambia.
+- Il codice è “pronto” per inserire in futuro S3/R2/Supabase senza riscrivere l’endpoint.
+
+========================================================
+CHECK FINALE (OBBLIGATORIO)
+========================================================
+- Nessuna modifica a chat UI e alle tabelle chat reali.
+- Legacy chat rimossa o marcata “unused” in modo inequivocabile.
+- Websocket typing ignorato se socket non è nella room family:${familyId}.
+- Upload continua a funzionare; in prod logga un warning UNA volta.
+- Nessuna nuova dipendenza aggiunta.
