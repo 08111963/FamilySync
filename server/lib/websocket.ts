@@ -107,20 +107,22 @@ export function setupWebSocket(httpServer: HTTPServer) {
     });
 
     socket.on('chat:typing', (data: { familyId: string; userName: string }) => {
-      if (data.familyId && data.userName) {
-        socket.to(`family:${data.familyId}`).emit('chat:typing', {
-          userId: socket.data.userId,
-          userName: data.userName,
-        });
-      }
+      if (!data.familyId || !data.userName) return;
+      const roomName = `family:${data.familyId}`;
+      if (!socket.rooms.has(roomName)) return;
+      socket.to(roomName).emit('chat:typing', {
+        userId: socket.data.userId,
+        userName: data.userName,
+      });
     });
 
     socket.on('chat:stop_typing', (data: { familyId: string }) => {
-      if (data.familyId) {
-        socket.to(`family:${data.familyId}`).emit('chat:stop_typing', {
-          userId: socket.data.userId,
-        });
-      }
+      if (!data.familyId) return;
+      const roomName = `family:${data.familyId}`;
+      if (!socket.rooms.has(roomName)) return;
+      socket.to(roomName).emit('chat:stop_typing', {
+        userId: socket.data.userId,
+      });
     });
     
     socket.on('disconnect', () => {
