@@ -60,6 +60,12 @@ const FEATURES: Feature[] = [
     gradient: ["#FFEAA7", "#FDCB6E"],
   },
   {
+    icon: "chatbubbles",
+    title: "Chat Familiare",
+    description: "Messaggi, foto e file condivisi in tempo reale con tutta la famiglia",
+    gradient: ["#81ECEC", "#00CEC9"],
+  },
+  {
     icon: "sync",
     title: "Sincronizzazione Real-time",
     description: "Ogni modifica si aggiorna istantaneamente su tutti i dispositivi della famiglia",
