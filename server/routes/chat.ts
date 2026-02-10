@@ -25,9 +25,24 @@ interface ChatStorage {
 }
 
 function getUploadBaseUrl(req: Request): string {
+  if (process.env.PUBLIC_BASE_URL) {
+    return process.env.PUBLIC_BASE_URL.replace(/\/+$/, "");
+  }
+  if (process.env.EXPO_PUBLIC_DOMAIN) {
+    const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+    return `${proto}://${process.env.EXPO_PUBLIC_DOMAIN}`;
+  }
   const proto = req.headers["x-forwarded-proto"] || req.protocol || "http";
   const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:5000";
   return `${proto}://${host}`;
+}
+
+function withAbsoluteFileUrl<T extends { fileUrl?: string | null }>(msg: T, req: Request): T & { fileUrlAbs?: string } {
+  if (msg.fileUrl) {
+    const base = getUploadBaseUrl(req);
+    return { ...msg, fileUrlAbs: new URL(msg.fileUrl, base).toString() };
+  }
+  return msg;
 }
 
 const localDiskStorage: ChatStorage = {
@@ -162,8 +177,10 @@ router.get("/:familyId/messages", authenticate, async (req: Request, res: Respon
     const hasMore = messages.length > limit;
     const result = hasMore ? messages.slice(0, limit) : messages;
 
+    const enriched = result.map((m) => withAbsoluteFileUrl(m, req));
+
     res.json({
-      messages: result,
+      messages: enriched,
       hasMore,
       nextCursor: hasMore ? result[result.length - 1].createdAt.toISOString() : null,
     });
@@ -210,9 +227,11 @@ router.post("/:familyId/messages", authenticate, async (req: Request, res: Respo
       userAvatar: user.avatarUrl,
     };
 
-    broadcastToFamily(familyId, "chat:new_message", fullMessage);
+    const enrichedMessage = withAbsoluteFileUrl(fullMessage, req);
 
-    res.status(201).json(fullMessage);
+    broadcastToFamily(familyId, "chat:new_message", enrichedMessage);
+
+    res.status(201).json(enrichedMessage);
   } catch (error) {
     logger.error("Errore POST messaggio chat", { error: String(error) });
     res.status(500).json({ error: "Errore nell'invio del messaggio" });
@@ -270,9 +289,11 @@ router.post("/:familyId/upload", authenticate, upload.single("file"), async (req
       userAvatar: user.avatarUrl,
     };
 
-    broadcastToFamily(familyId, "chat:new_message", fullMessage);
+    const enrichedUpload = withAbsoluteFileUrl(fullMessage, req);
 
-    res.status(201).json(fullMessage);
+    broadcastToFamily(familyId, "chat:new_message", enrichedUpload);
+
+    res.status(201).json(enrichedUpload);
   } catch (error) {
     logger.error("Errore POST upload chat", { error: String(error) });
     if (req.file) {
