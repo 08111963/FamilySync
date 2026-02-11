@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.marinopizzuti.familysync"
+      "bundleIdentifier": "com.familysyncapp.coordinator"
     },
     "android": {
-      "package": "com.marinopizzuti.familysync",
+      "package": "com.familysyncapp.coordinator",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
