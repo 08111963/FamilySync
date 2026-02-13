@@ -3,7 +3,7 @@ modules = ["nodejs-22", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["jq", "imagemagick", "chromium", "glib", "nss", "nspr", "at-spi2-atk", "cups", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXrandr", "mesa", "pango", "cairo", "alsa-lib", "xorg.libxcb", "xorg.libX11"]
+packages = ["jq", "imagemagick", "chromium", "glib", "nss", "nspr", "at-spi2-atk", "cups", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXrandr", "mesa", "pango", "cairo", "alsa-lib", "xorg.libxcb", "xorg.libX11", "zip"]
 
 [deployment]
 deploymentTarget = "cloudrun"
