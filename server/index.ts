@@ -279,16 +279,7 @@ function configureExpoAndLanding(app: express.Application) {
     next();
   });
 
-  app.get("/assets/store/download", (_req: Request, res: Response) => {
-    const htmlPath = path.resolve(process.cwd(), "assets/store/index.html");
-    if (fs.existsSync(htmlPath)) {
-      res.sendFile(htmlPath);
-    } else {
-      res.status(404).send("Download page not found");
-    }
-  });
-  app.use("/store-download", express.static(path.resolve(process.cwd(), "public/store-download")));
-  app.use("/assets", express.static(path.resolve(process.cwd(), "assets"), { index: "index.html" }));
+  app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   log("Expo routing: Checking expo-platform header on / and /manifest");
