@@ -279,6 +279,17 @@ function configureExpoAndLanding(app: express.Application) {
     next();
   });
 
+  app.get("/download/store-assets.zip", (_req: Request, res: Response) => {
+    const zipPath = path.resolve(process.cwd(), "store-assets.zip");
+    if (fs.existsSync(zipPath)) {
+      res.setHeader("Content-Disposition", "attachment; filename=store-assets.zip");
+      res.setHeader("Content-Type", "application/zip");
+      res.sendFile(zipPath);
+    } else {
+      res.status(404).send("File not found");
+    }
+  });
+
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
