@@ -279,6 +279,14 @@ function configureExpoAndLanding(app: express.Application) {
     next();
   });
 
+  app.get("/assets/store/download", (_req: Request, res: Response) => {
+    const htmlPath = path.resolve(process.cwd(), "assets/store/index.html");
+    if (fs.existsSync(htmlPath)) {
+      res.sendFile(htmlPath);
+    } else {
+      res.status(404).send("Download page not found");
+    }
+  });
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets"), { index: "index.html" }));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
