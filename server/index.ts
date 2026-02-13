@@ -287,6 +287,7 @@ function configureExpoAndLanding(app: express.Application) {
       res.status(404).send("Download page not found");
     }
   });
+  app.use("/store-download", express.static(path.resolve(process.cwd(), "public/store-download")));
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets"), { index: "index.html" }));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
