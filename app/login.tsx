@@ -66,12 +66,16 @@ export default function LoginScreen() {
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const msg = err?.message || '';
-      if (msg.includes('401') || msg.includes('Credenziali')) {
+      if (msg.includes('Credenziali') || msg.includes('non valide')) {
         setError('Email o password non corretti');
-      } else if (msg.includes('400') || msg.includes('registrata')) {
+      } else if (msg.includes('registrata') || msg.includes('EMAIL_EXISTS')) {
         setError('Questa email è già registrata');
+      } else if (msg.includes('connessione') || msg.includes('Network') || msg.includes('fetch')) {
+        setError('Errore di connessione. Verifica la tua connessione internet e riprova.');
+      } else if (msg.includes('server') || msg.includes('Impossibile')) {
+        setError('Server non raggiungibile. Riprova tra qualche secondo.');
       } else {
-        setError(isSignup ? 'Errore nella registrazione' : 'Errore nel login');
+        setError(msg || (isSignup ? 'Errore nella registrazione' : 'Errore nel login'));
       }
     } finally {
       setIsSubmitting(false);

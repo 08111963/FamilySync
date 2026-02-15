@@ -1,7 +1,9 @@
 import { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetch } from 'expo/fetch';
+import { Platform } from 'react-native';
 import { getApiUrl } from '@/lib/query-client';
+
+const authFetch = globalThis.fetch.bind(globalThis);
 
 const STORAGE_KEY = '@family_sync_auth';
 
@@ -86,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const baseUrl = getApiUrl();
         const url = new URL('/api/auth/refresh', baseUrl);
-        const res = await fetch(url.toString(), {
+        const res = await authFetch(url.toString(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refreshToken: token }),
@@ -128,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const baseUrl = getApiUrl();
         const meUrl = new URL('/api/auth/me', baseUrl);
-        const res = await fetch(meUrl.toString(), {
+        const res = await authFetch(meUrl.toString(), {
           method: 'GET',
           headers: { Authorization: `Bearer ${auth.accessToken}` },
         });
@@ -138,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(userData);
         } else {
           const refreshUrl = new URL('/api/auth/refresh', baseUrl);
-          const refreshRes = await fetch(refreshUrl.toString(), {
+          const refreshRes = await authFetch(refreshUrl.toString(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refreshToken: auth.refreshToken }),
@@ -168,70 +170,92 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string) => {
+      let baseUrl: string;
       try {
-        const baseUrl = getApiUrl();
-        const url = new URL('/api/auth/login', baseUrl);
-        const res = await fetch(url.toString(), {
+        baseUrl = getApiUrl();
+      } catch {
+        throw new Error('Impossibile connettersi al server. Riprova più tardi.');
+      }
+      const url = new URL('/api/auth/login', baseUrl);
+
+      let res: Response;
+      try {
+        res = await authFetch(url.toString(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
         });
-
-        if (!res.ok) {
-          const error = await res.text();
-          throw new Error(error || 'Errore durante il login');
-        }
-
-        const { user: userData, accessToken: newAccessToken, refreshToken: newRefreshToken } = (await res.json()) as {
-          user: User;
-          accessToken: string;
-          refreshToken: string;
-        };
-
-        await saveAuth({
-          user: userData,
-          accessToken: newAccessToken,
-          refreshToken: newRefreshToken,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Errore durante il login';
-        throw new Error(message);
+      } catch (networkError) {
+        throw new Error('Errore di connessione. Verifica la tua connessione internet e riprova.');
       }
+
+      if (!res.ok) {
+        let errorBody: any = null;
+        try { errorBody = await res.json(); } catch { try { await res.text(); } catch {} }
+        const serverMsg = errorBody?.error?.message;
+        if (res.status === 401) {
+          throw new Error(serverMsg || 'Credenziali non valide');
+        }
+        throw new Error(serverMsg || `Errore durante il login (${res.status})`);
+      }
+
+      const { user: userData, accessToken: newAccessToken, refreshToken: newRefreshToken } = (await res.json()) as {
+        user: User;
+        accessToken: string;
+        refreshToken: string;
+      };
+
+      await saveAuth({
+        user: userData,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      });
     },
     [saveAuth]
   );
 
   const signup = useCallback(
     async (email: string, password: string, name: string, acceptedTerms: boolean) => {
+      let baseUrl: string;
       try {
-        const baseUrl = getApiUrl();
-        const url = new URL('/api/auth/signup', baseUrl);
-        const res = await fetch(url.toString(), {
+        baseUrl = getApiUrl();
+      } catch {
+        throw new Error('Impossibile connettersi al server. Riprova più tardi.');
+      }
+      const url = new URL('/api/auth/signup', baseUrl);
+
+      let res: Response;
+      try {
+        res = await authFetch(url.toString(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password, name, acceptedTerms }),
         });
-
-        if (!res.ok) {
-          const error = await res.text();
-          throw new Error(error || 'Errore durante la registrazione');
-        }
-
-        const { user: userData, accessToken: newAccessToken, refreshToken: newRefreshToken } = (await res.json()) as {
-          user: User;
-          accessToken: string;
-          refreshToken: string;
-        };
-
-        await saveAuth({
-          user: userData,
-          accessToken: newAccessToken,
-          refreshToken: newRefreshToken,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Errore durante la registrazione';
-        throw new Error(message);
+      } catch (networkError) {
+        throw new Error('Errore di connessione. Verifica la tua connessione internet e riprova.');
       }
+
+      if (!res.ok) {
+        let errorBody: any = null;
+        try { errorBody = await res.json(); } catch { try { await res.text(); } catch {} }
+        const serverMsg = errorBody?.error?.message;
+        if (res.status === 400) {
+          throw new Error(serverMsg || 'Dati non validi');
+        }
+        throw new Error(serverMsg || `Errore durante la registrazione (${res.status})`);
+      }
+
+      const { user: userData, accessToken: newAccessToken, refreshToken: newRefreshToken } = (await res.json()) as {
+        user: User;
+        accessToken: string;
+        refreshToken: string;
+      };
+
+      await saveAuth({
+        user: userData,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      });
     },
     [saveAuth]
   );
