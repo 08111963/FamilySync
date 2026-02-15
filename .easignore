@@ -1,0 +1,13 @@
+.git
+node_modules
+.cache
+.expo
+dist
+migrations
+attached_assets
+assets/store
+.local
+/tmp
+scripts
+docs
+*.log

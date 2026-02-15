@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.familysyncapp.coordinator",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -43,6 +43,14 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "origin": "https://replit.com/"
+      },
+      "eas": {
+        "projectId": "1b7257dd-cb6c-4cfd-b40d-f9c1b2f5c509"
+      }
     }
   }
 }
