@@ -53,6 +53,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/uploads', express.static('uploads'));
 
   app.use('/legal', legalRoutes);
+  app.use('/privacy', (req, res, next) => { req.url = '/privacy'; legalRoutes(req, res, next); });
+  app.use('/terms', (req, res, next) => { req.url = '/terms'; legalRoutes(req, res, next); });
   app.use('/help', helpRoutes);
 
   const httpServer = createServer(app);
