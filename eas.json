@@ -14,6 +14,14 @@
       "env": {
         "EXPO_PUBLIC_DOMAIN": "family-sync-coordination.replit.app"
       }
+    },
+    "production-apk": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "family-sync-coordination.replit.app"
+      }
     }
   },
   "submit": {
