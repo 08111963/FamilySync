@@ -37,6 +37,13 @@
           "origin": "https://replit.com/"
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "L'app accede alle tue foto per condividerle nella chat di famiglia.",
+          "cameraPermission": "L'app usa la fotocamera per scattare foto da condividere nella chat di famiglia."
+        }
+      ],
       "expo-font",
       "expo-web-browser"
     ],
