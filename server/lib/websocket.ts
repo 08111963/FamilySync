@@ -122,23 +122,31 @@ export function setupWebSocket(httpServer: HTTPServer) {
       socket.leave(`family:${familyId}`);
     });
 
-    socket.on('chat:typing', (data: { familyId: string; userName: string }) => {
+    socket.on('chat:typing', async (data: { familyId: string; userName: string }) => {
       if (!data.familyId || !data.userName) return;
       const roomName = `family:${data.familyId}`;
       if (!socket.rooms.has(roomName)) return;
-      socket.to(roomName).emit('chat:typing', {
-        userId: socket.data.userId,
-        userName: data.userName,
-      });
+      try {
+        await broadcastTypingToFamily(data.familyId, socket.data.userId, 'chat:typing', {
+          userId: socket.data.userId,
+          userName: data.userName,
+        });
+      } catch (err) {
+        logger.error('WebSocket chat:typing error', { error: String(err) });
+      }
     });
 
-    socket.on('chat:stop_typing', (data: { familyId: string }) => {
+    socket.on('chat:stop_typing', async (data: { familyId: string }) => {
       if (!data.familyId) return;
       const roomName = `family:${data.familyId}`;
       if (!socket.rooms.has(roomName)) return;
-      socket.to(roomName).emit('chat:stop_typing', {
-        userId: socket.data.userId,
-      });
+      try {
+        await broadcastTypingToFamily(data.familyId, socket.data.userId, 'chat:stop_typing', {
+          userId: socket.data.userId,
+        });
+      } catch (err) {
+        logger.error('WebSocket chat:stop_typing error', { error: String(err) });
+      }
     });
     
     socket.on('disconnect', () => {
@@ -176,6 +184,71 @@ export async function broadcastChatMessageToFamily(
   for (const s of sockets) {
     const uid = s.data?.userId as string | undefined;
     if (uid && uid !== authorId && blockedRelated.has(uid)) {
+      continue;
+    }
+    s.emit(event, data);
+  }
+}
+
+const BLOCK_CACHE_TTL_MS = 30_000;
+const blockRelatedCache = new Map<string, { ids: Set<string>; expires: number }>();
+
+function sweepExpiredBlockCache(now: number) {
+  for (const [key, entry] of blockRelatedCache) {
+    if (entry.expires <= now) {
+      blockRelatedCache.delete(key);
+    }
+  }
+}
+
+async function getBlockRelatedCached(familyId: string, userId: string): Promise<Set<string>> {
+  const key = `${familyId}:${userId}`;
+  const now = Date.now();
+  const hit = blockRelatedCache.get(key);
+  if (hit && hit.expires > now) {
+    return hit.ids;
+  }
+  if (blockRelatedCache.size > 1000) {
+    sweepExpiredBlockCache(now);
+  }
+  const ids = new Set(await getBlockRelatedUserIds(userId, familyId));
+  blockRelatedCache.set(key, { ids, expires: now + BLOCK_CACHE_TTL_MS });
+  return ids;
+}
+
+export function invalidateBlockCache(familyId: string, userId?: string) {
+  if (userId) {
+    blockRelatedCache.delete(`${familyId}:${userId}`);
+    return;
+  }
+  const prefix = `${familyId}:`;
+  for (const key of blockRelatedCache.keys()) {
+    if (key.startsWith(prefix)) {
+      blockRelatedCache.delete(key);
+    }
+  }
+}
+
+export async function broadcastTypingToFamily(
+  familyId: string,
+  authorId: string,
+  event: string,
+  data: any
+) {
+  if (!io) return;
+
+  const room = `family:${familyId}`;
+  const sockets = await io.in(room).fetchSockets();
+  if (sockets.length === 0) return;
+
+  const blockedRelated = await getBlockRelatedCached(familyId, authorId);
+
+  for (const s of sockets) {
+    const uid = s.data?.userId as string | undefined;
+    if (!uid || uid === authorId) {
+      continue;
+    }
+    if (blockedRelated.has(uid)) {
       continue;
     }
     s.emit(event, data);

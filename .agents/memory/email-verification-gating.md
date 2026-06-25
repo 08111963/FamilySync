@@ -66,3 +66,9 @@ to resolveUploadFileAccess only if product requires it.
 
 ## Scope note (block direction)
 - Bidirectional applies to CHAT (list + realtime new_message) and FILE access (media-auth). Intentionally NOT changed: calendar/shopping/chores still use one-directional `getBlockedUserIds`; `chat:typing`/`stop_typing` not filtered (high frequency); `chat:message_deleted` broadcast to all (only messageId, harmless).
+
+## Typing indicators block-aware (cached)
+- `chat:typing`/`chat:stop_typing` are filtered with bidirectional block too, via `broadcastTypingToFamily` (websocket.ts). Author excluded; recipients in a block relationship skipped.
+- **Why a cache:** typing fires per keystroke; a DB query each time is wasteful. Solution: in-memory `blockRelatedCache` keyed `familyId:userId`, 30s TTL, with size-capped sweep of expired entries. Invalidated explicitly on block/unblock in moderation.ts (both blocker+blocked) so changes apply immediately.
+- `broadcastChatMessageToFamily` (messages) stays UNCACHED (direct query) — correctness over micro-perf for actual content.
+- Pre-existing TS errors in `server/routes/moderation.ts` come from Express v5 `req.params` typing (`string | string[]`), present on HEAD, unrelated to block work — runs fine under tsx.

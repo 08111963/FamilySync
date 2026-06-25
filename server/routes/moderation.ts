@@ -7,6 +7,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { authenticate } from "../middleware/auth";
 import { requireFamilyAdmin } from "../middleware/family";
 import { logger } from "../lib/logger";
+import { invalidateBlockCache } from "../lib/websocket";
 
 const router = Router();
 
@@ -197,6 +198,9 @@ router.post("/block", authenticate, async (req: Request, res: Response) => {
       return res.json({ message: "Utente già bloccato" });
     }
 
+    invalidateBlockCache(familyId, req.user!.userId);
+    invalidateBlockCache(familyId, blockedUserId);
+
     res.status(201).json(block);
   } catch (error) {
     logger.error("Create block error", { error: String(error) });
@@ -215,6 +219,9 @@ router.delete("/block/:familyId/:blockedUserId", authenticate, async (req: Reque
         eq(blocks.blockedUserId, blockedUserId)
       )
     );
+
+    invalidateBlockCache(familyId, req.user!.userId);
+    invalidateBlockCache(familyId, blockedUserId);
 
     res.json({ message: "Utente sbloccato" });
   } catch (error) {
