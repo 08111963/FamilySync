@@ -1,0 +1,1 @@
+- [Email verification gating](email-verification-gating.md) — gate unverified users on ALL channels (REST, static /uploads via ?token=, WebSocket handshake); JWT lacks emailVerified so guards query DB fresh.

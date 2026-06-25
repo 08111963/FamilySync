@@ -206,6 +206,39 @@ router.post('/verify-email', async (req: Request, res: Response) => {
   }
 });
 
+router.post('/resend-verification-email', authenticate, async (req: Request, res: Response) => {
+  try {
+    const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
+
+    if (!user) {
+      return res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utente non trovato" } });
+    }
+
+    if (user.emailVerified) {
+      return res.json({ message: 'Email già verificata' });
+    }
+
+    await db.delete(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.userId, user.id));
+
+    const verificationToken = uuidv4();
+    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
+
+    await db.insert(emailVerificationTokens).values({
+      userId: user.id,
+      token: verificationToken,
+      expiresAt,
+    });
+
+    await sendVerificationEmail(user.email, user.name, verificationToken);
+
+    res.json({ message: 'Email di verifica inviata' });
+  } catch (error) {
+    logger.error('Resend verification error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante l'invio" } });
+  }
+});
+
 router.post('/request-password-reset', async (req: Request, res: Response) => {
   try {
     const parsed = requestPasswordResetSchema.safeParse(req.body);

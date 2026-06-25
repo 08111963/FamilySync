@@ -24,6 +24,7 @@ interface AuthContextType {
   signup: (email: string, password: string, name: string, acceptedTerms: boolean) => Promise<void>;
   logout: () => Promise<void>;
   refreshAccessToken: () => Promise<string | null>;
+  refreshUser: () => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -260,6 +261,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [saveAuth]
   );
 
+  const refreshUser = useCallback(async (): Promise<User | null> => {
+    try {
+      const stored = await AsyncStorage.getItem(STORAGE_KEY);
+      if (!stored) return null;
+      const auth = JSON.parse(stored) as StoredAuth;
+
+      let token = auth.accessToken;
+      const baseUrl = getApiUrl();
+      const meUrl = new URL('/api/auth/me', baseUrl);
+
+      let res = await authFetch(meUrl.toString(), {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.status === 401) {
+        const newToken = await refreshAccessToken();
+        if (!newToken) return null;
+        token = newToken;
+        res = await authFetch(meUrl.toString(), {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+
+      if (!res.ok) return null;
+
+      const userData = (await res.json()) as User;
+      setUser(userData);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({
+        ...auth,
+        accessToken: token,
+        user: userData,
+      }));
+      return userData;
+    } catch (error) {
+      console.error('Error refreshing user:', error);
+      return null;
+    }
+  }, [refreshAccessToken]);
+
   const logout = useCallback(async () => {
     await clearAuth();
   }, [clearAuth]);
@@ -276,8 +318,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signup,
       logout,
       refreshAccessToken,
+      refreshUser,
     }),
-    [user, isLoading, isAuthenticated, accessToken, login, signup, logout, refreshAccessToken]
+    [user, isLoading, isAuthenticated, accessToken, login, signup, logout, refreshAccessToken, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

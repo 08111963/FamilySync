@@ -13,21 +13,27 @@ import { FamilyProvider } from "@/context/FamilyContext";
 SplashScreen.preventAutoHideAsync();
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
     if (isLoading) return;
 
-    const inPublicGroup = segments[0] === "login" || segments[0] === "welcome" || segments[0] === "join" || segments[0] === "legal" || segments[0] === "help";
+    const root = segments[0];
+    const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "legal" || root === "help";
+    const needsVerification = isAuthenticated && !!user && user.emailVerified === false;
+    const inVerifyScreen = root === "verify-email";
+    const verificationAllowed = inVerifyScreen || root === "legal" || root === "help";
 
-    if (!isAuthenticated && !inPublicGroup) {
+    if (!isAuthenticated && !inPublicGroup && !inVerifyScreen) {
       router.replace("/welcome");
-    } else if (isAuthenticated && inPublicGroup && segments[0] !== "join" && segments[0] !== "legal" && segments[0] !== "help") {
+    } else if (needsVerification && !verificationAllowed) {
+      router.replace("/verify-email");
+    } else if (isAuthenticated && !needsVerification && (inVerifyScreen || (inPublicGroup && root !== "join" && root !== "legal" && root !== "help"))) {
       router.replace("/");
     }
-  }, [isAuthenticated, isLoading, segments]);
+  }, [isAuthenticated, isLoading, user, segments]);
 
   return <>{children}</>;
 }
@@ -37,6 +43,7 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
       <Stack.Screen name="welcome" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="verify-email" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="add-member" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="add-event" options={{ presentation: "modal", headerShown: false }} />

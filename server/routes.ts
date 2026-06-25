@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { setupWebSocket } from "./lib/websocket";
+import { authenticate, authenticateMedia, requireEmailVerified } from "./middleware/auth";
 
 import authRoutes from "./routes/auth";
 import familiesRoutes from "./routes/families";
@@ -39,18 +40,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.use('/api/auth', authRoutes);
-  app.use('/api/families', familiesRoutes);
-  app.use('/api/calendar', calendarRoutes);
-  app.use('/api/shopping', shoppingRoutes);
-  app.use('/api/chores', choresRoutes);
-  app.use('/api/ai', aiRoutes);
-  app.use('/api/payments', paymentsRoutes);
-  app.use('/api/moderation', moderationRoutes);
-  app.use('/api/recipes', recipesRoutes);
-  app.use('/api/meal-plans', mealPlansRoutes);
-  app.use('/api/chat', chatRoutes);
+  app.use('/api/families', authenticate, requireEmailVerified, familiesRoutes);
+  app.use('/api/calendar', authenticate, requireEmailVerified, calendarRoutes);
+  app.use('/api/shopping', authenticate, requireEmailVerified, shoppingRoutes);
+  app.use('/api/chores', authenticate, requireEmailVerified, choresRoutes);
+  app.use('/api/ai', authenticate, requireEmailVerified, aiRoutes);
+  app.use('/api/payments', authenticate, requireEmailVerified, paymentsRoutes);
+  app.use('/api/moderation', authenticate, requireEmailVerified, moderationRoutes);
+  app.use('/api/recipes', authenticate, requireEmailVerified, recipesRoutes);
+  app.use('/api/meal-plans', authenticate, requireEmailVerified, mealPlansRoutes);
+  app.use('/api/chat', authenticate, requireEmailVerified, chatRoutes);
 
-  app.use('/uploads', express.static('uploads'));
+  app.use('/uploads', authenticateMedia, requireEmailVerified, express.static('uploads'));
 
   app.use('/legal', legalRoutes);
   app.use('/privacy', (req, res, next) => { req.url = '/privacy'; legalRoutes(req, res, next); });

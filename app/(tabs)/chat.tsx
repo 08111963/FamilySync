@@ -66,26 +66,31 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function MessageBubble({ msg, isOwn, colors, isDark, showDateHeader }: {
+function buildMediaUrl(fileUrl: string, baseUrl: string, token: string | null): string {
+  const url = new URL(fileUrl, baseUrl);
+  if (token) url.searchParams.set("token", token);
+  return url.toString();
+}
+
+function MessageBubble({ msg, isOwn, colors, isDark, showDateHeader, accessToken }: {
   msg: ChatMsg;
   isOwn: boolean;
   colors: any;
   isDark: boolean;
   showDateHeader: string | null;
+  accessToken: string | null;
 }) {
   const baseUrl = getApiUrl();
 
   const handleFilePress = () => {
     if (msg.fileUrl) {
-      const url = new URL(msg.fileUrl, baseUrl).toString();
-      Linking.openURL(url);
+      Linking.openURL(buildMediaUrl(msg.fileUrl, baseUrl, accessToken));
     }
   };
 
   const handleImagePress = () => {
     if (msg.fileUrl) {
-      const url = new URL(msg.fileUrl, baseUrl).toString();
-      Linking.openURL(url);
+      Linking.openURL(buildMediaUrl(msg.fileUrl, baseUrl, accessToken));
     }
   };
 
@@ -115,7 +120,7 @@ function MessageBubble({ msg, isOwn, colors, isDark, showDateHeader }: {
           {msg.messageType === "image" && msg.fileUrl && (
             <Pressable onPress={handleImagePress}>
               <Image
-                source={{ uri: new URL(msg.fileUrl, baseUrl).toString() }}
+                source={{ uri: buildMediaUrl(msg.fileUrl, baseUrl, accessToken) }}
                 style={styles.chatImage}
                 resizeMode="cover"
               />
@@ -524,6 +529,7 @@ export default function ChatScreen() {
               colors={colors}
               isDark={isDark}
               showDateHeader={item.dateHeader}
+              accessToken={accessToken}
             />
           </Pressable>
         )}

@@ -2,7 +2,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import type { Server as HTTPServer } from 'http';
 import { verifyAccessToken } from './jwt';
 import { db } from '../db';
-import { familyMembers } from '../../shared/schema';
+import { familyMembers, users } from '../../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from './logger';
 
@@ -39,7 +39,7 @@ export function setupWebSocket(httpServer: HTTPServer) {
     },
   });
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = socket.handshake.auth.token;
     
     if (!token) {
@@ -48,6 +48,21 @@ export function setupWebSocket(httpServer: HTTPServer) {
     
     try {
       const user = verifyAccessToken(token);
+
+      const [record] = await db
+        .select({ emailVerified: users.emailVerified })
+        .from(users)
+        .where(eq(users.id, user.userId))
+        .limit(1);
+
+      if (!record) {
+        return next(new Error('User not found'));
+      }
+
+      if (!record.emailVerified) {
+        return next(new Error('Email not verified'));
+      }
+
       socket.data.userId = user.userId;
       next();
     } catch {
