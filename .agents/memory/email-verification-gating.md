@@ -57,3 +57,8 @@ closing the IDOR where one broad token opened every uploaded file.
 **Known gap (not a bypass of the family rule):** media access is NOT block-aware — a blocked user
 could still fetch a blocked peer's attachment by direct URL if they share a family. Add a block-filter
 to resolveUploadFileAccess only if product requires it.
+
+## File access vs block relationship (bidirectional decision)
+- `resolveUploadFileAccess` (server/lib/media-auth.ts) now denies `/uploads` access when a block exists between requester and the chat message author, scoped to the family, in EITHER direction (helper `usersHaveBlockRelationship`).
+- **Why bidirectional:** security-conservative + required test "B blocked A must also 403". Note the chat list filter (`block-filter.ts`) is ONE-directional (hides only authors the requester blocked). Consequence/known nuance: a message can stay visible in chat while its attachment returns 403 when the block is only inverse. Product decision pending if full UX consistency wanted.
+- Block check runs only when `authorId !== requester` (one extra query). Applied at both mint (`POST /api/auth/media-token` filePath) and access (`authenticateMedia`).

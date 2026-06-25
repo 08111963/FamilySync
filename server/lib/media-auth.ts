@@ -1,6 +1,6 @@
 import { db } from '../db';
-import { chatMessages, familyMembers } from '../../shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { chatMessages, familyMembers, blocks } from '../../shared/schema';
+import { eq, and, or } from 'drizzle-orm';
 
 export function normalizeUploadFileUrl(p: string): string {
   let decoded = p;
@@ -22,16 +22,46 @@ export async function userIsFamilyMember(userId: string, familyId: string): Prom
   return !!row;
 }
 
+export async function usersHaveBlockRelationship(
+  userA: string,
+  userB: string,
+  familyId: string
+): Promise<boolean> {
+  if (userA === userB) return false;
+  const [row] = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(
+      and(
+        eq(blocks.familyId, familyId),
+        or(
+          and(eq(blocks.blockerUserId, userA), eq(blocks.blockedUserId, userB)),
+          and(eq(blocks.blockerUserId, userB), eq(blocks.blockedUserId, userA))
+        )
+      )
+    )
+    .limit(1);
+  return !!row;
+}
+
 export async function resolveUploadFileAccess(
   userId: string,
   fileUrlOrPath: string
 ): Promise<string | null> {
   const fileUrl = normalizeUploadFileUrl(fileUrlOrPath);
   const [row] = await db
-    .select({ familyId: chatMessages.familyId })
+    .select({ familyId: chatMessages.familyId, authorId: chatMessages.userId })
     .from(chatMessages)
     .innerJoin(familyMembers, eq(familyMembers.familyId, chatMessages.familyId))
     .where(and(eq(chatMessages.fileUrl, fileUrl), eq(familyMembers.userId, userId)))
     .limit(1);
-  return row ? row.familyId : null;
+
+  if (!row) return null;
+
+  if (row.authorId !== userId) {
+    const blocked = await usersHaveBlockRelationship(userId, row.authorId, row.familyId);
+    if (blocked) return null;
+  }
+
+  return row.familyId;
 }
