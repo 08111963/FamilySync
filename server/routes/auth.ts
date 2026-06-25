@@ -13,16 +13,34 @@ import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
+const emailSchema = z.string().trim().toLowerCase().email("Email non valida");
+
+const strongPasswordSchema = z
+  .string()
+  .min(8, "La password deve avere almeno 8 caratteri")
+  .regex(/[a-z]/, "La password deve contenere almeno una lettera minuscola")
+  .regex(/[A-Z]/, "La password deve contenere almeno una lettera maiuscola")
+  .regex(/[0-9]/, "La password deve contenere almeno un numero");
+
 const signupSchema = z.object({
-  email: z.string().email("Email non valida"),
-  password: z.string().min(6, "La password deve avere almeno 6 caratteri"),
+  email: emailSchema,
+  password: strongPasswordSchema,
   name: z.string().min(1, "Il nome è obbligatorio").max(100),
   acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare Privacy Policy e Termini d'Uso" }) }),
 });
 
 const loginSchema = z.object({
-  email: z.string().email("Email non valida"),
+  email: emailSchema,
   password: z.string().min(1, "La password è obbligatoria"),
+});
+
+const requestPasswordResetSchema = z.object({
+  email: emailSchema,
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().trim().min(1, "Token obbligatorio"),
+  newPassword: strongPasswordSchema,
 });
 
 router.post('/signup', async (req: Request, res: Response) => {
@@ -190,7 +208,15 @@ router.post('/verify-email', async (req: Request, res: Response) => {
 
 router.post('/request-password-reset', async (req: Request, res: Response) => {
   try {
-    const { email } = req.body;
+    const parsed = requestPasswordResetSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    const { email } = parsed.data;
     
     const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
     
@@ -217,7 +243,15 @@ router.post('/request-password-reset', async (req: Request, res: Response) => {
 
 router.post('/reset-password', async (req: Request, res: Response) => {
   try {
-    const { token, newPassword } = req.body;
+    const parsed = resetPasswordSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    const { token, newPassword } = parsed.data;
     
     const [tokenRecord] = await db.select()
       .from(passwordResetTokens)
