@@ -72,3 +72,9 @@ to resolveUploadFileAccess only if product requires it.
 - **Why a cache:** typing fires per keystroke; a DB query each time is wasteful. Solution: in-memory `blockRelatedCache` keyed `familyId:userId`, 30s TTL, with size-capped sweep of expired entries. Invalidated explicitly on block/unblock in moderation.ts (both blocker+blocked) so changes apply immediately.
 - `broadcastChatMessageToFamily` (messages) stays UNCACHED (direct query) — correctness over micro-perf for actual content.
 - Pre-existing TS errors in `server/routes/moderation.ts` come from Express v5 `req.params` typing (`string | string[]`), present on HEAD, unrelated to block work — runs fine under tsx.
+
+## JWT secrets fail-fast (prod) & chat route hardening
+- `server/lib/jwt.ts` `resolveSecret(name, devFallback)`: in dev usa fallback locali; in **production** (`NODE_ENV==='production'`) fa throw all'avvio se manca `JWT_SECRET`/`JWT_REFRESH_SECRET`/`JWT_MEDIA_SECRET`. `JWT_MEDIA_SECRET` è obbligatorio e NON più derivato da `JWT_SECRET`.
+- **Auth pattern chat:** `/api/chat` è protetta SOLO globalmente in `server/routes.ts` (`authenticate + requireEmailVerified`). NON aggiungere `authenticate` per-route nei file in `server/routes/` montati lì → doppia auth inutile.
+- Upload chat: la verifica membership (`requireFamilyMembership`) va PRIMA di `multer upload.single` così un non-membro non scrive file temporanei su disco.
+- **Policy block-aware eventi chat:** usare SEMPRE `broadcastChatMessageToFamily(familyId, authorId, ...)` per eventi sensibili (new_message, message_deleted) — l'autore riceve sempre, gli utenti in relazione di blocco bidirezionale con l'autore sono esclusi. Non usare `broadcastToFamily` generico per questi.

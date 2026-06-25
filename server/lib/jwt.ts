@@ -1,9 +1,24 @@
 import jwt from 'jsonwebtoken';
 import type { User } from '../../shared/schema';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret';
-const JWT_MEDIA_SECRET = process.env.JWT_MEDIA_SECRET || `${JWT_SECRET}::media`;
+const isProduction = process.env.NODE_ENV === 'production';
+
+function resolveSecret(name: string, devFallback: string): string {
+  const value = process.env[name];
+  if (value && value.length > 0) {
+    return value;
+  }
+  if (isProduction) {
+    throw new Error(
+      `[FATAL] La variabile d'ambiente ${name} è obbligatoria in produzione e non è impostata. Configurala prima di avviare il server.`
+    );
+  }
+  return devFallback;
+}
+
+const JWT_SECRET = resolveSecret('JWT_SECRET', 'dev-secret-change-me');
+const JWT_REFRESH_SECRET = resolveSecret('JWT_REFRESH_SECRET', 'dev-refresh-secret');
+const JWT_MEDIA_SECRET = resolveSecret('JWT_MEDIA_SECRET', 'dev-media-secret-change-me');
 
 export interface TokenPayload {
   userId: string;

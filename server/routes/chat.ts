@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import multer from "multer";
 import path from "path";
 import crypto from "crypto";
@@ -6,9 +6,8 @@ import fs from "fs";
 import { db } from "../db";
 import { chatMessages, familyMembers, users } from "../../shared/schema";
 import { eq, and, desc, lt } from "drizzle-orm";
-import { authenticate } from "../middleware/auth";
 import { getBlockRelatedUserIds, applyBlockedFilter } from "../lib/block-filter";
-import { broadcastToFamily, broadcastChatMessageToFamily } from "../lib/websocket";
+import { broadcastChatMessageToFamily } from "../lib/websocket";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -130,7 +129,22 @@ async function verifyFamilyMembership(userId: string, familyId: string) {
   return membership;
 }
 
-router.get("/:familyId/messages", authenticate, async (req: Request, res: Response) => {
+async function requireFamilyMembership(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user!.userId;
+    const familyId = req.params.familyId as string;
+    const membership = await verifyFamilyMembership(userId, familyId);
+    if (!membership) {
+      return res.status(403).json({ error: "Non fai parte di questa famiglia" });
+    }
+    next();
+  } catch (error) {
+    logger.error("Errore verifica membership chat", { error: String(error) });
+    res.status(500).json({ error: "Errore nella verifica di appartenenza" });
+  }
+}
+
+router.get("/:familyId/messages", async (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
     const familyId = req.params.familyId as string;
@@ -190,7 +204,7 @@ router.get("/:familyId/messages", authenticate, async (req: Request, res: Respon
   }
 });
 
-router.post("/:familyId/messages", authenticate, async (req: Request, res: Response) => {
+router.post("/:familyId/messages", async (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
     const familyId = req.params.familyId as string;
@@ -238,7 +252,7 @@ router.post("/:familyId/messages", authenticate, async (req: Request, res: Respo
   }
 });
 
-router.post("/:familyId/upload", authenticate, upload.single("file"), async (req: Request, res: Response) => {
+router.post("/:familyId/upload", requireFamilyMembership, upload.single("file"), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
     const familyId = req.params.familyId as string;
@@ -246,14 +260,6 @@ router.post("/:familyId/upload", authenticate, upload.single("file"), async (req
 
     if (!req.file) {
       return res.status(400).json({ error: "Nessun file caricato" });
-    }
-
-    const membership = await verifyFamilyMembership(userId, familyId);
-    if (!membership) {
-      if (req.file) {
-        fs.unlink(req.file.path, () => {});
-      }
-      return res.status(403).json({ error: "Non fai parte di questa famiglia" });
     }
 
     const [user] = await db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);
@@ -303,7 +309,7 @@ router.post("/:familyId/upload", authenticate, upload.single("file"), async (req
   }
 });
 
-router.delete("/:familyId/messages/:messageId", authenticate, async (req: Request, res: Response) => {
+router.delete("/:familyId/messages/:messageId", async (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
     const familyId = req.params.familyId as string;
@@ -330,7 +336,7 @@ router.delete("/:familyId/messages/:messageId", authenticate, async (req: Reques
 
     await db.delete(chatMessages).where(eq(chatMessages.id, messageId));
 
-    broadcastToFamily(familyId, "chat:message_deleted", { messageId });
+    await broadcastChatMessageToFamily(familyId, message.userId, "chat:message_deleted", { messageId });
 
     res.json({ success: true });
   } catch (error) {
