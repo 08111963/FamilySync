@@ -24,5 +24,18 @@ immediately without needing to re-login / mint a new token.
 new static media path), gate it the same way. Keep the public allowlist limited to: auth, health,
 legal/privacy/terms, help, resend-verification-email.
 
-**Known tradeoff:** access token in `/uploads?token=` query string can leak via logs/referrer.
-Acceptable short-term (15-min TTL, HTTPS). A dedicated short-lived signed media token would be safer.
+**Media token (implemented):** `/uploads` no longer accepts the normal access token. It uses a
+dedicated media token — separate JWT secret (derived from JWT_SECRET so the two token types are not
+interchangeable), `scope:'media'`, `userId`, optional `filePath`, 5-min TTL. Minted via
+`POST /api/auth/media-token` (authenticate + requireEmailVerified). `authenticateMedia` accepts it
+ONLY from `?token=`, rejects access tokens, enforces `scope==='media'`, and when `filePath` is set
+binds the token to that single file (403 FORBIDDEN_FILE on mismatch). filePath is validated
+(`/uploads/...` shape, no `..`) at mint time.
+
+**Why per-file is not used for inline images:** a chat list with many images would need one token
+request per image. Frontend (`hooks/useMediaToken.ts`) uses ONE shared session token (no filePath,
+auto-refreshed every 4 min) for inline `<Image>`, and a per-file scoped token only for
+download/open-in-browser presses where the extra request is cheap.
+
+**Residual risk:** token still rides in the query string (log/referrer), but it's now a short-lived
+(5-min) media-only token, not the API access token.

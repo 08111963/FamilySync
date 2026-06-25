@@ -20,6 +20,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/context/AuthContext";
+import { useMediaToken } from "@/hooks/useMediaToken";
 import { useFamily } from "@/context/FamilyContext";
 import { getApiUrl, apiFetch, apiRequest } from "@/lib/query-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -72,27 +73,26 @@ function buildMediaUrl(fileUrl: string, baseUrl: string, token: string | null): 
   return url.toString();
 }
 
-function MessageBubble({ msg, isOwn, colors, isDark, showDateHeader, accessToken }: {
+function MessageBubble({ msg, isOwn, colors, isDark, showDateHeader, mediaToken, getFileToken }: {
   msg: ChatMsg;
   isOwn: boolean;
   colors: any;
   isDark: boolean;
   showDateHeader: string | null;
-  accessToken: string | null;
+  mediaToken: string | null;
+  getFileToken: (filePath: string) => Promise<string | null>;
 }) {
   const baseUrl = getApiUrl();
 
-  const handleFilePress = () => {
-    if (msg.fileUrl) {
-      Linking.openURL(buildMediaUrl(msg.fileUrl, baseUrl, accessToken));
-    }
+  const handleOpen = async () => {
+    if (!msg.fileUrl) return;
+    const fileToken = (await getFileToken(msg.fileUrl)) ?? mediaToken;
+    if (!fileToken) return;
+    Linking.openURL(buildMediaUrl(msg.fileUrl, baseUrl, fileToken));
   };
 
-  const handleImagePress = () => {
-    if (msg.fileUrl) {
-      Linking.openURL(buildMediaUrl(msg.fileUrl, baseUrl, accessToken));
-    }
-  };
+  const handleFilePress = handleOpen;
+  const handleImagePress = handleOpen;
 
   return (
     <View>
@@ -118,13 +118,19 @@ function MessageBubble({ msg, isOwn, colors, isDark, showDateHeader, accessToken
           )}
 
           {msg.messageType === "image" && msg.fileUrl && (
-            <Pressable onPress={handleImagePress}>
-              <Image
-                source={{ uri: buildMediaUrl(msg.fileUrl, baseUrl, accessToken) }}
-                style={styles.chatImage}
-                resizeMode="cover"
-              />
-            </Pressable>
+            mediaToken ? (
+              <Pressable onPress={handleImagePress}>
+                <Image
+                  source={{ uri: buildMediaUrl(msg.fileUrl, baseUrl, mediaToken) }}
+                  style={styles.chatImage}
+                  resizeMode="cover"
+                />
+              </Pressable>
+            ) : (
+              <View style={[styles.chatImage, styles.chatImagePlaceholder, { backgroundColor: isDark ? "#333" : "#E8E8E8" }]}>
+                <Ionicons name="image-outline" size={28} color={colors.textSecondary} />
+              </View>
+            )
           )}
 
           {msg.messageType === "file" && msg.fileUrl && (
@@ -154,6 +160,7 @@ export default function ChatScreen() {
   const tabBarHeight = Platform.OS === "web" ? 84 : (49 + insets.bottom);
   const { colors, isDark } = useTheme();
   const { user, accessToken } = useAuth();
+  const { mediaToken, getFileToken } = useMediaToken();
   const { currentFamily, data } = useFamily();
   const familyId = currentFamily?.id;
 
@@ -529,7 +536,8 @@ export default function ChatScreen() {
               colors={colors}
               isDark={isDark}
               showDateHeader={item.dateHeader}
-              accessToken={accessToken}
+              mediaToken={mediaToken}
+              getFileToken={getFileToken}
             />
           </Pressable>
         )}
@@ -694,6 +702,10 @@ const styles = StyleSheet.create({
     height: 180,
     borderRadius: 12,
     marginBottom: 4,
+  },
+  chatImagePlaceholder: {
+    justifyContent: "center",
+    alignItems: "center",
   },
   fileAttachment: {
     flexDirection: "row",

@@ -5,9 +5,9 @@ import bcrypt from 'bcryptjs';
 import { db } from '../db';
 import { users, emailVerificationTokens, passwordResetTokens } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
-import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../lib/jwt';
+import { generateAccessToken, generateRefreshToken, verifyRefreshToken, generateMediaToken } from '../lib/jwt';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../lib/email';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireEmailVerified } from '../middleware/auth';
 import { logger } from '../lib/logger';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -236,6 +236,27 @@ router.post('/resend-verification-email', authenticate, async (req: Request, res
   } catch (error) {
     logger.error('Resend verification error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante l'invio" } });
+  }
+});
+
+router.post('/media-token', authenticate, requireEmailVerified, async (req: Request, res: Response) => {
+  try {
+    const rawFilePath = typeof req.body?.filePath === 'string' ? req.body.filePath.trim() : '';
+    let filePath: string | undefined;
+    if (rawFilePath.length > 0) {
+      const isValid = /^\/?uploads\/[A-Za-z0-9._\-/]+$/.test(rawFilePath) && !rawFilePath.includes('..');
+      if (!isValid) {
+        return res.status(400).json({ error: { code: "INVALID_FILE_PATH", message: "Percorso file non valido" } });
+      }
+      filePath = rawFilePath;
+    }
+
+    const mediaToken = generateMediaToken(req.user!.userId, filePath);
+
+    res.json({ mediaToken, expiresIn: 300 });
+  } catch (error) {
+    logger.error('Media token error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante la generazione del token" } });
   }
 });
 

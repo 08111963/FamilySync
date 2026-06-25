@@ -1,8 +1,18 @@
 import type { Request, Response, NextFunction } from 'express';
-import { verifyAccessToken } from '../lib/jwt';
+import { verifyAccessToken, verifyMediaToken } from '../lib/jwt';
 import { db } from '../db';
 import { users } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
+
+function normalizeMediaPath(p: string): string {
+  let decoded = p;
+  try {
+    decoded = decodeURIComponent(p);
+  } catch {
+    decoded = p;
+  }
+  return decoded.replace(/^\/+/, '').replace(/^uploads\/+/, '');
+}
 
 declare global {
   namespace Express {
@@ -28,24 +38,31 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 }
 
 export function authenticateMedia(req: Request, res: Response, next: NextFunction) {
+  const token = typeof req.query.token === 'string' && req.query.token.length > 0
+    ? req.query.token
+    : undefined;
+
+  if (!token) {
+    return res.status(401).json({ error: { code: "NO_TOKEN", message: "Token di autenticazione mancante" } });
+  }
+
+  let payload;
   try {
-    let token: string | undefined;
-    const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
-    } else if (typeof req.query.token === 'string' && req.query.token.length > 0) {
-      token = req.query.token;
-    }
-
-    if (!token) {
-      return res.status(401).json({ error: { code: "NO_TOKEN", message: "Token di autenticazione mancante" } });
-    }
-
-    req.user = verifyAccessToken(token);
-    next();
+    payload = verifyMediaToken(token);
   } catch {
     return res.status(401).json({ error: { code: "INVALID_TOKEN", message: "Token non valido o scaduto" } });
   }
+
+  if (payload.filePath) {
+    const requested = normalizeMediaPath(req.path);
+    const allowed = normalizeMediaPath(payload.filePath);
+    if (requested !== allowed) {
+      return res.status(403).json({ error: { code: "FORBIDDEN_FILE", message: "Token non valido per questo file" } });
+    }
+  }
+
+  req.user = { userId: payload.userId, email: '' };
+  next();
 }
 
 export async function requireEmailVerified(req: Request, res: Response, next: NextFunction) {
