@@ -5,6 +5,7 @@ import { db } from '../db';
 import { familyMembers, users } from '../../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { logger } from './logger';
+import { getBlockRelatedUserIds } from './block-filter';
 
 let io: SocketIOServer | null = null;
 
@@ -155,5 +156,28 @@ export function getIO(): SocketIOServer | null {
 export function broadcastToFamily(familyId: string, event: string, data: any) {
   if (io) {
     io.to(`family:${familyId}`).emit(event, data);
+  }
+}
+
+export async function broadcastChatMessageToFamily(
+  familyId: string,
+  authorId: string,
+  event: string,
+  data: any
+) {
+  if (!io) return;
+
+  const room = `family:${familyId}`;
+  const sockets = await io.in(room).fetchSockets();
+  if (sockets.length === 0) return;
+
+  const blockedRelated = new Set(await getBlockRelatedUserIds(authorId, familyId));
+
+  for (const s of sockets) {
+    const uid = s.data?.userId as string | undefined;
+    if (uid && uid !== authorId && blockedRelated.has(uid)) {
+      continue;
+    }
+    s.emit(event, data);
   }
 }

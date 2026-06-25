@@ -7,8 +7,8 @@ import { db } from "../db";
 import { chatMessages, familyMembers, users } from "../../shared/schema";
 import { eq, and, desc, lt } from "drizzle-orm";
 import { authenticate } from "../middleware/auth";
-import { getBlockedUserIds, applyBlockedFilter } from "../lib/block-filter";
-import { broadcastToFamily } from "../lib/websocket";
+import { getBlockRelatedUserIds, applyBlockedFilter } from "../lib/block-filter";
+import { broadcastToFamily, broadcastChatMessageToFamily } from "../lib/websocket";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -142,7 +142,7 @@ router.get("/:familyId/messages", authenticate, async (req: Request, res: Respon
       return res.status(403).json({ error: "Non fai parte di questa famiglia" });
     }
 
-    const blockedIds = await getBlockedUserIds(userId, familyId);
+    const blockedIds = await getBlockRelatedUserIds(userId, familyId);
     const blockFilter = applyBlockedFilter(chatMessages.userId, blockedIds);
 
     const conditions = [eq(chatMessages.familyId, familyId)];
@@ -229,7 +229,7 @@ router.post("/:familyId/messages", authenticate, async (req: Request, res: Respo
 
     const enrichedMessage = withAbsoluteFileUrl(fullMessage, req);
 
-    broadcastToFamily(familyId, "chat:new_message", enrichedMessage);
+    await broadcastChatMessageToFamily(familyId, userId, "chat:new_message", enrichedMessage);
 
     res.status(201).json(enrichedMessage);
   } catch (error) {
@@ -291,7 +291,7 @@ router.post("/:familyId/upload", authenticate, upload.single("file"), async (req
 
     const enrichedUpload = withAbsoluteFileUrl(fullMessage, req);
 
-    broadcastToFamily(familyId, "chat:new_message", enrichedUpload);
+    await broadcastChatMessageToFamily(familyId, userId, "chat:new_message", enrichedUpload);
 
     res.status(201).json(enrichedUpload);
   } catch (error) {

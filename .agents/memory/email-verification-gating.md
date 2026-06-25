@@ -58,7 +58,11 @@ closing the IDOR where one broad token opened every uploaded file.
 could still fetch a blocked peer's attachment by direct URL if they share a family. Add a block-filter
 to resolveUploadFileAccess only if product requires it.
 
-## File access vs block relationship (bidirectional decision)
+## Block relationship — bidirectional across chat + media
 - `resolveUploadFileAccess` (server/lib/media-auth.ts) now denies `/uploads` access when a block exists between requester and the chat message author, scoped to the family, in EITHER direction (helper `usersHaveBlockRelationship`).
-- **Why bidirectional:** security-conservative + required test "B blocked A must also 403". Note the chat list filter (`block-filter.ts`) is ONE-directional (hides only authors the requester blocked). Consequence/known nuance: a message can stay visible in chat while its attachment returns 403 when the block is only inverse. Product decision pending if full UX consistency wanted.
+- **Why bidirectional:** security-conservative + required test "B blocked A must also 403".
+- Chat is now ALSO bidirectional (aligned): `getBlockRelatedUserIds(userId, familyId)` in `block-filter.ts` returns users in a block relationship in EITHER direction; used by chat list (`GET /:familyId/messages`) and by `broadcastChatMessageToFamily` (websocket.ts) which per-socket filters realtime `chat:new_message` so blocked-related users never receive the event. So no "visible message but 403 attachment" mismatch anymore.
 - Block check runs only when `authorId !== requester` (one extra query). Applied at both mint (`POST /api/auth/media-token` filePath) and access (`authenticateMedia`).
+
+## Scope note (block direction)
+- Bidirectional applies to CHAT (list + realtime new_message) and FILE access (media-auth). Intentionally NOT changed: calendar/shopping/chores still use one-directional `getBlockedUserIds`; `chat:typing`/`stop_typing` not filtered (high frequency); `chat:message_deleted` broadcast to all (only messageId, harmless).
