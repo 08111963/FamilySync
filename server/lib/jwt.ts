@@ -13,6 +13,7 @@ export interface TokenPayload {
 export interface MediaTokenPayload {
   userId: string;
   scope: 'media';
+  familyId?: string;
   filePath?: string;
 }
 
@@ -40,10 +41,16 @@ export function verifyAccessToken(token: string): TokenPayload {
   }
 }
 
-export function generateMediaToken(userId: string, filePath?: string): string {
-  const payload: { userId: string; scope: 'media'; filePath?: string } = { userId, scope: 'media' };
-  if (filePath) {
-    payload.filePath = filePath;
+export function generateMediaToken(
+  userId: string,
+  opts?: { familyId?: string; filePath?: string }
+): string {
+  const payload: MediaTokenPayload = { userId, scope: 'media' };
+  if (opts?.familyId) {
+    payload.familyId = opts.familyId;
+  }
+  if (opts?.filePath) {
+    payload.filePath = opts.filePath;
   }
   return jwt.sign(payload, JWT_MEDIA_SECRET, { expiresIn: '5m' });
 }

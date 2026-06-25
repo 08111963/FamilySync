@@ -39,3 +39,21 @@ download/open-in-browser presses where the extra request is cheap.
 
 **Residual risk:** token still rides in the query string (log/referrer), but it's now a short-lived
 (5-min) media-only token, not the API access token.
+
+**File-level authorization (implemented):** a verified user must NOT be able to read any `/uploads`
+file just because the path is well-formed. Authorization rule = "user is a member of the family that
+owns the `chat_messages` row whose `file_url` references the file". There is no dedicated file→owner
+metadata table; the chat_messages link IS the authority (every `/uploads` file is a chat attachment).
+`server/lib/media-auth.ts#resolveUploadFileAccess(userId, fileUrlOrPath)` does the INNER JOIN
+chat_messages × family_members and returns the familyId or null. Enforced in TWO places:
+- mint (`POST /api/auth/media-token`): rejects (403) if user can't access the requested filePath /
+  isn't a member of the requested familyId; token must be scoped to filePath OR familyId (no unscoped).
+- access (`authenticateMedia`): LIVE re-check against the file's real owning family on every request,
+  so a token survives membership revocation only until the next request. token.familyId (if set) must
+  equal the file's real family.
+**Why live access-time check matters:** it's the true enforcement — a "shared" family-scoped token
+(used for inline chat images) can still only open files whose family the user currently belongs to,
+closing the IDOR where one broad token opened every uploaded file.
+**Known gap (not a bypass of the family rule):** media access is NOT block-aware — a blocked user
+could still fetch a blocked peer's attachment by direct URL if they share a family. Add a block-filter
+to resolveUploadFileAccess only if product requires it.

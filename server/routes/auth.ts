@@ -6,6 +6,7 @@ import { db } from '../db';
 import { users, emailVerificationTokens, passwordResetTokens } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken, generateMediaToken } from '../lib/jwt';
+import { resolveUploadFileAccess, userIsFamilyMember } from '../lib/media-auth';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../lib/email';
 import { authenticate, requireEmailVerified } from '../middleware/auth';
 import { logger } from '../lib/logger';
@@ -241,6 +242,8 @@ router.post('/resend-verification-email', authenticate, async (req: Request, res
 
 router.post('/media-token', authenticate, requireEmailVerified, async (req: Request, res: Response) => {
   try {
+    const userId = req.user!.userId;
+
     const rawFilePath = typeof req.body?.filePath === 'string' ? req.body.filePath.trim() : '';
     let filePath: string | undefined;
     if (rawFilePath.length > 0) {
@@ -251,7 +254,29 @@ router.post('/media-token', authenticate, requireEmailVerified, async (req: Requ
       filePath = rawFilePath;
     }
 
-    const mediaToken = generateMediaToken(req.user!.userId, filePath);
+    const familyId = typeof req.body?.familyId === 'string' && req.body.familyId.trim().length > 0
+      ? req.body.familyId.trim()
+      : undefined;
+
+    if (!filePath && !familyId) {
+      return res.status(400).json({ error: { code: "MISSING_SCOPE", message: "Specifica filePath o familyId" } });
+    }
+
+    if (filePath) {
+      const fileFamilyId = await resolveUploadFileAccess(userId, filePath);
+      if (!fileFamilyId) {
+        return res.status(403).json({ error: { code: "NOT_AUTHORIZED", message: "Non hai i permessi per accedere a questo file" } });
+      }
+    }
+
+    if (familyId) {
+      const isMember = await userIsFamilyMember(userId, familyId);
+      if (!isMember) {
+        return res.status(403).json({ error: { code: "NOT_AUTHORIZED", message: "Non fai parte di questa famiglia" } });
+      }
+    }
+
+    const mediaToken = generateMediaToken(userId, { familyId, filePath });
 
     res.json({ mediaToken, expiresIn: 300 });
   } catch (error) {

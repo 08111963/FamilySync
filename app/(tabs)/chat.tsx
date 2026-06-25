@@ -160,9 +160,9 @@ export default function ChatScreen() {
   const tabBarHeight = Platform.OS === "web" ? 84 : (49 + insets.bottom);
   const { colors, isDark } = useTheme();
   const { user, accessToken } = useAuth();
-  const { mediaToken, getFileToken } = useMediaToken();
   const { currentFamily, data } = useFamily();
   const familyId = currentFamily?.id;
+  const { mediaToken, getFileToken } = useMediaToken(familyId);
 
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [inputText, setInputText] = useState("");

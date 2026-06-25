@@ -3,16 +3,7 @@ import { verifyAccessToken, verifyMediaToken } from '../lib/jwt';
 import { db } from '../db';
 import { users } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
-
-function normalizeMediaPath(p: string): string {
-  let decoded = p;
-  try {
-    decoded = decodeURIComponent(p);
-  } catch {
-    decoded = p;
-  }
-  return decoded.replace(/^\/+/, '').replace(/^uploads\/+/, '');
-}
+import { normalizeUploadFileUrl, resolveUploadFileAccess } from '../lib/media-auth';
 
 declare global {
   namespace Express {
@@ -37,7 +28,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-export function authenticateMedia(req: Request, res: Response, next: NextFunction) {
+export async function authenticateMedia(req: Request, res: Response, next: NextFunction) {
   const token = typeof req.query.token === 'string' && req.query.token.length > 0
     ? req.query.token
     : undefined;
@@ -53,12 +44,27 @@ export function authenticateMedia(req: Request, res: Response, next: NextFunctio
     return res.status(401).json({ error: { code: "INVALID_TOKEN", message: "Token non valido o scaduto" } });
   }
 
+  const requestedFileUrl = normalizeUploadFileUrl(req.path);
+
   if (payload.filePath) {
-    const requested = normalizeMediaPath(req.path);
-    const allowed = normalizeMediaPath(payload.filePath);
-    if (requested !== allowed) {
+    const allowedFileUrl = normalizeUploadFileUrl(payload.filePath);
+    if (requestedFileUrl !== allowedFileUrl) {
       return res.status(403).json({ error: { code: "FORBIDDEN_FILE", message: "Token non valido per questo file" } });
     }
+  }
+
+  try {
+    const fileFamilyId = await resolveUploadFileAccess(payload.userId, requestedFileUrl);
+
+    if (!fileFamilyId) {
+      return res.status(403).json({ error: { code: "FORBIDDEN_FILE", message: "Non hai i permessi per accedere a questo file" } });
+    }
+
+    if (payload.familyId && payload.familyId !== fileFamilyId) {
+      return res.status(403).json({ error: { code: "FORBIDDEN_FILE", message: "Token non valido per questo file" } });
+    }
+  } catch {
+    return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante la verifica dei permessi" } });
   }
 
   req.user = { userId: payload.userId, email: '' };

@@ -4,12 +4,14 @@ import { useAuth } from "@/context/AuthContext";
 
 const authFetch = globalThis.fetch.bind(globalThis);
 
-export function useMediaToken() {
+export function useMediaToken(familyId?: string) {
   const { accessToken, refreshAccessToken } = useAuth();
   const [mediaToken, setMediaToken] = useState<string | null>(null);
 
   const fetchToken = useCallback(
-    async (filePath?: string): Promise<string | null> => {
+    async (scope: { filePath?: string; familyId?: string }): Promise<string | null> => {
+      if (!scope.filePath && !scope.familyId) return null;
+
       let token = accessToken;
       if (!token) {
         token = await refreshAccessToken();
@@ -17,7 +19,9 @@ export function useMediaToken() {
       }
 
       const url = new URL("/api/auth/media-token", getApiUrl());
-      const body = JSON.stringify(filePath ? { filePath } : {});
+      const body = JSON.stringify(
+        scope.filePath ? { filePath: scope.filePath } : { familyId: scope.familyId }
+      );
 
       const request = (bearer: string) =>
         authFetch(url.toString(), {
@@ -44,14 +48,14 @@ export function useMediaToken() {
   );
 
   useEffect(() => {
-    if (!accessToken) {
+    if (!accessToken || !familyId) {
       setMediaToken(null);
       return;
     }
 
     let active = true;
     const load = async () => {
-      const t = await fetchToken();
+      const t = await fetchToken({ familyId });
       if (active && t) setMediaToken(t);
     };
 
@@ -62,7 +66,12 @@ export function useMediaToken() {
       active = false;
       clearInterval(interval);
     };
-  }, [accessToken, fetchToken]);
+  }, [accessToken, familyId, fetchToken]);
 
-  return { mediaToken, getFileToken: fetchToken };
+  const getFileToken = useCallback(
+    (filePath: string) => fetchToken({ filePath }),
+    [fetchToken]
+  );
+
+  return { mediaToken, getFileToken };
 }
