@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { db } from '../db';
 import { familyMembers, shoppingHistory, shoppingLists, shoppingItems, calendarEvents, chores, aiInsights } from '../../shared/schema';
@@ -65,7 +66,7 @@ interface TaggedItem extends ShoppingSuggestionItem {
 
 router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
 
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
@@ -321,7 +322,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
 
 router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
 
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
@@ -347,7 +348,7 @@ router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requ
 
 router.get('/:familyId/insights', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
 
     const savedInsights = await db.select()
       .from(aiInsights)
@@ -364,7 +365,7 @@ router.get('/:familyId/insights', authenticate, requireFamilyMember(), async (re
 
 router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
 
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
@@ -415,7 +416,7 @@ router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requ
 
 router.patch('/:familyId/insights/:insightId/dismiss', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { insightId } = req.params;
+    const insightId = getParam(req, 'insightId');
 
     await db.update(aiInsights)
       .set({ dismissed: true })
@@ -430,7 +431,7 @@ router.patch('/:familyId/insights/:insightId/dismiss', authenticate, requireFami
 
 router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
     const { dietaryPreferences, allergies, maxTimeMinutes, cuisinePreferences, excludedIngredients, count, excludeTitles } = req.body || {};
@@ -473,7 +474,7 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
 router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const startTime = Date.now();
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
     const { weekStartDate, preferences, variants: rawVariants } = req.body || {};
@@ -522,7 +523,7 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
 
 router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const startTime = Date.now();
-  const familyId = req.params.familyId;
+  const familyId = getParam(req, 'familyId');
   const { weekStartDate, preferences } = req.body || {};
 
   if (!weekStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate)) {
@@ -583,7 +584,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
 
 router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const { query } = req.body || {};
 
     if (!query || typeof query !== 'string' || query.trim().length < 2) {

@@ -35,12 +35,12 @@ export default function HomeScreen() {
     return date.toLocaleDateString("it-IT", { weekday: "short", month: "short", day: "numeric" });
   };
 
-  const getMemberName = (memberId: string) => {
+  const getMemberName = (memberId: string | null | undefined) => {
     const member = data.members.find((m) => m.id === memberId);
     return member?.name || "Non assegnato";
   };
 
-  const getMemberColor = (memberId: string) => {
+  const getMemberColor = (memberId: string | null | undefined) => {
     const member = data.members.find((m) => m.id === memberId);
     return member?.color || colors.primary;
   };

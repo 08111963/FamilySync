@@ -1,13 +1,16 @@
 import { Router } from 'express';
+import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { recipes, recipeIngredients } from '../../shared/schema';
+import { recipes, recipeIngredients, ingredientUnitEnum } from '../../shared/schema';
 import type { Recipe, RecipeIngredient } from '../../shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { logger } from '../lib/logger';
+
+type IngredientUnit = (typeof ingredientUnitEnum.enumValues)[number];
 
 const router = Router();
 
@@ -36,7 +39,7 @@ const createRecipeSchema = z.object({
 
 router.post('/:familyId/recipes', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const parsed = createRecipeSchema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -68,7 +71,7 @@ router.post('/:familyId/recipes', authenticate, requireFamilyMember(), async (re
       const [inserted] = await db.insert(recipeIngredients).values({
         recipeId: recipe.id,
         name: ing.name,
-        quantity: qty,
+        quantity: qty === null ? null : String(qty),
         unit: ing.unit || (qty === null ? 'to_taste' : null),
         notes: qty === null && typeof rawQty === 'string' && rawQty !== '' ? rawQty : (ing.notes || null),
         category: ing.category,
@@ -109,8 +112,13 @@ const bulkRecipeSchema = z.object({
   })).min(1).max(20),
 });
 
-const VALID_UNITS = new Set(['g', 'kg', 'ml', 'l', 'pcs', 'tbsp', 'tsp', 'cup', 'pinch', 'to_taste']);
-const UNIT_MAP: Record<string, string> = {
+const VALID_UNITS: Set<string> = new Set(ingredientUnitEnum.enumValues);
+
+function isIngredientUnit(u: string): u is IngredientUnit {
+  return VALID_UNITS.has(u);
+}
+
+const UNIT_MAP: Record<string, IngredientUnit> = {
   grammi: 'g', grammo: 'g', gr: 'g',
   chilogrammi: 'kg', chilogrammo: 'kg',
   millilitri: 'ml', millilitro: 'ml',
@@ -125,10 +133,10 @@ const UNIT_MAP: Record<string, string> = {
   'q.b.': 'to_taste', qb: 'to_taste', 'quanto basta': 'to_taste',
 };
 
-function sanitizeUnit(unit: string | null | undefined): string | null {
+function sanitizeUnit(unit: string | null | undefined): IngredientUnit | null {
   if (!unit) return null;
   const lower = unit.toLowerCase().trim();
-  if (VALID_UNITS.has(lower)) return lower;
+  if (isIngredientUnit(lower)) return lower;
   if (UNIT_MAP[lower]) return UNIT_MAP[lower];
   return 'pcs';
 }
@@ -170,7 +178,7 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
         await db.insert(recipeIngredients).values({
           recipeId: recipe.id,
           name: ing.name,
-          quantity: qty,
+          quantity: qty === null ? null : String(qty),
           unit: safeUnit,
           notes: qty === null && typeof rawQty === 'string' && rawQty !== '' ? rawQty : (ing.notes || null),
           category: ing.category,
@@ -190,7 +198,7 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
 
 router.get('/:familyId/recipes', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
 
     const result = await db
       .select()
@@ -207,7 +215,8 @@ router.get('/:familyId/recipes', authenticate, requireFamilyMember(), async (req
 
 router.get('/:familyId/recipes/:recipeId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, recipeId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const recipeId = getParam(req, 'recipeId');
 
     const [recipe] = await db
       .select()
@@ -233,7 +242,8 @@ router.get('/:familyId/recipes/:recipeId', authenticate, requireFamilyMember(), 
 
 router.delete('/:familyId/recipes/:recipeId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, recipeId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const recipeId = getParam(req, 'recipeId');
 
     const [recipe] = await db
       .select()

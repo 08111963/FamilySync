@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getParam, getQuery } from '../lib/http-params';
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { db } from "../db";
@@ -95,8 +96,8 @@ router.post("/report", authenticate, async (req: Request, res: Response) => {
 
 router.get("/reports/:familyId", authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
-    const statusFilter = req.query.status as string | undefined;
+    const familyId = getParam(req, 'familyId');
+    const statusFilter = getQuery(req, 'status');
 
     const conditions = [eq(reports.familyId, familyId)];
     if (statusFilter) {
@@ -129,7 +130,7 @@ router.get("/reports/:familyId", authenticate, requireFamilyAdmin(), async (req:
 
 router.patch("/reports/:familyId/:reportId", authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
   try {
-    const { reportId } = req.params;
+    const reportId = getParam(req, 'reportId');
     const { status } = req.body;
 
     if (!["actioned", "dismissed"].includes(status)) {
@@ -210,7 +211,8 @@ router.post("/block", authenticate, async (req: Request, res: Response) => {
 
 router.delete("/block/:familyId/:blockedUserId", authenticate, async (req: Request, res: Response) => {
   try {
-    const { familyId, blockedUserId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const blockedUserId = getParam(req, 'blockedUserId');
 
     await db.delete(blocks).where(
       and(
@@ -232,7 +234,7 @@ router.delete("/block/:familyId/:blockedUserId", authenticate, async (req: Reque
 
 router.get("/blocks/:familyId", authenticate, async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
 
     const [membership] = await db
       .select()

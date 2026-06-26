@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
@@ -37,7 +38,7 @@ const updateChoreSchema = z.object({
 
 router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const blockedIds = await getBlockedUserIds(req.user!.userId, familyId);
 
     const conditions: any[] = [eq(chores.familyId, familyId)];
@@ -54,7 +55,7 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
 
 router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const parsed = createChoreSchema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -86,7 +87,8 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
 
 router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, choreId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const choreId = getParam(req, 'choreId');
 
     const parsed = updateChoreSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -119,7 +121,8 @@ router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (re
 
 router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, choreId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const choreId = getParam(req, 'choreId');
 
     const [currentChore] = await db.select().from(chores)
       .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
@@ -163,7 +166,8 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
 
 router.delete('/:familyId/:choreId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, choreId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const choreId = getParam(req, 'choreId');
 
     await db.delete(chores).where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)));
 

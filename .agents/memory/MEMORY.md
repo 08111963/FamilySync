@@ -1,2 +1,3 @@
 - [Metro environment quirks](metro-environment-quirks.md) — `.local` must stay in metro blockList (FallbackWatcher ENOENT crash); clear Metro cache after installing native modules; `/tmp/logs` are stale snapshots.
 - [Backend testing approach](backend-testing.md) — no test runner configured; run `npx tsx server/__tests__/*.test.ts` with node:test, no package.json edits.
+- [Express 5 + TS params](express5-typescript.md) — req.params/query are string|string[] in @types/express 5; use server/lib/http-params helpers; Drizzle numeric/enum/NOT-NULL insert gotchas

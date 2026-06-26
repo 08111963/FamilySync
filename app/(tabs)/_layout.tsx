@@ -32,7 +32,7 @@ function NativeTabLayout() {
       <NativeTabs.Trigger name="chores">
         <Icon sf={{ default: "checkmark.circle", selected: "checkmark.circle.fill" }} />
         <Label>Faccende</Label>
-        {pendingCount > 0 && <Badge>{pendingCount}</Badge>}
+        {pendingCount > 0 && <Badge>{String(pendingCount)}</Badge>}
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="chat">
         <Icon sf={{ default: "bubble.left.and.bubble.right", selected: "bubble.left.and.bubble.right.fill" }} />

@@ -41,7 +41,7 @@ export default function ChoresScreen() {
     return true;
   });
 
-  const getMember = (memberId: string) => {
+  const getMember = (memberId: string | null | undefined) => {
     return data.members.find((m) => m.id === memberId);
   };
 
@@ -237,11 +237,11 @@ export default function ChoresScreen() {
                             </Text>
                           </View>
                         )}
-                        {chore.isRecurring && (
+                        {chore.recurrenceRule && (
                           <View style={styles.choreRecurring}>
                             <Ionicons name="repeat" size={14} color={colors.secondary} />
                             <Text style={[styles.choreRecurringText, { color: colors.secondary }]}>
-                              {getFrequencyLabel(chore.frequency)}
+                              {getFrequencyLabel(chore.recurrenceRule)}
                             </Text>
                           </View>
                         )}

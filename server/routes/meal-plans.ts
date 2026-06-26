@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
@@ -38,7 +39,7 @@ const createMealPlanSchema = z.object({
 
 router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const parsed = createMealPlanSchema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -82,7 +83,7 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
 
 router.get('/:familyId/meal-plans', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
 
     const plans = await db.select()
       .from(mealPlans)
@@ -98,7 +99,8 @@ router.get('/:familyId/meal-plans', authenticate, requireFamilyMember(), async (
 
 router.get('/:familyId/meal-plans/:planId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, planId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const planId = getParam(req, 'planId');
 
     const [plan] = await db.select()
       .from(mealPlans)
@@ -139,7 +141,8 @@ router.get('/:familyId/meal-plans/:planId', authenticate, requireFamilyMember(),
 
 router.delete('/:familyId/meal-plans/:planId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, planId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const planId = getParam(req, 'planId');
 
     const [plan] = await db.select()
       .from(mealPlans)
@@ -162,7 +165,8 @@ router.delete('/:familyId/meal-plans/:planId', authenticate, requireFamilyMember
 
 router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, planId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const planId = getParam(req, 'planId');
 
     const [plan] = await db.select()
       .from(mealPlans)
@@ -237,7 +241,7 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
       listId: shoppingList.id,
       name: ing.name,
       quantity: ing.quantity,
-      category: ing.category,
+      category: ing.category ?? 'food',
       createdBy: req.user!.userId,
     }));
 

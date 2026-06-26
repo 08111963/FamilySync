@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
@@ -76,7 +77,7 @@ async function verifyItemOwnership(itemId: string, listId: string): Promise<bool
 
 router.get('/:familyId/lists', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const blockedIds = await getBlockedUserIds(req.user!.userId, familyId);
 
     const listConditions: any[] = [eq(shoppingLists.familyId, familyId)];
@@ -103,7 +104,7 @@ router.get('/:familyId/lists', authenticate, requireFamilyMember(), async (req: 
 
 router.post('/:familyId/lists', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const parsed = createListSchema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -129,7 +130,8 @@ router.post('/:familyId/lists', authenticate, requireFamilyMember(), async (req:
 
 router.delete('/:familyId/lists/:listId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, listId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const listId = getParam(req, 'listId');
 
     if (!(await verifyListOwnership(listId, familyId))) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Lista non trovata in questa famiglia" } });
@@ -147,7 +149,8 @@ router.delete('/:familyId/lists/:listId', authenticate, requireFamilyMember(), a
 
 router.post('/:familyId/lists/:listId/items', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, listId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const listId = getParam(req, 'listId');
 
     if (!(await verifyListOwnership(listId, familyId))) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Lista non trovata in questa famiglia" } });
@@ -192,7 +195,9 @@ router.post('/:familyId/lists/:listId/items', authenticate, requireFamilyMember(
 
 router.patch('/:familyId/lists/:listId/items/:itemId/toggle', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, listId, itemId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const listId = getParam(req, 'listId');
+    const itemId = getParam(req, 'itemId');
 
     if (!(await verifyListOwnership(listId, familyId))) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Lista non trovata in questa famiglia" } });
@@ -238,7 +243,9 @@ router.patch('/:familyId/lists/:listId/items/:itemId/toggle', authenticate, requ
 
 router.patch('/:familyId/lists/:listId/items/:itemId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, listId, itemId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const listId = getParam(req, 'listId');
+    const itemId = getParam(req, 'itemId');
 
     if (!(await verifyListOwnership(listId, familyId))) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Lista non trovata in questa famiglia" } });
@@ -277,7 +284,9 @@ router.patch('/:familyId/lists/:listId/items/:itemId', authenticate, requireFami
 
 router.delete('/:familyId/lists/:listId/items/:itemId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, listId, itemId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const listId = getParam(req, 'listId');
+    const itemId = getParam(req, 'itemId');
 
     if (!(await verifyListOwnership(listId, familyId))) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Lista non trovata in questa famiglia" } });

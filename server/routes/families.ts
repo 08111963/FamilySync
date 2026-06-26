@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
@@ -103,7 +104,7 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
 
 router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
 
     const [family] = await db.select().from(families).where(eq(families.id, familyId)).limit(1);
 
@@ -160,7 +161,7 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
 
 router.put('/:familyId', authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const parsed = updateFamilySchema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -184,7 +185,7 @@ router.put('/:familyId', authenticate, requireFamilyAdmin(), async (req: Request
 
 router.post('/:familyId/invite', authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const parsed = inviteSchema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -233,7 +234,7 @@ const createMemberSchema = z.object({
 
 router.post('/:familyId/members', authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const parsed = createMemberSchema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -333,7 +334,8 @@ router.post('/:familyId/members', authenticate, requireFamilyAdmin(), async (req
 
 router.post('/:familyId/members/:memberId/reset-access', authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
   try {
-    const { familyId, memberId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const memberId = getParam(req, 'memberId');
 
     const [member] = await db.select()
       .from(familyMembers)
@@ -381,7 +383,7 @@ router.post('/:familyId/members/:memberId/reset-access', authenticate, requireFa
 
 router.post('/join/:token', authenticate, async (req: Request, res: Response) => {
   try {
-    const token = req.params.token;
+    const token = getParam(req, 'token');
     const { nickname, color } = req.body;
 
     const [invite] = await db.select()
@@ -436,7 +438,8 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
 
 router.put('/:familyId/members/:memberId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, memberId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const memberId = getParam(req, 'memberId');
     const { nickname, color, role } = req.body;
     const membership = (req as any).membership;
 
@@ -463,7 +466,8 @@ router.put('/:familyId/members/:memberId', authenticate, requireFamilyMember(), 
 
 router.delete('/:familyId/members/:memberId', authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
   try {
-    const { familyId, memberId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const memberId = getParam(req, 'memberId');
 
     await db.delete(familyMembers)
       .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)));

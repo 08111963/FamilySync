@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getParam, getQuery } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
@@ -54,7 +55,7 @@ const createEventSchema = z.object({
   time: z.string().optional(),
   endTime: z.string().optional(),
   allDay: z.boolean().optional().default(false),
-  category: z.string().optional().default("other"),
+  category: z.enum(["work", "school", "sport", "health", "social", "family", "other"]).optional().default("other"),
   location: z.string().optional(),
   color: z.string().optional().default("#6366F1"),
   memberId: z.string().optional(),
@@ -68,7 +69,7 @@ const updateEventSchema = z.object({
   time: z.string().nullable().optional(),
   endTime: z.string().nullable().optional(),
   allDay: z.boolean().optional(),
-  category: z.string().optional(),
+  category: z.enum(["work", "school", "sport", "health", "social", "family", "other"]).optional(),
   location: z.string().nullable().optional(),
   color: z.string().optional(),
   memberId: z.string().nullable().optional(),
@@ -77,14 +78,15 @@ const updateEventSchema = z.object({
 
 router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
-    const { startDate, endDate } = req.query;
+    const familyId = getParam(req, 'familyId');
+    const startDate = getQuery(req, 'startDate');
+    const endDate = getQuery(req, 'endDate');
     const blockedIds = await getBlockedUserIds(req.user!.userId, familyId);
 
     const conditions: any[] = [eq(calendarEvents.familyId, familyId)];
     if (startDate && endDate) {
-      conditions.push(gte(calendarEvents.date, startDate as string));
-      conditions.push(lte(calendarEvents.date, endDate as string));
+      conditions.push(gte(calendarEvents.date, startDate));
+      conditions.push(lte(calendarEvents.date, endDate));
     }
     const blockFilter = applyBlockedFilter(calendarEvents.createdBy, blockedIds);
     if (blockFilter) conditions.push(blockFilter);
@@ -100,7 +102,7 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
 
 router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const familyId = req.params.familyId;
+    const familyId = getParam(req, 'familyId');
     const parsed = createEventSchema.safeParse(req.body);
 
     if (!parsed.success) {
@@ -126,7 +128,8 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
 
 router.put('/:familyId/:eventId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, eventId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const eventId = getParam(req, 'eventId');
 
     const parsed = updateEventSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -154,7 +157,8 @@ router.put('/:familyId/:eventId', authenticate, requireFamilyMember(), async (re
 
 router.delete('/:familyId/:eventId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
-    const { familyId, eventId } = req.params;
+    const familyId = getParam(req, 'familyId');
+    const eventId = getParam(req, 'eventId');
 
     await db.delete(calendarEvents).where(and(eq(calendarEvents.id, eventId), eq(calendarEvents.familyId, familyId)));
 

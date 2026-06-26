@@ -98,7 +98,7 @@ export default function CalendarScreen() {
     return dateStr === selectedDate;
   };
 
-  const getMember = (memberId: string) => {
+  const getMember = (memberId: string | null | undefined) => {
     return data.members.find((m) => m.id === memberId);
   };
 
