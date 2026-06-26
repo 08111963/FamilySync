@@ -477,6 +477,19 @@ export default function FamilyScreen() {
       <View style={[styles.section, { marginBottom: 40 }]}>
         <Pressable
           onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push("/change-password");
+          }}
+          style={({ pressed }) => [
+            styles.logoutButton,
+            { borderColor: colors.border, opacity: pressed ? 0.7 : 1, marginBottom: 12 },
+          ]}
+        >
+          <Ionicons name="key-outline" size={20} color={colors.text} />
+          <Text style={[styles.logoutText, { color: colors.text }]}>Cambia password</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             logout();
           }}

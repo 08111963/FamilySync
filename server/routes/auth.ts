@@ -44,6 +44,11 @@ const resetPasswordSchema = z.object({
   newPassword: strongPasswordSchema,
 });
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "La password attuale è obbligatoria"),
+  newPassword: strongPasswordSchema,
+});
+
 router.post('/signup', async (req: Request, res: Response) => {
   try {
     const parsed = signupSchema.safeParse(req.body);
@@ -174,6 +179,37 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
     });
   } catch (error) {
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero utente" } });
+  }
+});
+
+router.post('/change-password', authenticate, async (req: Request, res: Response) => {
+  try {
+    const parsed = changePasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    const { currentPassword, newPassword } = parsed.data;
+
+    const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
+    if (!user) {
+      return res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utente non trovato" } });
+    }
+
+    const validPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!validPassword) {
+      return res.status(400).json({ error: { code: "INVALID_PASSWORD", message: "La password attuale non è corretta" } });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
+
+    res.json({ message: "Password aggiornata con successo" });
+  } catch (error) {
+    logger.error('Change password error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante il cambio password" } });
   }
 });
 
