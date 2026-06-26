@@ -39,3 +39,7 @@ yarn-error.*
 .vercel
 
 .env
+
+# uploaded files (user content, not source)
+uploads/*
+!uploads/.gitkeep

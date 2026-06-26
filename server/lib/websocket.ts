@@ -210,6 +210,28 @@ export async function broadcastChatMessageToFamily(
 const BLOCK_CACHE_TTL_MS = 30_000;
 const blockRelatedCache = new Map<string, { ids: Set<string>; expires: number }>();
 
+// Indirection points so tests can drive the cache deterministically without a DB
+// or real timers. Production always uses the real fetcher and Date.now.
+let blockRelatedFetcher: (userId: string, familyId: string) => Promise<string[]> =
+  getBlockRelatedUserIds;
+let nowFn: () => number = () => Date.now();
+
+export function __setBlockRelatedFetcherForTest(
+  fn: (userId: string, familyId: string) => Promise<string[]>
+) {
+  blockRelatedFetcher = fn;
+}
+
+export function __setNowForTest(fn: () => number) {
+  nowFn = fn;
+}
+
+export function __resetBlockCacheTestHooks() {
+  blockRelatedFetcher = getBlockRelatedUserIds;
+  nowFn = () => Date.now();
+  blockRelatedCache.clear();
+}
+
 function sweepExpiredBlockCache(now: number) {
   for (const [key, entry] of blockRelatedCache) {
     if (entry.expires <= now) {
@@ -218,9 +240,9 @@ function sweepExpiredBlockCache(now: number) {
   }
 }
 
-async function getBlockRelatedCached(familyId: string, userId: string): Promise<Set<string>> {
+export async function getBlockRelatedCached(familyId: string, userId: string): Promise<Set<string>> {
   const key = `${familyId}:${userId}`;
-  const now = Date.now();
+  const now = nowFn();
   const hit = blockRelatedCache.get(key);
   if (hit && hit.expires > now) {
     return hit.ids;
@@ -228,9 +250,22 @@ async function getBlockRelatedCached(familyId: string, userId: string): Promise<
   if (blockRelatedCache.size > 1000) {
     sweepExpiredBlockCache(now);
   }
-  const ids = new Set(await getBlockRelatedUserIds(userId, familyId));
+  const ids = new Set(await blockRelatedFetcher(userId, familyId));
   blockRelatedCache.set(key, { ids, expires: now + BLOCK_CACHE_TTL_MS });
   return ids;
+}
+
+// Pure predicate deciding whether a typing event should reach a given socket's
+// user. The author never receives their own typing, and either side of a block
+// relationship is excluded (bidirectional).
+export function shouldReceiveTyping(
+  uid: string | undefined,
+  authorId: string,
+  blockedRelated: Set<string>
+): boolean {
+  if (!uid || uid === authorId) return false;
+  if (blockedRelated.has(uid)) return false;
+  return true;
 }
 
 export function invalidateBlockCache(familyId: string, userId?: string) {
@@ -262,12 +297,8 @@ export async function broadcastTypingToFamily(
 
   for (const s of sockets) {
     const uid = s.data?.userId as string | undefined;
-    if (!uid || uid === authorId) {
-      continue;
+    if (shouldReceiveTyping(uid, authorId, blockedRelated)) {
+      s.emit(event, data);
     }
-    if (blockedRelated.has(uid)) {
-      continue;
-    }
-    s.emit(event, data);
   }
 }

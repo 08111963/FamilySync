@@ -87,7 +87,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const MIME_EXTENSIONS: Record<string, string> = {
+export const MIME_EXTENSIONS: Record<string, string> = {
   "image/jpeg": ".jpg",
   "image/png": ".png",
   "image/gif": ".gif",
@@ -98,28 +98,77 @@ const MIME_EXTENSIONS: Record<string, string> = {
   "text/plain": ".txt",
 };
 
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+// Returns true only for MIME types we explicitly allow. The decision is based on
+// the declared MIME, never on the (spoofable) original filename.
+export function isAllowedUploadMime(mimetype: string): boolean {
+  return Object.prototype.hasOwnProperty.call(MIME_EXTENSIONS, mimetype);
+}
+
+// Builds the on-disk filename. The extension is derived from the allowed MIME
+// map, NOT from the client-provided original name, so a file named
+// "documento.pdf" sent as image/png is stored with a ".png" extension.
+export function resolveUploadExtension(mimetype: string): string {
+  return MIME_EXTENSIONS[mimetype] ?? "";
+}
+
+export function buildStoredFilename(mimetype: string, randomName: string): string {
+  return `${randomName}${resolveUploadExtension(mimetype)}`;
+}
+
+// Resolves a stored fileUrl to an absolute path ONLY if it stays inside
+// uploadsDir. Any path-traversal attempt (e.g. "/uploads/../../etc/passwd")
+// resolves outside the directory and yields null, so the caller skips deletion.
+export function resolveSafeUploadPath(fileUrl: string, baseDir: string = uploadsDir): string | null {
+  const filePath = path.resolve(fileUrl.replace(/^\//, ""));
+  if (filePath.startsWith(baseDir + path.sep)) {
+    return filePath;
+  }
+  return null;
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, uploadsDir);
   },
   filename: (_req, file, cb) => {
-    const ext = MIME_EXTENSIONS[file.mimetype] ?? "";
     const name = crypto.randomBytes(16).toString("hex");
-    cb(null, `${name}${ext}`);
+    cb(null, buildStoredFilename(file.mimetype, name));
   },
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_BYTES },
   fileFilter: (_req, file, cb) => {
-    if (Object.prototype.hasOwnProperty.call(MIME_EXTENSIONS, file.mimetype)) {
+    if (isAllowedUploadMime(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error("Tipo di file non supportato"));
     }
   },
 });
+
+// Route-level error handler for the upload middleware. Maps multer/fileFilter
+// rejections to clean 4xx responses instead of a generic 500.
+function handleUploadError(
+  err: unknown,
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  if (!err) {
+    return next();
+  }
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "File troppo grande (max 10MB)" });
+    }
+    return res.status(400).json({ error: "Errore nel caricamento del file" });
+  }
+  return res.status(415).json({ error: "Tipo di file non supportato" });
+}
 
 async function verifyFamilyMembership(userId: string, familyId: string) {
   const [membership] = await db
@@ -253,7 +302,7 @@ router.post("/:familyId/messages", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/:familyId/upload", requireFamilyMembership, upload.single("file"), async (req: Request, res: Response) => {
+router.post("/:familyId/upload", requireFamilyMembership, upload.single("file"), handleUploadError, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
     const familyId = req.params.familyId as string;
@@ -331,13 +380,13 @@ router.delete("/:familyId/messages/:messageId", async (req: Request, res: Respon
     }
 
     if (message.fileUrl) {
-      const filePath = path.resolve(message.fileUrl.replace(/^\//, ""));
-      if (filePath.startsWith(uploadsDir + path.sep)) {
-        fs.unlink(filePath, () => {});
+      const safePath = resolveSafeUploadPath(message.fileUrl);
+      if (safePath) {
+        fs.unlink(safePath, () => {});
       } else {
         logger.warn("Chat delete: file path fuori da uploadsDir, skip unlink", {
           messageId,
-          filePath,
+          fileUrl: message.fileUrl,
         });
       }
     }
