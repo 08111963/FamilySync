@@ -331,6 +331,54 @@ router.post('/:familyId/members', authenticate, requireFamilyAdmin(), async (req
   }
 });
 
+router.post('/:familyId/members/:memberId/reset-access', authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
+  try {
+    const { familyId, memberId } = req.params;
+
+    const [member] = await db.select()
+      .from(familyMembers)
+      .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
+      .limit(1);
+
+    if (!member) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Membro non trovato" } });
+    }
+
+    const [memberUser] = await db.select().from(users).where(eq(users.id, member.userId)).limit(1);
+    if (!memberUser) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Account del membro non trovato" } });
+    }
+
+    const tempPassword = generateTempPassword();
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+    await db.update(users).set({ passwordHash }).where(eq(users.id, memberUser.id));
+
+    const hasRealEmail = !memberUser.email.endsWith('@familysync.local');
+
+    res.json({
+      member: {
+        id: member.id,
+        userId: memberUser.id,
+        name: memberUser.name,
+        nickname: member.nickname,
+        role: member.role,
+        color: member.color,
+        points: member.points,
+        avatarUrl: memberUser.avatarUrl,
+      },
+      credentials: {
+        loginEmail: memberUser.email,
+        tempPassword,
+        hasRealEmail,
+      },
+    });
+  } catch (error) {
+    logger.error('Reset member access error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel reset dell'accesso" } });
+  }
+});
+
 router.post('/join/:token', authenticate, async (req: Request, res: Response) => {
   try {
     const token = req.params.token;

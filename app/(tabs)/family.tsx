@@ -64,45 +64,54 @@ export default function FamilyScreen() {
   const handleMemberAction = (member: { id: string; userId: string; name: string }) => {
     if (member.userId === user?.id) return;
     const isBlocked = blockedUserIds.has(member.userId);
+    const isAdminUser = currentFamily?.myRole === "admin";
+
+    const goAccess = () =>
+      router.push({
+        pathname: "/member-access",
+        params: { memberId: member.id, familyId: familyId || "", memberName: member.name },
+      });
+    const goReport = () =>
+      router.push({ pathname: "/report-user", params: { userId: member.userId, familyId: familyId || "" } });
+    const toggleBlock = () => {
+      if (isBlocked) {
+        handleUnblockUser(member.userId);
+      } else {
+        handleBlockUser(member.userId);
+      }
+    };
 
     if (Platform.OS === "web") {
+      if (isAdminUser) {
+        const sendAccess = confirm(
+          `${member.name}\n\nInviare i dati di accesso a questo membro?\n\nOK = Invia accesso\nAnnulla = altre opzioni`
+        );
+        if (sendAccess) {
+          goAccess();
+          return;
+        }
+      }
       const choice = confirm(
         `${member.name}\n\n1. Segnala\n2. ${isBlocked ? "Sblocca" : "Blocca"}\n\nPremi OK per Segnala, Annulla per ${isBlocked ? "Sblocca" : "Blocca"}`
       );
       if (choice) {
-        router.push({ pathname: "/report-user", params: { userId: member.userId, familyId: familyId || "" } });
+        goReport();
       } else {
-        if (isBlocked) {
-          handleUnblockUser(member.userId);
-        } else {
-          handleBlockUser(member.userId);
-        }
+        toggleBlock();
       }
     } else {
-      const options = [
-        "Segnala",
-        isBlocked ? "Sblocca" : "Blocca",
-        "Annulla",
-      ];
-      Alert.alert(member.name, "", [
-        {
-          text: "Segnala",
-          onPress: () =>
-            router.push({ pathname: "/report-user", params: { userId: member.userId, familyId: familyId || "" } }),
-        },
-        {
-          text: isBlocked ? "Sblocca" : "Blocca",
-          style: isBlocked ? "default" : "destructive",
-          onPress: () => {
-            if (isBlocked) {
-              handleUnblockUser(member.userId);
-            } else {
-              handleBlockUser(member.userId);
-            }
-          },
-        },
-        { text: "Annulla", style: "cancel" },
-      ]);
+      const buttons: any[] = [];
+      if (isAdminUser) {
+        buttons.push({ text: "Invia accesso", onPress: goAccess });
+      }
+      buttons.push({ text: "Segnala", onPress: goReport });
+      buttons.push({
+        text: isBlocked ? "Sblocca" : "Blocca",
+        style: isBlocked ? "default" : "destructive",
+        onPress: toggleBlock,
+      });
+      buttons.push({ text: "Annulla", style: "cancel" });
+      Alert.alert(member.name, "", buttons);
     }
   };
 

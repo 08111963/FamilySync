@@ -1,28 +1,21 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Share, Linking } from "react-native";
+import { StyleSheet, Text, View, Pressable, ScrollView, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
-import * as Clipboard from "expo-clipboard";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { CredentialsCard, MemberCredentials } from "@/components/CredentialsCard";
 import { apiRequest } from "@/lib/query-client";
 
 const ROLES = [
   { value: "adult", label: "Adulto", icon: "person" as const },
   { value: "child", label: "Ragazzo/a", icon: "happy" as const },
 ];
-
-interface CreatedCredentials {
-  loginEmail: string;
-  tempPassword: string;
-  hasRealEmail: boolean;
-  memberName: string;
-}
 
 export default function AddMemberScreen() {
   const insets = useSafeAreaInsets();
@@ -32,10 +25,9 @@ export default function AddMemberScreen() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "adult" | "child">("adult");
-  const [credentials, setCredentials] = useState<CreatedCredentials | null>(null);
+  const [credentials, setCredentials] = useState<MemberCredentials | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const handleCreateMember = async () => {
     if (!currentFamily) return;
@@ -69,51 +61,6 @@ export default function AddMemberScreen() {
       console.error("Create member error:", err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const credentialsText = (c: CreatedCredentials) =>
-    `Accesso a FamilySync per ${c.memberName}\n\nEmail/Accesso: ${c.loginEmail}\nPassword temporanea: ${c.tempPassword}\n\nApri l'app FamilySync e accedi con questi dati.`;
-
-  const handleCopy = async () => {
-    if (!credentials) return;
-    await Clipboard.setStringAsync(credentialsText(credentials));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleShare = async () => {
-    if (!credentials) return;
-    try {
-      await Share.share({ message: credentialsText(credentials) });
-    } catch (err) {
-      console.error("Share error:", err);
-    }
-  };
-
-  const handleWhatsApp = async () => {
-    if (!credentials) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const url = `https://wa.me/?text=${encodeURIComponent(credentialsText(credentials))}`;
-    try {
-      await Linking.openURL(url);
-    } catch (err) {
-      console.error("WhatsApp share error:", err);
-    }
-  };
-
-  const handleEmail = async () => {
-    if (!credentials) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const subject = `Accesso a FamilySync per ${credentials.memberName}`;
-    const body = credentialsText(credentials);
-    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    try {
-      await Linking.openURL(Platform.OS === "web" ? gmailUrl : mailtoUrl);
-    } catch (err) {
-      console.error("Email share error:", err);
     }
   };
 
@@ -229,80 +176,8 @@ export default function AddMemberScreen() {
               </View>
             </Card>
 
-            <Card style={{ marginTop: 16 }}>
-              <View style={styles.credRow}>
-                <Text style={[styles.credLabel, { color: colors.textSecondary }]}>
-                  {credentials.hasRealEmail ? "Email" : "Accesso"}
-                </Text>
-                <Text style={[styles.credValue, { color: colors.text }]} selectable>
-                  {credentials.loginEmail}
-                </Text>
-              </View>
-              <View style={[styles.credDivider, { backgroundColor: colors.border }]} />
-              <View style={styles.credRow}>
-                <Text style={[styles.credLabel, { color: colors.textSecondary }]}>
-                  Password temporanea
-                </Text>
-                <Text style={[styles.credValue, styles.credPassword, { color: colors.text }]} selectable>
-                  {credentials.tempPassword}
-                </Text>
-              </View>
-            </Card>
-
-            <Text style={[styles.warnText, { color: colors.textSecondary }]}>
-              Salva o invia subito questi dati: la password non sarà più mostrata.
-            </Text>
-
-            <View style={styles.actionsColumn}>
-              <Pressable
-                onPress={handleCopy}
-                style={({ pressed }) => [
-                  styles.actionButton,
-                  { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
-                ]}
-              >
-                <Ionicons name={copied ? "checkmark" : "copy-outline"} size={20} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>{copied ? "Copiato!" : "Copia dati"}</Text>
-              </Pressable>
-
-              <View style={styles.actionsRow}>
-                <Pressable
-                  onPress={handleWhatsApp}
-                  style={({ pressed }) => [
-                    styles.actionButton,
-                    styles.actionHalf,
-                    { backgroundColor: "#25D366", opacity: pressed ? 0.85 : 1 },
-                  ]}
-                >
-                  <Ionicons name="logo-whatsapp" size={20} color="#FFFFFF" />
-                  <Text style={styles.actionButtonText}>WhatsApp</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={handleEmail}
-                  style={({ pressed }) => [
-                    styles.actionButton,
-                    styles.actionHalf,
-                    { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, opacity: pressed ? 0.85 : 1 },
-                  ]}
-                >
-                  <Ionicons name="mail-outline" size={20} color={colors.text} />
-                  <Text style={[styles.actionButtonText, { color: colors.text }]}>Email</Text>
-                </Pressable>
-              </View>
-
-              {Platform.OS !== "web" && (
-                <Pressable
-                  onPress={handleShare}
-                  style={({ pressed }) => [
-                    styles.actionButton,
-                    { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, opacity: pressed ? 0.85 : 1 },
-                  ]}
-                >
-                  <Ionicons name="share-outline" size={20} color={colors.text} />
-                  <Text style={[styles.actionButtonText, { color: colors.text }]}>Altre app</Text>
-                </Pressable>
-              )}
+            <View style={{ marginTop: 16 }}>
+              <CredentialsCard credentials={credentials} />
             </View>
 
             <View style={styles.bottomButtons}>
@@ -361,24 +236,6 @@ const styles = StyleSheet.create({
   successIcon: { width: 72, height: 72, borderRadius: 36, justifyContent: "center", alignItems: "center" },
   successTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
   successSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
-  credRow: { gap: 4 },
-  credLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  credValue: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  credPassword: { letterSpacing: 2 },
-  credDivider: { height: 1, marginVertical: 14 },
-  warnText: { fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center", marginTop: 12, marginBottom: 8 },
-  actionsColumn: { gap: 12, marginTop: 12 },
-  actionsRow: { flexDirection: "row", gap: 12 },
-  actionHalf: { flex: 1 },
-  actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    height: 48,
-    borderRadius: 14,
-  },
-  actionButtonText: { color: "#FFFFFF", fontSize: 16, fontFamily: "Inter_600SemiBold" },
   bottomButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
