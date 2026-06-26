@@ -94,17 +94,28 @@ export default function RecipesScreen() {
 
   const handleGenerateAi = async () => {
     if (!currentFamily) return;
+    const q = searchQuery.trim();
+    const useQuery = q.length >= 2;
     setGeneratingAi(true);
     setAiError(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      if (useQuery) Keyboard.dismiss();
+      const endpoint = useQuery
+        ? `/api/ai/${currentFamily.id}/recipe-search`
+        : `/api/ai/${currentFamily.id}/recipe-suggestions`;
+      const body = useQuery ? { query: q } : { count: 8 };
       const data = await apiFetch<{ recipes?: any[]; generatedAt?: string }>(
-        `/api/ai/${currentFamily.id}/recipe-suggestions`,
-        { method: "POST", body: { count: 8 } }
+        endpoint,
+        { method: "POST", body }
       );
       const list = data.recipes || [];
       if (list.length === 0) {
-        setAiError("Nessuna ricetta generata. Riprova.");
+        setAiError(
+          useQuery
+            ? "Nessuna ricetta trovata. Prova con altri termini."
+            : "Nessuna ricetta generata. Riprova."
+        );
         return;
       }
       router.push({
@@ -373,8 +384,12 @@ export default function RecipesScreen() {
         ) : (
           <Ionicons name="sparkles" size={20} color="#FFFFFF" />
         )}
-        <Text style={styles.generateButtonText}>
-          {generatingAi ? "Generazione in corso..." : "Genera Ricette AI"}
+        <Text style={styles.generateButtonText} numberOfLines={1}>
+          {generatingAi
+            ? "Generazione in corso..."
+            : searchQuery.trim().length >= 2
+              ? `Genera ricette con "${searchQuery.trim()}"`
+              : "Genera Ricette AI"}
         </Text>
       </Pressable>
 
