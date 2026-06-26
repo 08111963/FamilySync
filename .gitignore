@@ -31,14 +31,13 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# env files (never commit secrets; keep only the example template)
+.env*
+!.env.example
 
 # typescript
 *.tsbuildinfo
 .vercel
-
-.env
 
 # uploaded files (user content, not source)
 uploads/*

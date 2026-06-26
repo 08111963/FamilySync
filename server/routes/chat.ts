@@ -128,6 +128,84 @@ export function resolveSafeUploadPath(fileUrl: string, baseDir: string = uploads
   return null;
 }
 
+// MIME types for which we verify the file's real content signature (magic
+// bytes), not just the client-declared (spoofable) MIME. A file declared as
+// image/png but containing non-PNG bytes fails this check and is rejected.
+export const MAGIC_VERIFIED_MIMES = new Set<string>([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "application/pdf",
+]);
+
+// DOCUMENTED LIMITATION: application/msword (.doc),
+// application/vnd.openxmlformats-officedocument.wordprocessingml.document (.docx)
+// and text/plain (.txt) are NOT magic-byte verified.
+// - .docx is a ZIP container (signature "PK\x03\x04") shared with every other
+//   zip-based format, so the signature alone cannot confirm it is a Word file.
+// - .doc is an OLE compound file ("D0 CF 11 E0 A1 B1 1A E1") shared with legacy
+//   xls/ppt, so again the signature is not specific.
+// - text/plain has no signature at all (any byte sequence is valid text).
+// These three types are therefore allowed on the declared MIME only. Tighten the
+// rules or disable these types if stricter content guarantees are required.
+
+// Verifies that the leading bytes of a file match the signature expected for the
+// declared MIME. Returns true for types not in MAGIC_VERIFIED_MIMES (see the
+// documented limitation above) so they pass through on the declared MIME alone.
+export function verifyMagicBytes(buffer: Buffer, mimetype: string): boolean {
+  if (!MAGIC_VERIFIED_MIMES.has(mimetype)) {
+    return true;
+  }
+  switch (mimetype) {
+    case "image/jpeg":
+      // FF D8 FF
+      return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+    case "image/png":
+      // 89 50 4E 47 0D 0A 1A 0A
+      return (
+        buffer.length >= 8 &&
+        buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
+        buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
+      );
+    case "image/gif":
+      // "GIF87a" or "GIF89a"
+      return (
+        buffer.length >= 6 &&
+        buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 &&
+        buffer[3] === 0x38 && (buffer[4] === 0x37 || buffer[4] === 0x39) && buffer[5] === 0x61
+      );
+    case "image/webp":
+      // "RIFF" .... "WEBP"
+      return (
+        buffer.length >= 12 &&
+        buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+        buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
+      );
+    case "application/pdf":
+      // "%PDF-"
+      return (
+        buffer.length >= 5 &&
+        buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46 && buffer[4] === 0x2d
+      );
+    default:
+      return false;
+  }
+}
+
+// Reads the leading bytes of a file (default 12, enough for every signature we
+// check) so verifyMagicBytes can inspect the real content.
+export function readMagicBytes(filePath: string, length: number = 12): Buffer {
+  const buffer = Buffer.alloc(length);
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const bytesRead = fs.readSync(fd, buffer, 0, length, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, uploadsDir);
@@ -310,6 +388,24 @@ router.post("/:familyId/upload", requireFamilyMembership, upload.single("file"),
 
     if (!req.file) {
       return res.status(400).json({ error: "Nessun file caricato" });
+    }
+
+    // Real content check: the declared MIME passed the allowlist, but we now
+    // verify the magic bytes. A spoofed file (e.g. declared image/png with
+    // non-PNG content) is rejected here, deleted from disk, and never reaches
+    // the database.
+    const magic = readMagicBytes(req.file.path);
+    if (!verifyMagicBytes(magic, req.file.mimetype)) {
+      const spoofedPath = req.file.path;
+      fs.unlink(spoofedPath, (unlinkErr) => {
+        if (unlinkErr) {
+          logger.warn("Chat upload: impossibile cancellare file spoofato", {
+            path: spoofedPath,
+            error: String(unlinkErr),
+          });
+        }
+      });
+      return res.status(415).json({ error: "Il contenuto del file non corrisponde al tipo dichiarato" });
     }
 
     const [user] = await db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);
