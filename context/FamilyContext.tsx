@@ -4,6 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 const ACTIVE_FAMILY_KEY = "@family_sync_active_family";
 
@@ -140,6 +141,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   const restoredRef = useRef(false);
 
   useWebSocket(currentFamilyId, accessToken);
+  usePushNotifications(isAuthenticated);
 
   const familiesQuery = useQuery<FamilyInfo[]>({
     queryKey: ["/api/families"],

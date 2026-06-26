@@ -328,6 +328,20 @@ export const chatMessages = pgTable("chat_messages", {
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
 
+// PUSH TOKENS
+export const pushTokens = pgTable("push_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  platform: varchar("platform", { length: 20 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("push_tokens_user_idx").on(table.userId),
+]);
+
+export type PushToken = typeof pushTokens.$inferSelect;
+
 // Insert schemas for validation
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,

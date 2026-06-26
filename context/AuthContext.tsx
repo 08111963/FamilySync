@@ -303,8 +303,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshAccessToken]);
 
   const logout = useCallback(async () => {
+    try {
+      const pushToken = await AsyncStorage.getItem('@family_sync_push_token');
+      if (pushToken && accessToken) {
+        const url = new URL('/api/notifications/unregister', getApiUrl());
+        await authFetch(url.toString(), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ token: pushToken }),
+        }).catch(() => {});
+      }
+      await AsyncStorage.removeItem('@family_sync_push_token');
+    } catch {}
     await clearAuth();
-  }, [clearAuth]);
+  }, [clearAuth, accessToken]);
 
   const isAuthenticated = !!user && !!accessToken;
 

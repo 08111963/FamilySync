@@ -167,6 +167,23 @@ export function broadcastToFamily(familyId: string, event: string, data: any) {
   }
 }
 
+export async function notifyUserInFamily(
+  familyId: string,
+  userId: string,
+  event: string,
+  data: any
+) {
+  if (!io) return;
+
+  const room = `family:${familyId}`;
+  const sockets = await io.in(room).fetchSockets();
+  for (const s of sockets) {
+    if (s.data?.userId === userId) {
+      s.emit(event, data);
+    }
+  }
+}
+
 export async function broadcastChatMessageToFamily(
   familyId: string,
   authorId: string,

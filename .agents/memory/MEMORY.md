@@ -1,1 +1,1 @@
-- [AI gateway latency](ai-gateway-latency.md) — gateway is throughput-bound (~47 tok/s); split big AI generations into parallel chunks (Promise.allSettled) to fix slow/empty results.
+- [Metro environment quirks](metro-environment-quirks.md) — `.local` must stay in metro blockList (FallbackWatcher ENOENT crash); clear Metro cache after installing native modules; `/tmp/logs` are stale snapshots.

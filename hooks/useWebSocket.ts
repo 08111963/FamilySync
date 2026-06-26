@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getApiUrl } from "@/lib/query-client";
+import { presentLocalNotification } from "@/hooks/usePushNotifications";
 
 let ioClient: any = null;
 let ioLoaded = false;
@@ -63,6 +64,17 @@ export function useWebSocket(familyId: string | null, accessToken: string | null
         socket?.on(event, () => {
           invalidateFamily();
         });
+      });
+
+      socket.on("event_assigned", (payload: any) => {
+        invalidateFamily();
+        if (payload?.title) {
+          presentLocalNotification(
+            payload.title,
+            payload.body ?? "",
+            { type: "event_assigned" }
+          );
+        }
       });
 
       socket.on("connect_error", (err: any) => {
