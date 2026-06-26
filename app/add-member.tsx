@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Linking, Share } from "react-native";
+import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Share } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { Input } from "@/components/Input";
@@ -16,66 +17,86 @@ const ROLES = [
   { value: "child", label: "Ragazzo/a", icon: "happy" as const },
 ];
 
+interface CreatedCredentials {
+  loginEmail: string;
+  tempPassword: string;
+  hasRealEmail: boolean;
+  memberName: string;
+}
+
 export default function AddMemberScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { currentFamily } = useFamily();
 
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "adult" | "child">("adult");
-  const [recipientEmail, setRecipientEmail] = useState("");
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<CreatedCredentials | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  const handleCreateInvite = async () => {
+  const handleCreateMember = async () => {
     if (!currentFamily) return;
+    if (!name.trim()) {
+      setError("Inserisci il nome del membro");
+      return;
+    }
     setLoading(true);
     setError(null);
 
     try {
-      const res = await apiRequest("POST", `/api/families/${currentFamily.id}/invite`, {
+      const res = await apiRequest("POST", `/api/families/${currentFamily.id}/members`, {
+        name: name.trim(),
+        email: email.trim() || undefined,
         role,
       });
       const data = await res.json();
-      setInviteLink(data.inviteLink || null);
+      setCredentials({
+        loginEmail: data.credentials.loginEmail,
+        tempPassword: data.credentials.tempPassword,
+        hasRealEmail: data.credentials.hasRealEmail,
+        memberName: data.member.name,
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err) {
-      setError("Errore nella creazione dell'invito. Riprova.");
-      console.error("Invite error:", err);
+    } catch (err: any) {
+      const message =
+        typeof err?.message === "string" && err.message.includes("409")
+          ? "Esiste già un account con questa email"
+          : "Errore nella creazione del membro. Riprova.";
+      setError(message);
+      console.error("Create member error:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSendEmail = () => {
-    if (!inviteLink) return;
-    const familyName = currentFamily?.name || "la famiglia";
-    const subject = encodeURIComponent(`Ti invito su FamilySync - ${familyName}`);
-    const body = encodeURIComponent(
-      `Ciao!\n\nTi invito a entrare nella famiglia "${familyName}" su FamilySync.\n\nClicca il link qui sotto per unirti:\n${inviteLink}\n\nA presto!`
-    );
-    const to = recipientEmail.trim();
-    const mailto = to
-      ? `mailto:${to}?subject=${subject}&body=${body}`
-      : `mailto:?subject=${subject}&body=${body}`;
-    Linking.openURL(mailto).catch(() => {});
+  const credentialsText = (c: CreatedCredentials) =>
+    `Accesso a FamilySync per ${c.memberName}\n\nEmail/Accesso: ${c.loginEmail}\nPassword temporanea: ${c.tempPassword}\n\nApri l'app FamilySync e accedi con questi dati.`;
+
+  const handleCopy = async () => {
+    if (!credentials) return;
+    await Clipboard.setStringAsync(credentialsText(credentials));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleShareLink = async () => {
-    if (!inviteLink) return;
-    const familyName = currentFamily?.name || "la famiglia";
+  const handleShare = async () => {
+    if (!credentials) return;
     try {
-      await Share.share({
-        message: `Ti invito a entrare nella famiglia "${familyName}" su FamilySync!\n\n${inviteLink}`,
-      });
+      await Share.share({ message: credentialsText(credentials) });
     } catch (err) {
       console.error("Share error:", err);
     }
   };
 
-  const handleNewInvite = () => {
-    setInviteLink(null);
-    setRecipientEmail("");
+  const handleNewMember = () => {
+    setCredentials(null);
+    setName("");
+    setEmail("");
+    setRole("adult");
     setError(null);
   };
 
@@ -87,13 +108,41 @@ export default function AddMemberScreen() {
         <Pressable onPress={() => router.back()} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Invita Membro</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Aggiungi Membro</Text>
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
-        {!inviteLink ? (
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {!credentials ? (
           <>
+            <View style={styles.field}>
+              <Input
+                label="Nome"
+                placeholder="Es. Marco"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Input
+                label="Email (facoltativa)"
+                placeholder="Lascia vuoto per i bambini"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <Text style={[styles.hint, { color: colors.textSecondary }]}>
+                Se non metti l'email, l'app crea un accesso automatico.
+              </Text>
+            </View>
+
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.text }]}>Ruolo</Text>
               <View style={styles.roleOptions}>
@@ -135,8 +184,8 @@ export default function AddMemberScreen() {
             )}
 
             <Button
-              title={loading ? "Creazione..." : "Crea Invito"}
-              onPress={handleCreateInvite}
+              title={loading ? "Creazione..." : "Crea Account"}
+              onPress={handleCreateMember}
               disabled={loading}
               style={{ marginTop: 8 }}
             />
@@ -148,84 +197,73 @@ export default function AddMemberScreen() {
                 <View style={[styles.successIcon, { backgroundColor: colors.success + "20" }]}>
                   <Ionicons name="checkmark-circle" size={48} color={colors.success} />
                 </View>
-                <Text style={[styles.successTitle, { color: colors.text }]}>Invito Pronto</Text>
+                <Text style={[styles.successTitle, { color: colors.text }]}>Account Creato</Text>
                 <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
-                  Scegli come inviare l'invito
+                  Passa questi dati a {credentials.memberName} per accedere
                 </Text>
               </View>
             </Card>
 
-            <View style={styles.sendSection}>
-              <Text style={[styles.sectionLabel, { color: colors.text }]}>Invia per Email</Text>
-              <View style={styles.emailRow}>
-                <View style={{ flex: 1 }}>
-                  <Input
-                    label=""
-                    placeholder="Email del destinatario"
-                    value={recipientEmail}
-                    onChangeText={setRecipientEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                </View>
+            <Card style={{ marginTop: 16 }}>
+              <View style={styles.credRow}>
+                <Text style={[styles.credLabel, { color: colors.textSecondary }]}>
+                  {credentials.hasRealEmail ? "Email" : "Accesso"}
+                </Text>
+                <Text style={[styles.credValue, { color: colors.text }]} selectable>
+                  {credentials.loginEmail}
+                </Text>
               </View>
+              <View style={[styles.credDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.credRow}>
+                <Text style={[styles.credLabel, { color: colors.textSecondary }]}>
+                  Password temporanea
+                </Text>
+                <Text style={[styles.credValue, styles.credPassword, { color: colors.text }]} selectable>
+                  {credentials.tempPassword}
+                </Text>
+              </View>
+            </Card>
+
+            <Text style={[styles.warnText, { color: colors.textSecondary }]}>
+              Salva o invia subito questi dati: la password non sarà più mostrata.
+            </Text>
+
+            <View style={styles.actionsColumn}>
               <Pressable
-                onPress={handleSendEmail}
+                onPress={handleCopy}
                 style={({ pressed }) => [
                   styles.actionButton,
                   { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
                 ]}
               >
-                <Ionicons name="mail-outline" size={20} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>
-                  {recipientEmail.trim() ? "Invia Email" : "Apri App Email"}
-                </Text>
+                <Ionicons name={copied ? "checkmark" : "copy-outline"} size={20} color="#FFFFFF" />
+                <Text style={styles.actionButtonText}>{copied ? "Copiato!" : "Copia dati"}</Text>
               </Pressable>
-              <Text style={[styles.emailHint, { color: colors.textSecondary }]}>
-                Si apre la tua app email con il messaggio pronto
-              </Text>
-            </View>
 
-            <View style={[styles.dividerRow, { borderColor: colors.border }]}>
-              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-              <Text style={[styles.dividerText, { color: colors.textSecondary }]}>oppure</Text>
-              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-            </View>
-
-            <View style={styles.sendSection}>
               <Pressable
-                onPress={handleShareLink}
+                onPress={handleShare}
                 style={({ pressed }) => [
                   styles.actionButton,
                   { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, opacity: pressed ? 0.85 : 1 },
                 ]}
               >
                 <Ionicons name="share-outline" size={20} color={colors.text} />
-                <Text style={[styles.actionButtonText, { color: colors.text }]}>Condividi Link</Text>
+                <Text style={[styles.actionButtonText, { color: colors.text }]}>Condividi</Text>
               </Pressable>
-              <Text style={[styles.emailHint, { color: colors.textSecondary }]}>
-                WhatsApp, Telegram, SMS o altro
-              </Text>
             </View>
 
             <View style={styles.bottomButtons}>
               <Pressable
-                onPress={handleNewInvite}
-                style={({ pressed }) => [
-                  styles.textButton,
-                  pressed && { opacity: 0.6 },
-                ]}
+                onPress={handleNewMember}
+                style={({ pressed }) => [styles.textButton, pressed && { opacity: 0.6 }]}
               >
                 <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
-                <Text style={[styles.textButtonLabel, { color: colors.primary }]}>Nuovo invito</Text>
+                <Text style={[styles.textButtonLabel, { color: colors.primary }]}>Altro membro</Text>
               </Pressable>
 
               <Pressable
                 onPress={() => router.back()}
-                style={({ pressed }) => [
-                  styles.textButton,
-                  pressed && { opacity: 0.6 },
-                ]}
+                style={({ pressed }) => [styles.textButton, pressed && { opacity: 0.6 }]}
               >
                 <Text style={[styles.textButtonLabel, { color: colors.textSecondary }]}>Chiudi</Text>
               </Pressable>
@@ -250,8 +288,9 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontFamily: "Inter_600SemiBold" },
   placeholder: { width: 40 },
   content: { flex: 1, paddingHorizontal: 20 },
-  field: { marginBottom: 24 },
+  field: { marginBottom: 20 },
   label: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginBottom: 8 },
+  hint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 6 },
   roleOptions: { flexDirection: "row", gap: 12 },
   roleOption: {
     flex: 1,
@@ -268,10 +307,14 @@ const styles = StyleSheet.create({
   successContainer: { gap: 0 },
   successIcon: { width: 72, height: 72, borderRadius: 36, justifyContent: "center", alignItems: "center" },
   successTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  successSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  sectionLabel: { fontSize: 15, fontFamily: "Inter_600SemiBold", marginBottom: 10 },
-  emailRow: { marginBottom: 4 },
-  sendSection: { marginTop: 4 },
+  successSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
+  credRow: { gap: 4 },
+  credLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  credValue: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  credPassword: { letterSpacing: 2 },
+  credDivider: { height: 1, marginVertical: 14 },
+  warnText: { fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center", marginTop: 12, marginBottom: 8 },
+  actionsColumn: { gap: 12, marginTop: 12 },
   actionButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -281,15 +324,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   actionButtonText: { color: "#FFFFFF", fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  emailHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 6, textAlign: "center" },
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 18,
-    gap: 12,
-  },
-  dividerLine: { flex: 1, height: 1 },
-  dividerText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   bottomButtons: {
     flexDirection: "row",
     justifyContent: "space-between",

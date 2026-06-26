@@ -11,8 +11,34 @@ import { broadcastToFamily } from '../lib/websocket';
 import { config } from '../lib/config';
 import { logger } from '../lib/logger';
 import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcryptjs';
+import { randomInt } from 'crypto';
 
 const router = Router();
+
+function slugifyName(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '.')
+      .replace(/^\.+|\.+$/g, '')
+      .slice(0, 30) || 'membro'
+  );
+}
+
+function randomString(length: number, chars: string): string {
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += chars[randomInt(chars.length)];
+  }
+  return out;
+}
+
+function generateTempPassword(): string {
+  return randomString(8, 'abcdefghjkmnpqrstuvwxyz23456789');
+}
 
 const createFamilySchema = z.object({
   name: z.string().min(1, "Il nome è obbligatorio").max(50),
@@ -195,6 +221,113 @@ router.post('/:familyId/invite', authenticate, requireFamilyAdmin(), async (req:
   } catch (error) {
     logger.error('Create invite error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione dell'invito" } });
+  }
+});
+
+const createMemberSchema = z.object({
+  name: z.string().min(1, "Il nome è obbligatorio").max(255),
+  email: z.string().email("Email non valida").optional().or(z.literal("")),
+  role: z.enum(["admin", "adult", "child"]).optional().default("adult"),
+  color: z.string().optional(),
+});
+
+router.post('/:familyId/members', authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
+  try {
+    const familyId = req.params.familyId;
+    const parsed = createMemberSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    const { name, role, color } = parsed.data;
+    const providedEmail = parsed.data.email?.trim().toLowerCase() || "";
+
+    let loginEmail = providedEmail;
+
+    if (providedEmail) {
+      const [existing] = await db.select().from(users).where(eq(users.email, providedEmail)).limit(1);
+      if (existing) {
+        return res.status(409).json({
+          error: { code: "EMAIL_IN_USE", message: "Esiste già un account con questa email" },
+        });
+      }
+    } else {
+      const slug = slugifyName(name);
+      let candidate = "";
+      for (let i = 0; i < 6; i++) {
+        candidate = `${slug}.${randomString(5, "abcdefghjkmnpqrstuvwxyz23456789")}@familysync.local`;
+        const [taken] = await db.select().from(users).where(eq(users.email, candidate)).limit(1);
+        if (!taken) break;
+        candidate = "";
+      }
+      if (!candidate) {
+        return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Impossibile generare l'accesso, riprova" } });
+      }
+      loginEmail = candidate;
+    }
+
+    const tempPassword = generateTempPassword();
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+    let newUser;
+    let newMember;
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [createdUser] = await tx.insert(users).values({
+          email: loginEmail,
+          passwordHash,
+          name,
+          emailVerified: true,
+          termsAcceptedAt: new Date(),
+        }).returning();
+
+        const [createdMember] = await tx.insert(familyMembers).values({
+          familyId,
+          userId: createdUser.id,
+          role,
+          nickname: name,
+          color: color || '#6366F1',
+          points: 0,
+        }).returning();
+
+        return { createdUser, createdMember };
+      });
+      newUser = result.createdUser;
+      newMember = result.createdMember;
+    } catch (txError: any) {
+      if (txError?.code === '23505') {
+        return res.status(409).json({
+          error: { code: "EMAIL_IN_USE", message: "Esiste già un account con questa email" },
+        });
+      }
+      throw txError;
+    }
+
+    broadcastToFamily(familyId, 'member_joined', newMember);
+
+    res.status(201).json({
+      member: {
+        id: newMember.id,
+        userId: newUser.id,
+        name: newUser.name,
+        nickname: newMember.nickname,
+        role: newMember.role,
+        color: newMember.color,
+        points: newMember.points,
+        avatarUrl: newUser.avatarUrl,
+      },
+      credentials: {
+        loginEmail,
+        tempPassword,
+        hasRealEmail: !!providedEmail,
+      },
+    });
+  } catch (error) {
+    logger.error('Create member error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione del membro" } });
   }
 });
 
