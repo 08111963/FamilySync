@@ -11,7 +11,7 @@ import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsig
 import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { recipes, recipeIngredients } from '../../shared/schema';
-import { aiRateLimit, recordAiUsage } from '../lib/ai-usage';
+import { reserveAiSlot, finalizeAiUsage, withAiUsage } from '../lib/ai-usage';
 import { resolveMealPlanVariants } from '../lib/ai-policy';
 import { isAiError } from '../lib/ai-errors';
 
@@ -23,6 +23,26 @@ function sendAiError(res: Response, error: unknown, fallbackMsg: string) {
     return res.status(error.httpStatus).json({ error: { code: error.code, message: error.userMessage } });
   }
   return res.status(500).json({ error: { code: "AI_ERROR", message: fallbackMsg } });
+}
+
+/** 429: quota giornaliera della feature raggiunta. */
+function sendRateLimited(res: Response, max: number) {
+  return res.status(429).json({
+    error: {
+      code: "AI_RATE_LIMITED",
+      message: `Hai raggiunto il limite giornaliero (${max}) per questa funzione AI. Riprova domani.`,
+    },
+  });
+}
+
+/** 503: impossibile verificare la quota (DB non disponibile) — fail-closed. */
+function sendUsageUnavailable(res: Response) {
+  return res.status(503).json({
+    error: {
+      code: "AI_USAGE_UNAVAILABLE",
+      message: "Impossibile verificare il limite di utilizzo AI in questo momento. Riprova più tardi.",
+    },
+  });
 }
 
 function getCurrentSeason(): string {
@@ -75,7 +95,7 @@ interface TaggedItem extends ShoppingSuggestionItem {
   source: 'ai' | 'fallback';
 }
 
-router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('shopping-suggestions', { failOpen: true }), async (req: Request, res: Response) => {
+router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const userId = req.user!.userId;
@@ -149,27 +169,42 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
       .where(and(eq(calendarEvents.familyId, familyId), gte(calendarEvents.date, today!)))
       .limit(10);
 
-    let aiResult: { items: ShoppingSuggestionItem[] };
-    let aiSucceeded = false;
-    try {
-      aiResult = await generateShoppingSuggestions({
-        familySize: members.length || 1,
-        season: getCurrentSeason(),
-        upcomingEvents: upcomingEvents.map(e => e.title),
-        recentPurchases,
-        alreadyOnList,
-        completedRecently,
-        recentSuggestions,
-      });
-      aiSucceeded = true;
-    } catch (aiErr) {
-      // Config mancante: blocca con 503 (nessun senso restituire solo fallback).
-      if (isAiError(aiErr) && aiErr.code === 'AI_NOT_CONFIGURED') {
-        return sendAiError(res, aiErr, 'Errore nella generazione suggerimenti');
+    let aiResult: { items: ShoppingSuggestionItem[] } = { items: [] };
+    // Prenotazione quota PRIMA di OpenAI. Comportamento specifico di shopping:
+    // - "limited": quota giornaliera piena -> 429.
+    // - "unavailable": quota non verificabile (DB giù) -> SOLO fallback locale,
+    //   nessuna chiamata OpenAI (preferenza esplicita: niente costi non tracciabili).
+    // - "ok": chiama OpenAI; sia il successo che il fallimento aggiornano il record
+    //   (anche un fallimento ha consumato token).
+    const reservation = await reserveAiSlot(userId, familyId, 'shopping-suggestions');
+    if (reservation.status === 'limited') {
+      return sendRateLimited(res, reservation.max);
+    }
+    if (reservation.status === 'ok') {
+      const usageId = reservation.usageId;
+      try {
+        aiResult = await generateShoppingSuggestions({
+          familySize: members.length || 1,
+          season: getCurrentSeason(),
+          upcomingEvents: upcomingEvents.map(e => e.title),
+          recentPurchases,
+          alreadyOnList,
+          completedRecently,
+          recentSuggestions,
+        });
+        await finalizeAiUsage(usageId, true);
+      } catch (aiErr) {
+        await finalizeAiUsage(usageId, false);
+        // Config mancante: blocca con 503 (nessun senso restituire solo fallback).
+        if (isAiError(aiErr) && aiErr.code === 'AI_NOT_CONFIGURED') {
+          return sendAiError(res, aiErr, 'Errore nella generazione suggerimenti');
+        }
+        // Errore provider/timeout: degradiamo al fallback pool senza bloccare l'utente.
+        logger.error('Shopping AI failed, using fallback pool', { error: String(aiErr) });
       }
-      // Errore provider/timeout: degradiamo al fallback pool senza bloccare l'utente.
-      logger.error('Shopping AI failed, using fallback pool', { error: String(aiErr) });
-      aiResult = { items: [] };
+    } else {
+      // reservation.status === 'unavailable'
+      logger.warn('Shopping: quota non verificabile, uso solo fallback locale (nessuna chiamata OpenAI)');
     }
 
     const alreadyOnListSet = new Set(alreadyOnList.map(normalizeItemName).filter(n => n.length > 0));
@@ -338,9 +373,6 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
       logger.error('Failed to persist shopping suggestions history', { error: String(persistErr) });
     }
 
-    // Solo i successi AI consumano quota; il fallback puro non penalizza l'utente.
-    await recordAiUsage(userId, familyId, 'shopping-suggestions', aiSucceeded);
-
     res.json({ items: responseItems });
   } catch (error) {
     logger.error('Shopping suggestions error', { error: String(error) });
@@ -348,7 +380,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
   }
 });
 
-router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('chore-optimization'), async (req: Request, res: Response) => {
+router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
   try {
@@ -362,15 +394,18 @@ router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requ
       return res.json({ assignments: [], message: 'Nessuna faccenda da assegnare' });
     }
 
-    const optimization = await optimizeChoreSchedule({
-      members: members.map(m => ({ id: m.id, name: m.nickname || 'Membro', points: m.points || 0 })),
-      chores: pendingChores.map(c => ({ id: c.id, title: c.title, estimatedMinutes: c.estimatedMinutes || 30 })),
-    });
+    const run = await withAiUsage(
+      { userId, familyId, feature: 'chore-optimization' },
+      () => optimizeChoreSchedule({
+        members: members.map(m => ({ id: m.id, name: m.nickname || 'Membro', points: m.points || 0 })),
+        chores: pendingChores.map(c => ({ id: c.id, title: c.title, estimatedMinutes: c.estimatedMinutes || 30 })),
+      }),
+    );
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max);
+    if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
 
-    await recordAiUsage(userId, familyId, 'chore-optimization', true);
-    res.json(optimization);
+    res.json(run.value);
   } catch (error) {
-    await recordAiUsage(userId, familyId, 'chore-optimization', false);
     logger.error('Chore optimization error', { error: String(error) });
     sendAiError(res, error, "Errore nell'ottimizzazione");
   }
@@ -393,7 +428,7 @@ router.get('/:familyId/insights', authenticate, requireFamilyMember(), async (re
   }
 });
 
-router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('insights'), async (req: Request, res: Response) => {
+router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
   try {
@@ -418,13 +453,19 @@ router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requ
     const topMember = members.reduce((top, m) =>
       (m.points || 0) > (top.points || 0) ? m : top, members[0]);
 
-    const insights = await generateFamilyInsights({
-      events: events.length,
-      completedChores: completedChores.length,
-      pendingChores: pendingChores.length,
-      topContributor: topMember?.nickname || 'Nessuno',
-      weeklyPoints: completedChores.reduce((sum, c) => sum + (c.points || 0), 0),
-    });
+    const run = await withAiUsage(
+      { userId, familyId, feature: 'insights' },
+      () => generateFamilyInsights({
+        events: events.length,
+        completedChores: completedChores.length,
+        pendingChores: pendingChores.length,
+        topContributor: topMember?.nickname || 'Nessuno',
+        weeklyPoints: completedChores.reduce((sum, c) => sum + (c.points || 0), 0),
+      }),
+    );
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max);
+    if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
+    const insights = run.value;
 
     const savedInsights = [];
     for (const insight of insights.insights || []) {
@@ -437,10 +478,8 @@ router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requ
       savedInsights.push(saved);
     }
 
-    await recordAiUsage(userId, familyId, 'insights', true);
     res.json(savedInsights);
   } catch (error) {
-    await recordAiUsage(userId, familyId, 'insights', false);
     logger.error('Generate insights error', { error: String(error) });
     sendAiError(res, error, "Errore nella generazione insights");
   }
@@ -461,7 +500,7 @@ router.patch('/:familyId/insights/:insightId/dismiss', authenticate, requireFami
   }
 });
 
-router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('recipe-suggestions'), async (req: Request, res: Response) => {
+router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
   try {
@@ -478,16 +517,22 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
     const extraTitles = Array.isArray(excludeTitles) ? excludeTitles : [];
     const lastRecipeTitles = [...new Set([...dbTitles, ...extraTitles])];
 
-    const result = await generateRecipeSuggestions({
-      familySize: members.length || 1,
-      dietaryPreferences,
-      allergies,
-      maxTimeMinutes: maxTimeMinutes || null,
-      cuisinePreferences: cuisinePreferences || null,
-      excludedIngredients: excludedIngredients || null,
-      lastRecipeTitles,
-      count: Math.min(count || 8, 20),
-    });
+    const run = await withAiUsage(
+      { userId, familyId, feature: 'recipe-suggestions' },
+      () => generateRecipeSuggestions({
+        familySize: members.length || 1,
+        dietaryPreferences,
+        allergies,
+        maxTimeMinutes: maxTimeMinutes || null,
+        cuisinePreferences: cuisinePreferences || null,
+        excludedIngredients: excludedIngredients || null,
+        lastRecipeTitles,
+        count: Math.min(count || 8, 20),
+      }),
+    );
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max);
+    if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
+    const result = run.value;
 
     const seenTitles = new Set<string>();
     const dedupedRecipes = result.recipes.filter(r => {
@@ -497,16 +542,14 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
       return true;
     });
 
-    await recordAiUsage(userId, familyId, 'recipe-suggestions', true);
     res.json({ recipes: dedupedRecipes, generatedAt: new Date().toISOString() });
   } catch (error) {
-    await recordAiUsage(userId, familyId, 'recipe-suggestions', false);
     logger.error('Recipe suggestions error', { error: String(error) });
     sendAiError(res, error, "Errore nella generazione ricette");
   }
 });
 
-router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('weekly-meal-plan'), async (req: Request, res: Response) => {
+router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const startTime = Date.now();
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
@@ -528,7 +571,13 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
       preferences,
     };
 
-    const plan = await generateWeeklyMealPlan({ ...context, planVariant: 1 });
+    const run = await withAiUsage(
+      { userId, familyId, feature: 'weekly-meal-plan' },
+      () => generateWeeklyMealPlan({ ...context, planVariant: 1 }),
+    );
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max);
+    if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
+    const plan = run.value;
     plan.title = plan.title || "Piano Settimanale";
     const resultPlans: any[] = [{ ...plan, weekStartDate }];
 
@@ -541,17 +590,15 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
       plans: resultPlans.map(p => ({ title: p.title, itemsCount: p.items?.length || 0 })),
     }));
 
-    await recordAiUsage(userId, familyId, 'weekly-meal-plan', true);
     res.json({ plans: resultPlans });
   } catch (error) {
-    await recordAiUsage(userId, familyId, 'weekly-meal-plan', false);
     const durationMs = Date.now() - startTime;
     logger.error('Weekly meal plan error', { error: String(error), durationMs });
     sendAiError(res, error, "Errore nella generazione del piano pasti");
   }
 });
 
-router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('weekly-meal-plan'), async (req: Request, res: Response) => {
+router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const startTime = Date.now();
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
@@ -565,8 +612,31 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
   let clientClosed = false;
   req.on('close', () => { clientClosed = true; });
 
+  // Slot quota prenotato: va SEMPRE finalizzato (succeeded/failed), anche se
+  // il client si disconnette o il setup dello stream lancia un errore, per non
+  // lasciare record "started" orfani che continuerebbero a consumare quota.
+  let usageId: string | null = null;
+  let usageFinalized = false;
+  const finalizeUsageOnce = async (success: boolean) => {
+    if (usageId && !usageFinalized) {
+      usageFinalized = true;
+      await finalizeAiUsage(usageId, success);
+    }
+  };
+
   try {
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
+
+    // Prenotazione quota PRIMA di aprire lo stream: così su 429/503 possiamo
+    // ancora rispondere con uno status HTTP (headers non ancora inviati).
+    const reservation = await reserveAiSlot(userId, familyId, 'weekly-meal-plan');
+    if (reservation.status === 'limited') return sendRateLimited(res, reservation.max);
+    if (reservation.status === 'unavailable') return sendUsageUnavailable(res);
+    usageId = reservation.usageId;
+
+    // Se il client si è già disconnesso, non chiamare OpenAI: niente costi inutili.
+    // Lo slot prenotato viene marcato "failed" dal finally.
+    if (clientClosed) return;
 
     res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -583,6 +653,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
         res.write(JSON.stringify({ type: 'items', items }) + '\n');
       },
     });
+    await finalizeUsageOnce(true);
 
     if (clientClosed) return;
 
@@ -601,9 +672,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       itemsCount: plan.items.length,
     }) + '\n');
     res.end();
-    await recordAiUsage(userId, familyId, 'weekly-meal-plan', true);
   } catch (error) {
-    await recordAiUsage(userId, familyId, 'weekly-meal-plan', false);
     const durationMs = Date.now() - startTime;
     logger.error('Weekly meal plan stream error', { error: String(error), durationMs });
     if (clientClosed) return;
@@ -615,10 +684,15 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       try { res.write(JSON.stringify({ type: 'error', message }) + '\n'); } catch {}
       res.end();
     }
+  } finally {
+    // Garantisce che lo slot prenotato non resti mai "started": in caso di
+    // successo è già "succeeded"; ogni altro percorso (errore, disconnessione,
+    // early-return) lo marca "failed". No-op se già finalizzato.
+    await finalizeUsageOnce(false);
   }
 });
 
-router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('recipe-search'), async (req: Request, res: Response) => {
+router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
   try {
@@ -631,10 +705,16 @@ router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireF
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
     const extraTitles = Array.isArray(excludeTitles) ? excludeTitles.filter((t: unknown): t is string => typeof t === 'string') : [];
 
-    const result = await searchRecipesByQuery(query.trim(), {
-      familySize: members.length || 1,
-      excludeTitles: extraTitles,
-    });
+    const run = await withAiUsage(
+      { userId, familyId, feature: 'recipe-search' },
+      () => searchRecipesByQuery(query.trim(), {
+        familySize: members.length || 1,
+        excludeTitles: extraTitles,
+      }),
+    );
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max);
+    if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
+    const result = run.value;
 
     const excludeSet = new Set(extraTitles.map(t => t.toLowerCase().trim()));
     const seenTitles = new Set<string>();
@@ -645,10 +725,8 @@ router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireF
       return true;
     });
 
-    await recordAiUsage(userId, familyId, 'recipe-search', true);
     res.json({ recipes: dedupedRecipes, query: query.trim() });
   } catch (error) {
-    await recordAiUsage(userId, familyId, 'recipe-search', false);
     logger.error('Recipe search error', { error: String(error) });
     sendAiError(res, error, "Errore nella ricerca ricette");
   }

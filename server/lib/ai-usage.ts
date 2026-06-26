@@ -1,8 +1,6 @@
-import type { Request, Response, NextFunction } from "express";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { aiUsage } from "../../shared/schema";
-import { getParam } from "./http-params";
 import { logger } from "./logger";
 
 export type AiFeature =
@@ -13,7 +11,13 @@ export type AiFeature =
   | "insights"
   | "chore-optimization";
 
-/** Limiti giornalieri per famiglia (numero di generazioni riuscite al giorno). */
+export type AiUsageStatus = "started" | "succeeded" | "failed";
+
+/**
+ * Limiti giornalieri per famiglia (numero di TENTATIVI al giorno).
+ * Contano tutti i tentativi che raggiungono OpenAI, riusciti o falliti,
+ * perché entrambi consumano token/costi.
+ */
 export const AI_DAILY_LIMITS: Record<AiFeature, number> = {
   "shopping-suggestions": 10,
   "recipe-search": 20,
@@ -29,89 +33,149 @@ function startOfToday(): Date {
   return d;
 }
 
-/**
- * Conta gli usi RIUSCITI di una feature per una famiglia nella giornata corrente.
- * Solo i successi consumano quota (i fallimenti del provider non penalizzano l'utente).
- */
-export async function countTodaySuccess(familyId: string, feature: AiFeature): Promise<number> {
-  const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(aiUsage)
-    .where(
-      and(
-        eq(aiUsage.familyId, familyId),
-        eq(aiUsage.feature, feature),
-        eq(aiUsage.success, true),
-        gte(aiUsage.createdAt, startOfToday()),
-      ),
-    );
-  return row?.count ?? 0;
+function lockKey(familyId: string, feature: AiFeature): string {
+  return `ai_usage:${familyId}:${feature}`;
 }
 
-/** Registra un uso (successo o fallimento). Non lancia: il logging non deve rompere la richiesta. */
-export async function recordAiUsage(
+/** Esito di una prenotazione di slot quota. */
+export type ReserveResult =
+  | { status: "ok"; usageId: string; used: number }
+  | { status: "limited"; used: number; max: number }
+  | { status: "unavailable" };
+
+/**
+ * Astrazione dello storage uso AI. In produzione è il DB; nei test si inietta
+ * un'implementazione in memoria via __setAiUsageStoreForTest.
+ */
+export interface AiUsageStore {
+  reserve(
+    userId: string,
+    familyId: string,
+    feature: AiFeature,
+    max: number,
+  ): Promise<ReserveResult>;
+  finalize(usageId: string, success: boolean): Promise<void>;
+}
+
+/**
+ * Store DB-backed. La prenotazione (conteggio + insert "started") avviene dentro
+ * una TRANSAZIONE protetta da un advisory lock Postgres per (famiglia, feature):
+ * questo serializza i tentativi concorrenti della stessa famiglia/feature ed
+ * elimina la race condition "due richieste passano il check prima di registrare".
+ */
+const dbStore: AiUsageStore = {
+  async reserve(userId, familyId, feature, max) {
+    try {
+      return await db.transaction(async (tx) => {
+        // Serializza i concorrenti sulla stessa (famiglia, feature) finché la
+        // transazione non termina (commit/rollback rilascia il lock).
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey(familyId, feature)}))`);
+
+        const [row] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(aiUsage)
+          .where(
+            and(
+              eq(aiUsage.familyId, familyId),
+              eq(aiUsage.feature, feature),
+              gte(aiUsage.createdAt, startOfToday()),
+            ),
+          );
+        const used = row?.count ?? 0;
+        if (used >= max) {
+          return { status: "limited", used, max } as const;
+        }
+        const [inserted] = await tx
+          .insert(aiUsage)
+          .values({ userId, familyId, feature, status: "started" })
+          .returning({ id: aiUsage.id });
+        return { status: "ok", usageId: inserted!.id, used: used + 1 } as const;
+      });
+    } catch (err) {
+      logger.error("reserveAiSlot failed", { feature, error: String(err) });
+      return { status: "unavailable" } as const;
+    }
+  },
+
+  async finalize(usageId, success) {
+    try {
+      await db
+        .update(aiUsage)
+        .set({ status: success ? "succeeded" : "failed", updatedAt: new Date() })
+        .where(eq(aiUsage.id, usageId));
+    } catch (err) {
+      logger.error("finalizeAiUsage failed", { usageId, success, error: String(err) });
+    }
+  },
+};
+
+let store: AiUsageStore = dbStore;
+
+/** Test-only: inietta uno store in memoria. */
+export function __setAiUsageStoreForTest(s: AiUsageStore): void {
+  store = s;
+}
+/** Test-only: ripristina lo store DB reale. */
+export function __resetAiUsageStoreForTest(): void {
+  store = dbStore;
+}
+
+/**
+ * Prenota uno slot quota PRIMA della chiamata OpenAI.
+ * - "ok": slot prenotato (record "started" creato), va chiamato OpenAI.
+ * - "limited": quota giornaliera raggiunta -> 429.
+ * - "unavailable": impossibile verificare la quota (DB giù) -> fail-closed 503
+ *   per le funzioni costose, o fallback locale per shopping.
+ */
+export async function reserveAiSlot(
   userId: string,
   familyId: string,
   feature: AiFeature,
-  success: boolean,
-): Promise<void> {
-  try {
-    await db.insert(aiUsage).values({ userId, familyId, feature, success });
-  } catch (err) {
-    logger.error("Failed to record AI usage", { feature, success, error: String(err) });
-  }
+): Promise<ReserveResult> {
+  return store.reserve(userId, familyId, feature, AI_DAILY_LIMITS[feature]);
 }
 
-// Indirezione per i test: permette di iniettare un contatore quota senza DB.
-type QuotaCounter = (familyId: string, feature: AiFeature) => Promise<number>;
-let quotaCounter: QuotaCounter = countTodaySuccess;
+/** Aggiorna un record "started" a "succeeded"/"failed". Non lancia mai. */
+export async function finalizeAiUsage(usageId: string, success: boolean): Promise<void> {
+  return store.finalize(usageId, success);
+}
 
-/** Test-only: sostituisce il contatore quota. */
-export function __setQuotaCounterForTest(fn: QuotaCounter): void {
-  quotaCounter = fn;
-}
-/** Test-only: ripristina il contatore quota reale. */
-export function __resetQuotaCounterForTest(): void {
-  quotaCounter = countTodaySuccess;
-}
+/** Esito dell'esecuzione di una funzione AI con tracciamento uso. */
+export type AiUsageRun<T> =
+  | { outcome: "ok"; value: T }
+  | { outcome: "limited"; used: number; max: number }
+  | { outcome: "unavailable" };
 
 /**
- * Middleware factory: blocca la richiesta con 429 AI_RATE_LIMITED se la quota
- * giornaliera per famiglia è stata superata. Richiede req.params.familyId.
+ * Esegue `fn` (la chiamata OpenAI) tracciando l'uso:
+ * 1. prenota uno slot (record "started") in modo atomico;
+ * 2. se quota piena -> { outcome: "limited" } (OpenAI NON chiamato);
+ * 3. se quota non verificabile -> { outcome: "unavailable" } (OpenAI NON chiamato);
+ * 4. esegue `fn`; in caso di successo finalizza "succeeded" e ritorna il valore;
+ * 5. in caso di errore finalizza "failed" e RILANCIA (così l'handler mappa l'AiError).
  *
- * Comportamento in caso di errore nel controllo quota (DB irraggiungibile, ecc.):
- * - default FAIL-CLOSED: risponde 503 AI_USAGE_UNAVAILABLE per non rischiare
- *   chiamate OpenAI con costi incontrollati quando non si può verificare il limite.
- * - `failOpen: true`: lascia passare la richiesta (solo per funzioni economiche/
- *   con fallback, es. shopping-suggestions).
+ * Pensata per le funzioni che NON hanno fallback locale. Shopping usa direttamente
+ * reserveAiSlot/finalizeAiUsage perché in caso di "unavailable" deve degradare al
+ * fallback locale senza chiamare OpenAI.
  */
-export function aiRateLimit(feature: AiFeature, options: { failOpen?: boolean } = {}) {
-  const max = AI_DAILY_LIMITS[feature];
-  const failOpen = options.failOpen ?? false;
-  return async (req: Request, res: Response, next: NextFunction) => {
-    let used: number;
-    try {
-      const familyId = getParam(req, "familyId");
-      used = await quotaCounter(familyId, feature);
-    } catch (err) {
-      logger.error("AI rate limit check failed", { feature, failOpen, error: String(err) });
-      if (failOpen) return next();
-      return res.status(503).json({
-        error: {
-          code: "AI_USAGE_UNAVAILABLE",
-          message:
-            "Impossibile verificare il limite di utilizzo AI in questo momento. Riprova più tardi.",
-        },
-      });
-    }
-    if (used >= max) {
-      return res.status(429).json({
-        error: {
-          code: "AI_RATE_LIMITED",
-          message: `Hai raggiunto il limite giornaliero (${max}) per questa funzione AI. Riprova domani.`,
-        },
-      });
-    }
-    next();
-  };
+export async function withAiUsage<T>(
+  ctx: { userId: string; familyId: string; feature: AiFeature },
+  fn: () => Promise<T>,
+): Promise<AiUsageRun<T>> {
+  const reservation = await reserveAiSlot(ctx.userId, ctx.familyId, ctx.feature);
+  if (reservation.status === "limited") {
+    return { outcome: "limited", used: reservation.used, max: reservation.max };
+  }
+  if (reservation.status === "unavailable") {
+    return { outcome: "unavailable" };
+  }
+  const usageId = reservation.usageId;
+  try {
+    const value = await fn();
+    await finalizeAiUsage(usageId, true);
+    return { outcome: "ok", value };
+  } catch (err) {
+    await finalizeAiUsage(usageId, false);
+    throw err;
+  }
 }

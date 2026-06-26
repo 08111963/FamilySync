@@ -308,13 +308,22 @@ export const mealPlanItems = pgTable("meal_plan_items", {
 export type MealPlanItem = typeof mealPlanItems.$inferSelect;
 
 // AI USAGE — tracciamento uso funzioni AI per quota giornaliera per famiglia
+// Stato di un tentativo AI:
+// - "started": record creato PRIMA della chiamata OpenAI (prenotazione slot quota)
+// - "succeeded": OpenAI ha risposto correttamente
+// - "failed": OpenAI ha fallito (errore provider/timeout/JSON malformato/Zod)
+// Ai fini della quota giornaliera contano TUTTI gli stati: ogni tentativo che
+// raggiunge OpenAI consuma token, quindi consuma quota anche se fallisce.
+export const aiUsageStatusEnum = pgEnum("ai_usage_status", ["started", "succeeded", "failed"]);
+
 export const aiUsage = pgTable("ai_usage", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
   feature: varchar("feature", { length: 64 }).notNull(),
-  success: boolean("success").notNull().default(true),
+  status: aiUsageStatusEnum("status").notNull().default("started"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   index("ai_usage_family_feature_created_idx").on(table.familyId, table.feature, table.createdAt),
 ]);
