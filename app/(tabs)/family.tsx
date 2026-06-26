@@ -191,12 +191,28 @@ export default function FamilyScreen() {
           </View>
         ) : (
           <View style={styles.titleRow}>
-            <Text style={[styles.title, { color: colors.text }]}>{data.familyName}</Text>
-            {isAdmin && (
-              <Pressable onPress={() => setIsEditingName(true)}>
-                <Ionicons name="pencil" size={20} color={colors.textSecondary} />
-              </Pressable>
-            )}
+            <View style={styles.titleLeft}>
+              <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>{data.familyName}</Text>
+              {isAdmin && (
+                <Pressable onPress={() => setIsEditingName(true)}>
+                  <Ionicons name="pencil" size={20} color={colors.textSecondary} />
+                </Pressable>
+              )}
+            </View>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                logout();
+              }}
+              style={({ pressed }) => [
+                styles.headerLogoutButton,
+                { borderColor: colors.error, opacity: pressed ? 0.6 : 1 },
+              ]}
+              testID="header-logout-button"
+            >
+              <Ionicons name="log-out-outline" size={18} color={colors.error} />
+              <Text style={[styles.headerLogoutText, { color: colors.error }]}>Esci</Text>
+            </Pressable>
           </View>
         )}
       </View>
@@ -517,7 +533,27 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
+  },
+  titleLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  headerLogoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1.5,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  headerLogoutText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   title: {
     fontSize: 32,
