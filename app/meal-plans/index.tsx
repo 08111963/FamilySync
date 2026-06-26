@@ -66,6 +66,32 @@ function getNextMonday(): string {
   return d.toISOString().split("T")[0]!;
 }
 
+function isoToDisplay(iso: string): string {
+  const p = iso.split("-");
+  if (p.length === 3) return `${p[2]}/${p[1]}/${p[0]}`;
+  return "";
+}
+
+function maskDate(text: string): string {
+  const digits = text.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function displayToIso(display: string): string | null {
+  const m = display.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  const year = Number(m[3]);
+  const d = new Date(year, month - 1, day);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) {
+    return null;
+  }
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
 function formatWeekDate(dateStr: string): string {
   const parts = dateStr.split("-");
   if (parts.length === 3) {
@@ -138,6 +164,20 @@ export default function MealPlansScreen() {
 
   const [activeTab, setActiveTab] = useState<TabKey>("plans");
   const [weekStart, setWeekStart] = useState(getNextMonday);
+  const [weekStartInput, setWeekStartInput] = useState(() => isoToDisplay(getNextMonday()));
+  const [dateError, setDateError] = useState(false);
+
+  const handleWeekStartChange = (text: string) => {
+    const masked = maskDate(text);
+    setWeekStartInput(masked);
+    const iso = displayToIso(masked);
+    if (iso) {
+      setWeekStart(iso);
+      setDateError(false);
+    } else {
+      setDateError(masked.length === 10);
+    }
+  };
   const [diet, setDiet] = useState("");
   const [allergies, setAllergies] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -464,17 +504,24 @@ export default function MealPlansScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <Text style={[styles.sectionLabel, { color: colors.text }]}>Data inizio settimana</Text>
-          <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: dateError ? colors.error : colors.border }]}>
             <Ionicons name="calendar-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput
               style={[styles.textInput, { color: colors.text }]}
-              value={weekStart}
-              onChangeText={setWeekStart}
-              placeholder="YYYY-MM-DD"
+              value={weekStartInput}
+              onChangeText={handleWeekStartChange}
+              placeholder="gg/mm/aaaa"
               placeholderTextColor={colors.textSecondary}
+              keyboardType="number-pad"
+              maxLength={10}
               keyboardAppearance={isDark ? "dark" : "light"}
             />
           </View>
+          {dateError ? (
+            <Text style={[styles.dateErrorText, { color: colors.error }]}>
+              Data non valida. Usa il formato gg/mm/aaaa.
+            </Text>
+          ) : null}
 
           <Text style={[styles.sectionLabel, { color: colors.text }]}>Dieta (opzionale)</Text>
           <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -504,12 +551,12 @@ export default function MealPlansScreen() {
 
           <Pressable
             onPress={handleGenerate}
-            disabled={generating}
+            disabled={generating || dateError}
             style={({ pressed }) => [
               styles.generateButton,
               { backgroundColor: colors.primary },
               pressed && { opacity: 0.85 },
-              generating && { opacity: 0.6 },
+              (generating || dateError) && { opacity: 0.6 },
             ]}
           >
             {generating ? (
@@ -807,6 +854,11 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     marginBottom: 8,
     marginTop: 16,
+  },
+  dateErrorText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    marginTop: 6,
   },
   inputWrapper: {
     flexDirection: "row",
