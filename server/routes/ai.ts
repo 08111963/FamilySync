@@ -585,19 +585,30 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
 router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
-    const { query } = req.body || {};
+    const { query, excludeTitles } = req.body || {};
 
     if (!query || typeof query !== 'string' || query.trim().length < 2) {
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Inserisci almeno 2 caratteri per la ricerca" } });
     }
 
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
+    const extraTitles = Array.isArray(excludeTitles) ? excludeTitles.filter((t: unknown): t is string => typeof t === 'string') : [];
 
     const result = await searchRecipesByQuery(query.trim(), {
       familySize: members.length || 1,
+      excludeTitles: extraTitles,
     });
 
-    res.json({ recipes: result.recipes, query: query.trim() });
+    const excludeSet = new Set(extraTitles.map(t => t.toLowerCase().trim()));
+    const seenTitles = new Set<string>();
+    const dedupedRecipes = result.recipes.filter(r => {
+      const norm = r.title.toLowerCase().trim();
+      if (excludeSet.has(norm) || seenTitles.has(norm)) return false;
+      seenTitles.add(norm);
+      return true;
+    });
+
+    res.json({ recipes: dedupedRecipes, query: query.trim() });
   } catch (error) {
     logger.error('Recipe search error', { error: String(error) });
     res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella ricerca ricette" } });

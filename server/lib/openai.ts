@@ -291,8 +291,13 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
 
 export async function searchRecipesByQuery(query: string, context: {
   familySize: number;
+  excludeTitles?: string[];
 }): Promise<{ recipes: RecipeSuggestion[] }> {
   const randomSeed = Math.floor(Math.random() * 100000);
+  const excludeList = (context.excludeTitles || []).slice(-30);
+  const excludeLine = excludeList.length > 0
+    ? ` Evita di riproporre queste ricette già mostrate: ${excludeList.join(', ')}.`
+    : '';
   try {
     const startTime = Date.now();
     const response = await openai.chat.completions.create({
@@ -301,7 +306,7 @@ export async function searchRecipesByQuery(query: string, context: {
         {
           role: 'system',
           content: `Genera ricette italiane basate sulla richiesta dell'utente. JSON:{"recipes":[{"title":"nome","description":"breve","servings":4,"prepTimeMinutes":10,"cookTimeMinutes":20,"steps":["..."],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"x","quantity":"200","unit":"g","category":"y"}]}]}
-Quantity stringa. Genera esattamente 3 ricette pertinenti alla ricerca.`,
+Quantity stringa. Genera esattamente 3 ricette pertinenti alla ricerca. Ogni ricetta DEVE contenere l'ingrediente cercato.${excludeLine}`,
         },
         {
           role: 'user',

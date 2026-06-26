@@ -120,7 +120,7 @@ export default function RecipesScreen() {
       }
       router.push({
         pathname: "/recipes/preview" as any,
-        params: { recipesJson: JSON.stringify(list) },
+        params: { recipesJson: JSON.stringify(list), query: useQuery ? q : "" },
       });
     } catch (error: any) {
       if (error?.status === 403) {
@@ -151,7 +151,7 @@ export default function RecipesScreen() {
       }
       router.push({
         pathname: "/recipes/preview" as any,
-        params: { recipesJson: JSON.stringify(list) },
+        params: { recipesJson: JSON.stringify(list), query: searchQuery.trim() },
       });
     } catch (error: any) {
       if (error?.status === 403) {

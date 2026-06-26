@@ -305,11 +305,15 @@ function RecipeDetailModal({
   );
 }
 
-async function fetchAiRecipes(familyId: string, excludeTitles: string[]): Promise<AiRecipe[]> {
-  const body: any = { count: 8 };
+async function fetchAiRecipes(familyId: string, excludeTitles: string[], query?: string): Promise<AiRecipe[]> {
+  const useQuery = !!query && query.trim().length >= 2;
+  const endpoint = useQuery
+    ? `/api/ai/${familyId}/recipe-search`
+    : `/api/ai/${familyId}/recipe-suggestions`;
+  const body: any = useQuery ? { query: query!.trim() } : { count: 8 };
   if (excludeTitles.length > 0) body.excludeTitles = excludeTitles;
   const data = await apiFetch<{ recipes?: AiRecipe[] }>(
-    `/api/ai/${familyId}/recipe-suggestions`,
+    endpoint,
     { method: "POST", body }
   );
   return data.recipes || [];
@@ -320,7 +324,8 @@ export default function RecipePreviewScreen() {
   const { colors } = useTheme();
   const { currentFamily } = useFamily();
   const qc = useQueryClient();
-  const params = useLocalSearchParams<{ recipesJson: string }>();
+  const params = useLocalSearchParams<{ recipesJson: string; query?: string }>();
+  const searchQuery = (params.query || "").trim();
 
   const initialRecipes = useMemo<AiRecipe[]>(() => {
     try {
@@ -371,9 +376,13 @@ export default function RecipePreviewScreen() {
     setSaveError(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const newRecipes = await fetchAiRecipes(currentFamily.id, seenTitles);
+      const newRecipes = await fetchAiRecipes(currentFamily.id, seenTitles, searchQuery);
       if (newRecipes.length === 0) {
-        setSaveError("Nessuna ricetta generata. Riprova.");
+        setSaveError(
+          searchQuery
+            ? `Nessuna altra ricetta trovata per "${searchQuery}".`
+            : "Nessuna ricetta generata. Riprova."
+        );
         return;
       }
       setSeenTitles(prev => [...prev, ...newRecipes.map(r => r.title)]);
@@ -460,8 +469,10 @@ export default function RecipePreviewScreen() {
       </View>
 
       <View style={[styles.summaryBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.summaryText, { color: colors.textSecondary }]}>
-          {allRecipes.length} ricette generate
+        <Text style={[styles.summaryText, { color: colors.textSecondary }]} numberOfLines={1}>
+          {searchQuery
+            ? `${allRecipes.length} ricette con "${searchQuery}"`
+            : `${allRecipes.length} ricette generate`}
         </Text>
         <View style={[styles.selectedBadge, { backgroundColor: colors.primary + "15" }]}>
           <Text style={[styles.selectedText, { color: colors.primary }]}>
