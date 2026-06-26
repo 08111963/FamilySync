@@ -45,7 +45,8 @@ export default function PremiumScreen() {
 
   const products = productsQuery.data?.data || [];
   const subscription = subscriptionQuery.data;
-  const isSubscribed = subscription?.status === "premium";
+  const familyPremium = ["premium", "active", "trialing"].includes(currentFamily?.subscriptionStatus ?? "");
+  const isSubscribed = subscription?.status === "premium" || familyPremium;
 
   const getPrice = (type: "monthly" | "yearly") => {
     for (const product of products) {
@@ -156,7 +157,7 @@ export default function PremiumScreen() {
           ))}
         </View>
 
-        {!paymentsEnabled && (
+        {!paymentsEnabled && !isSubscribed && (
           <View style={styles.comingSoonSection}>
             {staticPlans.length > 0 && (
               <View style={[styles.previewPlans, { backgroundColor: colors.surface, borderColor: colors.border }]}>
