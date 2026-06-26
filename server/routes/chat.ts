@@ -87,12 +87,23 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+const MIME_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "application/pdf": ".pdf",
+  "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "text/plain": ".txt",
+};
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, uploadsDir);
   },
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
+    const ext = MIME_EXTENSIONS[file.mimetype] ?? "";
     const name = crypto.randomBytes(16).toString("hex");
     cb(null, `${name}${ext}`);
   },
@@ -102,17 +113,7 @@ const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowedMimes = [
-      "image/jpeg",
-      "image/png",
-      "image/gif",
-      "image/webp",
-      "application/pdf",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "text/plain",
-    ];
-    if (allowedMimes.includes(file.mimetype)) {
+    if (Object.prototype.hasOwnProperty.call(MIME_EXTENSIONS, file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error("Tipo di file non supportato"));
@@ -331,7 +332,14 @@ router.delete("/:familyId/messages/:messageId", async (req: Request, res: Respon
 
     if (message.fileUrl) {
       const filePath = path.resolve(message.fileUrl.replace(/^\//, ""));
-      fs.unlink(filePath, () => {});
+      if (filePath.startsWith(uploadsDir + path.sep)) {
+        fs.unlink(filePath, () => {});
+      } else {
+        logger.warn("Chat delete: file path fuori da uploadsDir, skip unlink", {
+          messageId,
+          filePath,
+        });
+      }
     }
 
     await db.delete(chatMessages).where(eq(chatMessages.id, messageId));
