@@ -20,7 +20,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
-import { apiRequest, apiFetch, apiStream } from "@/lib/query-client";
+import { apiRequest, apiStream } from "@/lib/query-client";
 
 interface MealPlanIngredient {
   name: string;
@@ -52,10 +52,6 @@ interface AiMealPlanResponse {
   title: string;
   weekStartDate: string;
   items: MealPlanItem[];
-}
-
-interface AiMultiPlanResponse {
-  plans: AiMealPlanResponse[];
 }
 
 type TabKey = "plans" | "generate";
@@ -394,59 +390,6 @@ export default function MealPlansScreen() {
   const [generatingAlt, setGeneratingAlt] = useState(false);
   const [aiDisabledError, setAiDisabledError] = useState(false);
 
-  const fetchMealPlans = async (variants: 1 | 2) => {
-    if (!currentFamily) return;
-    const isAlt = variants === 2;
-    if (isAlt) {
-      setGeneratingAlt(true);
-    } else {
-      setGenerating(true);
-      setAiPlans([]);
-    }
-    setSelectedPlanIndex(0);
-    setAiDisabledError(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    try {
-      const preferences: Record<string, string> = {};
-      if (diet.trim()) preferences.diet = diet.trim();
-      if (allergies.trim()) preferences.allergies = allergies.trim();
-      const body: any = { weekStartDate: weekStart, variants };
-      if (Object.keys(preferences).length > 0) body.preferences = preferences;
-      const result = await apiFetch<AiMultiPlanResponse>(
-        `/api/ai/${currentFamily.id}/weekly-meal-plan`,
-        { method: "POST", body }
-      );
-      if (result.plans && result.plans.length > 0) {
-        setAiPlans(result.plans);
-      }
-    } catch (err: any) {
-      let isAiDisabled = false;
-      try {
-        const msg = err?.message || '';
-        if (msg.includes('403') || msg.includes('AI_DISABLED')) {
-          const jsonPart = msg.split(': ').slice(1).join(': ');
-          if (jsonPart) {
-            const parsed = JSON.parse(jsonPart);
-            if (parsed?.error?.code === 'AI_DISABLED') isAiDisabled = true;
-          }
-          if (!isAiDisabled && msg.includes('403')) isAiDisabled = true;
-        }
-      } catch {}
-      if (isAiDisabled) {
-        setAiDisabledError(true);
-      } else {
-        if (Platform.OS === "web") {
-          window.alert("Impossibile generare il piano pasti.");
-        } else {
-          Alert.alert("Errore", "Impossibile generare il piano pasti.");
-        }
-      }
-    } finally {
-      setGenerating(false);
-      setGeneratingAlt(false);
-    }
-  };
-
   const fetchMealPlanStream = async () => {
     if (!currentFamily) return;
     setGenerating(true);
@@ -520,8 +463,83 @@ export default function MealPlansScreen() {
     }
   };
 
+  const fetchAlternativeStream = async () => {
+    if (!currentFamily) return;
+    setGeneratingAlt(true);
+    setAiDisabledError(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    const preferences: Record<string, string> = {};
+    if (diet.trim()) preferences.diet = diet.trim();
+    if (allergies.trim()) preferences.allergies = allergies.trim();
+    const body: any = { weekStartDate: weekStart, planVariant: 2 };
+    if (Object.keys(preferences).length > 0) body.preferences = preferences;
+
+    let started = false;
+    let streamErr = false;
+    try {
+      await apiStream(
+        `/api/ai/${currentFamily.id}/weekly-meal-plan/stream`,
+        body,
+        (obj) => {
+          if (obj?.type === "error") {
+            streamErr = true;
+          } else if (obj?.type === "items" && Array.isArray(obj.items)) {
+            if (!started) {
+              started = true;
+              setAiPlans((prev) => {
+                const planA = prev[0]
+                  ? { ...prev[0], title: "Piano A - Classico" }
+                  : null;
+                const planB = {
+                  title: "Piano B - Creativo",
+                  weekStartDate: weekStart,
+                  items: obj.items as MealPlanItem[],
+                };
+                return planA ? [planA, planB] : [planB];
+              });
+              setSelectedPlanIndex(1);
+            } else {
+              setAiPlans((prev) => {
+                if (prev.length < 2) return prev;
+                const planB = prev[1]!;
+                const updated = [...prev];
+                updated[1] = { ...planB, items: [...planB.items, ...obj.items] };
+                return updated;
+              });
+            }
+          }
+        }
+      );
+      if (streamErr) {
+        if (Platform.OS === "web") {
+          window.alert("Impossibile generare l'alternativa.");
+        } else {
+          Alert.alert("Errore", "Impossibile generare l'alternativa.");
+        }
+        setAiPlans((prev) => prev.slice(0, 1));
+        setSelectedPlanIndex(0);
+      }
+    } catch (err: any) {
+      const code = err?.body?.error?.code;
+      if (err?.status === 403 || code === "AI_DISABLED") {
+        setAiDisabledError(true);
+      } else {
+        if (Platform.OS === "web") {
+          window.alert("Impossibile generare l'alternativa.");
+        } else {
+          Alert.alert("Errore", "Impossibile generare l'alternativa.");
+        }
+      }
+      setAiPlans((prev) => prev.slice(0, 1));
+      setSelectedPlanIndex(0);
+    } finally {
+      setGeneratingAlt(false);
+    }
+  };
+
   const handleGenerate = () => fetchMealPlanStream();
-  const handleGenerateAlternative = () => fetchMealPlans(2);
+  const handleGenerateAlternative = () => fetchAlternativeStream();
 
   const handleSavePlan = async () => {
     const chosenPlan = aiPlans[selectedPlanIndex];

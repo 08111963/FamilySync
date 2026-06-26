@@ -524,7 +524,8 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
 router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const startTime = Date.now();
   const familyId = getParam(req, 'familyId');
-  const { weekStartDate, preferences } = req.body || {};
+  const { weekStartDate, preferences, planVariant: rawPlanVariant } = req.body || {};
+  const planVariant = rawPlanVariant === 2 ? 2 : 1;
 
   if (!weekStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate)) {
     return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "weekStartDate è obbligatorio (YYYY-MM-DD)" } });
@@ -545,7 +546,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       familySize: members.length || 1,
       weekStartDate,
       preferences,
-      planVariant: 1,
+      planVariant,
       onProgress: (items) => {
         if (clientClosed) return;
         res.write(JSON.stringify({ type: 'items', items }) + '\n');
