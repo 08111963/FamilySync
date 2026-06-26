@@ -10,6 +10,7 @@ import {
   TextInput,
   Alert,
   ScrollView,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -72,24 +73,111 @@ function isoToDisplay(iso: string): string {
   return "";
 }
 
-function maskDate(text: string): string {
-  const digits = text.replace(/\D/g, "").slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+const MONTH_NAMES = [
+  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
+];
+const WEEKDAY_LABELS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
+
+function buildMonthGrid(year: number, month: number): (number | null)[] {
+  const firstDay = new Date(year, month, 1);
+  const jsDay = firstDay.getDay();
+  const offset = jsDay === 0 ? 6 : jsDay - 1;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < offset; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
 }
 
-function displayToIso(display: string): string | null {
-  const m = display.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const day = Number(m[1]);
-  const month = Number(m[2]);
-  const year = Number(m[3]);
-  const d = new Date(year, month - 1, day);
-  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) {
-    return null;
-  }
-  return `${m[3]}-${m[2]}-${m[1]}`;
+function toIso(year: number, month: number, day: number): string {
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function CalendarModal({ value, onSelect, onClose, colors }: {
+  value: string;
+  onSelect: (iso: string) => void;
+  onClose: () => void;
+  colors: any;
+}) {
+  const insets = useSafeAreaInsets();
+  const initial = value ? new Date(`${value}T00:00:00`) : new Date();
+  const [viewYear, setViewYear] = useState(initial.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initial.getMonth());
+
+  const cells = buildMonthGrid(viewYear, viewMonth);
+  const now = new Date();
+  const todayIso = toIso(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const goPrev = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
+    else setViewMonth(m => m - 1);
+  };
+  const goNext = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
+    else setViewMonth(m => m + 1);
+  };
+  const pick = (day: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onSelect(toIso(viewYear, viewMonth, day));
+    onClose();
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.calOverlay} onPress={onClose}>
+        <Pressable
+          style={[styles.calCard, { backgroundColor: colors.background, marginBottom: insets.bottom + 12 }]}
+          onPress={() => {}}
+        >
+          <View style={styles.calHeader}>
+            <Pressable onPress={goPrev} hitSlop={10} style={styles.calNavBtn}>
+              <Ionicons name="chevron-back" size={22} color={colors.text} />
+            </Pressable>
+            <Text style={[styles.calTitle, { color: colors.text }]}>
+              {MONTH_NAMES[viewMonth]} {viewYear}
+            </Text>
+            <Pressable onPress={goNext} hitSlop={10} style={styles.calNavBtn}>
+              <Ionicons name="chevron-forward" size={22} color={colors.text} />
+            </Pressable>
+          </View>
+
+          <View style={styles.calWeekRow}>
+            {WEEKDAY_LABELS.map(w => (
+              <Text key={w} style={[styles.calWeekLabel, { color: colors.textSecondary }]}>{w}</Text>
+            ))}
+          </View>
+
+          <View style={styles.calGrid}>
+            {cells.map((day, i) => {
+              if (day === null) return <View key={`e-${i}`} style={styles.calCell} />;
+              const iso = toIso(viewYear, viewMonth, day);
+              const isSelected = iso === value;
+              const isToday = iso === todayIso;
+              return (
+                <Pressable key={iso} style={styles.calCell} onPress={() => pick(day)}>
+                  <View style={[
+                    styles.calDay,
+                    isSelected && { backgroundColor: colors.primary },
+                    !isSelected && isToday && { borderWidth: 1.5, borderColor: colors.primary },
+                  ]}>
+                    <Text style={[styles.calDayText, { color: isSelected ? "#FFFFFF" : colors.text }]}>
+                      {day}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Pressable onPress={onClose} style={[styles.calCloseBtn, { borderColor: colors.border }]}>
+            <Text style={[styles.calCloseText, { color: colors.textSecondary }]}>Chiudi</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
 }
 
 function formatWeekDate(dateStr: string): string {
@@ -165,18 +253,11 @@ export default function MealPlansScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>("plans");
   const [weekStart, setWeekStart] = useState(getNextMonday);
   const [weekStartInput, setWeekStartInput] = useState(() => isoToDisplay(getNextMonday()));
-  const [dateError, setDateError] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
 
-  const handleWeekStartChange = (text: string) => {
-    const masked = maskDate(text);
-    setWeekStartInput(masked);
-    const iso = displayToIso(masked);
-    if (iso) {
-      setWeekStart(iso);
-      setDateError(false);
-    } else {
-      setDateError(masked.length === 10);
-    }
+  const handleCalendarSelect = (iso: string) => {
+    setWeekStart(iso);
+    setWeekStartInput(isoToDisplay(iso));
   };
   const [diet, setDiet] = useState("");
   const [allergies, setAllergies] = useState("");
@@ -504,24 +585,19 @@ export default function MealPlansScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <Text style={[styles.sectionLabel, { color: colors.text }]}>Data inizio settimana</Text>
-          <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: dateError ? colors.error : colors.border }]}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowCalendar(true);
+            }}
+            style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
             <Ionicons name="calendar-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.textInput, { color: colors.text }]}
-              value={weekStartInput}
-              onChangeText={handleWeekStartChange}
-              placeholder="gg/mm/aaaa"
-              placeholderTextColor={colors.textSecondary}
-              keyboardType="number-pad"
-              maxLength={10}
-              keyboardAppearance={isDark ? "dark" : "light"}
-            />
-          </View>
-          {dateError ? (
-            <Text style={[styles.dateErrorText, { color: colors.error }]}>
-              Data non valida. Usa il formato gg/mm/aaaa.
+            <Text style={[styles.textInput, styles.dateValueText, { color: weekStartInput ? colors.text : colors.textSecondary }]}>
+              {weekStartInput || "Seleziona data"}
             </Text>
-          ) : null}
+            <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
+          </Pressable>
 
           <Text style={[styles.sectionLabel, { color: colors.text }]}>Dieta (opzionale)</Text>
           <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -551,12 +627,12 @@ export default function MealPlansScreen() {
 
           <Pressable
             onPress={handleGenerate}
-            disabled={generating || dateError}
+            disabled={generating}
             style={({ pressed }) => [
               styles.generateButton,
               { backgroundColor: colors.primary },
               pressed && { opacity: 0.85 },
-              (generating || dateError) && { opacity: 0.6 },
+              generating && { opacity: 0.6 },
             ]}
           >
             {generating ? (
@@ -727,6 +803,15 @@ export default function MealPlansScreen() {
           )}
         </ScrollView>
       )}
+
+      {showCalendar && (
+        <CalendarModal
+          value={weekStart}
+          onSelect={handleCalendarSelect}
+          onClose={() => setShowCalendar(false)}
+          colors={colors}
+        />
+      )}
     </View>
   );
 }
@@ -855,10 +940,78 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 16,
   },
-  dateErrorText: {
-    fontSize: 13,
+  dateValueText: {
+    height: undefined,
+    lineHeight: 20,
+  },
+  calOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  calCard: {
+    borderRadius: 20,
+    padding: 16,
+  },
+  calHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  calNavBtn: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  calTitle: {
+    fontSize: 17,
+    fontFamily: "Inter_600SemiBold",
+  },
+  calWeekRow: {
+    flexDirection: "row",
+    marginBottom: 6,
+  },
+  calWeekLabel: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 12,
     fontFamily: "Inter_500Medium",
-    marginTop: 6,
+  },
+  calGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  calCell: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 2,
+  },
+  calDay: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  calDayText: {
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+  },
+  calCloseBtn: {
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  calCloseText: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
   },
   inputWrapper: {
     flexDirection: "row",
