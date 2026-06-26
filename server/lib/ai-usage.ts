@@ -2,6 +2,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { aiUsage } from "../../shared/schema";
 import { logger } from "./logger";
+import { assertAiConfigured } from "./ai-errors";
 
 export type AiFeature =
   | "shopping-suggestions"
@@ -126,12 +127,20 @@ export function __resetAiUsageStoreForTest(): void {
  * - "limited": quota giornaliera raggiunta -> 429.
  * - "unavailable": impossibile verificare la quota (DB giù) -> fail-closed 503
  *   per le funzioni costose, o fallback locale per shopping.
+ *
+ * Se la chiave OpenAI manca del tutto, lancia AiError("AI_NOT_CONFIGURED")
+ * PRIMA di toccare lo store: così non viene creato alcun record ai_usage quando
+ * OpenAI non può nemmeno partire (nessun consumo di quota). NB: una chiave
+ * presente ma rifiutata dal provider (401/403) supera questo controllo, quindi
+ * il record "started" viene creato e poi finalizzato "failed" perché OpenAI è
+ * stato effettivamente chiamato.
  */
 export async function reserveAiSlot(
   userId: string,
   familyId: string,
   feature: AiFeature,
 ): Promise<ReserveResult> {
+  assertAiConfigured();
   return store.reserve(userId, familyId, feature, AI_DAILY_LIMITS[feature]);
 }
 

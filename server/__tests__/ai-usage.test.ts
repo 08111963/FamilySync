@@ -1,4 +1,4 @@
-import { test, describe, afterEach } from "node:test";
+import { test, describe, afterEach, before, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   AI_DAILY_LIMITS,
@@ -11,7 +11,21 @@ import {
   type AiUsageStatus,
   type ReserveResult,
 } from "../lib/ai-usage";
-import { AiError } from "../lib/ai-errors";
+import { AiError, mapOpenAiError } from "../lib/ai-errors";
+
+const AI_KEY_ENV = "AI_INTEGRATIONS_OPENAI_API_KEY";
+const ORIGINAL_AI_KEY = process.env[AI_KEY_ENV];
+
+// reserveAiSlot ora richiede la chiave OpenAI presente (assertAiConfigured).
+// La impostiamo per la maggior parte dei test; i test "chiave mancante" la
+// rimuovono e ripristinano localmente.
+before(() => {
+  if (!process.env[AI_KEY_ENV]) process.env[AI_KEY_ENV] = "test-openai-key";
+});
+after(() => {
+  if (ORIGINAL_AI_KEY === undefined) delete process.env[AI_KEY_ENV];
+  else process.env[AI_KEY_ENV] = ORIGINAL_AI_KEY;
+});
 
 afterEach(() => {
   __resetAiUsageStoreForTest();
@@ -126,6 +140,53 @@ describe("withAiUsage", () => {
     );
     assert.equal(run.outcome, "ok");
     assert.equal(rows[0]!.status, "succeeded");
+  });
+
+  test("chiave OpenAI mancante -> AI_NOT_CONFIGURED, store.reserve mai chiamato (nessun record)", async () => {
+    const { store, rows } = makeMemoryStore();
+    let reserveCalls = 0;
+    let openAiCalled = false;
+    const spyStore: AiUsageStore = {
+      reserve: (...args) => {
+        reserveCalls++;
+        return store.reserve(...args);
+      },
+      finalize: (...args) => store.finalize(...args),
+    };
+    __setAiUsageStoreForTest(spyStore);
+
+    const saved = process.env[AI_KEY_ENV];
+    delete process.env[AI_KEY_ENV];
+    try {
+      await assert.rejects(
+        withAiUsage({ userId: "u1", familyId: "fam-1", feature: "insights" }, async () => {
+          openAiCalled = true;
+          return {};
+        }),
+        (err: unknown) => err instanceof AiError && err.code === "AI_NOT_CONFIGURED",
+      );
+      assert.equal(reserveCalls, 0, "lo store non deve essere toccato senza chiave");
+      assert.equal(rows.length, 0, "nessun record ai_usage creato senza chiave");
+      assert.equal(openAiCalled, false, "OpenAI non deve essere chiamato senza chiave");
+    } finally {
+      if (saved === undefined) delete process.env[AI_KEY_ENV];
+      else process.env[AI_KEY_ENV] = saved;
+    }
+  });
+
+  test("chiave presente ma provider 401/403 -> record creato e finalizzato 'failed'", async () => {
+    const { store, rows } = makeMemoryStore();
+    __setAiUsageStoreForTest(store);
+    // mapOpenAiError({status:401}) -> AiError. Con chiave PRESENTE la reserve
+    // avviene (OpenAI è stato realmente chiamato), quindi il record va a 'failed'.
+    await assert.rejects(
+      withAiUsage({ userId: "u1", familyId: "fam-1", feature: "insights" }, async () => {
+        throw mapOpenAiError({ status: 401 });
+      }),
+      (err: unknown) => err instanceof AiError,
+    );
+    assert.equal(rows.length, 1, "il provider è stato chiamato: il tentativo è registrato");
+    assert.equal(rows[0]!.status, "failed");
   });
 
   test("OpenAI risposta malformata (AI_BAD_RESPONSE) -> usage 'failed' e rilancia", async () => {

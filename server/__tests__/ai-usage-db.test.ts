@@ -17,6 +17,10 @@ describe("ai_usage concorrenza reale (DB)", { skip: hasDb ? false : "DATABASE_UR
   let familyId: string;
 
   before(async () => {
+    // reserveAiSlot richiede la chiave OpenAI presente (assertAiConfigured).
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "test-openai-key";
+    }
     __resetAiUsageStoreForTest();
     const [u] = await db
       .insert(users)
