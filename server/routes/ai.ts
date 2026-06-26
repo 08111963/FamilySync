@@ -492,10 +492,8 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
     let resultPlans: any[];
 
     if (variants === 2) {
-      const [plan1, plan2] = await Promise.all([
-        generateWeeklyMealPlan({ ...context, planVariant: 1 }),
-        generateWeeklyMealPlan({ ...context, planVariant: 2 }),
-      ]);
+      const plan1 = await generateWeeklyMealPlan({ ...context, planVariant: 1 });
+      const plan2 = await generateWeeklyMealPlan({ ...context, planVariant: 2 });
       plan1.title = "Piano A - Classico";
       plan2.title = "Piano B - Creativo";
       resultPlans = [{ ...plan1, weekStartDate }, { ...plan2, weekStartDate }];

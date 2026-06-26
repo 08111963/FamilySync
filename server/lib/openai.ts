@@ -5,6 +5,8 @@ import { normalizeItemName } from './normalize';
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  timeout: 60_000,
+  maxRetries: 1,
 });
 
 export type SuggestionCategory = 'food' | 'household_cleaning' | 'personal_care' | 'other';
@@ -234,7 +236,7 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
       ],
       response_format: { type: 'json_object' },
       temperature: 1.2,
-      max_tokens: 5000,
+      max_tokens: 2500,
     });
 
     const content = response.choices[0].message.content || '{"recipes": []}';
@@ -252,9 +254,24 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
 
   try {
     const startTime = Date.now();
-    const allRecipes = await fetchRecipeBatch(selectedCats, randomSeed);
+    const BATCH = 3;
+    const batches: string[][] = [];
+    for (let i = 0; i < selectedCats.length; i += BATCH) {
+      batches.push(selectedCats.slice(i, i + BATCH));
+    }
+    const settled = await Promise.allSettled(
+      batches.map((cats, idx) => fetchRecipeBatch(cats, randomSeed + idx * 7919))
+    );
+    const allRecipes: RecipeSuggestion[] = [];
+    for (const s of settled) {
+      if (s.status === 'fulfilled') {
+        allRecipes.push(...s.value);
+      } else {
+        console.error('Recipe batch failed:', String(s.reason));
+      }
+    }
     const elapsed = Date.now() - startTime;
-    console.log(`Recipe generation: ${allRecipes.length} recipes in ${elapsed}ms (single call)`);
+    console.log(`Recipe generation: ${allRecipes.length} recipes in ${elapsed}ms (${batches.length} parallel batches)`);
 
     const seenTitles = new Set<string>();
     const unique = allRecipes.filter(r => {
@@ -284,7 +301,7 @@ export async function searchRecipesByQuery(query: string, context: {
         {
           role: 'system',
           content: `Genera ricette italiane basate sulla richiesta dell'utente. JSON:{"recipes":[{"title":"nome","description":"breve","servings":4,"prepTimeMinutes":10,"cookTimeMinutes":20,"steps":["..."],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"x","quantity":"200","unit":"g","category":"y"}]}]}
-Quantity stringa. Genera 3-5 ricette pertinenti alla ricerca.`,
+Quantity stringa. Genera esattamente 3 ricette pertinenti alla ricerca.`,
         },
         {
           role: 'user',
@@ -293,7 +310,7 @@ Quantity stringa. Genera 3-5 ricette pertinenti alla ricerca.`,
       ],
       response_format: { type: 'json_object' },
       temperature: 0.9,
-      max_tokens: 4000,
+      max_tokens: 2500,
     });
 
     const content = response.choices[0].message.content || '{"recipes": []}';
@@ -337,16 +354,31 @@ const mealPlanIngredientSchema = z.object({
   unit: z.coerce.string().optional(),
 }).catchall(z.unknown());
 
-const mealPlanSchema = z.object({
-  title: z.string(),
-  items: z.array(z.object({
-    date: z.string(),
-    mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
-    title: z.string(),
-    description: z.string().optional(),
-    ingredients: z.array(mealPlanIngredientSchema).optional().catch([]),
-  })),
-}).catch({ title: '', items: [] });
+const mealItemSchema = z.object({
+  date: z.coerce.string(),
+  mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+  title: z.coerce.string(),
+  description: z.coerce.string().optional(),
+  ingredients: z.array(mealPlanIngredientSchema).optional().catch([]),
+}).catchall(z.unknown());
+
+function parseMealItems(raw: unknown): MealPlanSuggestion['items'] {
+  if (!raw || typeof raw !== 'object') return [];
+  const sanitized = sanitizeKeys(raw) as Record<string, unknown>;
+  const arr = Array.isArray(sanitized.items) ? sanitized.items : [];
+  const results: MealPlanSuggestion['items'] = [];
+  for (const item of arr) {
+    try {
+      const parsed = mealItemSchema.parse(item);
+      if (parsed.title && parsed.date) {
+        results.push(parsed as MealPlanSuggestion['items'][number]);
+      }
+    } catch {
+      // skip malformed item
+    }
+  }
+  return results;
+}
 
 export async function generateWeeklyMealPlan(context: {
   familySize: number;
@@ -366,67 +398,82 @@ export async function generateWeeklyMealPlan(context: {
     ? 'Crea un piano equilibrato e classico con piatti tradizionali italiani.'
     : 'Crea un piano creativo e diverso con piatti più originali e meno convenzionali.';
 
-  const aiStartTime = Date.now();
-  try {
-    const prefText = context.preferences
-      ? `\nPreferenze: ${context.preferences.diet ? `Dieta: ${context.preferences.diet}.` : ''} ${context.preferences.allergies ? `Allergie: ${context.preferences.allergies}.` : ''} ${context.preferences.maxTimeMinutes ? `Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}`
-      : '';
+  const prefText = context.preferences
+    ? `${context.preferences.diet ? ` Dieta: ${context.preferences.diet}.` : ''}${context.preferences.allergies ? ` Allergie: ${context.preferences.allergies}.` : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}`
+    : '';
 
-    const dates: string[] = [];
-    const start = new Date(context.weekStartDate);
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(start);
-      d.setDate(d.getDate() + i);
-      dates.push(d.toISOString().split('T')[0]!);
-    }
+  const dates: string[] = [];
+  const start = new Date(context.weekStartDate);
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    dates.push(d.toISOString().split('T')[0]!);
+  }
+
+  const CHUNK = 1;
+  const chunks: string[][] = [];
+  for (let i = 0; i < dates.length; i += CHUNK) {
+    chunks.push(dates.slice(i, i + CHUNK));
+  }
+
+  const mealOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
+
+  async function fetchChunk(chunkDates: string[]): Promise<MealPlanSuggestion['items']> {
+    const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
+REGOLE:
+- Per ogni giorno genera esattamente ${mealsPerDay} pasti: ${mealTypes.join(', ')}.
+- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${mealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array).
+- Ogni ingrediente ha: name (italiano), quantity (stringa, es. "200"), unit (es. "g", "ml", "pezzi").
+- Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto.
+- ${variantHint}
+- Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}]}]}`;
+    const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [{
-        role: 'system',
-        content: `Sei un nutrizionista italiano esperto di piani alimentari familiari.
-
-REGOLE:
-- Genera un piano pasti per 7 giorni (da ${dates[0]} a ${dates[6]}).
-- Per ogni giorno genera esattamente ${mealsPerDay} pasti: ${mealTypes.join(', ')}.
-- Totale items: ${7 * mealsPerDay}.
-- Ogni item ha: date (YYYY-MM-DD), mealType (${mealTypes.join('|')}), title (nome piatto in italiano), description (opzionale, breve), ingredients (array di ingredienti).
-- Ogni ingrediente ha: name (nome in italiano), quantity (stringa, es. "200"), unit (stringa, es. "g", "ml", "pezzi").
-- Includi TUTTI gli ingredienti necessari per ogni piatto.
-- Bilancia la varietà: non ripetere lo stesso piatto.
-- ${variantHint}
-- Rispondi con JSON: {"title": "Piano Settimanale [data]", "items": [{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}]}]}`,
-      }, {
-        role: 'user',
-        content: `Famiglia di ${context.familySize} persone. Settimana dal ${dates[0]} al ${dates[6]}.${prefText}\n\nGenera il piano pasti settimanale.`,
-      }],
+      messages: [
+        { role: 'system', content: sysPrompt },
+        { role: 'user', content: userMsg },
+      ],
       response_format: { type: 'json_object' },
       temperature: 0.85,
-      max_tokens: 8000,
+      max_tokens: 3000,
     });
 
-    const aiDurationMs = Date.now() - aiStartTime;
-    const content = response.choices[0].message.content || '{"title":"","items":[]}';
-
-    let parsed: any;
+    const content = response.choices[0].message.content || '{"items":[]}';
+    let parsed: unknown;
     try {
       parsed = JSON.parse(content);
-    } catch (parseErr) {
-      console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_PARSE_FAIL", variant, reason: "json_parse", aiDurationMs, rawLength: content.length }));
-      return { title: '', items: [] };
+    } catch {
+      return [];
     }
-
-    const result = mealPlanSchema.parse(parsed);
-    if (!result.items.length) {
-      console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_PARSE_FAIL", variant, reason: "empty_items", aiDurationMs }));
-    }
-    console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, aiDurationMs, itemsCount: result.items.length }));
-    return result;
-  } catch (error) {
-    const aiDurationMs = Date.now() - aiStartTime;
-    console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_PARSE_FAIL", variant, reason: "exception", aiDurationMs, error: String(error) }));
-    return { title: '', items: [] };
+    return parseMealItems(parsed);
   }
+
+  const aiStartTime = Date.now();
+  const settled = await Promise.allSettled(chunks.map(fetchChunk));
+  const allItems: MealPlanSuggestion['items'] = [];
+  let failedChunks = 0;
+  for (const s of settled) {
+    if (s.status === 'fulfilled') {
+      allItems.push(...s.value);
+    } else {
+      failedChunks++;
+      console.error('Meal plan chunk failed:', String(s.reason));
+    }
+  }
+
+  const validDates = new Set(dates);
+  const filtered = allItems.filter((it) => validDates.has(it.date));
+  filtered.sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    return (mealOrder[a.mealType] ?? 99) - (mealOrder[b.mealType] ?? 99);
+  });
+
+  const aiDurationMs = Date.now() - aiStartTime;
+  console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, aiDurationMs, chunks: chunks.length, failedChunks, itemsCount: filtered.length }));
+
+  return { title: 'Piano Settimanale', items: filtered };
 }
 
 export async function generateFamilyInsights(context: {

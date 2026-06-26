@@ -1,1 +1,1 @@
-- [Email verification gating](email-verification-gating.md) — gate unverified users on ALL channels (REST, static /uploads via ?token=, WebSocket handshake); JWT lacks emailVerified so guards query DB fresh.
+- [AI gateway latency](ai-gateway-latency.md) — gateway is throughput-bound (~47 tok/s); split big AI generations into parallel chunks (Promise.allSettled) to fix slow/empty results.
