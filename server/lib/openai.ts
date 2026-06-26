@@ -350,6 +350,7 @@ export interface MealPlanSuggestion {
     title: string;
     description?: string;
     ingredients?: MealPlanIngredient[];
+    steps?: string[];
   }>;
 }
 
@@ -365,6 +366,7 @@ const mealItemSchema = z.object({
   title: z.coerce.string(),
   description: z.coerce.string().optional(),
   ingredients: z.array(mealPlanIngredientSchema).optional().catch([]),
+  steps: z.array(z.coerce.string()).optional().catch([]),
 }).catchall(z.unknown());
 
 function parseMealItems(raw: unknown): MealPlanSuggestion['items'] {
@@ -431,8 +433,9 @@ export async function generateWeeklyMealPlan(context: {
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
 - Per ogni giorno genera esattamente ${mealsPerDay} pasti: ${mealTypes.join(', ')}.
-- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${mealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array).
+- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${mealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array), steps (array).
 - Ogni ingrediente ha: name (italiano), quantity (stringa, es. "200"), unit (es. "g", "ml", "pezzi").
+- steps è la RICETTA passo-passo: da 3 a 6 passaggi brevi e chiari in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale).
 - IMPORTANTE: ogni piatto DEVE essere adatto al suo tipo di pasto secondo le abitudini italiane:
   - breakfast (colazione): SOLO colazione italiana tipica, dolce e leggera. Es. cappuccino e cornetto, latte e biscotti, fette biscottate con marmellata, yogurt con cereali e frutta, pane con marmellata o miele, crostata, ciambellone, pancake, porridge, spremuta con plumcake. MAI piatti salati come pasta, carne, pesce, verdure cotte o bruschette salate.
   - lunch (pranzo): pasto principale completo (es. primo di pasta/riso o piatto unico con contorno).
@@ -440,7 +443,7 @@ REGOLE:
   - snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno.${excludeRule}
 - ${variantHint}
-- Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}]}]}`;
+- Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
     const response = await openai.chat.completions.create({
@@ -451,7 +454,7 @@ REGOLE:
       ],
       response_format: { type: 'json_object' },
       temperature: 0.85,
-      max_tokens: 3000,
+      max_tokens: 4000,
     });
 
     const content = response.choices[0].message.content || '{"items":[]}';

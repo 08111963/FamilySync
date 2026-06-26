@@ -36,6 +36,7 @@ interface MealPlanItem {
   description?: string;
   servings?: number;
   ingredients?: MealPlanIngredient[];
+  steps?: string[];
 }
 
 interface MealPlan {
@@ -58,6 +59,21 @@ interface AiMultiPlanResponse {
 }
 
 type TabKey = "plans" | "generate";
+
+function buildNotes(description?: string, steps?: string[]): string | undefined {
+  const parts: string[] = [];
+  if (description && description.trim()) parts.push(description.trim());
+  if (steps && steps.length > 0) {
+    const recipe = steps
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s, i) => `${i + 1}. ${s}`)
+      .join("\n");
+    if (recipe) parts.push(`Ricetta:\n${recipe}`);
+  }
+  const joined = parts.join("\n\n");
+  return joined ? joined : undefined;
+}
 
 function getNextMonday(): string {
   const d = new Date();
@@ -240,6 +256,58 @@ function PlanCard({
           </Pressable>
         </View>
       </View>
+    </View>
+  );
+}
+
+type ThemeColors = ReturnType<typeof useTheme>["colors"];
+
+function PreviewMealRow({ meal, colors }: { meal: MealPlanItem; colors: ThemeColors }) {
+  const [expanded, setExpanded] = useState(false);
+  const mealColor = getMealTypeColor(meal.mealType, colors.primary, colors.secondary);
+  const recipeSteps = (meal.steps ?? []).map((s) => s.trim()).filter(Boolean);
+  const hasRecipe = recipeSteps.length > 0;
+
+  return (
+    <View style={[styles.mealRow, { borderLeftColor: mealColor }]}>
+      <Pressable
+        onPress={() => {
+          if (!hasRecipe) return;
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setExpanded((e) => !e);
+        }}
+        style={styles.mealRowHeader}
+      >
+        <View style={[styles.mealTypeBadge, { backgroundColor: mealColor + "20" }]}>
+          <Text style={[styles.mealTypeText, { color: mealColor }]}>
+            {getMealTypeLabel(meal.mealType)}
+          </Text>
+        </View>
+        <Text style={[styles.mealTitle, { color: colors.text }]}>{meal.title}</Text>
+        {hasRecipe && (
+          <Ionicons
+            name={expanded ? "chevron-up" : "chevron-down"}
+            size={18}
+            color={colors.textSecondary}
+          />
+        )}
+      </Pressable>
+      {hasRecipe && expanded && (
+        <View style={styles.recipeBox}>
+          {meal.description ? (
+            <Text style={[styles.recipeDescription, { color: colors.textSecondary }]}>
+              {meal.description}
+            </Text>
+          ) : null}
+          <Text style={[styles.recipeHeading, { color: colors.text }]}>Ricetta</Text>
+          {recipeSteps.map((step, i) => (
+            <View key={i} style={styles.recipeStepRow}>
+              <Text style={[styles.recipeStepNum, { color: mealColor }]}>{i + 1}.</Text>
+              <Text style={[styles.recipeStepText, { color: colors.text }]}>{step}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -468,7 +536,7 @@ export default function MealPlansScreen() {
           date: i.date,
           mealType: i.mealType,
           titleOverride: i.title,
-          notes: i.description,
+          notes: buildNotes(i.description, i.steps),
           ingredients: i.ingredients || null,
         })),
       });
@@ -713,22 +781,13 @@ export default function MealPlansScreen() {
                       {formatDayDate(group.date)}
                     </Text>
                   </View>
-                  {group.items.map((meal, idx) => {
-                    const mealColor = getMealTypeColor(meal.mealType, colors.primary, colors.secondary);
-                    return (
-                      <View
-                        key={`${group.date}-${meal.mealType}-${idx}`}
-                        style={[styles.mealRow, { borderLeftColor: mealColor }]}
-                      >
-                        <View style={[styles.mealTypeBadge, { backgroundColor: mealColor + "20" }]}>
-                          <Text style={[styles.mealTypeText, { color: mealColor }]}>
-                            {getMealTypeLabel(meal.mealType)}
-                          </Text>
-                        </View>
-                        <Text style={[styles.mealTitle, { color: colors.text }]}>{meal.title}</Text>
-                      </View>
-                    );
-                  })}
+                  {group.items.map((meal, idx) => (
+                    <PreviewMealRow
+                      key={`${group.date}-${meal.mealType}-${idx}`}
+                      meal={meal}
+                      colors={colors}
+                    />
+                  ))}
                 </View>
               ))}
 
@@ -1074,14 +1133,48 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
   },
   mealRow: {
+    borderLeftWidth: 3,
+    marginLeft: 8,
+    marginBottom: 4,
+  },
+  mealRowHeader: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderLeftWidth: 3,
-    marginLeft: 8,
-    marginBottom: 4,
     gap: 10,
+  },
+  recipeBox: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    paddingTop: 2,
+    gap: 6,
+  },
+  recipeDescription: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    fontStyle: "italic",
+    marginBottom: 4,
+  },
+  recipeHeading: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 2,
+  },
+  recipeStepRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  recipeStepNum: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    minWidth: 18,
+  },
+  recipeStepText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 20,
   },
   mealTypeBadge: {
     paddingHorizontal: 10,
