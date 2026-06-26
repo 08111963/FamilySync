@@ -424,18 +424,21 @@ export async function generateWeeklyMealPlan(context: {
 
   const mealOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
 
-  async function fetchChunk(chunkDates: string[]): Promise<MealPlanSuggestion['items']> {
+  async function fetchChunk(chunkDates: string[], excludeTitles: string[]): Promise<MealPlanSuggestion['items']> {
+    const excludeRule = excludeTitles.length
+      ? `\n- VARIETÀ OBBLIGATORIA: questi piatti sono GIÀ stati pianificati in altri giorni della settimana, quindi NON riproporli e NON proporne di simili: ${excludeTitles.join('; ')}. Scegli piatti chiaramente DIVERSI per ogni pasto.`
+      : '';
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
 - Per ogni giorno genera esattamente ${mealsPerDay} pasti: ${mealTypes.join(', ')}.
 - Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${mealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array).
 - Ogni ingrediente ha: name (italiano), quantity (stringa, es. "200"), unit (es. "g", "ml", "pezzi").
 - IMPORTANTE: ogni piatto DEVE essere adatto al suo tipo di pasto secondo le abitudini italiane:
-  - breakfast (colazione): SOLO colazione italiana tipica, dolce e leggera. Es. cappuccino e cornetto, latte e biscotti, fette biscottate con marmellata, yogurt con cereali e frutta, pane con marmellata o miele, crostata, ciambellone. MAI piatti salati come pasta, carne, pesce, verdure cotte o bruschette salate.
+  - breakfast (colazione): SOLO colazione italiana tipica, dolce e leggera. Es. cappuccino e cornetto, latte e biscotti, fette biscottate con marmellata, yogurt con cereali e frutta, pane con marmellata o miele, crostata, ciambellone, pancake, porridge, spremuta con plumcake. MAI piatti salati come pasta, carne, pesce, verdure cotte o bruschette salate.
   - lunch (pranzo): pasto principale completo (es. primo di pasta/riso o piatto unico con contorno).
   - dinner (cena): pasto più leggero del pranzo (es. secondo di carne/pesce/uova/legumi con verdure, zuppe, minestre).
   - snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).
-- Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto.
+- Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno.${excludeRule}
 - ${variantHint}
 - Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}]}]}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
@@ -464,29 +467,30 @@ REGOLE:
   const validDates = new Set(dates);
 
   const aiStartTime = Date.now();
-  const settled = await Promise.allSettled(chunks.map(async (chunkDates) => {
-    const items = await fetchChunk(chunkDates);
-    if (context.onProgress) {
-      const dayItems = items
-        .filter((it) => validDates.has(it.date))
-        .sort((a, b) => {
-          if (a.date !== b.date) return a.date.localeCompare(b.date);
-          return (mealOrder[a.mealType] ?? 99) - (mealOrder[b.mealType] ?? 99);
-        });
-      if (dayItems.length) {
-        try { context.onProgress(dayItems); } catch {}
-      }
-    }
-    return items;
-  }));
   const allItems: MealPlanSuggestion['items'] = [];
+  const usedTitles: string[] = [];
   let failedChunks = 0;
-  for (const s of settled) {
-    if (s.status === 'fulfilled') {
-      allItems.push(...s.value);
-    } else {
+  for (const chunkDates of chunks) {
+    try {
+      const items = await fetchChunk(chunkDates, usedTitles);
+      allItems.push(...items);
+      for (const it of items) {
+        if (it.title) usedTitles.push(it.title);
+      }
+      if (context.onProgress) {
+        const dayItems = items
+          .filter((it) => validDates.has(it.date))
+          .sort((a, b) => {
+            if (a.date !== b.date) return a.date.localeCompare(b.date);
+            return (mealOrder[a.mealType] ?? 99) - (mealOrder[b.mealType] ?? 99);
+          });
+        if (dayItems.length) {
+          try { context.onProgress(dayItems); } catch {}
+        }
+      }
+    } catch (reason) {
       failedChunks++;
-      console.error('Meal plan chunk failed:', String(s.reason));
+      console.error('Meal plan chunk failed:', String(reason));
     }
   }
 
