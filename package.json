@@ -15,7 +15,8 @@
     "lint": "npx expo lint",
     "lint:fix": "npx expo lint --fix",
     "typecheck": "tsc --noEmit",
-    "test:security": "npx tsx server/__tests__/chat-upload-security.test.ts && npx tsx server/__tests__/typing-block.test.ts"
+    "test:security": "npx tsx server/__tests__/chat-upload-security.test.ts && npx tsx server/__tests__/typing-block.test.ts",
+    "test:ai": "npx tsx server/__tests__/ai-errors.test.ts && npx tsx server/__tests__/ai-usage.test.ts && npx tsx server/__tests__/db-errors.test.ts"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

@@ -307,6 +307,20 @@ export const mealPlanItems = pgTable("meal_plan_items", {
 
 export type MealPlanItem = typeof mealPlanItems.$inferSelect;
 
+// AI USAGE — tracciamento uso funzioni AI per quota giornaliera per famiglia
+export const aiUsage = pgTable("ai_usage", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  feature: varchar("feature", { length: 64 }).notNull(),
+  success: boolean("success").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("ai_usage_family_feature_created_idx").on(table.familyId, table.feature, table.createdAt),
+]);
+
+export type AiUsage = typeof aiUsage.$inferSelect;
+
 // CHAT MESSAGES
 export const messageTypeEnum = pgEnum("message_type", ["text", "image", "file"]);
 

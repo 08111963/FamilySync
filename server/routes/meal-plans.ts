@@ -10,6 +10,7 @@ import { requireFamilyMember } from '../middleware/family';
 import { logger } from '../lib/logger';
 import { broadcastToFamily } from '../lib/websocket';
 import { normalizeItemName } from '../lib/normalize';
+import { isUniqueViolation } from '../lib/db-errors';
 
 const router = Router();
 
@@ -50,13 +51,40 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
 
     const { items, ...planData } = parsed.data;
 
-    const [plan] = await db.insert(mealPlans).values({
-      familyId,
-      createdByUserId: req.user!.userId,
-      weekStartDate: planData.weekStartDate,
-      title: planData.title,
-      preferences: planData.preferences,
-    }).returning();
+    // Una sola settimana per famiglia: se esiste già un piano per quella data, 409.
+    const [existing] = await db.select({ id: mealPlans.id })
+      .from(mealPlans)
+      .where(and(eq(mealPlans.familyId, familyId), eq(mealPlans.weekStartDate, planData.weekStartDate)))
+      .limit(1);
+
+    if (existing) {
+      return res.status(409).json({
+        error: {
+          code: "PLAN_EXISTS",
+          message: "Esiste già un piano pasti per questa settimana. Eliminalo prima di crearne uno nuovo.",
+          planId: existing.id,
+        },
+      });
+    }
+
+    let plan;
+    try {
+      [plan] = await db.insert(mealPlans).values({
+        familyId,
+        createdByUserId: req.user!.userId,
+        weekStartDate: planData.weekStartDate,
+        title: planData.title,
+        preferences: planData.preferences,
+      }).returning();
+    } catch (insertErr) {
+      // Race condition: vincolo unique (familyId, weekStartDate) scattato tra il check e l'insert.
+      if (isUniqueViolation(insertErr)) {
+        return res.status(409).json({
+          error: { code: "PLAN_EXISTS", message: "Esiste già un piano pasti per questa settimana." },
+        });
+      }
+      throw insertErr;
+    }
 
     let insertedItems: any[] = [];
     if (items.length > 0) {

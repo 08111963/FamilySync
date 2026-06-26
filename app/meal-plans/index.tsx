@@ -21,6 +21,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiStream } from "@/lib/query-client";
+import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
 
 interface MealPlanIngredient {
   name: string;
@@ -447,14 +448,14 @@ export default function MealPlansScreen() {
         setAiPlans([]);
       }
     } catch (err: any) {
-      const code = err?.body?.error?.code;
-      if (err?.status === 403 || code === "AI_DISABLED") {
+      if (isAiDisabled(err)) {
         setAiDisabledError(true);
       } else {
+        const msg = aiErrorMessage(err, "Impossibile generare il piano pasti.");
         if (Platform.OS === "web") {
-          window.alert("Impossibile generare il piano pasti.");
+          window.alert(msg);
         } else {
-          Alert.alert("Errore", "Impossibile generare il piano pasti.");
+          Alert.alert("Errore", msg);
         }
       }
       setAiPlans([]);
@@ -521,14 +522,14 @@ export default function MealPlansScreen() {
         setSelectedPlanIndex(0);
       }
     } catch (err: any) {
-      const code = err?.body?.error?.code;
-      if (err?.status === 403 || code === "AI_DISABLED") {
+      if (isAiDisabled(err)) {
         setAiDisabledError(true);
       } else {
+        const msg = aiErrorMessage(err, "Impossibile generare l'alternativa.");
         if (Platform.OS === "web") {
-          window.alert("Impossibile generare l'alternativa.");
+          window.alert(msg);
         } else {
-          Alert.alert("Errore", "Impossibile generare l'alternativa.");
+          Alert.alert("Errore", msg);
         }
       }
       setAiPlans((prev) => prev.slice(0, 1));

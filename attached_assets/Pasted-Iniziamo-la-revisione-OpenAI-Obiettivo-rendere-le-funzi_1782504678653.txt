@@ -1,0 +1,56 @@
+Iniziamo la revisione OpenAI.
+
+Obiettivo: rendere le funzioni AI sicure economicamente e robuste prima della pubblicazione, senza cambiare l’esperienza utente più del necessario.
+
+Controlla e migliora questi punti:
+
+1. Configurazione OpenAI
+   - Se le funzioni AI sono abilitate ma manca AI_INTEGRATIONS_OPENAI_API_KEY, restituisci errore chiaro AI_NOT_CONFIGURED oppure fai fail-fast in produzione.
+   - Non mostrare mai la chiave nei log.
+   - Mantieni opzionale AI_INTEGRATIONS_OPENAI_BASE_URL solo se serve davvero.
+
+2. Rate limit / quota AI specifica
+   - Il rate limit generale /api non basta.
+   - Aggiungi un controllo per famiglia/utente sulle rotte AI.
+   - Limiti iniziali consigliati:
+     shopping-suggestions: 10/giorno per famiglia
+     recipe-search: 20/giorno per famiglia
+     recipe-suggestions: 10/giorno per famiglia
+     weekly-meal-plan: 3/giorno per famiglia
+     insights/generate: 5/giorno per famiglia
+     chore-optimization: 10/giorno per famiglia
+   - Se possibile registra uso in DB: userId, familyId, feature, createdAt, success/failure.
+
+3. Weekly meal plan
+   - È la funzione più costosa: può fare 7 chiamate OpenAI per piano, 14 se variants=2.
+   - Limita variants=2 o rendila disponibile solo premium.
+   - Aggiungi cache o blocco per evitare rigenerazioni continue della stessa settimana.
+   - Se esiste già un piano per familyId + weekStartDate, valuta di restituirlo o chiedere conferma di rigenerazione.
+
+4. Structured Outputs
+   - Oggi usiamo response_format: { type: "json_object" }.
+   - Migra almeno weekly-meal-plan e recipe-suggestions a json_schema strict, se compatibile con il modello attuale.
+   - Mantieni validazione Zod lato server anche dopo la risposta OpenAI.
+
+5. Gestione errori
+   - Non fare solo return [] in caso di errore.
+   - Distingui almeno:
+     AI_NOT_CONFIGURED
+     AI_RATE_LIMITED
+     AI_TIMEOUT
+     AI_BAD_RESPONSE
+     AI_PROVIDER_ERROR
+   - L’utente deve ricevere messaggi semplici, ma i log devono essere utili.
+
+6. Test
+   - Aggiungi test per:
+     chiave OpenAI mancante;
+     quota giornaliera superata;
+     weekly-meal-plan non rigenerabile infinite volte;
+     risposta OpenAI malformata;
+     timeout/error provider;
+     utente senza AI enabled → 403;
+     utente non membro della famiglia → 403.
+
+7. Non toccare per ora Stripe/payments.
+8. Dopo la modifica riepiloga file cambiati, test eseguiti e numero di chiamate OpenAI massimo per ciascuna funzione.

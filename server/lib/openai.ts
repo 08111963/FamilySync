@@ -1,10 +1,14 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
 import { normalizeItemName } from './normalize';
+import { assertAiConfigured, mapOpenAiError } from './ai-errors';
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  // baseURL opzionale: impostato solo se realmente configurato
+  ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL
+    ? { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }
+    : {}),
   timeout: 60_000,
   maxRetries: 1,
 });
@@ -50,6 +54,7 @@ export async function generateShoppingSuggestions(context: {
 
   const randomSeed = Math.floor(Math.random() * 100000);
 
+  assertAiConfigured();
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -83,8 +88,7 @@ Genera 12 prodotti da supermercato NUOVI e DIVERSI da quelli vietati.`,
     const parsed = suggestionsResponseSchema.parse(JSON.parse(content));
     return parsed;
   } catch (error) {
-    console.error('OpenAI shopping suggestions error:', error);
-    return { items: [] };
+    throw mapOpenAiError(error);
   }
 }
 
@@ -92,6 +96,7 @@ export async function optimizeChoreSchedule(context: {
   members: Array<{ id: string; name: string; points: number; }>;
   chores: Array<{ id: string; title: string; estimatedMinutes: number; }>;
 }) {
+  assertAiConfigured();
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -108,8 +113,7 @@ export async function optimizeChoreSchedule(context: {
     const content = response.choices[0].message.content || '{"assignments": []}';
     return JSON.parse(content);
   } catch (error) {
-    console.error('OpenAI error:', error);
-    return { assignments: [] };
+    throw mapOpenAiError(error);
   }
 }
 
@@ -178,6 +182,105 @@ function parseRecipesResponse(raw: unknown): RecipeSuggestion[] {
   return results;
 }
 
+const RECIPES_RESPONSE_FORMAT = {
+  type: 'json_schema' as const,
+  json_schema: {
+    name: 'recipes_response',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        recipes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              title: { type: 'string' },
+              description: { type: 'string' },
+              servings: { type: 'integer' },
+              prepTimeMinutes: { type: 'integer' },
+              cookTimeMinutes: { type: 'integer' },
+              steps: { type: 'array', items: { type: 'string' } },
+              tags: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  diet: { type: 'array', items: { type: 'string' } },
+                  allergens: { type: 'array', items: { type: 'string' } },
+                  cuisine: { type: 'string' },
+                  difficulty: { type: 'string' },
+                },
+                required: ['diet', 'allergens', 'cuisine', 'difficulty'],
+              },
+              ingredients: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    name: { type: 'string' },
+                    quantity: { type: 'string' },
+                    unit: { type: 'string' },
+                    category: { type: 'string' },
+                  },
+                  required: ['name', 'quantity', 'unit', 'category'],
+                },
+              },
+            },
+            required: ['title', 'description', 'servings', 'prepTimeMinutes', 'cookTimeMinutes', 'steps', 'tags', 'ingredients'],
+          },
+        },
+      },
+      required: ['recipes'],
+    },
+  },
+};
+
+const MEAL_PLAN_RESPONSE_FORMAT = {
+  type: 'json_schema' as const,
+  json_schema: {
+    name: 'meal_plan_response',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              date: { type: 'string' },
+              mealType: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              ingredients: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    name: { type: 'string' },
+                    quantity: { type: 'string' },
+                    unit: { type: 'string' },
+                  },
+                  required: ['name', 'quantity', 'unit'],
+                },
+              },
+              steps: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['date', 'mealType', 'title', 'description', 'ingredients', 'steps'],
+          },
+        },
+      },
+      required: ['items'],
+    },
+  },
+};
+
 export async function generateRecipeSuggestions(context: {
   familySize: number;
   dietaryPreferences?: string[] | string;
@@ -234,7 +337,7 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
         { role: 'system', content: sysPrompt },
         { role: 'user', content: userMsg },
       ],
-      response_format: { type: 'json_object' },
+      response_format: RECIPES_RESPONSE_FORMAT,
       temperature: 1.2,
       max_tokens: 2500,
     });
@@ -245,13 +348,14 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
-    } catch {
+    } catch (e) {
       console.error('Recipe JSON parse error:', content?.slice(0, 300));
-      return [];
+      throw mapOpenAiError(e);
     }
     return parseRecipesResponse(parsed);
   }
 
+  assertAiConfigured();
   try {
     const startTime = Date.now();
     const BATCH = 3;
@@ -263,12 +367,18 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
       batches.map((cats, idx) => fetchRecipeBatch(cats, randomSeed + idx * 7919))
     );
     const allRecipes: RecipeSuggestion[] = [];
+    let firstReason: unknown = null;
     for (const s of settled) {
       if (s.status === 'fulfilled') {
         allRecipes.push(...s.value);
       } else {
+        if (firstReason === null) firstReason = s.reason;
         console.error('Recipe batch failed:', String(s.reason));
       }
+    }
+    // Se tutti i batch sono falliti, propaga l'errore tipizzato invece di restituire vuoto.
+    if (allRecipes.length === 0 && firstReason !== null) {
+      throw mapOpenAiError(firstReason);
     }
     const elapsed = Date.now() - startTime;
     console.log(`Recipe generation: ${allRecipes.length} recipes in ${elapsed}ms (${batches.length} parallel batches)`);
@@ -284,8 +394,7 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
     console.log(`Final recipe count: ${unique.length}`);
     return { recipes: unique };
   } catch (error) {
-    console.error('OpenAI recipe suggestions error:', error);
-    return { recipes: [] };
+    throw mapOpenAiError(error);
   }
 }
 
@@ -298,6 +407,7 @@ export async function searchRecipesByQuery(query: string, context: {
   const excludeLine = excludeList.length > 0
     ? ` Evita di riproporre queste ricette già mostrate: ${excludeList.join(', ')}.`
     : '';
+  assertAiConfigured();
   try {
     const startTime = Date.now();
     const response = await openai.chat.completions.create({
@@ -313,7 +423,7 @@ Quantity stringa. Genera esattamente 3 ricette pertinenti alla ricerca. Ogni ric
           content: `[s:${randomSeed}] Famiglia ${context.familySize} persone. Cerca: "${query}"`,
         },
       ],
-      response_format: { type: 'json_object' },
+      response_format: RECIPES_RESPONSE_FORMAT,
       temperature: 0.9,
       max_tokens: 2500,
     });
@@ -322,17 +432,10 @@ Quantity stringa. Genera esattamente 3 ricette pertinenti alla ricerca. Ogni ric
     const elapsed = Date.now() - startTime;
     console.log(`Recipe search "${query}": ${elapsed}ms, len=${content.length}`);
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      console.error('Recipe search JSON parse error:', content?.slice(0, 300));
-      return { recipes: [] };
-    }
+    const parsed: unknown = JSON.parse(content);
     return { recipes: parseRecipesResponse(parsed) };
   } catch (error) {
-    console.error('OpenAI recipe search error:', error);
-    return { recipes: [] };
+    throw mapOpenAiError(error);
   }
 }
 
@@ -452,27 +555,24 @@ REGOLE:
         { role: 'system', content: sysPrompt },
         { role: 'user', content: userMsg },
       ],
-      response_format: { type: 'json_object' },
+      response_format: MEAL_PLAN_RESPONSE_FORMAT,
       temperature: 0.85,
       max_tokens: 4000,
     });
 
     const content = response.choices[0].message.content || '{"items":[]}';
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      return [];
-    }
+    const parsed: unknown = JSON.parse(content);
     return parseMealItems(parsed);
   }
 
+  assertAiConfigured();
   const validDates = new Set(dates);
 
   const aiStartTime = Date.now();
   const allItems: MealPlanSuggestion['items'] = [];
   const usedTitles: string[] = [];
   let failedChunks = 0;
+  let firstReason: unknown = null;
   for (const chunkDates of chunks) {
     try {
       const items = await fetchChunk(chunkDates, usedTitles);
@@ -493,6 +593,7 @@ REGOLE:
       }
     } catch (reason) {
       failedChunks++;
+      if (firstReason === null) firstReason = reason;
       console.error('Meal plan chunk failed:', String(reason));
     }
   }
@@ -506,6 +607,11 @@ REGOLE:
   const aiDurationMs = Date.now() - aiStartTime;
   console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, aiDurationMs, chunks: chunks.length, failedChunks, itemsCount: filtered.length }));
 
+  // Se non è stato generato nessun pasto valido e c'è stato un errore, propagalo tipizzato.
+  if (filtered.length === 0 && firstReason !== null) {
+    throw mapOpenAiError(firstReason);
+  }
+
   return { title: 'Piano Settimanale', items: filtered };
 }
 
@@ -516,6 +622,7 @@ export async function generateFamilyInsights(context: {
   topContributor: string;
   weeklyPoints: number;
 }) {
+  assertAiConfigured();
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -532,7 +639,6 @@ export async function generateFamilyInsights(context: {
     const content = response.choices[0].message.content || '{"insights": []}';
     return JSON.parse(content);
   } catch (error) {
-    console.error('OpenAI error:', error);
-    return { insights: [] };
+    throw mapOpenAiError(error);
   }
 }

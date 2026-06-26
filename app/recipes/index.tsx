@@ -22,6 +22,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiFetch, getApiUrl } from "@/lib/query-client";
+import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
 import { EmptyState } from "@/components/EmptyState";
 
 interface RecipeTag {
@@ -123,10 +124,10 @@ export default function RecipesScreen() {
         params: { recipesJson: JSON.stringify(list), query: useQuery ? q : "" },
       });
     } catch (error: any) {
-      if (error?.status === 403) {
+      if (isAiDisabled(error)) {
         setAiError("Funzionalità AI disabilitata. Attivala nelle Impostazioni.");
       } else {
-        setAiError("Errore nella generazione. Riprova.");
+        setAiError(aiErrorMessage(error, "Errore nella generazione. Riprova."));
       }
     } finally {
       setGeneratingAi(false);
@@ -154,10 +155,10 @@ export default function RecipesScreen() {
         params: { recipesJson: JSON.stringify(list), query: searchQuery.trim() },
       });
     } catch (error: any) {
-      if (error?.status === 403) {
+      if (isAiDisabled(error)) {
         setAiError("Funzionalità AI disabilitata. Attivala nelle Impostazioni.");
       } else {
-        setAiError("Errore nella ricerca. Riprova.");
+        setAiError(aiErrorMessage(error, "Errore nella ricerca. Riprova."));
       }
     } finally {
       setSearching(false);

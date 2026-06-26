@@ -11,8 +11,18 @@ import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsig
 import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { recipes, recipeIngredients } from '../../shared/schema';
+import { aiRateLimit, recordAiUsage } from '../lib/ai-usage';
+import { isAiError } from '../lib/ai-errors';
 
 const router = Router();
+
+/** Mappa un AiError sul suo HTTP status + messaggio utente; altrimenti 500 generico. */
+function sendAiError(res: Response, error: unknown, fallbackMsg: string) {
+  if (isAiError(error)) {
+    return res.status(error.httpStatus).json({ error: { code: error.code, message: error.userMessage } });
+  }
+  return res.status(500).json({ error: { code: "AI_ERROR", message: fallbackMsg } });
+}
 
 function getCurrentSeason(): string {
   const month = new Date().getMonth();
@@ -64,9 +74,10 @@ interface TaggedItem extends ShoppingSuggestionItem {
   source: 'ai' | 'fallback';
 }
 
-router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('shopping-suggestions'), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
+    const userId = req.user!.userId;
 
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
@@ -137,15 +148,28 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
       .where(and(eq(calendarEvents.familyId, familyId), gte(calendarEvents.date, today!)))
       .limit(10);
 
-    const aiResult = await generateShoppingSuggestions({
-      familySize: members.length || 1,
-      season: getCurrentSeason(),
-      upcomingEvents: upcomingEvents.map(e => e.title),
-      recentPurchases,
-      alreadyOnList,
-      completedRecently,
-      recentSuggestions,
-    });
+    let aiResult: { items: ShoppingSuggestionItem[] };
+    let aiSucceeded = false;
+    try {
+      aiResult = await generateShoppingSuggestions({
+        familySize: members.length || 1,
+        season: getCurrentSeason(),
+        upcomingEvents: upcomingEvents.map(e => e.title),
+        recentPurchases,
+        alreadyOnList,
+        completedRecently,
+        recentSuggestions,
+      });
+      aiSucceeded = true;
+    } catch (aiErr) {
+      // Config mancante: blocca con 503 (nessun senso restituire solo fallback).
+      if (isAiError(aiErr) && aiErr.code === 'AI_NOT_CONFIGURED') {
+        return sendAiError(res, aiErr, 'Errore nella generazione suggerimenti');
+      }
+      // Errore provider/timeout: degradiamo al fallback pool senza bloccare l'utente.
+      logger.error('Shopping AI failed, using fallback pool', { error: String(aiErr) });
+      aiResult = { items: [] };
+    }
 
     const alreadyOnListSet = new Set(alreadyOnList.map(normalizeItemName).filter(n => n.length > 0));
     const completedRecentlySet = new Set(completedRecently.map(normalizeItemName).filter(n => n.length > 0));
@@ -313,17 +337,20 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
       logger.error('Failed to persist shopping suggestions history', { error: String(persistErr) });
     }
 
+    // Solo i successi AI consumano quota; il fallback puro non penalizza l'utente.
+    await recordAiUsage(userId, familyId, 'shopping-suggestions', aiSucceeded);
+
     res.json({ items: responseItems });
   } catch (error) {
     logger.error('Shopping suggestions error', { error: String(error) });
-    res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione suggerimenti" } });
+    sendAiError(res, error, 'Errore nella generazione suggerimenti');
   }
 });
 
-router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('chore-optimization'), async (req: Request, res: Response) => {
+  const familyId = getParam(req, 'familyId');
+  const userId = req.user!.userId;
   try {
-    const familyId = getParam(req, 'familyId');
-
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
     const pendingChores = await db.select()
@@ -339,10 +366,12 @@ router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requ
       chores: pendingChores.map(c => ({ id: c.id, title: c.title, estimatedMinutes: c.estimatedMinutes || 30 })),
     });
 
+    await recordAiUsage(userId, familyId, 'chore-optimization', true);
     res.json(optimization);
   } catch (error) {
+    await recordAiUsage(userId, familyId, 'chore-optimization', false);
     logger.error('Chore optimization error', { error: String(error) });
-    res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nell'ottimizzazione" } });
+    sendAiError(res, error, "Errore nell'ottimizzazione");
   }
 });
 
@@ -363,10 +392,10 @@ router.get('/:familyId/insights', authenticate, requireFamilyMember(), async (re
   }
 });
 
-router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('insights'), async (req: Request, res: Response) => {
+  const familyId = getParam(req, 'familyId');
+  const userId = req.user!.userId;
   try {
-    const familyId = getParam(req, 'familyId');
-
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
     const sevenDaysAgo = new Date();
@@ -407,10 +436,12 @@ router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requ
       savedInsights.push(saved);
     }
 
+    await recordAiUsage(userId, familyId, 'insights', true);
     res.json(savedInsights);
   } catch (error) {
+    await recordAiUsage(userId, familyId, 'insights', false);
     logger.error('Generate insights error', { error: String(error) });
-    res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione insights" } });
+    sendAiError(res, error, "Errore nella generazione insights");
   }
 });
 
@@ -429,9 +460,10 @@ router.patch('/:familyId/insights/:insightId/dismiss', authenticate, requireFami
   }
 });
 
-router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('recipe-suggestions'), async (req: Request, res: Response) => {
+  const familyId = getParam(req, 'familyId');
+  const userId = req.user!.userId;
   try {
-    const familyId = getParam(req, 'familyId');
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
     const { dietaryPreferences, allergies, maxTimeMinutes, cuisinePreferences, excludedIngredients, count, excludeTitles } = req.body || {};
@@ -464,17 +496,20 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
       return true;
     });
 
+    await recordAiUsage(userId, familyId, 'recipe-suggestions', true);
     res.json({ recipes: dedupedRecipes, generatedAt: new Date().toISOString() });
   } catch (error) {
+    await recordAiUsage(userId, familyId, 'recipe-suggestions', false);
     logger.error('Recipe suggestions error', { error: String(error) });
-    res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione ricette" } });
+    sendAiError(res, error, "Errore nella generazione ricette");
   }
 });
 
-router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('weekly-meal-plan'), async (req: Request, res: Response) => {
   const startTime = Date.now();
+  const familyId = getParam(req, 'familyId');
+  const userId = req.user!.userId;
   try {
-    const familyId = getParam(req, 'familyId');
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
     const { weekStartDate, preferences, variants: rawVariants } = req.body || {};
@@ -513,17 +548,20 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
       plans: resultPlans.map(p => ({ title: p.title, itemsCount: p.items?.length || 0 })),
     }));
 
+    await recordAiUsage(userId, familyId, 'weekly-meal-plan', true);
     res.json({ plans: resultPlans });
   } catch (error) {
+    await recordAiUsage(userId, familyId, 'weekly-meal-plan', false);
     const durationMs = Date.now() - startTime;
     logger.error('Weekly meal plan error', { error: String(error), durationMs });
-    res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione del piano pasti" } });
+    sendAiError(res, error, "Errore nella generazione del piano pasti");
   }
 });
 
-router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('weekly-meal-plan'), async (req: Request, res: Response) => {
   const startTime = Date.now();
   const familyId = getParam(req, 'familyId');
+  const userId = req.user!.userId;
   const { weekStartDate, preferences, planVariant: rawPlanVariant } = req.body || {};
   const planVariant = rawPlanVariant === 2 ? 2 : 1;
 
@@ -570,22 +608,27 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       itemsCount: plan.items.length,
     }) + '\n');
     res.end();
+    await recordAiUsage(userId, familyId, 'weekly-meal-plan', true);
   } catch (error) {
+    await recordAiUsage(userId, familyId, 'weekly-meal-plan', false);
     const durationMs = Date.now() - startTime;
     logger.error('Weekly meal plan stream error', { error: String(error), durationMs });
     if (clientClosed) return;
     if (!res.headersSent) {
-      res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione del piano pasti" } });
+      // Errore prima dell'inizio dello stream: rispondi con HTTP status tipizzato.
+      sendAiError(res, error, "Errore nella generazione del piano pasti");
     } else {
-      try { res.write(JSON.stringify({ type: 'error', message: "Errore nella generazione del piano pasti" }) + '\n'); } catch {}
+      const message = isAiError(error) ? error.userMessage : "Errore nella generazione del piano pasti";
+      try { res.write(JSON.stringify({ type: 'error', message }) + '\n'); } catch {}
       res.end();
     }
   }
 });
 
-router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('recipe-search'), async (req: Request, res: Response) => {
+  const familyId = getParam(req, 'familyId');
+  const userId = req.user!.userId;
   try {
-    const familyId = getParam(req, 'familyId');
     const { query, excludeTitles } = req.body || {};
 
     if (!query || typeof query !== 'string' || query.trim().length < 2) {
@@ -609,10 +652,12 @@ router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireF
       return true;
     });
 
+    await recordAiUsage(userId, familyId, 'recipe-search', true);
     res.json({ recipes: dedupedRecipes, query: query.trim() });
   } catch (error) {
+    await recordAiUsage(userId, familyId, 'recipe-search', false);
     logger.error('Recipe search error', { error: String(error) });
-    res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella ricerca ricette" } });
+    sendAiError(res, error, "Errore nella ricerca ricette");
   }
 });
 
