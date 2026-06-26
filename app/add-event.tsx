@@ -2,7 +2,7 @@ import { useState } from "react";
 import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Switch } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/hooks/useTheme";
@@ -18,24 +18,59 @@ export default function AddEventScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { data, addEvent } = useFamily();
+  const params = useLocalSearchParams<{ date?: string }>();
 
-  const today = new Date().toISOString().split("T")[0];
-  
+  const isRealIso = (iso: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!m) return false;
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    const dt = new Date(y, mo - 1, d);
+    return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d;
+  };
+
+  const todayIso = new Date().toISOString().split("T")[0];
+  const initialIso =
+    typeof params.date === "string" && isRealIso(params.date) ? params.date : todayIso;
+
+  const isoToEuro = (iso: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+  };
+  const euroToIso = (euro: string) => {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(euro.trim());
+    if (!m) return null;
+    const iso = `${m[3]}-${m[2]}-${m[1]}`;
+    return isRealIso(iso) ? iso : null;
+  };
+  const handleDateChange = (text: string) => {
+    const digits = text.replace(/\D/g, "").slice(0, 8);
+    if (digits.length > 4) {
+      setDate(`${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`);
+    } else if (digits.length > 2) {
+      setDate(`${digits.slice(0, 2)}/${digits.slice(2)}`);
+    } else {
+      setDate(digits);
+    }
+  };
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(isoToEuro(initialIso));
   const [time, setTime] = useState("");
   const [isAllDay, setIsAllDay] = useState(true);
   const [selectedMember, setSelectedMember] = useState(data.members[0]?.id || "");
   const [selectedColor, setSelectedColor] = useState(EVENT_COLORS[0]);
 
   const handleSave = () => {
-    if (title.trim() && date) {
+    const isoDate = euroToIso(date);
+    if (title.trim() && isoDate) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       addEvent({
         title: title.trim(),
         description: description.trim() || undefined,
-        date,
+        date: isoDate,
         time: isAllDay ? undefined : time || undefined,
         memberId: selectedMember || undefined,
         color: selectedColor,
@@ -82,9 +117,10 @@ export default function AddEventScreen() {
         <View style={styles.field}>
           <Input
             label="Data"
-            placeholder="AAAA-MM-GG"
+            placeholder="GG/MM/AAAA"
             value={date}
-            onChangeText={setDate}
+            onChangeText={handleDateChange}
+            keyboardType="number-pad"
           />
         </View>
 
@@ -168,7 +204,7 @@ export default function AddEventScreen() {
         <Button
           title="Aggiungi Evento"
           onPress={handleSave}
-          disabled={!title.trim() || !date}
+          disabled={!title.trim() || !euroToIso(date)}
           style={{ marginTop: 24 }}
         />
       </ScrollView>

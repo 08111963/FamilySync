@@ -129,7 +129,8 @@ export default function CalendarScreen() {
   };
 
   const formatSelectedDate = () => {
-    const date = new Date(selectedDate);
+    const [y, m, d] = selectedDate.split("-").map(Number);
+    const date = new Date(y, (m || 1) - 1, d || 1);
     return date.toLocaleDateString("it-IT", { day: "numeric", month: "long" });
   };
 
@@ -141,7 +142,7 @@ export default function CalendarScreen() {
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
         <Text style={[styles.title, { color: colors.text }]}>Calendario</Text>
         <Pressable
-          onPress={() => router.push("/add-event")}
+          onPress={() => router.push({ pathname: "/add-event", params: { date: selectedDate } })}
           style={({ pressed }) => [
             styles.addButton,
             { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
