@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "N7dPJX58sQ_I7wl0Ii-53"
+uri = "file://familysync-review.zip"
+type = "unspecified"
+title = "File aggiornati FamilySync (8 file per revisione)"
