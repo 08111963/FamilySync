@@ -158,9 +158,18 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!familiesQuery.data || familiesQuery.data.length === 0) return;
+    if (!familiesQuery.data) return;
+    if (familiesQuery.data.length === 0) {
+      if (currentFamilyId !== null) {
+        setCurrentFamilyId(null);
+        AsyncStorage.removeItem(ACTIVE_FAMILY_KEY).catch(() => {});
+      }
+      return;
+    }
     if (currentFamilyId && familiesQuery.data.some(f => f.id === currentFamilyId)) return;
-    setCurrentFamilyId(familiesQuery.data[0].id);
+    const nextId = familiesQuery.data[0].id;
+    setCurrentFamilyId(nextId);
+    AsyncStorage.setItem(ACTIVE_FAMILY_KEY, nextId).catch(() => {});
   }, [familiesQuery.data, currentFamilyId]);
 
   const familyDetailQuery = useQuery<any>({
