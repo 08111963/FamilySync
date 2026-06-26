@@ -430,6 +430,11 @@ REGOLE:
 - Per ogni giorno genera esattamente ${mealsPerDay} pasti: ${mealTypes.join(', ')}.
 - Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${mealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array).
 - Ogni ingrediente ha: name (italiano), quantity (stringa, es. "200"), unit (es. "g", "ml", "pezzi").
+- IMPORTANTE: ogni piatto DEVE essere adatto al suo tipo di pasto secondo le abitudini italiane:
+  - breakfast (colazione): SOLO colazione italiana tipica, dolce e leggera. Es. cappuccino e cornetto, latte e biscotti, fette biscottate con marmellata, yogurt con cereali e frutta, pane con marmellata o miele, crostata, ciambellone. MAI piatti salati come pasta, carne, pesce, verdure cotte o bruschette salate.
+  - lunch (pranzo): pasto principale completo (es. primo di pasta/riso o piatto unico con contorno).
+  - dinner (cena): pasto più leggero del pranzo (es. secondo di carne/pesce/uova/legumi con verdure, zuppe, minestre).
+  - snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto.
 - ${variantHint}
 - Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}]}]}`;
