@@ -3,15 +3,27 @@ import { z } from 'zod';
 import { normalizeItemName } from './normalize';
 import { assertAiConfigured, mapOpenAiError } from './ai-errors';
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  // baseURL opzionale: impostato solo se realmente configurato
-  ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL
-    ? { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }
-    : {}),
-  timeout: 60_000,
-  maxRetries: 1,
-});
+// Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
+// SDK lancia se la chiave manca, e ciò impedirebbe l'avvio del server.
+// getOpenAiClient() verifica la presenza della chiave (assertAiConfigured) e
+// crea il client solo quando serve, riusando l'istanza alle chiamate successive.
+let openaiClient: OpenAI | null = null;
+
+function getOpenAiClient(): OpenAI {
+  assertAiConfigured();
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      // baseURL opzionale: impostato solo se realmente configurato
+      ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL
+        ? { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }
+        : {}),
+      timeout: 60_000,
+      maxRetries: 1,
+    });
+  }
+  return openaiClient;
+}
 
 export type SuggestionCategory = 'food' | 'household_cleaning' | 'personal_care' | 'other';
 
@@ -56,7 +68,7 @@ export async function generateShoppingSuggestions(context: {
 
   assertAiConfigured();
   try {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAiClient().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{
         role: 'system',
@@ -98,7 +110,7 @@ export async function optimizeChoreSchedule(context: {
 }) {
   assertAiConfigured();
   try {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAiClient().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{
         role: 'system',
@@ -331,7 +343,7 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
 
     const userMsg = `${seed} ${context.familySize}pers${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${lastTitlesText}`;
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAiClient().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: sysPrompt },
@@ -410,7 +422,7 @@ export async function searchRecipesByQuery(query: string, context: {
   assertAiConfigured();
   try {
     const startTime = Date.now();
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAiClient().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
@@ -549,7 +561,7 @@ REGOLE:
 - Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAiClient().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: sysPrompt },
@@ -624,7 +636,7 @@ export async function generateFamilyInsights(context: {
 }) {
   assertAiConfigured();
   try {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAiClient().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{
         role: 'system',

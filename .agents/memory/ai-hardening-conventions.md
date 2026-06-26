@@ -21,6 +21,10 @@ Convenzioni adottate per le funzioni AI (OpenAI) di FamilySync, da rispettare in
 
 - **Mai esporre la chiave**: nessun log del valore di `AI_INTEGRATIONS_OPENAI_API_KEY`; baseURL OpenAI impostata solo se l'env è presente.
 
+- **Client OpenAI LAZY**: NON creare `new OpenAI(...)` a livello top-level in `server/lib/openai.ts` — il costruttore del SDK lancia "Missing credentials" se la chiave manca, e ciò impedisce l'AVVIO del server (crash all'import). Usare `getOpenAiClient()` (singleton modulo `openaiClient`) che chiama `assertAiConfigured()` e crea il client solo on-demand; tutte le funzioni usano `getOpenAiClient().chat.completions.create(...)`.
+  **Why:** il server deve partire anche senza chiave (es. ambienti senza AI); le rotte AI rispondono poi 503 AI_NOT_CONFIGURED a runtime (via `reserveAiSlot`→`assertAiConfigured`, prima di creare record `ai_usage`).
+  **How to apply:** test di regressione in `ai-errors.test.ts` ("import ../lib/openai senza chiave non lancia"). La cache client non gestisce rotazione chiave a caldo (env trattata come immutabile nel processo).
+
 - **Frontend**: usare `lib/ai-error-message.ts` (`aiErrorMessage`, `isAiDisabled`) per mostrare messaggi italiani semplici; preferisce `err.body.error.message` del server, fallback per codice. AI_DISABLED resta gestito separatamente (toggle impostazioni).
 
 - **Dedup risorse uniche** (es. meal plan settimanale): check di esistenza → 409 + catch race su unique con `isUniqueViolation()` (`server/lib/db-errors.ts`, SQLSTATE 23505).

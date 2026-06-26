@@ -109,3 +109,14 @@ describe("mapOpenAiError", () => {
     }
   });
 });
+
+describe("openai client lazy (avvio senza chiave)", () => {
+  test("importare ../lib/openai SENZA chiave non lancia (il server può partire)", async () => {
+    delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    // Il client OpenAI deve essere lazy: l'import del modulo non deve costruire
+    // il client (il costruttore del SDK lancia se la chiave manca).
+    await assert.doesNotReject(async () => {
+      await import("../lib/openai");
+    });
+  });
+});
