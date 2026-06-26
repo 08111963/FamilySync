@@ -386,9 +386,7 @@ export default function RecipePreviewScreen() {
         return;
       }
       setSeenTitles(prev => [...prev, ...newRecipes.map(r => r.title)]);
-      setAllRecipes(newRecipes);
-      setSelected(new Set());
-      setDetailIndex(null);
+      setAllRecipes(prev => [...prev, ...newRecipes]);
     } catch {
       setSaveError("Errore nella generazione. Riprova.");
     } finally {
