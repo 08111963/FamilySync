@@ -19,7 +19,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
-import { apiRequest, apiFetch } from "@/lib/query-client";
+import { apiRequest, apiFetch, apiStream } from "@/lib/query-client";
 
 interface MealPlanIngredient {
   name: string;
@@ -258,7 +258,80 @@ export default function MealPlansScreen() {
     }
   };
 
-  const handleGenerate = () => fetchMealPlans(1);
+  const fetchMealPlanStream = async () => {
+    if (!currentFamily) return;
+    setGenerating(true);
+    setAiPlans([]);
+    setSelectedPlanIndex(0);
+    setAiDisabledError(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    const preferences: Record<string, string> = {};
+    if (diet.trim()) preferences.diet = diet.trim();
+    if (allergies.trim()) preferences.allergies = allergies.trim();
+    const body: any = { weekStartDate: weekStart };
+    if (Object.keys(preferences).length > 0) body.preferences = preferences;
+
+    let started = false;
+    let streamErr = false;
+    try {
+      await apiStream(
+        `/api/ai/${currentFamily.id}/weekly-meal-plan/stream`,
+        body,
+        (obj) => {
+          if (obj?.type === "error") {
+            streamErr = true;
+          } else if (obj?.type === "items" && Array.isArray(obj.items)) {
+            if (!started) {
+              started = true;
+              setAiPlans([{ title: "Piano Settimanale", weekStartDate: weekStart, items: obj.items }]);
+            } else {
+              setAiPlans((prev) => {
+                if (prev.length === 0) {
+                  return [{ title: "Piano Settimanale", weekStartDate: weekStart, items: obj.items }];
+                }
+                const first = prev[0]!;
+                return [{ ...first, items: [...first.items, ...obj.items] }, ...prev.slice(1)];
+              });
+            }
+          } else if (obj?.type === "done") {
+            setAiPlans((prev) => {
+              if (prev.length === 0) return prev;
+              const first = prev[0]!;
+              return [
+                { ...first, title: obj.title || first.title, weekStartDate: obj.weekStartDate || weekStart },
+                ...prev.slice(1),
+              ];
+            });
+          }
+        }
+      );
+      if (streamErr) {
+        if (Platform.OS === "web") {
+          window.alert("Impossibile generare il piano pasti.");
+        } else {
+          Alert.alert("Errore", "Impossibile generare il piano pasti.");
+        }
+        setAiPlans([]);
+      }
+    } catch (err: any) {
+      const code = err?.body?.error?.code;
+      if (err?.status === 403 || code === "AI_DISABLED") {
+        setAiDisabledError(true);
+      } else {
+        if (Platform.OS === "web") {
+          window.alert("Impossibile generare il piano pasti.");
+        } else {
+          Alert.alert("Errore", "Impossibile generare il piano pasti.");
+        }
+      }
+      setAiPlans([]);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleGenerate = () => fetchMealPlanStream();
   const handleGenerateAlternative = () => fetchMealPlans(2);
 
   const handleSavePlan = async () => {
@@ -536,6 +609,8 @@ export default function MealPlansScreen() {
                 </View>
               ))}
 
+              {!generating && (
+              <>
               <View style={styles.resultActions}>
                 <Pressable
                   onPress={handleSavePlan}
@@ -599,6 +674,8 @@ export default function MealPlansScreen() {
                   Scarta e rigenera
                 </Text>
               </Pressable>
+              </>
+              )}
             </View>
           )}
         </ScrollView>

@@ -1,6 +1,6 @@
 ---
 name: AI gateway latency is throughput-bound
-description: Why AI generation felt slow / "generated nothing" and the parallelization fix
+description: Why AI generation felt slow / "generated nothing", the parallelization fix, and progressive NDJSON streaming
 ---
 
 # Replit AI gateway latency is dominated by output size
@@ -33,3 +33,31 @@ high retry count amplifies delay on transient errors, and no timeout lets a call
 recipe lists, batched suggestions), prefer chunked parallel calls over one big call.
 Keep per-chunk `max_tokens` generous enough to avoid truncation (truncation → invalid
 JSON → lost chunk).
+
+## Progressive streaming on top of parallel chunks
+
+Parallelizing helps the average case but the SLOWEST chunk still dominates total time,
+and gateway latency varies run-to-run (measured the same 7-day plan at both ~12s and
+~22s). So show results progressively: stream each chunk to the client the moment it
+resolves instead of awaiting the whole batch. With per-day chunks the user sees most
+days within ~6-7s even when one straggler day takes 20s+.
+
+**Pattern that works here:** the chunk generator (e.g. `generateWeeklyMealPlan`) takes an
+optional `onProgress(items)` callback fired inside the `Promise.allSettled` map as each
+chunk resolves (filter/sort that chunk before emitting). A separate additive streaming
+route writes NDJSON (one JSON object per line: `{type:'items'}` per chunk, then
+`{type:'done'}`, `{type:'error'}` on failure) with `res.flushHeaders()` +
+`X-Accel-Buffering: no` + `Cache-Control: no-transform`. The non-streaming route stays
+untouched. On the RN/Expo client, stream with `expo/fetch` `getReader()` + `TextDecoder`,
+buffering partial lines across reads (a JSON line can span chunks); the global/`apiFetch`
+fetch does NOT support `getReader()`. Centralize this in a single `apiStream` helper so
+token + 401-refresh logic isn't duplicated.
+
+**Why:** the UI already groups items by key, so appending streamed items to existing
+state fills the screen progressively with zero layout/design change.
+
+**Gotchas:** guard against client disconnect (`req.on('close')` → flag, skip further
+`res.write`) so an abandoned expensive AI call doesn't keep writing; do the action
+buttons (save/etc.) only after streaming completes so the user can't save a partial
+result; `res.write` inside `onProgress` happens after `flushHeaders`, so once streaming
+starts you can only signal errors via an in-band `{type:'error'}` line, not an HTTP status.

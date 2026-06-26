@@ -520,6 +520,67 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
   }
 });
 
+router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  const familyId = req.params.familyId;
+  const { weekStartDate, preferences } = req.body || {};
+
+  if (!weekStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate)) {
+    return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "weekStartDate è obbligatorio (YYYY-MM-DD)" } });
+  }
+
+  let clientClosed = false;
+  req.on('close', () => { clientClosed = true; });
+
+  try {
+    const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
+
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    const plan = await generateWeeklyMealPlan({
+      familySize: members.length || 1,
+      weekStartDate,
+      preferences,
+      planVariant: 1,
+      onProgress: (items) => {
+        if (clientClosed) return;
+        res.write(JSON.stringify({ type: 'items', items }) + '\n');
+      },
+    });
+
+    if (clientClosed) return;
+
+    const durationMs = Date.now() - startTime;
+    console.log(JSON.stringify({
+      tag: "AI_MEAL_PLAN_STREAM",
+      familyId,
+      durationMs,
+      itemsCount: plan.items.length,
+    }));
+
+    res.write(JSON.stringify({
+      type: 'done',
+      title: plan.title || "Piano Settimanale",
+      weekStartDate,
+      itemsCount: plan.items.length,
+    }) + '\n');
+    res.end();
+  } catch (error) {
+    const durationMs = Date.now() - startTime;
+    logger.error('Weekly meal plan stream error', { error: String(error), durationMs });
+    if (clientClosed) return;
+    if (!res.headersSent) {
+      res.status(500).json({ error: { code: "AI_ERROR", message: "Errore nella generazione del piano pasti" } });
+    } else {
+      try { res.write(JSON.stringify({ type: 'error', message: "Errore nella generazione del piano pasti" }) + '\n'); } catch {}
+      res.end();
+    }
+  }
+});
+
 router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = req.params.familyId;

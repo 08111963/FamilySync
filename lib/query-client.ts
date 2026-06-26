@@ -138,6 +138,71 @@ export async function apiFetch<T>(route: string, options?: { method?: string; bo
   return res.json();
 }
 
+export async function apiStream(
+  route: string,
+  body: any,
+  onLine: (obj: any) => void,
+): Promise<void> {
+  const baseUrl = getApiUrl();
+  const url = new URL(route, baseUrl);
+  let token = await getAccessToken();
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  let res = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      headers["Authorization"] = `Bearer ${newToken}`;
+      res = await fetch(url.toString(), {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+    }
+  }
+
+  if (!res.ok) {
+    let errBody: any = null;
+    try { errBody = await res.json(); } catch { try { await res.text(); } catch {} }
+    throw { status: res.status, body: errBody };
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const text = await res.text();
+    for (const line of text.split("\n")) {
+      const t = line.trim();
+      if (t) { try { onLine(JSON.parse(t)); } catch {} }
+    }
+    return;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      const t = line.trim();
+      if (t) { try { onLine(JSON.parse(t)); } catch {} }
+    }
+  }
+  const last = buffer.trim();
+  if (last) { try { onLine(JSON.parse(last)); } catch {} }
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;

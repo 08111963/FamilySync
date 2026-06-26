@@ -385,6 +385,7 @@ export async function generateWeeklyMealPlan(context: {
   weekStartDate: string;
   preferences?: { diet?: string; allergies?: string; maxTimeMinutes?: number; mealsPerDay?: number };
   planVariant?: number;
+  onProgress?: (items: MealPlanSuggestion['items']) => void;
 }): Promise<MealPlanSuggestion> {
   const mealsPerDay = context.preferences?.mealsPerDay || 3;
   const mealTypes = mealsPerDay >= 4
@@ -450,8 +451,24 @@ REGOLE:
     return parseMealItems(parsed);
   }
 
+  const validDates = new Set(dates);
+
   const aiStartTime = Date.now();
-  const settled = await Promise.allSettled(chunks.map(fetchChunk));
+  const settled = await Promise.allSettled(chunks.map(async (chunkDates) => {
+    const items = await fetchChunk(chunkDates);
+    if (context.onProgress) {
+      const dayItems = items
+        .filter((it) => validDates.has(it.date))
+        .sort((a, b) => {
+          if (a.date !== b.date) return a.date.localeCompare(b.date);
+          return (mealOrder[a.mealType] ?? 99) - (mealOrder[b.mealType] ?? 99);
+        });
+      if (dayItems.length) {
+        try { context.onProgress(dayItems); } catch {}
+      }
+    }
+    return items;
+  }));
   const allItems: MealPlanSuggestion['items'] = [];
   let failedChunks = 0;
   for (const s of settled) {
@@ -463,7 +480,6 @@ REGOLE:
     }
   }
 
-  const validDates = new Set(dates);
   const filtered = allItems.filter((it) => validDates.has(it.date));
   filtered.sort((a, b) => {
     if (a.date !== b.date) return a.date.localeCompare(b.date);
