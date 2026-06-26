@@ -101,6 +101,7 @@ export default function AIInsightsScreen() {
   const [choreOptimization, setChoreOptimization] = useState<ChoreOptimization | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("insights");
   const [aiDisabledBanner, setAiDisabledBanner] = useState(false);
+  const [aiErrorMessage, setAiErrorMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const memberMap = useMemo(() => {
@@ -126,6 +127,7 @@ export default function AIInsightsScreen() {
     if (!currentFamily) return;
     setGeneratingInsights(true);
     setAiDisabledBanner(false);
+    setAiErrorMessage(null);
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await apiRequest("POST", `/api/ai/${currentFamily.id}/insights/generate`);
@@ -135,6 +137,7 @@ export default function AIInsightsScreen() {
         setAiDisabledBanner(true);
       } else {
         console.error("Generate insights error:", error);
+        setAiErrorMessage("Non è stato possibile generare gli insights. Controlla la connessione e riprova.");
       }
     } finally {
       setGeneratingInsights(false);
@@ -156,6 +159,7 @@ export default function AIInsightsScreen() {
     if (!currentFamily) return;
     setLoadingSuggestions(true);
     setAiDisabledBanner(false);
+    setAiErrorMessage(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const data = await fetchAiJson<ShoppingSuggestion>(`/api/ai/${currentFamily.id}/shopping-suggestions`);
@@ -165,6 +169,7 @@ export default function AIInsightsScreen() {
         setAiDisabledBanner(true);
       } else {
         console.error("Shopping suggestions error:", error);
+        setAiErrorMessage("Non è stato possibile generare i suggerimenti per la spesa. Controlla la connessione e riprova.");
       }
     } finally {
       setLoadingSuggestions(false);
@@ -175,6 +180,7 @@ export default function AIInsightsScreen() {
     if (!currentFamily) return;
     setLoadingChores(true);
     setAiDisabledBanner(false);
+    setAiErrorMessage(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const data = await fetchAiJson<ChoreOptimization>(`/api/ai/${currentFamily.id}/chore-optimization`);
@@ -184,6 +190,7 @@ export default function AIInsightsScreen() {
         setAiDisabledBanner(true);
       } else {
         console.error("Chore optimization error:", error);
+        setAiErrorMessage("Non è stato possibile ottimizzare le faccende. Controlla la connessione e riprova.");
       }
     } finally {
       setLoadingChores(false);
@@ -193,6 +200,7 @@ export default function AIInsightsScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setAiDisabledBanner(false);
+    setAiErrorMessage(null);
     try {
       if (activeTab === "insights") {
         await insightsQuery.refetch();
@@ -450,6 +458,15 @@ export default function AIInsightsScreen() {
         </View>
       )}
 
+      {aiErrorMessage && !aiDisabledBanner && (
+        <View style={[styles.banner, { backgroundColor: colors.error + "15", borderColor: colors.error + "40" }]}>
+          <Ionicons name="warning" size={18} color={colors.error} />
+          <Text style={[styles.bannerText, { color: colors.error }]}>
+            {aiErrorMessage}
+          </Text>
+        </View>
+      )}
+
       <View style={styles.tabRow}>
         {TAB_CONFIG.map((tab) => (
           <Pressable
@@ -458,6 +475,7 @@ export default function AIInsightsScreen() {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setActiveTab(tab.key);
               setAiDisabledBanner(false);
+              setAiErrorMessage(null);
             }}
             style={[
               styles.tab,
