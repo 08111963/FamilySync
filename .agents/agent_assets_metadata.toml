@@ -6,3 +6,9 @@ id = "N7dPJX58sQ_I7wl0Ii-53"
 uri = "file://familysync-review.zip"
 type = "unspecified"
 title = "File aggiornati FamilySync (8 file per revisione)"
+
+[[outputs]]
+id = "xa_MTF8plvEP5G9n9C7i_"
+uri = "file://familysync-stable-20260626.zip"
+type = "unspecified"
+title = "FamilySync — Versione stabile (26/06/2026)"

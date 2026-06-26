@@ -13,7 +13,9 @@
     "db:push": "drizzle-kit push",
     "start": "npx expo start",
     "lint": "npx expo lint",
-    "lint:fix": "npx expo lint --fix"
+    "lint:fix": "npx expo lint --fix",
+    "typecheck": "tsc --noEmit",
+    "test:security": "npx tsx server/__tests__/chat-upload-security.test.ts && npx tsx server/__tests__/typing-block.test.ts"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
