@@ -1,6 +1,7 @@
 export type AiErrorCode =
   | "AI_NOT_CONFIGURED"
   | "AI_RATE_LIMITED"
+  | "AI_USAGE_UNAVAILABLE"
   | "AI_TIMEOUT"
   | "AI_BAD_RESPONSE"
   | "AI_PROVIDER_ERROR";
@@ -8,6 +9,7 @@ export type AiErrorCode =
 const USER_MESSAGES: Record<AiErrorCode, string> = {
   AI_NOT_CONFIGURED: "Le funzioni AI non sono al momento disponibili. Riprova più tardi.",
   AI_RATE_LIMITED: "Hai raggiunto il limite giornaliero per questa funzione AI. Riprova domani.",
+  AI_USAGE_UNAVAILABLE: "Impossibile verificare il limite di utilizzo AI in questo momento. Riprova più tardi.",
   AI_TIMEOUT: "L'AI ci sta mettendo troppo tempo. Riprova tra poco.",
   AI_BAD_RESPONSE: "L'AI ha restituito una risposta non valida. Riprova.",
   AI_PROVIDER_ERROR: "Servizio AI temporaneamente non disponibile. Riprova tra poco.",
@@ -16,6 +18,7 @@ const USER_MESSAGES: Record<AiErrorCode, string> = {
 const HTTP_STATUS: Record<AiErrorCode, number> = {
   AI_NOT_CONFIGURED: 503,
   AI_RATE_LIMITED: 429,
+  AI_USAGE_UNAVAILABLE: 503,
   AI_TIMEOUT: 504,
   AI_BAD_RESPONSE: 502,
   AI_PROVIDER_ERROR: 502,

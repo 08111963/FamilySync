@@ -78,26 +78,40 @@ export function __resetQuotaCounterForTest(): void {
 /**
  * Middleware factory: blocca la richiesta con 429 AI_RATE_LIMITED se la quota
  * giornaliera per famiglia è stata superata. Richiede req.params.familyId.
+ *
+ * Comportamento in caso di errore nel controllo quota (DB irraggiungibile, ecc.):
+ * - default FAIL-CLOSED: risponde 503 AI_USAGE_UNAVAILABLE per non rischiare
+ *   chiamate OpenAI con costi incontrollati quando non si può verificare il limite.
+ * - `failOpen: true`: lascia passare la richiesta (solo per funzioni economiche/
+ *   con fallback, es. shopping-suggestions).
  */
-export function aiRateLimit(feature: AiFeature) {
+export function aiRateLimit(feature: AiFeature, options: { failOpen?: boolean } = {}) {
   const max = AI_DAILY_LIMITS[feature];
+  const failOpen = options.failOpen ?? false;
   return async (req: Request, res: Response, next: NextFunction) => {
+    let used: number;
     try {
       const familyId = getParam(req, "familyId");
-      const used = await quotaCounter(familyId, feature);
-      if (used >= max) {
-        return res.status(429).json({
-          error: {
-            code: "AI_RATE_LIMITED",
-            message: `Hai raggiunto il limite giornaliero (${max}) per questa funzione AI. Riprova domani.`,
-          },
-        });
-      }
-      next();
+      used = await quotaCounter(familyId, feature);
     } catch (err) {
-      logger.error("AI rate limit check failed", { feature, error: String(err) });
-      // In caso di errore nel controllo quota, non blocchiamo l'utente.
-      next();
+      logger.error("AI rate limit check failed", { feature, failOpen, error: String(err) });
+      if (failOpen) return next();
+      return res.status(503).json({
+        error: {
+          code: "AI_USAGE_UNAVAILABLE",
+          message:
+            "Impossibile verificare il limite di utilizzo AI in questo momento. Riprova più tardi.",
+        },
+      });
     }
+    if (used >= max) {
+      return res.status(429).json({
+        error: {
+          code: "AI_RATE_LIMITED",
+          message: `Hai raggiunto il limite giornaliero (${max}) per questa funzione AI. Riprova domani.`,
+        },
+      });
+    }
+    next();
   };
 }

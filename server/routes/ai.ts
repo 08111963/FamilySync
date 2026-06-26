@@ -12,6 +12,7 @@ import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { recipes, recipeIngredients } from '../../shared/schema';
 import { aiRateLimit, recordAiUsage } from '../lib/ai-usage';
+import { resolveMealPlanVariants } from '../lib/ai-policy';
 import { isAiError } from '../lib/ai-errors';
 
 const router = Router();
@@ -74,7 +75,7 @@ interface TaggedItem extends ShoppingSuggestionItem {
   source: 'ai' | 'fallback';
 }
 
-router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('shopping-suggestions'), async (req: Request, res: Response) => {
+router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), aiRateLimit('shopping-suggestions', { failOpen: true }), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const userId = req.user!.userId;
@@ -512,8 +513,10 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
   try {
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
-    const { weekStartDate, preferences, variants: rawVariants } = req.body || {};
-    const variants = rawVariants === 2 ? 2 : 1;
+    const { weekStartDate, preferences } = req.body || {};
+    // Prima pubblicazione: 1 sola variante per tutti (premium disabilitato).
+    // Varianti multiple raddoppierebbero il costo OpenAI a parità di quota.
+    const variants = resolveMealPlanVariants((req.body || {}).variants);
 
     if (!weekStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate)) {
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "weekStartDate è obbligatorio (YYYY-MM-DD)" } });
@@ -525,19 +528,9 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
       preferences,
     };
 
-    let resultPlans: any[];
-
-    if (variants === 2) {
-      const plan1 = await generateWeeklyMealPlan({ ...context, planVariant: 1 });
-      const plan2 = await generateWeeklyMealPlan({ ...context, planVariant: 2 });
-      plan1.title = "Piano A - Classico";
-      plan2.title = "Piano B - Creativo";
-      resultPlans = [{ ...plan1, weekStartDate }, { ...plan2, weekStartDate }];
-    } else {
-      const plan = await generateWeeklyMealPlan({ ...context, planVariant: 1 });
-      plan.title = plan.title || "Piano Settimanale";
-      resultPlans = [{ ...plan, weekStartDate }];
-    }
+    const plan = await generateWeeklyMealPlan({ ...context, planVariant: 1 });
+    plan.title = plan.title || "Piano Settimanale";
+    const resultPlans: any[] = [{ ...plan, weekStartDate }];
 
     const durationMs = Date.now() - startTime;
     console.log(JSON.stringify({

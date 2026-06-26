@@ -5,6 +5,7 @@ type AiErrorLike = {
 
 const FALLBACK_BY_CODE: Record<string, string> = {
   AI_RATE_LIMITED: "Hai raggiunto il limite giornaliero per questa funzione AI. Riprova domani.",
+  AI_USAGE_UNAVAILABLE: "Impossibile verificare il limite di utilizzo AI in questo momento. Riprova più tardi.",
   AI_NOT_CONFIGURED: "Le funzioni AI non sono al momento disponibili. Riprova più tardi.",
   AI_TIMEOUT: "L'AI ci sta mettendo troppo tempo. Riprova tra poco.",
   AI_BAD_RESPONSE: "L'AI ha restituito una risposta non valida. Riprova.",
