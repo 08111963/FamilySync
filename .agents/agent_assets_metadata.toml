@@ -18,3 +18,9 @@ id = "bTQFZfLYMSBdslAsQ5kAp"
 uri = "file://familysync-clean-20260626.zip"
 type = "unspecified"
 title = "FamilySync — Versione clean (26/06/2026)"
+
+[[outputs]]
+id = "62BlQRVWJvxTb1y8NWQia"
+uri = "file://exports/openai-section.zip"
+type = "unspecified"
+title = "Sezione OpenAI — file finali (11)"
