@@ -93,9 +93,6 @@ export const MIME_EXTENSIONS: Record<string, string> = {
   "image/gif": ".gif",
   "image/webp": ".webp",
   "application/pdf": ".pdf",
-  "application/msword": ".doc",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-  "text/plain": ".txt",
 };
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -139,16 +136,18 @@ export const MAGIC_VERIFIED_MIMES = new Set<string>([
   "application/pdf",
 ]);
 
-// DOCUMENTED LIMITATION: application/msword (.doc),
+// DISABLED TYPES: application/msword (.doc),
 // application/vnd.openxmlformats-officedocument.wordprocessingml.document (.docx)
-// and text/plain (.txt) are NOT magic-byte verified.
+// and text/plain (.txt) are intentionally NOT in the allowlist (MIME_EXTENSIONS)
+// because their content cannot be verified reliably via magic bytes:
 // - .docx is a ZIP container (signature "PK\x03\x04") shared with every other
 //   zip-based format, so the signature alone cannot confirm it is a Word file.
 // - .doc is an OLE compound file ("D0 CF 11 E0 A1 B1 1A E1") shared with legacy
 //   xls/ppt, so again the signature is not specific.
 // - text/plain has no signature at all (any byte sequence is valid text).
-// These three types are therefore allowed on the declared MIME only. Tighten the
-// rules or disable these types if stricter content guarantees are required.
+// To re-enable them in the future, add the MIME(s) back to MIME_EXTENSIONS. They
+// would be accepted on the declared MIME only (no magic-byte guarantee), unless a
+// deeper structural validation is added first.
 
 // Verifies that the leading bytes of a file match the signature expected for the
 // declared MIME. Returns true for types not in MAGIC_VERIFIED_MIMES (see the
