@@ -5,6 +5,7 @@ import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { useTheme } from "@/hooks/useTheme";
 import { Card } from "@/components/Card";
+import { getApiUrl } from "@/lib/query-client";
 
 export interface MemberCredentials {
   loginEmail: string;
@@ -13,8 +14,20 @@ export interface MemberCredentials {
   memberName: string;
 }
 
+export function getAppLink(): string | null {
+  try {
+    return getApiUrl().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
 export function credentialsText(c: MemberCredentials): string {
-  return `Accesso a FamilySync per ${c.memberName}\n\nEmail/Accesso: ${c.loginEmail}\nPassword temporanea: ${c.tempPassword}\n\nApri l'app FamilySync e accedi con questi dati.`;
+  const appLink = getAppLink();
+  const linkLine = appLink
+    ? `\n\nApri l'app FamilySync qui e accedi con questi dati:\n${appLink}`
+    : `\n\nApri l'app FamilySync e accedi con questi dati.`;
+  return `Accesso a FamilySync per ${c.memberName}\n\nEmail/Accesso: ${c.loginEmail}\nPassword temporanea: ${c.tempPassword}${linkLine}`;
 }
 
 export function CredentialsCard({ credentials }: { credentials: MemberCredentials }) {
