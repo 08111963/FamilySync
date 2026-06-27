@@ -24,3 +24,9 @@ id = "62BlQRVWJvxTb1y8NWQia"
 uri = "file://exports/openai-section.zip"
 type = "unspecified"
 title = "Sezione OpenAI — modello gpt-5-mini (12 file)"
+
+[[outputs]]
+id = "GcHFHvVLvxF4m_h9CLeX3"
+uri = "file://exports/stripe-review.zip"
+type = "unspecified"
+title = "Revisione pagamenti Stripe — 14 file (nessun segreto)"
