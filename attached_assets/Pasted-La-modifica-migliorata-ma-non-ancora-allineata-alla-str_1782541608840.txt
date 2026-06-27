@@ -1,0 +1,97 @@
+La modifica è migliorata, ma non è ancora allineata alla strategia definitiva.
+
+Strategia definitiva FamilySync:
+
+1. L’app deve essere freemium pronta.
+2. Utente free:
+
+   * funzioni base;
+   * quota AI dimostrativa molto minima.
+3. Utente Premium:
+
+   * funzioni avanzate;
+   * AI completa con quote più alte.
+4. AI non deve essere completamente gratuita.
+5. AI non deve avere un pagamento separato.
+6. Premium deve essere unico.
+7. Su mobile il pagamento Premium deve essere tramite:
+
+   * Google Play Billing su Android;
+   * Apple In-App Purchase / StoreKit su iOS.
+8. Stripe non deve essere usato per vendere Premium nell’app mobile.
+
+Lo ZIP attuale mette Stripe dormiente e mostra Premium “presto disponibile”, ma non implementa ancora il vero modello freemium con Premium acquistabile tramite store.
+
+Richiedo quindi queste modifiche:
+
+1. Implementare una logica piano unica:
+
+   * free
+   * premium
+
+2. Le quote AI devono dipendere dal piano, non solo da AI_REQUIRES_PREMIUM true/false.
+
+   Free:
+
+   * shopping-suggestions: 2/giorno per famiglia
+   * recipe-search: 2/giorno per famiglia
+   * recipe-suggestions: 1/giorno per famiglia
+   * weekly-meal-plan: 0 oppure 1/settimana per famiglia
+   * insights: 0 oppure 1/settimana per famiglia
+   * chore-optimization: 1/giorno per famiglia
+
+   Premium:
+
+   * quote alte già definite nel sistema AI attuale.
+
+3. Aggiungere architettura Premium store-native:
+
+   * productId Android configurabile;
+   * productId iOS configurabile;
+   * endpoint backend verify-purchase;
+   * endpoint restore-purchases;
+   * tabella entitlements/subscriptions se serve;
+   * platform: google/apple;
+   * productId;
+   * status;
+   * expiresAt;
+   * purchaseToken per Google;
+   * originalTransactionId/transactionId per Apple;
+   * familyId collegato all’acquisto;
+   * aggiornamento family.subscriptionStatus = premium quando l’acquisto è valido.
+
+4. Frontend:
+
+   * schermata Premium deve mostrare piano Free e piano Premium;
+   * deve mostrare acquisto store-native, non Stripe;
+   * deve avere “Ripristina acquisti”;
+   * non deve mostrare checkout Stripe;
+   * non deve mostrare portal Stripe.
+
+5. Backend:
+
+   * tutte le funzioni premium devono leggere un unico stato:
+     isPremium(familyId)
+   * AI deve usare quote free/premium in base a quello stato.
+   * nessun pagamento separato per AI.
+
+6. Stripe:
+
+   * rimuovere dal flusso mobile;
+   * mantenerlo solo dormiente se necessario, ma non deve sbloccare Premium mobile;
+   * se resta nel codice, non considerarlo metodo di pagamento principale.
+
+7. Test richiesti:
+
+   * utente free ha solo quota AI demo minima;
+   * utente free oltre quota viene bloccato;
+   * utente premium ha quote più alte;
+   * isPremium(familyId) sblocca AI premium;
+   * acquisto Google valido aggiorna Premium;
+   * acquisto Apple valido aggiorna Premium;
+   * acquisto scaduto/cancellato rimuove Premium;
+   * restore purchases funziona;
+   * nessuna CTA Stripe su mobile;
+   * AI non ha pagamento separato.
+
+Importante: non voglio una versione “Premium coming soon” come soluzione finale. Voglio una app freemium pronta, con Free limitato e Premium unico tramite store.
