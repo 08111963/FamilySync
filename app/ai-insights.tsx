@@ -161,6 +161,7 @@ export default function AIInsightsScreen() {
 
   const handleGetShoppingSuggestions = async () => {
     if (!currentFamily) return;
+    if (loadingSuggestions) return;
     setLoadingSuggestions(true);
     setAiDisabledBanner(false);
     setAiErrorMessage(null);
@@ -326,6 +327,34 @@ export default function AIInsightsScreen() {
       </Card>
     );
   }, [colors, getCategoryColor, getCategoryLabel]);
+
+  const renderShoppingFooter = useCallback(() => {
+    if (shoppingItems.length === 0) return null;
+    return (
+      <View style={styles.footerContainer}>
+        <Text style={[styles.footerHint, { color: colors.textSecondary }]}>
+          Non trovi quello che cerchi? Chiedi all'AI altri suggerimenti.
+        </Text>
+        <Pressable
+          onPress={handleGetShoppingSuggestions}
+          disabled={loadingSuggestions}
+          style={({ pressed }) => [
+            styles.moreButton,
+            { borderColor: colors.secondary, opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          {loadingSuggestions ? (
+            <ActivityIndicator color={colors.secondary} size="small" />
+          ) : (
+            <>
+              <Ionicons name="refresh" size={18} color={colors.secondary} />
+              <Text style={[styles.moreButtonText, { color: colors.secondary }]}>Altri suggerimenti</Text>
+            </>
+          )}
+        </Pressable>
+      </View>
+    );
+  }, [shoppingItems.length, loadingSuggestions, colors]);
 
   const choreAssignments = useMemo(() => {
     if (!choreOptimization) return [];
@@ -547,6 +576,7 @@ export default function AIInsightsScreen() {
           contentContainerStyle={[styles.listContent, shoppingItems.length === 0 && styles.emptyContent]}
           ListHeaderComponent={renderHeader}
           ListEmptyComponent={renderShoppingEmpty}
+          ListFooterComponent={renderShoppingFooter}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.secondary} />
@@ -661,6 +691,10 @@ const styles = StyleSheet.create({
   categoryText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   suggestionReason: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2, lineHeight: 18 },
   sectionHeader: { fontSize: 13, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 4, marginBottom: 2 },
+  footerContainer: { marginTop: 16, alignItems: "center", gap: 10 },
+  footerHint: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center" },
+  moreButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 20, alignSelf: "stretch" },
+  moreButtonText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   choreRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   choreIcon: {
     width: 36,
