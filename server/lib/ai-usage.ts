@@ -3,6 +3,7 @@ import { db } from "../db";
 import { aiUsage } from "../../shared/schema";
 import { logger } from "./logger";
 import { assertAiConfigured } from "./ai-errors";
+import { getPlanForFamily, type Plan } from "./entitlements";
 
 export type AiFeature =
   | "shopping-suggestions"
@@ -14,24 +15,73 @@ export type AiFeature =
 
 export type AiUsageStatus = "started" | "succeeded" | "failed";
 
+/** Finestra temporale della quota: giornaliera o settimanale. */
+export type QuotaWindow = "day" | "week";
+
+export interface FeatureLimit {
+  max: number;
+  window: QuotaWindow;
+}
+
 /**
- * Limiti giornalieri per famiglia (numero di TENTATIVI al giorno).
- * Contano tutti i tentativi che raggiungono OpenAI, riusciti o falliti,
- * perché entrambi consumano token/costi.
+ * Quote AI per PIANO. Contano tutti i tentativi che raggiungono OpenAI (riusciti
+ * o falliti), perché entrambi consumano token/costi.
+ *
+ * - free: quota "demo" minima — l'AI resta provabile senza pagare, ma è limitata.
+ * - premium: quota ampia, sbloccata dall'acquisto store-native (isPremium).
+ *
+ * Il Premium NON è un pagamento separato per l'AI: è il piano unico della
+ * famiglia. La differenza free/premium è SOLO nelle quote qui sotto.
+ */
+export const PLAN_LIMITS: Record<Plan, Record<AiFeature, FeatureLimit>> = {
+  free: {
+    "shopping-suggestions": { max: 2, window: "day" },
+    "recipe-search": { max: 2, window: "day" },
+    "recipe-suggestions": { max: 1, window: "day" },
+    "weekly-meal-plan": { max: 1, window: "week" },
+    insights: { max: 1, window: "week" },
+    "chore-optimization": { max: 1, window: "day" },
+  },
+  premium: {
+    "shopping-suggestions": { max: 10, window: "day" },
+    "recipe-search": { max: 20, window: "day" },
+    "recipe-suggestions": { max: 10, window: "day" },
+    "weekly-meal-plan": { max: 3, window: "day" },
+    insights: { max: 5, window: "day" },
+    "chore-optimization": { max: 10, window: "day" },
+  },
+};
+
+/**
+ * Limiti giornalieri Premium (retrocompatibilità). Mantenuto come alias delle
+ * quote premium giornaliere: alcuni test/strumenti vi fanno riferimento.
  */
 export const AI_DAILY_LIMITS: Record<AiFeature, number> = {
-  "shopping-suggestions": 10,
-  "recipe-search": 20,
-  "recipe-suggestions": 10,
-  "weekly-meal-plan": 3,
-  insights: 5,
-  "chore-optimization": 10,
+  "shopping-suggestions": PLAN_LIMITS.premium["shopping-suggestions"].max,
+  "recipe-search": PLAN_LIMITS.premium["recipe-search"].max,
+  "recipe-suggestions": PLAN_LIMITS.premium["recipe-suggestions"].max,
+  "weekly-meal-plan": PLAN_LIMITS.premium["weekly-meal-plan"].max,
+  insights: PLAN_LIMITS.premium.insights.max,
+  "chore-optimization": PLAN_LIMITS.premium["chore-optimization"].max,
 };
 
 function startOfToday(): Date {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+/** Inizio settimana corrente (lunedì 00:00, ora locale). */
+function startOfWeek(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  const dayFromMonday = (d.getDay() + 6) % 7; // domenica=6, lunedì=0
+  d.setDate(d.getDate() - dayFromMonday);
+  return d;
+}
+
+function windowStart(window: QuotaWindow): Date {
+  return window === "week" ? startOfWeek() : startOfToday();
 }
 
 function lockKey(familyId: string, feature: AiFeature): string {
@@ -41,7 +91,7 @@ function lockKey(familyId: string, feature: AiFeature): string {
 /** Esito di una prenotazione di slot quota. */
 export type ReserveResult =
   | { status: "ok"; usageId: string; used: number }
-  | { status: "limited"; used: number; max: number }
+  | { status: "limited"; used: number; max: number; window: QuotaWindow }
   | { status: "unavailable" };
 
 /**
@@ -54,6 +104,8 @@ export interface AiUsageStore {
     familyId: string,
     feature: AiFeature,
     max: number,
+    since: Date,
+    window: QuotaWindow,
   ): Promise<ReserveResult>;
   finalize(usageId: string, success: boolean): Promise<void>;
 }
@@ -65,7 +117,7 @@ export interface AiUsageStore {
  * elimina la race condition "due richieste passano il check prima di registrare".
  */
 const dbStore: AiUsageStore = {
-  async reserve(userId, familyId, feature, max) {
+  async reserve(userId, familyId, feature, max, since, window) {
     try {
       return await db.transaction(async (tx) => {
         // Serializza i concorrenti sulla stessa (famiglia, feature) finché la
@@ -79,12 +131,12 @@ const dbStore: AiUsageStore = {
             and(
               eq(aiUsage.familyId, familyId),
               eq(aiUsage.feature, feature),
-              gte(aiUsage.createdAt, startOfToday()),
+              gte(aiUsage.createdAt, since),
             ),
           );
         const used = row?.count ?? 0;
         if (used >= max) {
-          return { status: "limited", used, max } as const;
+          return { status: "limited", used, max, window } as const;
         }
         const [inserted] = await tx
           .insert(aiUsage)
@@ -121,12 +173,21 @@ export function __resetAiUsageStoreForTest(): void {
   store = dbStore;
 }
 
+/** Limite (max + finestra) applicabile a una famiglia per una feature. */
+export async function resolveFeatureLimit(familyId: string, feature: AiFeature): Promise<FeatureLimit> {
+  const plan = await getPlanForFamily(familyId);
+  return PLAN_LIMITS[plan][feature];
+}
+
 /**
  * Prenota uno slot quota PRIMA della chiamata OpenAI.
  * - "ok": slot prenotato (record "started" creato), va chiamato OpenAI.
- * - "limited": quota giornaliera raggiunta -> 429.
+ * - "limited": quota del piano raggiunta -> 429.
  * - "unavailable": impossibile verificare la quota (DB giù) -> fail-closed 503
  *   per le funzioni costose, o fallback locale per shopping.
+ *
+ * La quota dipende dal PIANO della famiglia (free/premium) ed è risolta qui via
+ * getPlanForFamily: il chiamante non deve conoscere il piano.
  *
  * Se la chiave OpenAI manca del tutto, lancia AiError("AI_NOT_CONFIGURED")
  * PRIMA di toccare lo store: così non viene creato alcun record ai_usage quando
@@ -141,7 +202,8 @@ export async function reserveAiSlot(
   feature: AiFeature,
 ): Promise<ReserveResult> {
   assertAiConfigured();
-  return store.reserve(userId, familyId, feature, AI_DAILY_LIMITS[feature]);
+  const { max, window } = await resolveFeatureLimit(familyId, feature);
+  return store.reserve(userId, familyId, feature, max, windowStart(window), window);
 }
 
 /** Aggiorna un record "started" a "succeeded"/"failed". Non lancia mai. */
@@ -152,7 +214,7 @@ export async function finalizeAiUsage(usageId: string, success: boolean): Promis
 /** Esito dell'esecuzione di una funzione AI con tracciamento uso. */
 export type AiUsageRun<T> =
   | { outcome: "ok"; value: T }
-  | { outcome: "limited"; used: number; max: number }
+  | { outcome: "limited"; used: number; max: number; window: QuotaWindow }
   | { outcome: "unavailable" };
 
 /**
@@ -173,7 +235,7 @@ export async function withAiUsage<T>(
 ): Promise<AiUsageRun<T>> {
   const reservation = await reserveAiSlot(ctx.userId, ctx.familyId, ctx.feature);
   if (reservation.status === "limited") {
-    return { outcome: "limited", used: reservation.used, max: reservation.max };
+    return { outcome: "limited", used: reservation.used, max: reservation.max, window: reservation.window };
   }
   if (reservation.status === "unavailable") {
     return { outcome: "unavailable" };

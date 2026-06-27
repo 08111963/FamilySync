@@ -1,13 +1,21 @@
 ---
-name: Premium gating is cosmetic
-description: How "Premium"/locked-feature confusion arises in FamilySync and how access actually works
+name: Premium / freemium model (entitlements)
+description: How Premium status, AI quotas, and store purchases work in FamilySync
 ---
 
-# Premium features are NOT gated
+# Premium = entitlements, single source of truth
 
-- **No real paywall exists** anywhere: neither backend routes/middleware nor frontend block AI, members, real-time sync, recipes, etc. The only AI gate is the GDPR `users.aiFeaturesEnabled` toggle (ai-guard middleware), unrelated to payments.
-- `app/premium.tsx` is a **marketing/upsell screen only**. When `paymentsEnabled` is false (Stripe payments disabled by default), it shows "Presto disponibile! Ecco cosa avrai". Users mistake this for features being locked.
+- **`isPremium(familyId)` in `server/lib/entitlements.ts` is the ONLY source of truth.** It reads the `entitlements` table (one row per family, unique on familyId) and returns true only for status=active and not expired. **Fail-closed**: any error → false.
+- **`families.subscriptionStatus` is a MIRROR, never a gate.** `applyPurchase` syncs it ("premium"/"free") for display only. Do NOT branch premium logic on it anywhere (backend or frontend). The old cosmetic-gating model that OR-ed `subscriptionStatus in premium|active|trialing` was removed.
+- `app/premium.tsx` reads premium state ONLY from `GET /api/purchases/status/:familyId` (derived from entitlements) — no `currentFamily.subscriptionStatus` fallback.
+- `server/middleware/ai-guard.ts`: when `config.aiRequiresPremium` is true it gates via `isPremium(familyId)`, not the families table. With the flag false (default), AI is open to any consenting user (GDPR `users.aiFeaturesEnabled`).
 
-## Rule: to present "everything unlocked" for a family, set its subscription_status
-- **Why:** an admin user repeatedly read the Premium "coming soon" screen as a lock even though all features worked.
-- **How to apply:** the premium screen treats a family as subscribed when `currentFamily.subscriptionStatus` is one of `premium|active|trialing` (OR-ed with the Stripe subscription status), which switches the hero to "Sei Premium / accesso completo" and hides the coming-soon block even with payments disabled. `/api/families` already returns `subscriptionStatus` (spread of the family row); `FamilyInfo` includes it. The `subscription_status` pg enum allows premium/active/trialing among others.
+# AI is freemium by QUOTA, not by paywall
+- AI is never sold separately. The free/premium difference is ONLY the per-plan quota in `PLAN_LIMITS` (`server/lib/ai-usage.ts`), resolved server-side in `reserveAiSlot` via `getPlanForFamily`. Quotas have a `window` of `day|week`; the 429 message reflects which.
+- **Why:** requirement was a real freemium model — AI stays demoable for free families but limited; premium unlocks higher quotas.
+
+# Premium is store-native only (IAP), Stripe stays dormant
+- Purchases are verified server-side by an injectable verifier (`server/lib/iap-verifier.ts`, `__setIapVerifierForTest`): real Apple verifyReceipt + Google Play subscriptions API. Real verification runs ONLY when store credentials are configured (`config.isIapVerificationConfigured`), else 503 `PURCHASE_VERIFICATION_UNAVAILABLE`.
+- **Never trust client `productId`** in `/api/purchases/verify|restore` — the route forces `config.premiumProductIdFor(platform)` so a client can't validate a different SKU into a premium entitlement.
+- **`lib/iap.ts` (client) is intentionally a STUB**: `isIapAvailable()` returns false; purchase/restore throw `IAP_NOT_AVAILABLE`. Real native IAP (StoreKit / Play Billing) needs a production native build + store credentials — not possible in Expo Go. The backend + verification are fully real and unit-tested with a fake verifier.
+- Stripe remains dormant (`PREMIUM_PAYMENTS_ENABLED=false`) and must NOT unlock mobile premium. `premium-disabled.test.ts` guards the no-Stripe invariant.

@@ -1,19 +1,20 @@
 import type { Request, Response, NextFunction } from "express";
 import { db } from "../db";
-import { users, families } from "../../shared/schema";
+import { users } from "../../shared/schema";
 import { eq } from "drizzle-orm";
 import { config } from "../lib/config";
+import { isPremium as isFamilyPremium } from "../lib/entitlements";
 
 /**
  * Controllo accesso alle funzionalità AI.
  *
  * Regola (vedi anche config.aiRequiresPremium):
  * 1. L'utente deve avere il consenso AI attivo (toggle GDPR users.aiFeaturesEnabled).
- * 2. Se config.aiRequiresPremium è true (cioè quando i pagamenti Premium sono
- *    attivi), la famiglia indicata in :familyId deve avere subscriptionStatus
- *    = "premium". Con il flag a false (stato attuale, pagamenti disattivi) l'AI
- *    resta gratuita per tutti gli utenti consenzienti, limitata dalla quota
- *    giornaliera per famiglia.
+ * 2. Se config.aiRequiresPremium è true, la famiglia indicata in :familyId deve
+ *    risultare Premium secondo isPremium(familyId) (fonte di verità unica =
+ *    entitlements/acquisti store-native). Con il flag a false (stato attuale)
+ *    l'AI resta accessibile a tutti gli utenti consenzienti, e la differenza
+ *    free/premium è SOLO nelle quote (vedi ai-usage.ts).
  */
 export async function requireAiEnabled(req: Request, res: Response, next: NextFunction) {
   try {
@@ -42,17 +43,11 @@ export async function requireAiEnabled(req: Request, res: Response, next: NextFu
             ? familyIdBody
             : undefined;
 
-      let isPremium = false;
-      if (familyId) {
-        const [family] = await db
-          .select({ subscriptionStatus: families.subscriptionStatus })
-          .from(families)
-          .where(eq(families.id, familyId))
-          .limit(1);
-        isPremium = family?.subscriptionStatus === "premium";
-      }
+      // Fonte di verità UNICA: entitlements (acquisti store-native), non
+      // families.subscriptionStatus. Fail-closed in caso di errore.
+      const premium = familyId ? await isFamilyPremium(familyId) : false;
 
-      if (!isPremium) {
+      if (!premium) {
         return res.status(403).json({
           error: {
             code: "AI_PREMIUM_REQUIRED",

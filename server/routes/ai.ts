@@ -25,12 +25,14 @@ function sendAiError(res: Response, error: unknown, fallbackMsg: string) {
   return res.status(500).json({ error: { code: "AI_ERROR", message: fallbackMsg } });
 }
 
-/** 429: quota giornaliera della feature raggiunta. */
-function sendRateLimited(res: Response, max: number) {
+/** 429: quota della feature raggiunta (giornaliera o settimanale, per piano). */
+function sendRateLimited(res: Response, max: number, window: "day" | "week" = "day") {
+  const periodo = window === "week" ? "settimanale" : "giornaliero";
+  const quando = window === "week" ? "Riprova la prossima settimana o passa a Premium." : "Riprova domani o passa a Premium.";
   return res.status(429).json({
     error: {
       code: "AI_RATE_LIMITED",
-      message: `Hai raggiunto il limite giornaliero (${max}) per questa funzione AI. Riprova domani.`,
+      message: `Hai raggiunto il limite ${periodo} (${max}) per questa funzione AI. ${quando}`,
     },
   });
 }
@@ -178,7 +180,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
     //   (anche un fallimento ha consumato token).
     const reservation = await reserveAiSlot(userId, familyId, 'shopping-suggestions');
     if (reservation.status === 'limited') {
-      return sendRateLimited(res, reservation.max);
+      return sendRateLimited(res, reservation.max, reservation.window);
     }
     if (reservation.status === 'ok') {
       const usageId = reservation.usageId;
@@ -401,7 +403,7 @@ router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requ
         chores: pendingChores.map(c => ({ id: c.id, title: c.title, estimatedMinutes: c.estimatedMinutes || 30 })),
       }),
     );
-    if (run.outcome === 'limited') return sendRateLimited(res, run.max);
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
 
     res.json(run.value);
@@ -463,7 +465,7 @@ router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requ
         weeklyPoints: completedChores.reduce((sum, c) => sum + (c.points || 0), 0),
       }),
     );
-    if (run.outcome === 'limited') return sendRateLimited(res, run.max);
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
     const insights = run.value;
 
@@ -530,7 +532,7 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
         count: Math.min(count || 8, 20),
       }),
     );
-    if (run.outcome === 'limited') return sendRateLimited(res, run.max);
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
     const result = run.value;
 
@@ -575,7 +577,7 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
       { userId, familyId, feature: 'weekly-meal-plan' },
       () => generateWeeklyMealPlan({ ...context, planVariant: 1 }),
     );
-    if (run.outcome === 'limited') return sendRateLimited(res, run.max);
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
     const plan = run.value;
     plan.title = plan.title || "Piano Settimanale";
@@ -630,7 +632,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     // Prenotazione quota PRIMA di aprire lo stream: così su 429/503 possiamo
     // ancora rispondere con uno status HTTP (headers non ancora inviati).
     const reservation = await reserveAiSlot(userId, familyId, 'weekly-meal-plan');
-    if (reservation.status === 'limited') return sendRateLimited(res, reservation.max);
+    if (reservation.status === 'limited') return sendRateLimited(res, reservation.max, reservation.window);
     if (reservation.status === 'unavailable') return sendUsageUnavailable(res);
     usageId = reservation.usageId;
 
@@ -712,7 +714,7 @@ router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireF
         excludeTitles: extraTitles,
       }),
     );
-    if (run.outcome === 'limited') return sendRateLimited(res, run.max);
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
     const result = run.value;
 

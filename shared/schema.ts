@@ -27,6 +27,8 @@ export const reportStatusEnum = pgEnum("report_status", ["open", "actioned", "di
 export const mealTypeEnum = pgEnum("meal_type", ["breakfast", "lunch", "dinner", "snack"]);
 export const recipeSourceEnum = pgEnum("recipe_source", ["ai", "manual"]);
 export const ingredientUnitEnum = pgEnum("ingredient_unit", ["g", "kg", "ml", "l", "pcs", "tbsp", "tsp", "cup", "pinch", "to_taste"]);
+export const purchasePlatformEnum = pgEnum("purchase_platform", ["google", "apple"]);
+export const entitlementStatusEnum = pgEnum("entitlement_status", ["active", "expired", "canceled", "pending"]);
 
 // USERS
 export const users = pgTable("users", {
@@ -364,6 +366,34 @@ export const pushTokens = pgTable("push_tokens", {
 ]);
 
 export type PushToken = typeof pushTokens.$inferSelect;
+
+// ENTITLEMENTS — Premium acquistato tramite store nativi (Google Play / Apple).
+// Premium è UNICO per famiglia: una sola riga per familyId (unique).
+// La verifica server-side aggiorna status/expiresAt; isPremium(familyId) legge qui.
+// Stripe NON scrive in questa tabella: il premium mobile dipende solo dagli store.
+export const entitlements = pgTable("entitlements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  platform: purchasePlatformEnum("platform").notNull(),
+  productId: varchar("product_id", { length: 255 }).notNull(),
+  status: entitlementStatusEnum("status").notNull().default("pending"),
+  expiresAt: timestamp("expires_at"),
+  // Google Play: token di acquisto restituito dal client.
+  purchaseToken: text("purchase_token"),
+  // Apple: id transazione originale (stabile per l'abbonamento) e ultima transazione.
+  originalTransactionId: varchar("original_transaction_id", { length: 255 }),
+  transactionId: varchar("transaction_id", { length: 255 }),
+  // Ricevuta/token grezzi per ri-verifica e ripristino acquisti.
+  latestReceipt: text("latest_receipt"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  unique("entitlements_family_unique").on(table.familyId),
+  index("entitlements_status_idx").on(table.status, table.expiresAt),
+]);
+
+export type Entitlement = typeof entitlements.$inferSelect;
 
 // Insert schemas for validation
 export const insertUserSchema = createInsertSchema(users).pick({

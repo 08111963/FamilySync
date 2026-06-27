@@ -2,8 +2,9 @@ import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
-import { users, families, aiUsage } from "../../shared/schema";
+import { users, families, aiUsage, entitlements } from "../../shared/schema";
 import { reserveAiSlot, finalizeAiUsage, __resetAiUsageStoreForTest } from "../lib/ai-usage";
+import { __resetEntitlementStoreForTest } from "../lib/entitlements";
 
 /**
  * Test di INTEGRAZIONE contro il DB reale: verifica che la prenotazione atomica
@@ -22,6 +23,7 @@ describe("ai_usage concorrenza reale (DB)", { skip: hasDb ? false : "DATABASE_UR
       process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "test-openai-key";
     }
     __resetAiUsageStoreForTest();
+    __resetEntitlementStoreForTest();
     const [u] = await db
       .insert(users)
       .values({
@@ -33,6 +35,16 @@ describe("ai_usage concorrenza reale (DB)", { skip: hasDb ? false : "DATABASE_UR
     userId = u!.id;
     const [f] = await db.insert(families).values({ name: "AI Usage Test Family" }).returning({ id: families.id });
     familyId = f!.id;
+    // Entitlement PREMIUM attivo: così la quota weekly-meal-plan resta 3/giorno
+    // (con piano free sarebbe 1/settimana e il test "esattamente 3 ok" fallirebbe).
+    await db.insert(entitlements).values({
+      familyId,
+      userId,
+      platform: "google",
+      productId: "familysync_premium",
+      status: "active",
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    });
   });
 
   after(async () => {

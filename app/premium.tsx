@@ -1,118 +1,141 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator, Linking, Alert } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest } from "@/lib/query-client";
-import { getPremiumViewState } from "@/lib/premium-access";
+import { getStorePlatform, isIapAvailable, purchasePremium, restorePurchases, IapError } from "@/lib/iap";
 
-const FEATURES = [
-  { icon: "sparkles" as const, title: "Suggerimenti AI", description: "Ottieni suggerimenti intelligenti per spesa e faccende" },
-  { icon: "people" as const, title: "Membri Illimitati", description: "Aggiungi tutti i membri della famiglia" },
-  { icon: "sync" as const, title: "Sincronizzazione Real-time", description: "Aggiornamenti istantanei tra tutti i dispositivi" },
-  { icon: "analytics" as const, title: "Statistiche Avanzate", description: "Analisi dettagliate dell'attivita familiare" },
-  { icon: "color-palette" as const, title: "Temi Personalizzati", description: "Personalizza l'aspetto della tua app" },
-  { icon: "shield-checkmark" as const, title: "Supporto Prioritario", description: "Assistenza dedicata e veloce" },
+type PlanFeature = { label: string; free: string; premium: string };
+
+const PLAN_FEATURES: PlanFeature[] = [
+  { label: "Suggerimenti spesa AI", free: "2 / giorno", premium: "10 / giorno" },
+  { label: "Ricerca ricette AI", free: "2 / giorno", premium: "20 / giorno" },
+  { label: "Idee ricette AI", free: "1 / giorno", premium: "10 / giorno" },
+  { label: "Piano pasti AI", free: "1 / settimana", premium: "3 / giorno" },
+  { label: "Statistiche AI", free: "1 / settimana", premium: "5 / giorno" },
+  { label: "Ottimizzazione faccende AI", free: "1 / giorno", premium: "10 / giorno" },
+  { label: "Calendario, spesa, faccende, chat", free: "Illimitato", premium: "Illimitato" },
+  { label: "Supporto prioritario", free: "—", premium: "Incluso" },
 ];
 
 export default function PremiumScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { currentFamily } = useFamily();
-  const [loading, setLoading] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<"monthly" | "yearly">("yearly");
-  const [notifySet, setNotifySet] = useState(false);
+  const queryClient = useQueryClient();
+  const [working, setWorking] = useState(false);
+
+  const familyId = currentFamily?.id;
+
+  const configQuery = useQuery<any>({
+    queryKey: ["/api/purchases/config"],
+  });
 
   const statusQuery = useQuery<any>({
-    queryKey: ["/api/payments", "status"],
+    queryKey: ["/api/purchases/status", familyId],
+    enabled: !!familyId,
   });
 
-  const paymentsEnabled = statusQuery.data?.paymentsEnabled === true;
+  // Fonte di verità UNICA: /api/purchases/status (derivato da entitlements).
+  // Nessun fallback su currentFamily.subscriptionStatus.
+  const isPremium = statusQuery.data?.premium === true;
+  const expiresAt = statusQuery.data?.expiresAt as string | null | undefined;
 
-  const productsQuery = useQuery<any>({
-    queryKey: ["/api/payments", "products-with-prices"],
-    enabled: paymentsEnabled,
-  });
+  const storePlatform = getStorePlatform();
+  const productId = storePlatform === "apple"
+    ? configQuery.data?.iosProductId
+    : configQuery.data?.androidProductId;
 
-  const subscriptionQuery = useQuery<any>({
-    queryKey: ["/api/payments/subscription", currentFamily?.id],
-    enabled: paymentsEnabled && !!currentFamily?.id,
-  });
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/purchases/status", familyId] });
+  };
 
-  const products = productsQuery.data?.data || [];
-  const subscription = subscriptionQuery.data;
-  const familyPremium = ["premium", "active", "trialing"].includes(currentFamily?.subscriptionStatus ?? "");
-  const isSubscribed = subscription?.status === "premium" || familyPremium;
-  const viewState = getPremiumViewState({ paymentsEnabled, isSubscribed, platform: Platform.OS });
-
-  const getPrice = (type: "monthly" | "yearly") => {
-    for (const product of products) {
-      for (const price of product.prices || []) {
-        if (type === "monthly" && price.recurring?.interval === "month") return price;
-        if (type === "yearly" && price.recurring?.interval === "year") return price;
-      }
+  const handlePurchase = async () => {
+    if (!familyId) return;
+    if (!storePlatform || !isIapAvailable()) {
+      Alert.alert(
+        "Acquisto non disponibile",
+        "Gli acquisti in-app sono disponibili solo nell'app pubblicata su App Store / Google Play.",
+      );
+      return;
     }
-    return null;
-  };
-
-  const monthlyPrice = getPrice("monthly");
-  const yearlyPrice = getPrice("yearly");
-
-  const formatPrice = (amount: number, currency: string) => {
-    return new Intl.NumberFormat("it-IT", {
-      style: "currency",
-      currency: currency || "eur",
-    }).format(amount / 100);
-  };
-
-  const handleSubscribe = async () => {
-    if (!currentFamily) return;
-    const price = selectedPlan === "monthly" ? monthlyPrice : yearlyPrice;
-    if (!price) return;
-
-    setLoading(true);
+    if (!productId) {
+      Alert.alert("Configurazione mancante", "Prodotto Premium non configurato. Riprova più tardi.");
+      return;
+    }
+    setWorking(true);
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      const res = await apiRequest("POST", "/api/payments/checkout", {
-        plan: selectedPlan,
-        familyId: currentFamily.id,
+      const purchase = await purchasePremium(productId);
+      const res = await apiRequest("POST", "/api/purchases/verify", {
+        familyId,
+        platform: purchase.platform,
+        productId: purchase.productId,
+        purchaseToken: purchase.purchaseToken,
+        receiptData: purchase.receiptData,
+        transactionId: purchase.transactionId,
       });
-      const { url } = await res.json();
-      if (url) Linking.openURL(url);
+      const data = await res.json();
+      refresh();
+      Alert.alert(data?.premium ? "Premium attivato!" : "Acquisto registrato", "");
     } catch (error) {
-      console.error("Checkout error:", error);
+      if (error instanceof IapError) {
+        if (error.code !== "IAP_CANCELLED") Alert.alert("Acquisto non riuscito", error.message);
+      } else {
+        Alert.alert("Errore", "Non è stato possibile completare l'acquisto. Riprova più tardi.");
+      }
     } finally {
-      setLoading(false);
+      setWorking(false);
     }
   };
 
-  const handleManageSubscription = async () => {
-    if (!currentFamily) return;
-    setLoading(true);
+  const handleRestore = async () => {
+    if (!familyId) return;
+    if (!storePlatform || !isIapAvailable()) {
+      Alert.alert(
+        "Ripristino non disponibile",
+        "Il ripristino acquisti è disponibile solo nell'app pubblicata su App Store / Google Play.",
+      );
+      return;
+    }
+    setWorking(true);
     try {
-      const res = await apiRequest("POST", "/api/payments/portal", {
-        familyId: currentFamily.id,
+      const purchases = await restorePurchases();
+      if (purchases.length === 0) {
+        Alert.alert("Nessun acquisto", "Non abbiamo trovato acquisti da ripristinare.");
+        return;
+      }
+      const p = purchases[0];
+      const res = await apiRequest("POST", "/api/purchases/restore", {
+        familyId,
+        platform: p.platform,
+        productId: p.productId,
+        purchaseToken: p.purchaseToken,
+        receiptData: p.receiptData,
+        transactionId: p.transactionId,
       });
-      const { url } = await res.json();
-      if (url) Linking.openURL(url);
+      const data = await res.json();
+      refresh();
+      Alert.alert(data?.premium ? "Premium ripristinato!" : "Nessun abbonamento attivo", "");
     } catch (error) {
-      console.error("Portal error:", error);
+      if (error instanceof IapError) {
+        Alert.alert("Ripristino non riuscito", error.message);
+      } else {
+        Alert.alert("Errore", "Non è stato possibile ripristinare gli acquisti. Riprova più tardi.");
+      }
     } finally {
-      setLoading(false);
+      setWorking(false);
     }
-  };
-
-  const handleNotifyMe = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setNotifySet(true);
   };
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
+  const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -124,150 +147,88 @@ export default function PremiumScreen() {
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: bottomInset + 40 }}>
         <View style={styles.heroSection}>
           <View style={[styles.premiumBadge, { backgroundColor: colors.accent }]}>
             <Ionicons name="diamond" size={32} color="#000" />
           </View>
           <Text style={[styles.heroTitle, { color: colors.text }]}>
-            {isSubscribed ? "Sei Premium!" : "FamilySync Premium"}
+            {isPremium ? "Sei Premium!" : "FamilySync Premium"}
           </Text>
           <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>
-            {isSubscribed
-              ? "Hai accesso a tutte le funzionalita Premium"
-              : !paymentsEnabled
-              ? "Presto disponibile! Ecco cosa avrai"
-              : "Sblocca tutte le funzionalita per la tua famiglia"}
+            {isPremium
+              ? expiresAt
+                ? `Attivo fino al ${new Date(expiresAt).toLocaleDateString("it-IT")}`
+                : "Hai accesso a tutte le funzionalità Premium"
+              : "Più AI per la tua famiglia. Acquisto sicuro tramite lo store."}
           </Text>
         </View>
 
-        <View style={styles.featuresSection}>
-          {FEATURES.map((feature, index) => (
-            <View key={index} style={styles.featureRow}>
-              <View style={[styles.featureIcon, { backgroundColor: colors.primary + "20" }]}>
-                <Ionicons name={feature.icon} size={20} color={colors.primary} />
-              </View>
-              <View style={styles.featureInfo}>
-                <Text style={[styles.featureTitle, { color: colors.text }]}>{feature.title}</Text>
-                <Text style={[styles.featureDescription, { color: colors.textSecondary }]}>
-                  {feature.description}
-                </Text>
+        <View style={styles.plansRow}>
+          <View style={[styles.planColumn, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+            <Text style={[styles.planColTitle, { color: colors.text }]}>Free</Text>
+            <Text style={[styles.planColPrice, { color: colors.textSecondary }]}>Gratis</Text>
+          </View>
+          <View style={[styles.planColumn, { borderColor: colors.primary, backgroundColor: colors.surface, borderWidth: 2 }]}>
+            <View style={[styles.bestBadge, { backgroundColor: colors.primary }]}>
+              <Text style={styles.bestBadgeText}>Consigliato</Text>
+            </View>
+            <Text style={[styles.planColTitle, { color: colors.text }]}>Premium</Text>
+            <Text style={[styles.planColPrice, { color: colors.primary }]}>AI completa</Text>
+          </View>
+        </View>
+
+        <View style={[styles.comparison, { borderColor: colors.border }]}>
+          {PLAN_FEATURES.map((f, i) => (
+            <View
+              key={f.label}
+              style={[
+                styles.compareRow,
+                { borderTopColor: colors.border, borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth },
+              ]}
+            >
+              <Text style={[styles.compareLabel, { color: colors.text }]}>{f.label}</Text>
+              <View style={styles.compareValues}>
+                <Text style={[styles.compareFree, { color: colors.textSecondary }]}>{f.free}</Text>
+                <Text style={[styles.comparePremium, { color: colors.primary }]}>{f.premium}</Text>
               </View>
             </View>
           ))}
         </View>
 
-        {viewState.showComingSoon && (
-          <View style={styles.comingSoonSection}>
-            <Pressable
-              onPress={handleNotifyMe}
-              disabled={notifySet}
-              style={({ pressed }) => [
-                styles.notifyButton,
-                {
-                  backgroundColor: notifySet ? colors.surface : colors.primary,
-                  borderColor: notifySet ? colors.border : colors.primary,
-                  borderWidth: notifySet ? 1 : 0,
-                  opacity: pressed && !notifySet ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Ionicons
-                name={notifySet ? "checkmark-circle" : "notifications"}
-                size={20}
-                color={notifySet ? colors.success : "#FFFFFF"}
-                style={{ marginRight: 8 }}
-              />
-              <Text style={[styles.notifyButtonText, { color: notifySet ? colors.text : "#FFFFFF" }]}>
-                {notifySet ? "Ti avviseremo!" : "Avvisami quando disponibile"}
-              </Text>
-            </Pressable>
-          </View>
-        )}
-
-        {viewState.showPurchaseCTA && (
-          <>
-            <View style={styles.plansSection}>
-              <Pressable
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setSelectedPlan("yearly");
-                }}
-                style={[
-                  styles.planCard,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: selectedPlan === "yearly" ? colors.primary : colors.border,
-                    borderWidth: selectedPlan === "yearly" ? 2 : 1,
-                  },
-                ]}
-              >
-                <View style={[styles.saveBadge, { backgroundColor: colors.success }]}>
-                  <Text style={styles.saveBadgeText}>Risparmia 33%</Text>
-                </View>
-                <Text style={[styles.planName, { color: colors.text }]}>Annuale</Text>
-                <Text style={[styles.planPrice, { color: colors.primary }]}>
-                  {yearlyPrice ? formatPrice(yearlyPrice.unit_amount, yearlyPrice.currency) : "39,99 EUR"}/anno
-                </Text>
-                <Text style={[styles.planMonthly, { color: colors.textSecondary }]}>
-                  {yearlyPrice ? formatPrice(Math.round(yearlyPrice.unit_amount / 12), yearlyPrice.currency) : "~3,33 EUR"}/mese
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setSelectedPlan("monthly");
-                }}
-                style={[
-                  styles.planCard,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: selectedPlan === "monthly" ? colors.primary : colors.border,
-                    borderWidth: selectedPlan === "monthly" ? 2 : 1,
-                  },
-                ]}
-              >
-                <Text style={[styles.planName, { color: colors.text }]}>Mensile</Text>
-                <Text style={[styles.planPrice, { color: colors.primary }]}>
-                  {monthlyPrice ? formatPrice(monthlyPrice.unit_amount, monthlyPrice.currency) : "4,99 EUR"}/mese
-                </Text>
-              </Pressable>
-            </View>
-
-            <Pressable
-              onPress={handleSubscribe}
-              disabled={loading}
-              style={({ pressed }) => [
-                styles.subscribeButton,
-                { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
-              ]}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.subscribeButtonText}>Abbonati Ora</Text>
-              )}
-            </Pressable>
-          </>
-        )}
-
-        {viewState.showManageCTA && (
+        {!isPremium && (
           <Pressable
-            onPress={handleManageSubscription}
-            disabled={loading}
+            onPress={handlePurchase}
+            disabled={working}
             style={({ pressed }) => [
-              styles.manageButton,
-              { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.8 : 1 },
+              styles.subscribeButton,
+              { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
             ]}
           >
-            {loading ? (
-              <ActivityIndicator color={colors.primary} />
+            {working ? (
+              <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={[styles.manageButtonText, { color: colors.primary }]}>Gestisci Abbonamento</Text>
+              <>
+                <Ionicons
+                  name={storePlatform === "apple" ? "logo-apple" : "logo-google-playstore"}
+                  size={20}
+                  color="#FFFFFF"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={styles.subscribeButtonText}>Passa a Premium</Text>
+              </>
             )}
           </Pressable>
         )}
+
+        <Pressable onPress={handleRestore} disabled={working} style={styles.restoreButton}>
+          <Text style={[styles.restoreText, { color: colors.primary }]}>Ripristina acquisti</Text>
+        </Pressable>
+
+        <Text style={[styles.legalNote, { color: colors.textSecondary }]}>
+          L'abbonamento si rinnova automaticamente tramite il tuo account App Store / Google Play
+          e può essere gestito o annullato nelle impostazioni dello store.
+        </Text>
       </ScrollView>
     </View>
   );
@@ -286,7 +247,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontFamily: "Inter_600SemiBold" },
   placeholder: { width: 40 },
   content: { flex: 1, paddingHorizontal: 20 },
-  heroSection: { alignItems: "center", marginBottom: 32 },
+  heroSection: { alignItems: "center", marginBottom: 24 },
   premiumBadge: {
     width: 72,
     height: 72,
@@ -296,64 +257,42 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   heroTitle: { fontSize: 28, fontFamily: "Inter_700Bold", marginBottom: 8 },
-  heroSubtitle: { fontSize: 16, fontFamily: "Inter_400Regular", textAlign: "center" },
-  featuresSection: { gap: 16, marginBottom: 32 },
-  featureRow: { flexDirection: "row", alignItems: "center", gap: 16 },
-  featureIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  featureInfo: { flex: 1 },
-  featureTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold", marginBottom: 2 },
-  featureDescription: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  comingSoonSection: { marginBottom: 24, gap: 16 },
-  previewPlans: { borderRadius: 16, padding: 16, borderWidth: 1, gap: 12 },
-  previewPlanRow: { flexDirection: "row", alignItems: "center" },
-  previewPlanName: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  previewPlanPrice: { fontSize: 14, fontFamily: "Inter_500Medium", marginTop: 2 },
-  previewBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  previewBadgeText: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#FFFFFF" },
-  notifyButton: {
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-  },
-  notifyButtonText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  plansSection: { flexDirection: "row", gap: 12, marginBottom: 24 },
-  planCard: {
+  heroSubtitle: { fontSize: 15, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 21 },
+  plansRow: { flexDirection: "row", gap: 12, marginBottom: 12 },
+  planColumn: {
     flex: 1,
-    padding: 16,
     borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
     alignItems: "center",
   },
-  saveBadge: {
-    paddingHorizontal: 8,
+  bestBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, marginBottom: 4 },
+  bestBadgeText: { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#FFFFFF" },
+  planColTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  planColPrice: { fontSize: 13, fontFamily: "Inter_500Medium", marginTop: 2 },
+  comparison: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
     paddingVertical: 4,
-    borderRadius: 8,
-    marginBottom: 8,
+    marginBottom: 24,
   },
-  saveBadgeText: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#FFFFFF" },
-  planName: { fontSize: 18, fontFamily: "Inter_600SemiBold", marginBottom: 4 },
-  planPrice: { fontSize: 16, fontFamily: "Inter_700Bold", marginBottom: 2 },
-  planMonthly: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  compareRow: { paddingVertical: 12 },
+  compareLabel: { fontSize: 14, fontFamily: "Inter_500Medium", marginBottom: 6 },
+  compareValues: { flexDirection: "row", justifyContent: "space-between" },
+  compareFree: { fontSize: 13, fontFamily: "Inter_400Regular", flex: 1 },
+  comparePremium: { fontSize: 13, fontFamily: "Inter_600SemiBold", flex: 1, textAlign: "right" },
   subscribeButton: {
     paddingVertical: 16,
     borderRadius: 14,
     alignItems: "center",
-    marginBottom: 16,
+    justifyContent: "center",
+    flexDirection: "row",
+    marginBottom: 12,
   },
   subscribeButtonText: { color: "#FFFFFF", fontSize: 18, fontFamily: "Inter_700Bold" },
-  manageButton: {
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    borderWidth: 1,
-    marginTop: 16,
-  },
-  manageButtonText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  restoreButton: { paddingVertical: 12, alignItems: "center", marginBottom: 16 },
+  restoreText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  legalNote: { fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 18 },
 });

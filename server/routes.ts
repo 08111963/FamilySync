@@ -12,6 +12,7 @@ import shoppingRoutes from "./routes/shopping";
 import choresRoutes from "./routes/chores";
 import aiRoutes from "./routes/ai";
 import paymentsRoutes from "./routes/payments";
+import purchasesRoutes from "./routes/purchases";
 import legalRoutes from "./routes/legal";
 import helpRoutes from "./routes/help";
 import moderationRoutes from "./routes/moderation";
@@ -47,6 +48,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/chores', authenticate, requireEmailVerified, choresRoutes);
   app.use('/api/ai', authenticate, requireEmailVerified, aiRoutes);
   app.use('/api/payments', authenticate, requireEmailVerified, paymentsRoutes);
+  app.use('/api/purchases', authenticate, requireEmailVerified, purchasesRoutes);
   app.use('/api/moderation', authenticate, requireEmailVerified, moderationRoutes);
   app.use('/api/recipes', authenticate, requireEmailVerified, recipesRoutes);
   app.use('/api/meal-plans', authenticate, requireEmailVerified, mealPlansRoutes);
