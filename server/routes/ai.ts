@@ -250,7 +250,10 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
     for (const s of [alreadyOnListSet, completedRecentlySet, recentPurchasesSet, recentSuggestionsSet]) {
       for (const v of s) allForbiddenSet.add(v);
     }
-    for (const n of seenNames) allForbiddenSet.add(n);
+    // NB: non pre-aggiungere seenNames (i nomi degli articoli AI) a allForbiddenSet:
+    // addItem rifiuta ciò che è in allForbiddenSet, quindi bloccherebbe gli stessi
+    // articoli AI che vogliamo inserire. I duplicati sono già evitati da usedNorms
+    // (ogni addItem riuscito aggiunge il nome sia a usedNorms sia a allForbiddenSet).
 
     const householdAI = filtered.filter(i => i.category === 'household_cleaning');
     const personalAI = filtered.filter(i => i.category === 'personal_care');

@@ -1,6 +1,6 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db";
-import { aiUsage } from "../../shared/schema";
+import { aiUsage, familyMembers } from "../../shared/schema";
 import { logger } from "./logger";
 import { assertAiConfigured } from "./ai-errors";
 import { getPlanForFamily, type Plan } from "./entitlements";
@@ -180,6 +180,24 @@ export async function resolveFeatureLimit(familyId: string, feature: AiFeature):
 }
 
 /**
+ * Gli admin della famiglia non hanno limiti AI: bypassano la quota del piano.
+ * L'uso viene comunque tracciato (record ai_usage), ma non viene mai bloccato.
+ */
+async function isFamilyAdmin(userId: string, familyId: string): Promise<boolean> {
+  try {
+    const [m] = await db
+      .select({ role: familyMembers.role })
+      .from(familyMembers)
+      .where(and(eq(familyMembers.userId, userId), eq(familyMembers.familyId, familyId)))
+      .limit(1);
+    return m?.role === "admin";
+  } catch (err) {
+    logger.error("isFamilyAdmin check failed", { userId, familyId, error: String(err) });
+    return false;
+  }
+}
+
+/**
  * Prenota uno slot quota PRIMA della chiamata OpenAI.
  * - "ok": slot prenotato (record "started" creato), va chiamato OpenAI.
  * - "limited": quota del piano raggiunta -> 429.
@@ -203,7 +221,10 @@ export async function reserveAiSlot(
 ): Promise<ReserveResult> {
   assertAiConfigured();
   const { max, window } = await resolveFeatureLimit(familyId, feature);
-  return store.reserve(userId, familyId, feature, max, windowStart(window), window);
+  // Admin: nessun limite. Tracciamo comunque l'uso, ma con tetto "illimitato".
+  const admin = await isFamilyAdmin(userId, familyId);
+  const effectiveMax = admin ? Number.MAX_SAFE_INTEGER : max;
+  return store.reserve(userId, familyId, feature, effectiveMax, windowStart(window), window);
 }
 
 /** Aggiorna un record "started" a "succeeded"/"failed". Non lancia mai. */
