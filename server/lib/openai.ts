@@ -69,7 +69,8 @@ export async function generateShoppingSuggestions(context: {
   assertAiConfigured();
   try {
     const response = await getOpenAiClient().chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
+      reasoning_effort: 'minimal',
       messages: [{
         role: 'system',
         content: `Sei un assistente per la lista della spesa al supermercato italiano.
@@ -91,9 +92,6 @@ REGOLE TASSATIVE:
 Genera 12 prodotti da supermercato NUOVI e DIVERSI da quelli vietati.`,
       }],
       response_format: { type: 'json_object' },
-      temperature: 0.7,
-      presence_penalty: 0.8,
-      frequency_penalty: 0.3,
     });
 
     const content = response.choices[0].message.content || '{"items": []}';
@@ -111,7 +109,8 @@ export async function optimizeChoreSchedule(context: {
   assertAiConfigured();
   try {
     const response = await getOpenAiClient().chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
+      reasoning_effort: 'minimal',
       messages: [{
         role: 'system',
         content: 'Sei un organizzatore equo di faccende domestiche. Bilancia le faccende tra i membri della famiglia.',
@@ -344,14 +343,14 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
     const userMsg = `${seed} ${context.familySize}pers${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${lastTitlesText}`;
 
     const response = await getOpenAiClient().chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
+      reasoning_effort: 'minimal',
       messages: [
         { role: 'system', content: sysPrompt },
         { role: 'user', content: userMsg },
       ],
       response_format: RECIPES_RESPONSE_FORMAT,
-      temperature: 1.2,
-      max_tokens: 2500,
+      max_completion_tokens: 2500,
     });
 
     const content = response.choices[0].message.content || '{"recipes": []}';
@@ -423,7 +422,8 @@ export async function searchRecipesByQuery(query: string, context: {
   try {
     const startTime = Date.now();
     const response = await getOpenAiClient().chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
+      reasoning_effort: 'minimal',
       messages: [
         {
           role: 'system',
@@ -436,8 +436,7 @@ Quantity stringa. Genera esattamente 3 ricette pertinenti alla ricerca. Ogni ric
         },
       ],
       response_format: RECIPES_RESPONSE_FORMAT,
-      temperature: 0.9,
-      max_tokens: 2500,
+      max_completion_tokens: 2500,
     });
 
     const content = response.choices[0].message.content || '{"recipes": []}';
@@ -562,14 +561,14 @@ REGOLE:
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
     const response = await getOpenAiClient().chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
+      reasoning_effort: 'minimal',
       messages: [
         { role: 'system', content: sysPrompt },
         { role: 'user', content: userMsg },
       ],
       response_format: MEAL_PLAN_RESPONSE_FORMAT,
-      temperature: 0.85,
-      max_tokens: 4000,
+      max_completion_tokens: 4000,
     });
 
     const content = response.choices[0].message.content || '{"items":[]}';
@@ -637,7 +636,8 @@ export async function generateFamilyInsights(context: {
   assertAiConfigured();
   try {
     const response = await getOpenAiClient().chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
+      reasoning_effort: 'minimal',
       messages: [{
         role: 'system',
         content: 'Sei un consulente familiare. Fornisci insight utili basati sui dati.',

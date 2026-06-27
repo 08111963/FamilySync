@@ -21,6 +21,10 @@ Convenzioni adottate per le funzioni AI (OpenAI) di FamilySync, da rispettare in
 
 - **Mai esporre la chiave**: nessun log del valore di `AI_INTEGRATIONS_OPENAI_API_KEY`; baseURL OpenAI impostata solo se l'env è presente.
 
+- **Modello gpt-5-mini — vincoli parametri (chat.completions)**: il progetto usa `gpt-5-mini` (migrato da `gpt-4o-mini`, ritirato). I modelli gpt-5 (reasoning) RIFIUTANO con 400 diversi parametri legacy, verificato con prove live: `max_tokens` (usare `max_completion_tokens`), `temperature` diverso da 1 (solo default), `presence_penalty`, `frequency_penalty`. `response_format` json_object e json_schema strict restano OK. Consumano token di ragionamento dal budget: impostato `reasoning_effort: 'minimal'` su tutte le chiamate (0 reasoning token nelle prove → niente troncamento su budget limitati + costo minimo).
+  **Why:** swap del solo nome modello rompe a runtime (provider 400) anche se il codice compila; e senza reasoning_effort i budget capped possono troncare il JSON.
+  **How to apply:** ogni nuova chiamata in `server/lib/openai.ts` deve evitare i param legacy sopra e usare `max_completion_tokens` + `reasoning_effort:'minimal'`. Al prossimo avviso "Expiring model" di Replit: cambiare il nome modello E ri-verificare i parametri con una prova live prima di pubblicare.
+
 - **Client OpenAI LAZY**: NON creare `new OpenAI(...)` a livello top-level in `server/lib/openai.ts` — il costruttore del SDK lancia "Missing credentials" se la chiave manca, e ciò impedisce l'AVVIO del server (crash all'import). Usare `getOpenAiClient()` (singleton modulo `openaiClient`) che chiama `assertAiConfigured()` e crea il client solo on-demand; tutte le funzioni usano `getOpenAiClient().chat.completions.create(...)`.
   **Why:** il server deve partire anche senza chiave (es. ambienti senza AI); le rotte AI rispondono poi 503 AI_NOT_CONFIGURED a runtime (via `reserveAiSlot`→`assertAiConfigured`, prima di creare record `ai_usage`).
   **How to apply:** test di regressione in `ai-errors.test.ts` ("import ../lib/openai senza chiave non lancia"). La cache client non gestisce rotazione chiave a caldo (env trattata come immutabile nel processo).
