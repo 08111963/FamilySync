@@ -1,0 +1,57 @@
+Il lavoro fatto sull’architettura freemium va bene, ma non è ancora sufficiente per dire che l’app è pronta.
+
+Il punto bloccante è questo:
+lib/iap.ts è ancora uno stub.
+
+Io voglio un’app pronta, quindi l’utente deve poter acquistare davvero Premium tramite lo store nativo, non solo vedere una schermata preparata.
+
+Confermo la strategia:
+
+1. Utente free:
+
+   * funzioni base;
+   * quota AI dimostrativa minima.
+2. Utente Premium:
+
+   * funzioni avanzate;
+   * quote AI complete.
+3. AI inclusa nel Premium unico.
+4. Nessun pagamento separato per AI.
+5. Nessun Stripe nel mobile.
+6. Pagamento mobile solo tramite:
+
+   * Google Play Billing su Android;
+   * Apple In-App Purchase / StoreKit su iOS.
+
+Ora ti chiedo di completare la parte mancante:
+
+1. Sostituisci lo stub lib/iap.ts con una vera integrazione IAP mobile.
+2. Usa una libreria adatta a Expo/React Native, per esempio RevenueCat/react-native-purchases oppure una soluzione IAP nativa equivalente.
+3. L’acquisto deve aprire il flusso reale dello store.
+4. Il restore purchases deve funzionare davvero.
+5. Il backend deve ricevere/verificare l’acquisto e aggiornare l’entitlement Premium.
+6. La schermata Premium deve usare l’acquisto reale, non funzioni simulate.
+7. Prepara le variabili/config necessarie:
+
+   * productId Android;
+   * productId iOS;
+   * chiavi/credenziali di verifica Google;
+   * chiavi/credenziali di verifica Apple;
+   * ambiente sandbox/test;
+   * ambiente produzione.
+8. Prepara una build testabile con EAS/dev build o build interna, perché Expo Go non basta per testare pagamenti nativi.
+9. Aggiungi una checklist precisa per me:
+
+   * cosa devo creare in Google Play Console;
+   * cosa devo creare in App Store Connect;
+   * quali productId devo inserire;
+   * quali credenziali devo fornire;
+   * come fare un acquisto di prova;
+   * come verificare che family.subscriptionStatus/entitlement diventi premium.
+10. Aggiungi test o verifiche manuali documentate:
+
+* acquisto completato → Premium attivo;
+* restore purchases → Premium ripristinato;
+* abbonamento scaduto/cancellato → Premium rimosso;
+* utente free oltre quota AI → bloccato;
+* utente premium → quote AI complete.

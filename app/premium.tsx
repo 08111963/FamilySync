@@ -18,7 +18,7 @@ const PLAN_FEATURES: PlanFeature[] = [
   { label: "Ricerca ricette AI", free: "2 / giorno", premium: "20 / giorno" },
   { label: "Idee ricette AI", free: "1 / giorno", premium: "10 / giorno" },
   { label: "Piano pasti AI", free: "1 / settimana", premium: "3 / giorno" },
-  { label: "Statistiche AI", free: "1 / settimana", premium: "5 / giorno" },
+  { label: "Consigli AI famiglia", free: "1 / settimana", premium: "5 / giorno" },
   { label: "Ottimizzazione faccende AI", free: "1 / giorno", premium: "10 / giorno" },
   { label: "Calendario, spesa, faccende, chat", free: "Illimitato", premium: "Illimitato" },
   { label: "Supporto prioritario", free: "—", premium: "Incluso" },

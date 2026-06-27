@@ -1,0 +1,71 @@
+Confermo: procedi con RevenueCat.
+
+Confermo prezzi/prodotti:
+
+* mensile: €4,99
+* annuale: €39,99
+* entitlement unico: premium
+
+Confermo anche la strategia:
+
+1. RevenueCat diventa il motore degli acquisti store-native.
+2. Stripe resta fuori dal mobile.
+3. AI non ha pagamento separato.
+4. Free mantiene solo quota AI dimostrativa minima.
+5. Premium sblocca quote AI complete e funzioni avanzate.
+6. Il backend mantiene la tabella entitlements come fonte operativa per quote AI e funzioni premium.
+7. RevenueCat sincronizza gli acquisti, ma il backend non deve fidarsi del client.
+
+Prima di scrivere codice, applica queste condizioni:
+
+1. Abbonamento per famiglia:
+
+   * appUserID RevenueCat = familyId va bene;
+   * però solo owner/admin della famiglia può avviare l’acquisto;
+   * tutti i membri della famiglia possono beneficiare del Premium dopo l’attivazione.
+
+2. Cambio famiglia:
+
+   * quando currentFamily cambia, il client deve fare login RevenueCat sul nuovo familyId;
+   * non deve restare agganciato alla famiglia precedente.
+
+3. Restore purchases:
+
+   * il restore deve essere sicuro;
+   * non deve trasferire per errore un abbonamento da una famiglia a un’altra;
+   * documenta la configurazione RevenueCat necessaria per evitare trasferimenti indesiderati.
+
+4. Backend:
+
+   * webhook RevenueCat deve aggiornare entitlements;
+   * endpoint sync deve interrogare RevenueCat server-side;
+   * /api/purchases/status deve leggere entitlements;
+   * AI e funzioni premium devono usare solo isPremium(familyId);
+   * nessuna funzione premium deve fidarsi dello stato Premium letto dal client.
+
+5. ProductId:
+
+   * productId Android e iOS devono essere configurabili da env;
+   * il client non deve poter scegliere productId arbitrari;
+   * il backend deve conoscere i productId validi.
+
+6. Test e build:
+
+   * va bene usare RevenueCat Test Store per testare la logica;
+   * però non presentare Expo Go come collaudo definitivo degli acquisti nativi reali;
+   * prepara anche checklist per dev build / build store / sandbox Apple / test Google Play.
+
+7. Documentazione per me:
+
+   * cosa devo creare in RevenueCat;
+   * cosa devo creare in App Store Connect;
+   * cosa devo creare in Google Play Console;
+   * quali productId usare;
+   * quali API key/env impostare;
+   * come testare acquisto mensile;
+   * come testare acquisto annuale;
+   * come testare restore purchases;
+   * come verificare che una famiglia diventi Premium;
+   * come verificare che scadenza/cancellazione rimuova Premium.
+
+Procedi pure ritirando il verifier custom se RevenueCat lo sostituisce completamente, ma mantieni l’architettura entitlements lato backend.

@@ -399,9 +399,9 @@ export default function FamilyScreen() {
                 <Ionicons name="sparkles" size={24} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Suggerimenti AI</Text>
+                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Consigli AI famiglia</Text>
                 <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
-                  Insights intelligenti per la famiglia
+                  Consigli intelligenti per la famiglia
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
