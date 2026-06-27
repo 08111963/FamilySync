@@ -26,12 +26,11 @@ interface SuggestionItem {
   name: string;
   category?: 'food' | 'household_cleaning' | 'personal_care' | 'other';
   reason: string;
-  priority?: 'primary' | 'secondary';
 }
 
 type ShoppingRow =
   | { key: string; type: "header"; label: string }
-  | { key: string; type: "item"; name: string; category: string; reason: string | null; priority: "primary" | "secondary" };
+  | { key: string; type: "item"; name: string; category: string; reason: string | null };
 
 interface ShoppingSuggestion {
   items?: SuggestionItem[];
@@ -269,18 +268,17 @@ export default function AIInsightsScreen() {
       name: item?.name || "",
       category: item?.category || "food",
       reason: item?.reason || null,
-      priority: (item?.priority === "secondary" ? "secondary" : "primary") as "primary" | "secondary",
     }));
-    const primary = mapped.filter(i => i.priority === "primary");
-    const secondary = mapped.filter(i => i.priority === "secondary");
+    const food = mapped.filter(i => i.category === "food");
+    const home = mapped.filter(i => i.category !== "food");
     const rows: ShoppingRow[] = [];
-    if (primary.length > 0) {
-      rows.push({ key: "header-primary", type: "header", label: "Prodotti primari" });
-      for (const i of primary) rows.push({ ...i, type: "item" });
+    if (food.length > 0) {
+      rows.push({ key: "header-food", type: "header", label: "Cibo" });
+      for (const i of food) rows.push({ ...i, type: "item" });
     }
-    if (secondary.length > 0) {
-      rows.push({ key: "header-secondary", type: "header", label: "Prodotti secondari" });
-      for (const i of secondary) rows.push({ ...i, type: "item" });
+    if (home.length > 0) {
+      rows.push({ key: "header-home", type: "header", label: "Casa" });
+      for (const i of home) rows.push({ ...i, type: "item" });
     }
     return rows;
   }, [shoppingSuggestions]);
@@ -314,9 +312,11 @@ export default function AIInsightsScreen() {
           <View style={styles.suggestionContent}>
             <View style={styles.suggestionHeader}>
               <Text style={[styles.suggestionText, { color: colors.text }]}>{item.name}</Text>
-              <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(item.category) + '20' }]}>
-                <Text style={[styles.categoryText, { color: getCategoryColor(item.category) }]}>{getCategoryLabel(item.category)}</Text>
-              </View>
+              {item.category !== "food" && (
+                <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(item.category) + '20' }]}>
+                  <Text style={[styles.categoryText, { color: getCategoryColor(item.category) }]}>{getCategoryLabel(item.category)}</Text>
+                </View>
+              )}
             </View>
             {item.reason && (
               <Text style={[styles.suggestionReason, { color: colors.textSecondary }]}>{item.reason}</Text>
