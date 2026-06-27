@@ -27,16 +27,20 @@ function getOpenAiClient(): OpenAI {
 
 export type SuggestionCategory = 'food' | 'household_cleaning' | 'personal_care' | 'other';
 
+export type SuggestionPriority = 'primary' | 'secondary';
+
 export interface ShoppingSuggestionItem {
   name: string;
   category: SuggestionCategory;
   reason: string;
+  priority: SuggestionPriority;
 }
 
 const suggestionItemSchema = z.object({
   name: z.string(),
   category: z.enum(['food', 'household_cleaning', 'personal_care', 'other']).catch('food'),
   reason: z.string(),
+  priority: z.enum(['primary', 'secondary']).catch('primary'),
 });
 
 const suggestionsResponseSchema = z.object({
@@ -82,9 +86,12 @@ REGOLE TASSATIVE:
   - Almeno 3 prodotti "household_cleaning" (pulizia casa: detersivi, spugne, sacchetti, ecc.)
   - Almeno 2 prodotti "personal_care" (igiene personale: shampoo, dentifricio, sapone, ecc.)
   - Il resto "food" (alimentari: frutta, verdura, carne, pesce, latticini, pasta, ecc.)
+- ASSEGNA a OGNI prodotto una "priority":
+  - "primary" = prodotti PRIMARI/essenziali di prima necessità, quelli che in una casa servono quasi sempre (es. detersivo piatti, carta igienica, latte, pane, pasta, sapone). Genera ALMENO 6 prodotti "primary".
+  - "secondary" = prodotti SECONDARI/complementari o extra, utili ma non indispensabili (es. ammorbidente, crema idratante, snack, spezie).
 - Le motivazioni devono essere pratiche e concrete (es. "versatile per primi e contorni", "ricco di proteine"), MAI generiche o banali.
 - NON suggerire MAI prodotti presenti nella lista dei vietati.
-- Rispondi SOLO con JSON nel formato: {"items": [{"name": "...", "category": "food"|"household_cleaning"|"personal_care"|"other", "reason": "..."}]}`,
+- Rispondi SOLO con JSON nel formato: {"items": [{"name": "...", "category": "food"|"household_cleaning"|"personal_care"|"other", "reason": "...", "priority": "primary"|"secondary"}]}`,
       }, {
         role: 'user',
         content: `[seed:${randomSeed}] Famiglia di ${context.familySize} persone. Stagione: ${context.season}.${context.upcomingEvents.length > 0 ? ` Eventi in programma: ${context.upcomingEvents.join(', ')}.` : ''}${forbiddenText}

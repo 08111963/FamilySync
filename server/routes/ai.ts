@@ -56,41 +56,41 @@ function getCurrentSeason(): string {
 }
 
 const FALLBACK_POOL: ShoppingSuggestionItem[] = [
-  { name: 'detersivo piatti', category: 'household_cleaning', reason: 'Essenziale per lavare le stoviglie' },
-  { name: 'detersivo lavatrice', category: 'household_cleaning', reason: 'Per il bucato settimanale' },
-  { name: 'ammorbidente', category: 'household_cleaning', reason: 'Rende i tessuti più morbidi' },
-  { name: 'candeggina', category: 'household_cleaning', reason: 'Utile per igienizzare superfici' },
-  { name: 'sgrassatore', category: 'household_cleaning', reason: 'Per pulire cucina e piani cottura' },
-  { name: 'panni microfibra', category: 'household_cleaning', reason: 'Ideali per spolverare senza residui' },
-  { name: 'spugne cucina', category: 'household_cleaning', reason: 'Da sostituire regolarmente per igiene' },
-  { name: 'sacchetti immondizia', category: 'household_cleaning', reason: 'Indispensabili per la raccolta rifiuti' },
-  { name: 'spray vetri', category: 'household_cleaning', reason: 'Per specchi e finestre senza aloni' },
-  { name: 'shampoo', category: 'personal_care', reason: 'Per la cura quotidiana dei capelli' },
-  { name: 'bagnoschiuma', category: 'personal_care', reason: 'Per la doccia di tutta la famiglia' },
-  { name: 'dentifricio', category: 'personal_care', reason: 'Per l\'igiene orale quotidiana' },
-  { name: 'spazzolini da denti', category: 'personal_care', reason: 'Da sostituire ogni 3 mesi' },
-  { name: 'filo interdentale', category: 'personal_care', reason: 'Complemento allo spazzolino' },
-  { name: 'deodorante', category: 'personal_care', reason: 'Per la freschezza quotidiana' },
-  { name: 'sapone mani', category: 'personal_care', reason: 'Per l\'igiene delle mani' },
-  { name: 'crema idratante', category: 'personal_care', reason: 'Per proteggere la pelle' },
-  { name: 'carta igienica', category: 'personal_care', reason: 'Bene di prima necessità' },
-  { name: 'fazzoletti', category: 'personal_care', reason: 'Sempre utili in casa e fuori' },
-  { name: 'latte fresco', category: 'food', reason: 'Per colazione e ricette' },
-  { name: 'uova', category: 'food', reason: 'Versatili per tanti piatti' },
-  { name: 'pasta', category: 'food', reason: 'Base della cucina italiana' },
-  { name: 'riso', category: 'food', reason: 'Alternativa leggera alla pasta' },
-  { name: 'lenticchie', category: 'food', reason: 'Ricche di proteine vegetali' },
-  { name: 'olio extravergine', category: 'food', reason: 'Condimento essenziale' },
-  { name: 'mele', category: 'food', reason: 'Frutta pratica come spuntino' },
-  { name: 'zucchine', category: 'food', reason: 'Verdura leggera e versatile' },
-  { name: 'yogurt bianco', category: 'food', reason: 'Ottimo per colazione e merenda' },
-  { name: 'pane integrale', category: 'food', reason: 'Ricco di fibre' },
-  { name: 'caffè', category: 'food', reason: 'Indispensabile per la mattina' },
-  { name: 'pomodori pelati', category: 'food', reason: 'Base per sughi e condimenti' },
-  { name: 'tonno in scatola', category: 'food', reason: 'Pratico e ricco di proteine' },
-  { name: 'burro', category: 'food', reason: 'Utile per cucinare e condire' },
-  { name: 'parmigiano reggiano', category: 'food', reason: 'Per insaporire primi e secondi' },
-  { name: 'spinaci freschi', category: 'food', reason: 'Verdura ricca di ferro' },
+  { name: 'detersivo piatti', category: 'household_cleaning', reason: 'Essenziale per lavare le stoviglie', priority: 'primary' },
+  { name: 'detersivo lavatrice', category: 'household_cleaning', reason: 'Per il bucato settimanale', priority: 'primary' },
+  { name: 'ammorbidente', category: 'household_cleaning', reason: 'Rende i tessuti più morbidi', priority: 'secondary' },
+  { name: 'candeggina', category: 'household_cleaning', reason: 'Utile per igienizzare superfici', priority: 'secondary' },
+  { name: 'sgrassatore', category: 'household_cleaning', reason: 'Per pulire cucina e piani cottura', priority: 'secondary' },
+  { name: 'panni microfibra', category: 'household_cleaning', reason: 'Ideali per spolverare senza residui', priority: 'secondary' },
+  { name: 'spugne cucina', category: 'household_cleaning', reason: 'Da sostituire regolarmente per igiene', priority: 'primary' },
+  { name: 'sacchetti immondizia', category: 'household_cleaning', reason: 'Indispensabili per la raccolta rifiuti', priority: 'primary' },
+  { name: 'spray vetri', category: 'household_cleaning', reason: 'Per specchi e finestre senza aloni', priority: 'secondary' },
+  { name: 'shampoo', category: 'personal_care', reason: 'Per la cura quotidiana dei capelli', priority: 'primary' },
+  { name: 'bagnoschiuma', category: 'personal_care', reason: 'Per la doccia di tutta la famiglia', priority: 'primary' },
+  { name: 'dentifricio', category: 'personal_care', reason: 'Per l\'igiene orale quotidiana', priority: 'primary' },
+  { name: 'spazzolini da denti', category: 'personal_care', reason: 'Da sostituire ogni 3 mesi', priority: 'primary' },
+  { name: 'filo interdentale', category: 'personal_care', reason: 'Complemento allo spazzolino', priority: 'secondary' },
+  { name: 'deodorante', category: 'personal_care', reason: 'Per la freschezza quotidiana', priority: 'secondary' },
+  { name: 'sapone mani', category: 'personal_care', reason: 'Per l\'igiene delle mani', priority: 'primary' },
+  { name: 'crema idratante', category: 'personal_care', reason: 'Per proteggere la pelle', priority: 'secondary' },
+  { name: 'carta igienica', category: 'personal_care', reason: 'Bene di prima necessità', priority: 'primary' },
+  { name: 'fazzoletti', category: 'personal_care', reason: 'Sempre utili in casa e fuori', priority: 'secondary' },
+  { name: 'latte fresco', category: 'food', reason: 'Per colazione e ricette', priority: 'primary' },
+  { name: 'uova', category: 'food', reason: 'Versatili per tanti piatti', priority: 'primary' },
+  { name: 'pasta', category: 'food', reason: 'Base della cucina italiana', priority: 'primary' },
+  { name: 'riso', category: 'food', reason: 'Alternativa leggera alla pasta', priority: 'primary' },
+  { name: 'lenticchie', category: 'food', reason: 'Ricche di proteine vegetali', priority: 'secondary' },
+  { name: 'olio extravergine', category: 'food', reason: 'Condimento essenziale', priority: 'primary' },
+  { name: 'mele', category: 'food', reason: 'Frutta pratica come spuntino', priority: 'primary' },
+  { name: 'zucchine', category: 'food', reason: 'Verdura leggera e versatile', priority: 'secondary' },
+  { name: 'yogurt bianco', category: 'food', reason: 'Ottimo per colazione e merenda', priority: 'secondary' },
+  { name: 'pane integrale', category: 'food', reason: 'Ricco di fibre', priority: 'primary' },
+  { name: 'caffè', category: 'food', reason: 'Indispensabile per la mattina', priority: 'primary' },
+  { name: 'pomodori pelati', category: 'food', reason: 'Base per sughi e condimenti', priority: 'secondary' },
+  { name: 'tonno in scatola', category: 'food', reason: 'Pratico e ricco di proteine', priority: 'secondary' },
+  { name: 'burro', category: 'food', reason: 'Utile per cucinare e condire', priority: 'secondary' },
+  { name: 'parmigiano reggiano', category: 'food', reason: 'Per insaporire primi e secondi', priority: 'secondary' },
+  { name: 'spinaci freschi', category: 'food', reason: 'Verdura ricca di ferro', priority: 'secondary' },
 ];
 
 interface TaggedItem extends ShoppingSuggestionItem {
@@ -359,7 +359,16 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
       categoryCounts: { household_cleaning: householdCount, personal_care: personalCount, food: finalCount - householdCount - personalCount },
     }));
 
-    const responseItems: ShoppingSuggestionItem[] = finalItems.map(({ source, ...rest }) => rest);
+    const priorityRank = (p: ShoppingSuggestionItem['priority']) => (p === 'primary' ? 0 : 1);
+    const orderedItems = finalItems
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const byPriority = priorityRank(a.item.priority) - priorityRank(b.item.priority);
+        return byPriority !== 0 ? byPriority : a.index - b.index;
+      })
+      .map(({ item }) => item);
+
+    const responseItems: ShoppingSuggestionItem[] = orderedItems.map(({ source, ...rest }) => rest);
 
     try {
       await db.insert(aiInsights).values({
