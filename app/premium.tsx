@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest } from "@/lib/query-client";
+import { getPremiumViewState } from "@/lib/premium-access";
 
 const FEATURES = [
   { icon: "sparkles" as const, title: "Suggerimenti AI", description: "Ottieni suggerimenti intelligenti per spesa e faccende" },
@@ -47,6 +48,7 @@ export default function PremiumScreen() {
   const subscription = subscriptionQuery.data;
   const familyPremium = ["premium", "active", "trialing"].includes(currentFamily?.subscriptionStatus ?? "");
   const isSubscribed = subscription?.status === "premium" || familyPremium;
+  const viewState = getPremiumViewState({ paymentsEnabled, isSubscribed, platform: Platform.OS });
 
   const getPrice = (type: "monthly" | "yearly") => {
     for (const product of products) {
@@ -111,8 +113,6 @@ export default function PremiumScreen() {
   };
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
-  const staticFeatures = statusQuery.data?.features || FEATURES.map(f => f.title);
-  const staticPlans = statusQuery.data?.plans || [];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -157,26 +157,8 @@ export default function PremiumScreen() {
           ))}
         </View>
 
-        {!paymentsEnabled && !isSubscribed && (
+        {viewState.showComingSoon && (
           <View style={styles.comingSoonSection}>
-            {staticPlans.length > 0 && (
-              <View style={[styles.previewPlans, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                {staticPlans.map((plan: any, i: number) => (
-                  <View key={i} style={styles.previewPlanRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.previewPlanName, { color: colors.text }]}>{plan.name}</Text>
-                      <Text style={[styles.previewPlanPrice, { color: colors.primary }]}>{plan.price}</Text>
-                    </View>
-                    {plan.badge && (
-                      <View style={[styles.previewBadge, { backgroundColor: colors.success }]}>
-                        <Text style={styles.previewBadgeText}>{plan.badge}</Text>
-                      </View>
-                    )}
-                  </View>
-                ))}
-              </View>
-            )}
-
             <Pressable
               onPress={handleNotifyMe}
               disabled={notifySet}
@@ -203,7 +185,7 @@ export default function PremiumScreen() {
           </View>
         )}
 
-        {paymentsEnabled && !isSubscribed && (
+        {viewState.showPurchaseCTA && (
           <>
             <View style={styles.plansSection}>
               <Pressable
@@ -270,7 +252,7 @@ export default function PremiumScreen() {
           </>
         )}
 
-        {paymentsEnabled && isSubscribed && (
+        {viewState.showManageCTA && (
           <Pressable
             onPress={handleManageSubscription}
             disabled={loading}

@@ -10,8 +10,10 @@ const router = Router();
 
 export function requirePayments(_req: Request, res: Response, next: NextFunction) {
   if (!config.premiumPaymentsEnabled) {
-    return res.status(501).json({
-      error: { code: "PAYMENTS_DISABLED", message: "I pagamenti Premium non sono ancora attivi" },
+    // 503: funzione presente ma disattivata. Nessuna chiamata Stripe parte
+    // quando i pagamenti sono disabilitati (default nell'app mobile).
+    return res.status(503).json({
+      error: { code: "PAYMENTS_DISABLED", message: "I pagamenti Premium non sono attivi" },
     });
   }
   next();

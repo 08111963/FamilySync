@@ -18,6 +18,9 @@ Subscriptions are bound to the FAMILY, not the user. The app reads Premium state
 
 **Webhook reconciliation (`reconcileFamilyFromEvent` in server/lib/webhookHandlers.ts):** handles `customer.subscription.*` → `updateFamilyFromStripeSubscription`, and `checkout.session.completed` → `updateFamilyStripeInfo(familyId, {premium,...})`. Takes an optional injectable `service` param (default real stripeService) purely so node:test can pass a fake capturing calls — no DI framework.
 
+**Mobile NEVER sells Premium via Stripe (App Store / Play policy).** `getPremiumViewState` in `lib/premium-access.ts` takes a `platform` arg; on `ios`/`android` it forces `showPurchaseCTA`/`showManageCTA` to false REGARDLESS of backend `paymentsEnabled`, so re-enabling Stripe for web never resurfaces purchase CTAs / external `Linking.openURL` on native. `premium.tsx` passes `Platform.OS`.
+**Why:** Apple/Google forbid steering users to external payment for digital goods unlocked in-app. Backend Stripe stays in code but inert: `requirePayments` returns 503 PAYMENTS_DISABLED when `config.premiumPaymentsEnabled` is false (default), and webhook/init are gated in server/index.ts. Future in-app sales must use Apple IAP / Google Play Billing, not Stripe.
+
 **AI gating vs Premium:** controlled by `config.aiRequiresPremium` (default `false`). false = AI free with daily quota (does not break UX when payments disabled); true = requires premium family. Do NOT hard-disable AI when payments are off.
 
 **Checkout metadata:** always set `client_reference_id`, `metadata.familyId/userId`, and `subscription_data.metadata` so webhooks can map back to the family.

@@ -185,13 +185,35 @@ describe("resolvePriceIdForPlan (priceId scelto lato server)", () => {
 });
 
 describe("requirePayments (pagamenti disattivi)", () => {
-  test("con pagamenti disattivi risponde 501 e non prosegue (nessuna chiamata Stripe)", () => {
+  test("con pagamenti disattivi risponde 503 e non prosegue (nessuna chiamata Stripe)", () => {
     const res = mockRes();
     let nextCalled = false;
     requirePayments({} as any, res as any, () => {
       nextCalled = true;
     });
-    assert.equal(res.statusCode, 501);
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.body?.error?.code, "PAYMENTS_DISABLED");
+    assert.equal(nextCalled, false);
+  });
+
+  test("checkout bloccato quando i pagamenti sono disattivi", () => {
+    const res = mockRes();
+    let nextCalled = false;
+    requirePayments({ path: "/checkout" } as any, res as any, () => {
+      nextCalled = true;
+    });
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.body?.error?.code, "PAYMENTS_DISABLED");
+    assert.equal(nextCalled, false);
+  });
+
+  test("portal bloccato quando i pagamenti sono disattivi", () => {
+    const res = mockRes();
+    let nextCalled = false;
+    requirePayments({ path: "/portal" } as any, res as any, () => {
+      nextCalled = true;
+    });
+    assert.equal(res.statusCode, 503);
     assert.equal(res.body?.error?.code, "PAYMENTS_DISABLED");
     assert.equal(nextCalled, false);
   });
