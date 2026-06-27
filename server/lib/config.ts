@@ -1,6 +1,14 @@
 export const config = {
   premiumPaymentsEnabled: process.env.PREMIUM_PAYMENTS_ENABLED === "true",
 
+  // Regola gating AI:
+  // - false (default, pagamenti disattivi): l'AI è gratuita per tutti gli utenti
+  //   che hanno dato il consenso (toggle GDPR), limitata dalla quota giornaliera.
+  // - true (quando i pagamenti Premium saranno attivi): l'AI richiede ANCHE che
+  //   la famiglia abbia subscriptionStatus = "premium".
+  // Vedi server/middleware/ai-guard.ts (requireAiEnabled).
+  aiRequiresPremium: process.env.AI_REQUIRES_PREMIUM === "true",
+
   port: parseInt(process.env.PORT || "5000", 10),
 
   getBaseUrl(req?: { header: (name: string) => string | undefined; protocol: string; get: (name: string) => string | undefined }): string {

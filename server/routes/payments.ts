@@ -2,13 +2,13 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
-import { requireFamilyAdmin } from '../middleware/family';
+import { requireFamilyAdmin, requireFamilyMember } from '../middleware/family';
 import { config } from '../lib/config';
 import { logger } from '../lib/logger';
 
 const router = Router();
 
-function requirePayments(_req: Request, res: Response, next: NextFunction) {
+export function requirePayments(_req: Request, res: Response, next: NextFunction) {
   if (!config.premiumPaymentsEnabled) {
     return res.status(501).json({
       error: { code: "PAYMENTS_DISABLED", message: "I pagamenti Premium non sono ancora attivi" },
@@ -123,32 +123,23 @@ router.get('/prices', requirePayments, async (_req: Request, res: Response) => {
 
 router.use(authenticate);
 
-router.get('/subscription', requirePayments, async (req: Request, res: Response) => {
+// L'abbonamento è legato alla FAMIGLIA: familyId è obbligatorio e l'utente deve
+// esserne membro (requireFamilyMember). Niente più "prima famiglia dell'utente".
+router.get('/subscription/:familyId', requirePayments, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const { stripeService } = await import('../lib/stripeService');
-    const { db } = await import('../db');
-    const { familyMembers } = await import('../../shared/schema');
-    const { eq } = await import('drizzle-orm');
+    const familyId = req.params.familyId as string;
 
-    const [membership] = await db
-      .select()
-      .from(familyMembers)
-      .where(eq(familyMembers.userId, req.user!.userId));
-
-    if (!membership) {
-      return res.json({ subscription: null, status: 'free' });
-    }
-
-    const family = await stripeService.getFamily(membership.familyId);
+    const family = await stripeService.getFamily(familyId);
 
     if (!family?.stripeSubscriptionId) {
-      return res.json({ subscription: null, status: 'free' });
+      return res.json({ subscription: null, status: family?.subscriptionStatus || 'free' });
     }
 
     const subscription = await stripeService.getSubscription(family.stripeSubscriptionId);
     res.json({
       subscription,
-      status: family.subscriptionStatus || 'free'
+      status: family.subscriptionStatus || 'free',
     });
   } catch (error) {
     logger.error('Error getting subscription', { error: String(error) });
@@ -156,8 +147,10 @@ router.get('/subscription', requirePayments, async (req: Request, res: Response)
   }
 });
 
+// Il client invia solo `plan` (monthly|yearly): il priceId viene scelto e
+// validato lato server, mai accettato dal client.
 const checkoutSchema = z.object({
-  priceId: z.string().min(1, "priceId è obbligatorio"),
+  plan: z.enum(['monthly', 'yearly']),
   familyId: z.string().min(1, "familyId è obbligatorio"),
 });
 
@@ -170,12 +163,23 @@ router.post('/checkout', requirePayments, requireFamilyAdmin("familyId"), async 
       });
     }
 
-    const { stripeService } = await import('../lib/stripeService');
-    const { priceId, familyId } = parsed.data;
+    const { stripeService, PaymentConfigError } = await import('../lib/stripeService');
+    const { plan, familyId } = parsed.data;
 
     const family = await stripeService.getFamily(familyId);
     if (!family) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Famiglia non trovata" } });
+    }
+
+    let priceId: string;
+    try {
+      priceId = await stripeService.getPriceIdForPlan(plan);
+    } catch (error) {
+      if (error instanceof PaymentConfigError && error.code === 'INVALID_PLAN') {
+        return res.status(400).json({ error: { code: "INVALID_PLAN", message: error.message } });
+      }
+      logger.error('Error resolving price for plan', { error: String(error) });
+      return res.status(503).json({ error: { code: "PRICE_UNAVAILABLE", message: "Configurazione prezzi non disponibile" } });
     }
 
     let customerId = family.stripeCustomerId;
@@ -187,12 +191,14 @@ router.post('/checkout', requirePayments, requireFamilyAdmin("familyId"), async 
 
     const baseUrl = config.getBaseUrl(req);
 
-    const session = await stripeService.createCheckoutSession(
+    const session = await stripeService.createCheckoutSession({
       customerId,
       priceId,
-      `${baseUrl}/checkout/success`,
-      `${baseUrl}/checkout/cancel`
-    );
+      successUrl: `${baseUrl}/checkout/success`,
+      cancelUrl: `${baseUrl}/checkout/cancel`,
+      familyId,
+      userId: req.user!.userId,
+    });
 
     res.json({ url: session.url });
   } catch (error) {
@@ -226,7 +232,7 @@ router.post('/portal', requirePayments, requireFamilyAdmin("familyId"), async (r
 
     const session = await stripeService.createCustomerPortalSession(
       family.stripeCustomerId,
-      `${baseUrl}/settings`
+      `${baseUrl}/premium`
     );
 
     res.json({ url: session.url });

@@ -39,8 +39,8 @@ export default function PremiumScreen() {
   });
 
   const subscriptionQuery = useQuery<any>({
-    queryKey: ["/api/payments", "subscription"],
-    enabled: paymentsEnabled && !!currentFamily,
+    queryKey: ["/api/payments/subscription", currentFamily?.id],
+    enabled: paymentsEnabled && !!currentFamily?.id,
   });
 
   const products = productsQuery.data?.data || [];
@@ -77,7 +77,7 @@ export default function PremiumScreen() {
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const res = await apiRequest("POST", "/api/payments/checkout", {
-        priceId: price.id,
+        plan: selectedPlan,
         familyId: currentFamily.id,
       });
       const { url } = await res.json();

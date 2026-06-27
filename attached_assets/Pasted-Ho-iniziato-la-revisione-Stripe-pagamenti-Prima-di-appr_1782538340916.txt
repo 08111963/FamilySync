@@ -1,0 +1,67 @@
+Ho iniziato la revisione Stripe/pagamenti. Prima di approvare devo chiarire e correggere questi punti.
+
+1. Mandami il file mancante:
+   server/lib/stripeService.ts
+
+2. Premium access:
+   La pagina Premium promette Suggerimenti AI, ma server/middleware/ai-guard.ts controlla solo users.aiFeaturesEnabled, non family.subscriptionStatus.
+   Decidi e implementa una regola chiara:
+   - se AI è Premium, requireAiEnabled deve verificare anche family.subscriptionStatus = premium;
+   - oppure distinguere quota free e quota premium;
+   - oppure rimuovere AI dalla promessa Premium finché non è gated.
+
+3. Subscription endpoint:
+   GET /api/payments/subscription non deve usare la prima famiglia dell’utente.
+   Deve ricevere familyId e verificare che l’utente sia membro/admin di quella famiglia.
+   Il frontend app/premium.tsx deve passare currentFamily.id.
+
+4. Checkout price validation:
+   POST /api/payments/checkout non deve fidarsi del priceId inviato dal client.
+   Preferisco che il client invii plan = monthly/yearly e che il backend scelga il priceId da configurazione server-side.
+   In alternativa valida il priceId lato backend contro Stripe:
+   - price attivo;
+   - recurring interval consentito;
+   - prodotto corretto FamilySync Premium;
+   - currency/importo coerenti;
+   - metadata corretti.
+
+5. Checkout metadata:
+   Verifica che createCheckoutSession includa familyId e userId come metadata o client_reference_id.
+   Serve per riconciliare correttamente webhook/sessione/famiglia.
+
+6. Webhook:
+   Verifica che gli eventi Stripe aggiornino davvero la tabella families:
+   - subscriptionStatus;
+   - stripeSubscriptionId;
+   - subscriptionCurrentPeriodEnd;
+   - eventuale cancellazione/expired/canceled.
+   Non basta sincronizzare tabelle Stripe se l’app legge lo stato da families.
+
+7. Customer portal:
+   Verifica che il return URL /settings esista davvero.
+   Se non esiste, usa un URL valido, per esempio /premium oppure la schermata corretta.
+
+8. App store compliance:
+   Se questa app sarà distribuita su Google Play/App Store e Premium sblocca funzioni digitali in-app, segnala che Stripe potrebbe non essere il canale corretto per mobile store.
+   Per ora possiamo tenere Stripe per web/test, ma non pubblicare pagamenti mobile senza verificare Play Billing / In-App Purchase.
+
+9. Aggiungi test per:
+   - checkout richiede admin famiglia;
+   - familyId obbligatorio su subscription;
+   - utente multi-famiglia riceve subscription della famiglia giusta;
+   - priceId/plan non valido respinto;
+   - checkout session include familyId/userId metadata;
+   - webhook subscription active/trialing → family premium;
+   - webhook canceled/incomplete/expired → family free/canceled;
+   - payments disabled → nessuna chiamata Stripe.
+
+Dopo le correzioni, prepara uno ZIP aggiornato con:
+server/routes/payments.ts
+server/lib/stripeService.ts
+server/lib/stripeClient.ts
+server/lib/webhookHandlers.ts
+server/middleware/ai-guard.ts
+server/routes/ai.ts
+shared/schema.ts
+app/premium.tsx
+eventuali test pagamenti/premium
