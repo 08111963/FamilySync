@@ -1,24 +1,37 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import type { User } from '../../shared/schema';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-function resolveSecret(name: string, devFallback: string): string {
+function deriveFromSessionSecret(purpose: string): string | undefined {
+  const base = process.env.SESSION_SECRET;
+  if (base && base.length > 0) {
+    return crypto.createHash('sha256').update(`${base}:${purpose}`).digest('hex');
+  }
+  return undefined;
+}
+
+function resolveSecret(name: string, purpose: string, devFallback: string): string {
   const value = process.env[name];
   if (value && value.length > 0) {
     return value;
   }
+  const derived = deriveFromSessionSecret(purpose);
+  if (derived) {
+    return derived;
+  }
   if (isProduction) {
     throw new Error(
-      `[FATAL] La variabile d'ambiente ${name} è obbligatoria in produzione e non è impostata. Configurala prima di avviare il server.`
+      `[FATAL] La variabile d'ambiente ${name} (o in alternativa SESSION_SECRET) è obbligatoria in produzione e non è impostata. Configurala prima di avviare il server.`
     );
   }
   return devFallback;
 }
 
-const JWT_SECRET = resolveSecret('JWT_SECRET', 'dev-secret-change-me');
-const JWT_REFRESH_SECRET = resolveSecret('JWT_REFRESH_SECRET', 'dev-refresh-secret');
-const JWT_MEDIA_SECRET = resolveSecret('JWT_MEDIA_SECRET', 'dev-media-secret-change-me');
+const JWT_SECRET = resolveSecret('JWT_SECRET', 'access', 'dev-secret-change-me');
+const JWT_REFRESH_SECRET = resolveSecret('JWT_REFRESH_SECRET', 'refresh', 'dev-refresh-secret');
+const JWT_MEDIA_SECRET = resolveSecret('JWT_MEDIA_SECRET', 'media', 'dev-media-secret-change-me');
 
 export interface TokenPayload {
   userId: string;
