@@ -7,6 +7,7 @@ import { authenticate, authenticateMedia, requireEmailVerified } from "./middlew
 
 import authRoutes from "./routes/auth";
 import familiesRoutes from "./routes/families";
+import invitesRoutes, { inviteLimiter } from "./routes/invites";
 import calendarRoutes from "./routes/calendar";
 import shoppingRoutes from "./routes/shopping";
 import choresRoutes from "./routes/chores";
@@ -43,6 +44,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.use('/api/auth', authRoutes);
+  // Inviti: router PUBBLICO (lookup stato + accept nuovo utente) montato senza
+  // authenticate, con rate limiter dedicato.
+  app.use('/api/invites', inviteLimiter, invitesRoutes);
   app.use('/api/families', authenticate, requireEmailVerified, familiesRoutes);
   app.use('/api/calendar', authenticate, requireEmailVerified, calendarRoutes);
   app.use('/api/shopping', authenticate, requireEmailVerified, shoppingRoutes);

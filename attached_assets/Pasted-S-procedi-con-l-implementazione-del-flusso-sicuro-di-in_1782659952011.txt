@@ -1,0 +1,119 @@
+Sì, procedi con l’implementazione del flusso sicuro di invito familiare.
+
+Decisione finale:
+
+1. Rimuovere/disattivare il flusso “Aggiungi membro” che crea automaticamente un utente con password temporanea.
+2. Non mostrare più password temporanee a schermo.
+3. Non creare più utenti con emailVerified=true senza verifica reale.
+4. Non usare email fittizie @familysync.local per membri reali.
+5. Il flusso principale deve essere invito via email con link sicuro.
+
+Nuovo flusso per familiare non registrato:
+
+1. Owner/admin inserisce nome + email del familiare.
+2. Backend crea un invito con:
+
+   * token sicuro;
+   * email destinatario;
+   * nome invitato opzionale;
+   * familyId;
+   * ruolo;
+   * scadenza, per esempio 72 ore;
+   * acceptedAt null.
+3. Backend invia email con link di invito.
+4. Il familiare apre il link.
+5. Se non ha account, vede una schermata per creare la propria password.
+6. Backend valida token, scadenza e monouso.
+7. Crea l’utente con email dell’invito.
+8. Imposta emailVerified=true solo perché il link è stato ricevuto e aperto da quella email.
+9. Aggiunge l’utente alla famiglia.
+10. Segna acceptedAt.
+11. Login automatico o invito a fare login.
+
+Nuovo flusso per familiare già registrato:
+
+1. Se l’email corrisponde a un utente esistente, creare comunque invito con token.
+2. Inviare email con link.
+3. Se possibile, creare anche notifica interna persistente o evento in-app.
+4. L’utente loggato accetta l’invito.
+5. Backend verifica che l’email dell’utente corrisponda all’email dell’invito.
+6. Aggiunge alla famiglia e segna acceptedAt.
+
+Sicurezza richiesta:
+
+1. Nessuna password in chiaro nella risposta API.
+2. Nessuna password via email.
+3. Token monouso.
+4. Token con scadenza.
+5. Se possibile, salvare nel database hash del token, non token in chiaro.
+6. Rate limit sugli endpoint di invito e accettazione.
+7. Non permettere accettazione invito con email diversa da quella invitata.
+8. Non permettere riuso token.
+9. Non permettere inviti da utenti non owner/admin.
+10. Non loggare token completi o link completi in produzione.
+
+Email:
+
+1. Usare SendGrid già presente nel progetto.
+2. Se SENDGRID_API_KEY non è configurata, in sviluppo può loggare l’email.
+3. In produzione, se SENDGRID_API_KEY manca, l’invito deve fallire con errore chiaro EMAIL_NOT_CONFIGURED.
+4. Non incollare API key nel codice.
+5. Le chiavi devono stare solo nei Secrets / env:
+
+   * SENDGRID_API_KEY;
+   * EMAIL_FROM;
+   * CLIENT_URL.
+
+Frontend:
+
+1. app/add-member.tsx deve diventare “Invita familiare”.
+2. Eliminare CredentialsCard o non usarla più per membri reali.
+3. Dopo l’invio mostrare:
+   “Invito inviato a [email@example.com](mailto:email@example.com)”.
+4. app/join/[token].tsx deve gestire:
+
+   * token valido;
+   * token scaduto;
+   * token già usato;
+   * utente non registrato: form crea password;
+   * utente già registrato: accetta invito;
+   * email non corrispondente: errore chiaro.
+
+Database:
+
+1. Aggiornare family_invites aggiungendo almeno:
+
+   * email destinatario;
+   * invitedName opzionale;
+   * role;
+   * expiresAt;
+   * acceptedAt;
+   * acceptedByUserId;
+   * createdByUserId.
+2. Valutare tokenHash invece di token in chiaro.
+3. Eventuale tabella notifications persistenti per inviti ad utenti già registrati, se coerente col progetto.
+
+Test richiesti:
+
+1. Invito crea token con scadenza.
+2. Invito invia email senza password.
+3. Utente non registrato accetta e crea password.
+4. Utente già registrato accetta invito.
+5. Email diversa da quella invitata viene bloccata.
+6. Token scaduto viene bloccato.
+7. Token già accettato viene bloccato.
+8. Password temporanea non viene più restituita dall’API.
+9. emailVerified=true viene impostato solo dopo accettazione link.
+10. SENDGRID_API_KEY mancante in produzione blocca invio con errore chiaro.
+11. Owner/admin può invitare, membro normale no.
+
+Dopo l’implementazione prepara uno ZIP di revisione con:
+
+* server/routes/families.ts
+* server/lib/email.ts
+* shared/schema.ts
+* app/add-member.tsx
+* app/join/[token].tsx
+* components/CredentialsCard.tsx se modificato/rimosso
+* eventuali file notifiche interne
+* test aggiornati.

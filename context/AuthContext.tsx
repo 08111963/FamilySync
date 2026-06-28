@@ -22,6 +22,7 @@ interface AuthContextType {
   accessToken: string | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string, acceptedTerms: boolean) => Promise<void>;
+  applySession: (user: User, accessToken: string, refreshToken: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAccessToken: () => Promise<string | null>;
   refreshUser: () => Promise<User | null>;
@@ -261,6 +262,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [saveAuth]
   );
 
+  const applySession = useCallback(
+    async (userData: User, newAccessToken: string, newRefreshToken: string) => {
+      await saveAuth({
+        user: userData,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      });
+    },
+    [saveAuth]
+  );
+
   const refreshUser = useCallback(async (): Promise<User | null> => {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
@@ -331,11 +343,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accessToken,
       login,
       signup,
+      applySession,
       logout,
       refreshAccessToken,
       refreshUser,
     }),
-    [user, isLoading, isAuthenticated, accessToken, login, signup, logout, refreshAccessToken, refreshUser]
+    [user, isLoading, isAuthenticated, accessToken, login, signup, applySession, logout, refreshAccessToken, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

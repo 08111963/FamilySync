@@ -87,8 +87,11 @@ export type FamilyMember = typeof familyMembers.$inferSelect;
 export const familyInvites = pgTable("family_invites", {
   id: uuid("id").primaryKey().defaultRandom(),
   familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
-  token: varchar("token", { length: 255 }).notNull().unique(),
+  tokenHash: varchar("token_hash", { length: 255 }).notNull().unique(),
+  email: varchar("email", { length: 255 }).notNull(),
+  invitedName: varchar("invited_name", { length: 255 }),
   invitedBy: uuid("invited_by").notNull().references(() => users.id),
+  acceptedByUserId: uuid("accepted_by_user_id").references(() => users.id),
   role: roleEnum("role").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   acceptedAt: timestamp("accepted_at"),

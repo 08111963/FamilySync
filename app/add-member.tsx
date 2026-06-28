@@ -9,13 +9,16 @@ import { useFamily } from "@/context/FamilyContext";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
-import { CredentialsCard, MemberCredentials } from "@/components/CredentialsCard";
 import { apiRequest } from "@/lib/query-client";
 
 const ROLES = [
+  { value: "admin", label: "Admin", icon: "shield-checkmark" as const },
   { value: "adult", label: "Adulto", icon: "person" as const },
-  { value: "child", label: "Ragazzo/a", icon: "happy" as const },
+  { value: "teen", label: "Adolescente", icon: "school" as const },
+  { value: "child", label: "Bambino/a", icon: "happy" as const },
 ];
+
+type Role = "admin" | "adult" | "teen" | "child";
 
 export default function AddMemberScreen() {
   const insets = useSafeAreaInsets();
@@ -24,48 +27,50 @@ export default function AddMemberScreen() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"admin" | "adult" | "child">("adult");
-  const [credentials, setCredentials] = useState<MemberCredentials | null>(null);
+  const [role, setRole] = useState<Role>("adult");
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleCreateMember = async () => {
+  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+  const handleInvite = async () => {
     if (!currentFamily) return;
-    if (!name.trim()) {
-      setError("Inserisci il nome del membro");
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!isValidEmail(trimmedEmail)) {
+      setError("Inserisci un indirizzo email valido");
       return;
     }
     setLoading(true);
     setError(null);
 
     try {
-      const res = await apiRequest("POST", `/api/families/${currentFamily.id}/members`, {
-        name: name.trim(),
-        email: email.trim() || undefined,
+      await apiRequest("POST", `/api/families/${currentFamily.id}/invite`, {
+        email: trimmedEmail,
+        invitedName: name.trim() || undefined,
         role,
       });
-      const data = await res.json();
-      setCredentials({
-        loginEmail: data.credentials.loginEmail,
-        tempPassword: data.credentials.tempPassword,
-        hasRealEmail: data.credentials.hasRealEmail,
-        memberName: data.member.name,
-      });
+      setSentTo(trimmedEmail);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
-      const message =
-        typeof err?.message === "string" && err.message.includes("409")
-          ? "Esiste già un account con questa email"
-          : "Errore nella creazione del membro. Riprova.";
-      setError(message);
-      console.error("Create member error:", err);
+      const msg = typeof err?.message === "string" ? err.message : "";
+      let friendly = "Errore nell'invio dell'invito. Riprova.";
+      if (msg.includes("409") || msg.includes("ALREADY_MEMBER")) {
+        friendly = "Questa persona fa già parte della famiglia.";
+      } else if (msg.includes("EMAIL_NOT_CONFIGURED") || msg.includes("503")) {
+        friendly = "Il servizio email non è configurato. Contatta l'assistenza.";
+      } else if (msg.includes("EMAIL_SEND_FAILED") || msg.includes("502")) {
+        friendly = "Non siamo riusciti a inviare l'email. Riprova tra poco.";
+      }
+      setError(friendly);
+      console.error("Invite error:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleNewMember = () => {
-    setCredentials(null);
+  const handleNewInvite = () => {
+    setSentTo(null);
     setName("");
     setEmail("");
     setRole("adult");
@@ -77,10 +82,10 @@ export default function AddMemberScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
-        <Pressable onPress={() => router.back()} style={styles.closeButton}>
+        <Pressable onPress={() => router.back()} style={styles.closeButton} testID="close-button">
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Aggiungi Membro</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Invita Familiare</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -89,30 +94,34 @@ export default function AddMemberScreen() {
         contentContainerStyle={{ paddingBottom: 40 }}
         keyboardShouldPersistTaps="handled"
       >
-        {!credentials ? (
+        {!sentTo ? (
           <>
+            <Text style={[styles.intro, { color: colors.textSecondary }]}>
+              Invieremo un'email con un link sicuro. La persona sceglierà la propria password
+              per entrare nella famiglia.
+            </Text>
+
             <View style={styles.field}>
               <Input
-                label="Nome"
+                label="Nome (facoltativo)"
                 placeholder="Es. Marco"
                 value={name}
                 onChangeText={setName}
                 autoCapitalize="words"
+                testID="input-name"
               />
             </View>
 
             <View style={styles.field}>
               <Input
-                label="Email (facoltativa)"
-                placeholder="Lascia vuoto per i bambini"
+                label="Email"
+                placeholder="nome@esempio.it"
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                testID="input-email"
               />
-              <Text style={[styles.hint, { color: colors.textSecondary }]}>
-                Se non metti l'email, l'app crea un accesso automatico.
-              </Text>
             </View>
 
             <View style={styles.field}>
@@ -121,9 +130,10 @@ export default function AddMemberScreen() {
                 {ROLES.map((r) => (
                   <Pressable
                     key={r.value}
+                    testID={`role-${r.value}`}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setRole(r.value as "admin" | "adult" | "child");
+                      setRole(r.value as Role);
                     }}
                     style={[
                       styles.roleOption,
@@ -151,15 +161,14 @@ export default function AddMemberScreen() {
               </View>
             </View>
 
-            {error && (
-              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
-            )}
+            {error && <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>}
 
             <Button
-              title={loading ? "Creazione..." : "Crea Account"}
-              onPress={handleCreateMember}
+              title={loading ? "Invio..." : "Invia Invito"}
+              onPress={handleInvite}
               disabled={loading}
               style={{ marginTop: 8 }}
+              testID="send-invite-button"
             />
           </>
         ) : (
@@ -167,26 +176,22 @@ export default function AddMemberScreen() {
             <Card>
               <View style={{ alignItems: "center", gap: 12 }}>
                 <View style={[styles.successIcon, { backgroundColor: colors.success + "20" }]}>
-                  <Ionicons name="checkmark-circle" size={48} color={colors.success} />
+                  <Ionicons name="mail-unread" size={48} color={colors.success} />
                 </View>
-                <Text style={[styles.successTitle, { color: colors.text }]}>Account Creato</Text>
+                <Text style={[styles.successTitle, { color: colors.text }]}>Invito Inviato</Text>
                 <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
-                  Passa questi dati a {credentials.memberName} per accedere
+                  Abbiamo inviato un'email a {sentTo}. Il link è valido per 72 ore.
                 </Text>
               </View>
             </Card>
 
-            <View style={{ marginTop: 16 }}>
-              <CredentialsCard credentials={credentials} />
-            </View>
-
             <View style={styles.bottomButtons}>
               <Pressable
-                onPress={handleNewMember}
+                onPress={handleNewInvite}
                 style={({ pressed }) => [styles.textButton, pressed && { opacity: 0.6 }]}
               >
                 <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
-                <Text style={[styles.textButtonLabel, { color: colors.primary }]}>Altro membro</Text>
+                <Text style={[styles.textButtonLabel, { color: colors.primary }]}>Altro invito</Text>
               </Pressable>
 
               <Pressable
@@ -216,17 +221,18 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontFamily: "Inter_600SemiBold" },
   placeholder: { width: 40 },
   content: { flex: 1, paddingHorizontal: 20 },
+  intro: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20, marginBottom: 20 },
   field: { marginBottom: 20 },
   label: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginBottom: 8 },
   hint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 6 },
-  roleOptions: { flexDirection: "row", gap: 12 },
+  roleOptions: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   roleOption: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 12,
     borderWidth: 1,
   },
@@ -235,7 +241,7 @@ const styles = StyleSheet.create({
   successContainer: { gap: 0 },
   successIcon: { width: 72, height: 72, borderRadius: 36, justifyContent: "center", alignItems: "center" },
   successTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  successSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
+  successSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20 },
   bottomButtons: {
     flexDirection: "row",
     justifyContent: "space-between",

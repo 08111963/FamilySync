@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
@@ -7,39 +8,13 @@ import { families, familyMembers, familyInvites, users, calendarEvents, shopping
 import { eq, and, isNull, sql } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember, requireFamilyAdmin } from '../middleware/family';
-import { sendFamilyInviteEmail } from '../lib/email';
+import { sendFamilyInviteEmail, isEmailConfigured } from '../lib/email';
 import { broadcastToFamily } from '../lib/websocket';
 import { config } from '../lib/config';
 import { logger } from '../lib/logger';
-import { v4 as uuidv4 } from 'uuid';
-import bcrypt from 'bcryptjs';
-import { randomInt } from 'crypto';
+import { generateInviteToken, hashInviteToken } from '../lib/invite-token';
 
 const router = Router();
-
-function slugifyName(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '.')
-      .replace(/^\.+|\.+$/g, '')
-      .slice(0, 30) || 'membro'
-  );
-}
-
-function randomString(length: number, chars: string): string {
-  let out = '';
-  for (let i = 0; i < length; i++) {
-    out += chars[randomInt(chars.length)];
-  }
-  return out;
-}
-
-function generateTempPassword(): string {
-  return randomString(8, 'abcdefghjkmnpqrstuvwxyz23456789');
-}
 
 const createFamilySchema = z.object({
   name: z.string().min(1, "Il nome è obbligatorio").max(50),
@@ -52,8 +27,20 @@ const updateFamilySchema = z.object({
 });
 
 const inviteSchema = z.object({
-  email: z.string().email("Email non valida").optional(),
-  role: z.enum(["admin", "adult", "child"]).optional().default("adult"),
+  email: z.string().trim().toLowerCase().email("Email non valida"),
+  invitedName: z.string().trim().max(255).optional(),
+  role: z.enum(["admin", "adult", "teen", "child"]).optional().default("adult"),
+});
+
+const INVITE_TTL_MS = 72 * 60 * 60 * 1000;
+
+// Rate limiter dedicato alla creazione inviti: più stretto del limiter globale /api,
+// per evitare abusi di invio email (enumerazione / spam) anche da admin compromessi.
+const createInviteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 router.post('/', authenticate, async (req: Request, res: Response) => {
@@ -183,7 +170,7 @@ router.put('/:familyId', authenticate, requireFamilyAdmin(), async (req: Request
   }
 });
 
-router.post('/:familyId/invite', authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
+router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const parsed = inviteSchema.safeParse(req.body);
@@ -194,190 +181,74 @@ router.post('/:familyId/invite', authenticate, requireFamilyAdmin(), async (req:
       });
     }
 
+    const { email, invitedName, role } = parsed.data;
+
+    // In produzione l'invio email è obbligatorio: senza SendGrid non possiamo
+    // recapitare il link, quindi non creiamo nemmeno l'invito.
+    if (config.isProduction && !isEmailConfigured()) {
+      return res.status(503).json({
+        error: { code: "EMAIL_NOT_CONFIGURED", message: "Il servizio email non è configurato. Impossibile inviare l'invito." },
+      });
+    }
+
     const [family] = await db.select().from(families).where(eq(families.id, familyId)).limit(1);
     const [inviter] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
 
-    const token = uuidv4();
-    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
-
-    await db.insert(familyInvites).values({
-      familyId,
-      token,
-      invitedBy: req.user!.userId,
-      role: parsed.data.role,
-      expiresAt,
-    });
-
-    if (parsed.data.email) {
-      await sendFamilyInviteEmail(parsed.data.email, family.name, inviter.name, token);
+    // Se esiste già un membro con quell'email nella famiglia, evitiamo l'invito.
+    const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    if (existingUser) {
+      const [alreadyMember] = await db.select()
+        .from(familyMembers)
+        .where(and(eq(familyMembers.familyId, familyId), eq(familyMembers.userId, existingUser.id)))
+        .limit(1);
+      if (alreadyMember) {
+        return res.status(409).json({ error: { code: "ALREADY_MEMBER", message: "Questa persona fa già parte della famiglia" } });
+      }
     }
 
-    const baseUrl = config.getBaseUrl(req);
+    const token = generateInviteToken();
+    const tokenHash = hashInviteToken(token);
+    const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
 
-    res.json({
-      token,
-      inviteLink: `${baseUrl}/join/${token}`,
+    const [createdInvite] = await db.insert(familyInvites).values({
+      familyId,
+      tokenHash,
+      email,
+      invitedName: invitedName || null,
+      invitedBy: req.user!.userId,
+      role,
       expiresAt,
-    });
+    }).returning();
+
+    const baseUrl = process.env.CLIENT_URL || config.getBaseUrl(req);
+    const inviteLink = `${baseUrl}/join/${token}`;
+
+    try {
+      await sendFamilyInviteEmail(email, family.name, inviter.name, inviteLink, invitedName);
+    } catch (mailError) {
+      logger.error('Invite email send failed', { error: String(mailError) });
+      // In produzione un fallimento di invio è bloccante: l'invito non è
+      // recapitabile, quindi facciamo rollback per non lasciare token orfani.
+      if (config.isProduction) {
+        await db.delete(familyInvites).where(eq(familyInvites.id, createdInvite.id));
+        return res.status(502).json({
+          error: { code: "EMAIL_SEND_FAILED", message: "Invio email fallito. Riprova più tardi." },
+        });
+      }
+    }
+
+    // Non logghiamo mai token o link completi.
+    logger.info('Family invite created', { familyId, role });
+
+    const response: Record<string, unknown> = { ok: true, email, expiresAt };
+    // Solo in sviluppo restituiamo il link per comodità di test manuale.
+    if (!config.isProduction) {
+      response.inviteLink = inviteLink;
+    }
+    res.json(response);
   } catch (error) {
     logger.error('Create invite error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione dell'invito" } });
-  }
-});
-
-const createMemberSchema = z.object({
-  name: z.string().min(1, "Il nome è obbligatorio").max(255),
-  email: z.string().email("Email non valida").optional().or(z.literal("")),
-  role: z.enum(["admin", "adult", "child"]).optional().default("adult"),
-  color: z.string().optional(),
-});
-
-router.post('/:familyId/members', authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
-  try {
-    const familyId = getParam(req, 'familyId');
-    const parsed = createMemberSchema.safeParse(req.body);
-
-    if (!parsed.success) {
-      return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
-      });
-    }
-
-    const { name, role, color } = parsed.data;
-    const providedEmail = parsed.data.email?.trim().toLowerCase() || "";
-
-    let loginEmail = providedEmail;
-
-    if (providedEmail) {
-      const [existing] = await db.select().from(users).where(eq(users.email, providedEmail)).limit(1);
-      if (existing) {
-        return res.status(409).json({
-          error: { code: "EMAIL_IN_USE", message: "Esiste già un account con questa email" },
-        });
-      }
-    } else {
-      const slug = slugifyName(name);
-      let candidate = "";
-      for (let i = 0; i < 6; i++) {
-        candidate = `${slug}.${randomString(5, "abcdefghjkmnpqrstuvwxyz23456789")}@familysync.local`;
-        const [taken] = await db.select().from(users).where(eq(users.email, candidate)).limit(1);
-        if (!taken) break;
-        candidate = "";
-      }
-      if (!candidate) {
-        return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Impossibile generare l'accesso, riprova" } });
-      }
-      loginEmail = candidate;
-    }
-
-    const tempPassword = generateTempPassword();
-    const passwordHash = await bcrypt.hash(tempPassword, 12);
-
-    let newUser;
-    let newMember;
-    try {
-      const result = await db.transaction(async (tx) => {
-        const [createdUser] = await tx.insert(users).values({
-          email: loginEmail,
-          passwordHash,
-          name,
-          emailVerified: true,
-          termsAcceptedAt: new Date(),
-        }).returning();
-
-        const [createdMember] = await tx.insert(familyMembers).values({
-          familyId,
-          userId: createdUser.id,
-          role,
-          nickname: name,
-          color: color || '#6366F1',
-          points: 0,
-        }).returning();
-
-        return { createdUser, createdMember };
-      });
-      newUser = result.createdUser;
-      newMember = result.createdMember;
-    } catch (txError: any) {
-      if (txError?.code === '23505') {
-        return res.status(409).json({
-          error: { code: "EMAIL_IN_USE", message: "Esiste già un account con questa email" },
-        });
-      }
-      throw txError;
-    }
-
-    broadcastToFamily(familyId, 'member_joined', newMember);
-
-    res.status(201).json({
-      member: {
-        id: newMember.id,
-        userId: newUser.id,
-        name: newUser.name,
-        nickname: newMember.nickname,
-        role: newMember.role,
-        color: newMember.color,
-        points: newMember.points,
-        avatarUrl: newUser.avatarUrl,
-      },
-      credentials: {
-        loginEmail,
-        tempPassword,
-        hasRealEmail: !!providedEmail,
-      },
-    });
-  } catch (error) {
-    logger.error('Create member error', { error: String(error) });
-    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione del membro" } });
-  }
-});
-
-router.post('/:familyId/members/:memberId/reset-access', authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
-  try {
-    const familyId = getParam(req, 'familyId');
-    const memberId = getParam(req, 'memberId');
-
-    const [member] = await db.select()
-      .from(familyMembers)
-      .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
-      .limit(1);
-
-    if (!member) {
-      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Membro non trovato" } });
-    }
-
-    const [memberUser] = await db.select().from(users).where(eq(users.id, member.userId)).limit(1);
-    if (!memberUser) {
-      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Account del membro non trovato" } });
-    }
-
-    const tempPassword = generateTempPassword();
-    const passwordHash = await bcrypt.hash(tempPassword, 12);
-
-    await db.update(users).set({ passwordHash }).where(eq(users.id, memberUser.id));
-
-    const hasRealEmail = !memberUser.email.endsWith('@familysync.local');
-
-    res.json({
-      member: {
-        id: member.id,
-        userId: memberUser.id,
-        name: memberUser.name,
-        nickname: member.nickname,
-        role: member.role,
-        color: member.color,
-        points: member.points,
-        avatarUrl: memberUser.avatarUrl,
-      },
-      credentials: {
-        loginEmail: memberUser.email,
-        tempPassword,
-        hasRealEmail,
-      },
-    });
-  } catch (error) {
-    logger.error('Reset member access error', { error: String(error) });
-    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel reset dell'accesso" } });
   }
 });
 
@@ -385,10 +256,11 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
   try {
     const token = getParam(req, 'token');
     const { nickname, color } = req.body;
+    const tokenHash = hashInviteToken(token);
 
     const [invite] = await db.select()
       .from(familyInvites)
-      .where(eq(familyInvites.token, token))
+      .where(eq(familyInvites.tokenHash, tokenHash))
       .limit(1);
 
     if (!invite) {
@@ -403,6 +275,14 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
       return res.status(400).json({ error: { code: "INVITE_EXPIRED", message: "Invito scaduto" } });
     }
 
+    // L'email dell'utente loggato deve coincidere con quella invitata.
+    const [currentUser] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
+    if (!currentUser || currentUser.email.toLowerCase() !== invite.email.toLowerCase()) {
+      return res.status(403).json({
+        error: { code: "EMAIL_MISMATCH", message: "Questo invito è destinato a un altro indirizzo email" },
+      });
+    }
+
     const existing = await db.select()
       .from(familyMembers)
       .where(and(eq(familyMembers.familyId, invite.familyId), eq(familyMembers.userId, req.user!.userId)))
@@ -412,19 +292,35 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
       return res.status(409).json({ error: { code: "ALREADY_MEMBER", message: "Fai già parte di questa famiglia" } });
     }
 
-    const [newMember] = await db.insert(familyMembers).values({
-      familyId: invite.familyId,
-      userId: req.user!.userId,
-      role: invite.role,
-      nickname: nickname || 'Membro',
-      color: color || '#6366F1',
-      points: 0,
-    }).returning();
+    // Consumo monouso + creazione membership nella STESSA transazione: se l'insert
+    // del membro fallisce, il claim del token viene annullato (rollback atomico).
+    const txResult = await db.transaction(async (tx) => {
+      const claimed = await tx.update(familyInvites)
+        .set({ acceptedAt: new Date(), acceptedByUserId: req.user!.userId })
+        .where(and(eq(familyInvites.id, invite.id), isNull(familyInvites.acceptedAt)))
+        .returning();
 
-    await db.update(familyInvites)
-      .set({ acceptedAt: new Date() })
-      .where(eq(familyInvites.token, token));
+      if (claimed.length === 0) {
+        return { conflict: true as const };
+      }
 
+      const [member] = await tx.insert(familyMembers).values({
+        familyId: invite.familyId,
+        userId: req.user!.userId,
+        role: invite.role,
+        nickname: nickname || invite.invitedName || currentUser.name || 'Membro',
+        color: color || '#6366F1',
+        points: 0,
+      }).returning();
+
+      return { conflict: false as const, member };
+    });
+
+    if (txResult.conflict) {
+      return res.status(409).json({ error: { code: "ALREADY_ACCEPTED", message: "Invito già accettato" } });
+    }
+
+    const newMember = txResult.member;
     const [family] = await db.select().from(families).where(eq(families.id, invite.familyId)).limit(1);
 
     broadcastToFamily(invite.familyId, 'member_joined', newMember);

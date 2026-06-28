@@ -26,6 +26,12 @@ export const config = {
 
   port: parseInt(process.env.PORT || "5000", 10),
 
+  // True quando il server gira in ambiente di produzione (deploy). Usato per
+  // imporre requisiti più stringenti (es. invio email obbligatorio).
+  get isProduction(): boolean {
+    return process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT === "1";
+  },
+
   getBaseUrl(req?: { header: (name: string) => string | undefined; protocol: string; get: (name: string) => string | undefined }): string {
     if (req) {
       const proto = req.header("x-forwarded-proto") || req.protocol || "https";

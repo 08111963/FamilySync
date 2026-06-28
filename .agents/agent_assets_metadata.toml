@@ -54,3 +54,9 @@ id = "ntHF6UWkvYsGP_4DwcBvv"
 uri = "file://exports/familysync-bollette-review-v4.zip"
 type = "unspecified"
 title = "FamilySync — Bollette: Ripartizione personalizzata (v4)"
+
+[[outputs]]
+id = "UgacNRGtAs7zYYki_lHdh"
+uri = "file://dist/invito-sicuro-revisione.zip"
+type = "unspecified"
+title = "Flusso Invito Sicuro — File per revisione"
