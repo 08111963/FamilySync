@@ -5,3 +5,4 @@
 - [Premium / freemium model](premium-gating.md) — isPremium(familyId) from entitlements is the ONLY source of truth (fail-closed); subscriptionStatus is a mirror; AI freemium by per-plan quota; acquisti via RevenueCat (vedi revenuecat-premium.md), Stripe dormant.
 - [Stripe payments conventions](stripe-payments-conventions.md) — subscriptions are family-scoped; never trust client priceId (resolve server-side); webhooks must reconcile the families table; Stripe stays dormant and must NOT unlock mobile premium (entitlements do).
 - [RevenueCat Premium (FamilySync)](revenuecat-premium.md) — Premium store-native via RevenueCat: client non decide, backend sync /api/purchases/sync -> tabella entitlements; ruolo admin; webhook fail-closed in prod.
+- [Bills split validation parity](bills-split-validation.md) — la validazione numerica FE deve usare la stessa formula grezza del BE (no arrotondamento prima del confronto) e intercettare i codici errore reali del BE.
