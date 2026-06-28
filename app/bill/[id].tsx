@@ -1,0 +1,595 @@
+import { useMemo, useState } from "react";
+import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Alert, ActivityIndicator, Image, Linking } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { router, useLocalSearchParams } from "expo-router";
+import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import { useQuery } from "@tanstack/react-query";
+
+import { useTheme } from "@/hooks/useTheme";
+import { useFamily } from "@/context/FamilyContext";
+import { useSubscription } from "@/lib/revenuecat";
+import { useMediaToken } from "@/hooks/useMediaToken";
+import { Button } from "@/components/Button";
+import { Avatar } from "@/components/Avatar";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
+import { presentLocalNotification } from "@/hooks/usePushNotifications";
+import { CATEGORY_META, formatEuro, formatDueDate, type BillComputedStatus } from "@/app/(tabs)/bills";
+
+const AUTH_STORAGE_KEY = "@family_sync_auth";
+
+interface BillSplit {
+  id: string;
+  memberId: string;
+  amount: string;
+  isPaid: boolean;
+  memberName?: string | null;
+  memberColor?: string | null;
+}
+
+interface BillAttachment {
+  id: string;
+  kind: "document" | "receipt";
+  fileUrl: string;
+  fileName: string;
+  fileMimeType: string;
+  fileSize: number;
+}
+
+interface BillReminder {
+  type: string;
+  date: string;
+  label: string;
+  isDue: boolean;
+}
+
+interface BillDetail {
+  id: string;
+  familyId: string;
+  title: string;
+  provider?: string | null;
+  category: string;
+  amount: string;
+  dueDate: string;
+  holder?: string | null;
+  assignedTo?: string | null;
+  notes?: string | null;
+  remindersEnabled: boolean;
+  status: "da_pagare" | "pagata";
+  computedStatus: BillComputedStatus;
+  paidAt?: string | null;
+  splitType?: "equal" | "custom" | null;
+  splits: BillSplit[];
+  attachments: BillAttachment[];
+  history: { id: string; amount: string; note?: string | null; paidAt: string; paidByName?: string | null }[];
+  reminders: BillReminder[];
+}
+
+const STATUS_META: Record<BillComputedStatus, { label: string; color: string }> = {
+  da_pagare: { label: "Da pagare", color: "#74B9FF" },
+  scaduta: { label: "Scaduta", color: "#E74C3C" },
+  pagata: { label: "Pagata", color: "#00B894" },
+};
+
+function buildMediaUrl(fileUrl: string, baseUrl: string, token: string | null): string {
+  const url = new URL(fileUrl, baseUrl);
+  if (token) url.searchParams.set("token", token);
+  return url.toString();
+}
+
+export default function BillDetailScreen() {
+  const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const { currentFamily, data } = useFamily();
+  const { isSubscribed } = useSubscription();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const familyId = currentFamily?.id;
+  const { mediaToken, getFileToken } = useMediaToken(familyId);
+  const baseUrl = getApiUrl();
+
+  const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const detailQuery = useQuery<BillDetail>({
+    queryKey: ["/api/bills", familyId, id],
+    enabled: !!familyId && !!id,
+    staleTime: 5000,
+  });
+
+  const bill = detailQuery.data;
+
+  const showError = (msg: string) => {
+    if (Platform.OS === "web") alert(msg);
+    else Alert.alert("Errore", msg);
+  };
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/bills", familyId, id] });
+    queryClient.invalidateQueries({ queryKey: ["/api/bills", familyId] });
+  };
+
+  const handleTogglePaid = async () => {
+    if (!familyId || !bill) return;
+    const markPaid = bill.status !== "pagata";
+    setBusy(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      await apiRequest("PATCH", `/api/bills/${familyId}/${bill.id}/pay`, { paid: markPaid });
+      refresh();
+    } catch {
+      showError("Operazione non riuscita");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = () => {
+    const doDelete = async () => {
+      if (!familyId || !bill) return;
+      setBusy(true);
+      try {
+        await apiRequest("DELETE", `/api/bills/${familyId}/${bill.id}`);
+        queryClient.invalidateQueries({ queryKey: ["/api/bills", familyId] });
+        router.back();
+      } catch {
+        showError("Impossibile eliminare la bolletta");
+      } finally {
+        setBusy(false);
+      }
+    };
+    if (Platform.OS === "web") {
+      if (confirm("Eliminare questa bolletta?")) doDelete();
+    } else {
+      Alert.alert("Elimina bolletta", "Sei sicuro di voler eliminare questa bolletta?", [
+        { text: "Annulla", style: "cancel" },
+        { text: "Elimina", style: "destructive", onPress: doDelete },
+      ]);
+    }
+  };
+
+  const handleSplitEqual = async () => {
+    if (!familyId || !bill) return;
+    if (!isSubscribed) return router.push("/premium");
+    const memberIds = data.members.map((m) => m.id);
+    if (memberIds.length === 0) return showError("Aggiungi prima dei membri alla famiglia");
+    setBusy(true);
+    try {
+      await apiRequest("PUT", `/api/bills/${familyId}/${bill.id}/splits`, { type: "equal", memberIds });
+      refresh();
+    } catch (e: any) {
+      if (String(e?.message ?? "").includes("PREMIUM_REQUIRED")) router.push("/premium");
+      else showError("Impossibile creare la ripartizione");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const uploadAttachment = async (formData: FormData) => {
+    if (!familyId || !bill) return;
+    setUploading(true);
+    try {
+      const raw = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+      const token = raw ? JSON.parse(raw).accessToken : null;
+      const url = new URL(`/api/bills/${familyId}/${bill.id}/attachments`, baseUrl);
+      const res = await globalThis.fetch(url.toString(), {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+        body: formData,
+      } as any);
+      if (!res.ok) {
+        if (res.status === 403) return router.push("/premium");
+        throw new Error("upload");
+      }
+      refresh();
+    } catch {
+      showError("Impossibile caricare l'allegato");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleAddPhoto = async (kind: "document" | "receipt") => {
+    if (!isSubscribed) return router.push("/premium");
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") return showError("Serve il permesso per accedere alla galleria");
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    const ext = asset.uri.split(".").pop() || "jpg";
+    const formData = new FormData();
+    formData.append("kind", kind);
+    if (Platform.OS === "web" && (asset as any).file) {
+      formData.append("file", (asset as any).file, `foto_${Date.now()}.${ext}`);
+    } else {
+      formData.append("file", { uri: asset.uri, name: `foto_${Date.now()}.${ext}`, type: asset.mimeType || `image/${ext}` } as any);
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    uploadAttachment(formData);
+  };
+
+  const handleAddDocument = async (kind: "document" | "receipt") => {
+    if (!isSubscribed) return router.push("/premium");
+    const result = await DocumentPicker.getDocumentAsync({ type: ["application/pdf"], copyToCacheDirectory: true, multiple: false });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    const formData = new FormData();
+    formData.append("kind", kind);
+    if (Platform.OS === "web" && asset.file) {
+      formData.append("file", asset.file, asset.name);
+    } else {
+      formData.append("file", { uri: asset.uri, name: asset.name || `doc_${Date.now()}.pdf`, type: asset.mimeType || "application/pdf" } as any);
+    }
+    uploadAttachment(formData);
+  };
+
+  const handleDeleteAttachment = async (attId: string) => {
+    if (!familyId || !bill) return;
+    try {
+      await apiRequest("DELETE", `/api/bills/${familyId}/${bill.id}/attachments/${attId}`);
+      refresh();
+    } catch {
+      showError("Impossibile eliminare l'allegato");
+    }
+  };
+
+  const handleOpenAttachment = async (att: BillAttachment) => {
+    const fileToken = (await getFileToken(att.fileUrl)) ?? mediaToken;
+    if (!fileToken) return;
+    Linking.openURL(buildMediaUrl(att.fileUrl, baseUrl, fileToken));
+  };
+
+  const handleTestReminder = async () => {
+    if (!bill) return;
+    if (Platform.OS === "web") {
+      alert("Le notifiche locali sono disponibili solo nell'app sul telefono.");
+      return;
+    }
+    const next = bill.reminders.find((r) => !r.isDue) ?? bill.reminders[0];
+    await presentLocalNotification(
+      `Promemoria: ${bill.title}`,
+      next ? `${next.label} (${formatDueDate(bill.dueDate)})` : `Scadenza ${formatDueDate(bill.dueDate)}`,
+      { billId: bill.id }
+    );
+  };
+
+  const assignedMember = useMemo(
+    () => data.members.find((m) => m.id === bill?.assignedTo),
+    [data.members, bill?.assignedTo]
+  );
+
+  const topInset = Platform.OS === "web" ? 67 : insets.top;
+
+  if (detailQuery.isLoading || !bill) {
+    return (
+      <View style={[styles.container, styles.center, { backgroundColor: colors.background, paddingTop: topInset }]}>
+        {detailQuery.isError ? (
+          <Text style={{ color: colors.textSecondary }}>Bolletta non trovata</Text>
+        ) : (
+          <ActivityIndicator color={colors.primary} />
+        )}
+      </View>
+    );
+  }
+
+  const cat = CATEGORY_META[bill.category] ?? CATEGORY_META.altro;
+  const status = STATUS_META[bill.computedStatus];
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: topInset + 12 }]}>
+        <Pressable onPress={() => router.back()} style={styles.iconButton}>
+          <Ionicons name="chevron-back" size={26} color={colors.text} />
+        </Pressable>
+        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>Dettaglio</Text>
+        <View style={styles.headerActions}>
+          <Pressable onPress={() => router.push(`/add-bill?id=${bill.id}`)} style={styles.iconButton}>
+            <Ionicons name="create-outline" size={22} color={colors.text} />
+          </Pressable>
+          <Pressable onPress={handleDelete} style={styles.iconButton}>
+            <Ionicons name="trash-outline" size={22} color={colors.error} />
+          </Pressable>
+        </View>
+      </View>
+
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
+        <View style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.catIcon, { backgroundColor: cat.color + "22" }]}>
+            <Ionicons name={cat.icon} size={28} color={cat.color} />
+          </View>
+          <Text style={[styles.heroTitle, { color: colors.text }]}>{bill.title}</Text>
+          {bill.provider ? <Text style={[styles.heroSub, { color: colors.textSecondary }]}>{bill.provider}</Text> : null}
+          <Text style={[styles.heroAmount, { color: colors.text }]}>{formatEuro(bill.amount)}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: status.color + "22" }]}>
+            <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
+          </View>
+          <Text style={[styles.heroDue, { color: colors.textSecondary }]}>Scadenza: {formatDueDate(bill.dueDate)}</Text>
+        </View>
+
+        <Button
+          title={bill.status === "pagata" ? "Segna come da pagare" : "Segna come pagata"}
+          onPress={handleTogglePaid}
+          loading={busy}
+          variant={bill.status === "pagata" ? "outline" : "primary"}
+          style={{ marginBottom: 20 }}
+        />
+
+        {(bill.holder || assignedMember || bill.notes) && (
+          <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {bill.holder ? (
+              <View style={styles.infoRow}>
+                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Intestatario</Text>
+                <Text style={[styles.infoValue, { color: colors.text }]}>{bill.holder}</Text>
+              </View>
+            ) : null}
+            {assignedMember ? (
+              <View style={styles.infoRow}>
+                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Responsabile</Text>
+                <View style={styles.memberInline}>
+                  <Avatar name={assignedMember.name} color={assignedMember.color} size={24} />
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{assignedMember.name}</Text>
+                </View>
+              </View>
+            ) : null}
+            {bill.notes ? (
+              <View style={styles.infoColumn}>
+                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Note</Text>
+                <Text style={[styles.infoValue, { color: colors.text, marginTop: 4 }]}>{bill.notes}</Text>
+              </View>
+            ) : null}
+          </View>
+        )}
+
+        {/* Promemoria */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Promemoria</Text>
+          {Platform.OS !== "web" && bill.reminders.length > 0 && (
+            <Pressable onPress={handleTestReminder}>
+              <Text style={[styles.linkText, { color: colors.primary }]}>Prova notifica</Text>
+            </Pressable>
+          )}
+        </View>
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {!bill.remindersEnabled ? (
+            <Text style={[styles.muted, { color: colors.textSecondary }]}>Promemoria disattivati per questa bolletta.</Text>
+          ) : bill.reminders.length === 0 ? (
+            <Text style={[styles.muted, { color: colors.textSecondary }]}>Nessun promemoria (bolletta pagata).</Text>
+          ) : (
+            bill.reminders.map((r) => (
+              <View key={r.type} style={styles.reminderRow}>
+                <Ionicons
+                  name={r.isDue ? "notifications" : "notifications-outline"}
+                  size={18}
+                  color={r.isDue ? colors.primary : colors.textSecondary}
+                />
+                <Text style={[styles.reminderLabel, { color: colors.text }]}>{r.label}</Text>
+                <Text style={[styles.reminderDate, { color: colors.textSecondary }]}>{formatDueDate(r.date)}</Text>
+              </View>
+            ))
+          )}
+          {!isSubscribed && (
+            <Text style={[styles.muted, { color: colors.textSecondary, marginTop: 8 }]}>
+              Con Premium ricevi anche promemoria a 7 e 3 giorni dalla scadenza.
+            </Text>
+          )}
+        </View>
+
+        {/* Ripartizione */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Ripartizione</Text>
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {!isSubscribed ? (
+            <PremiumLock colors={colors} text="Dividi la bolletta tra i membri con Premium." onPress={() => router.push("/premium")} />
+          ) : bill.splits.length === 0 ? (
+            <>
+              <Text style={[styles.muted, { color: colors.textSecondary, marginBottom: 12 }]}>
+                Nessuna ripartizione. Dividi l'importo equamente tra i membri.
+              </Text>
+              <Button title="Dividi equamente" onPress={handleSplitEqual} size="small" loading={busy} />
+            </>
+          ) : (
+            <>
+              {bill.splits.map((s) => (
+                <View key={s.id} style={styles.splitRow}>
+                  <View style={styles.memberInline}>
+                    <Avatar name={s.memberName ?? "?"} color={s.memberColor ?? colors.primary} size={24} />
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{s.memberName ?? "Membro"}</Text>
+                  </View>
+                  <Text style={[styles.splitAmount, { color: colors.text }]}>{formatEuro(s.amount)}</Text>
+                </View>
+              ))}
+              <View style={styles.splitActions}>
+                <Button title="Ricalcola equa" onPress={handleSplitEqual} size="small" variant="outline" loading={busy} />
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Allegati */}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Allegati e ricevute</Text>
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {!isSubscribed ? (
+            <PremiumLock colors={colors} text="Archivia bollette e ricevute (PDF o foto) con Premium." onPress={() => router.push("/premium")} />
+          ) : (
+            <>
+              {bill.attachments.length === 0 ? (
+                <Text style={[styles.muted, { color: colors.textSecondary, marginBottom: 12 }]}>Nessun allegato.</Text>
+              ) : (
+                bill.attachments.map((att) => {
+                  const isImage = att.fileMimeType.startsWith("image/");
+                  return (
+                    <View key={att.id} style={[styles.attRow, { borderColor: colors.border }]}>
+                      <Pressable style={styles.attMain} onPress={() => handleOpenAttachment(att)}>
+                        {isImage && mediaToken ? (
+                          <Image source={{ uri: buildMediaUrl(att.fileUrl, baseUrl, mediaToken) }} style={styles.attThumb} />
+                        ) : (
+                          <View style={[styles.attThumb, styles.center, { backgroundColor: isDark ? "#333" : "#EEE" }]}>
+                            <Ionicons name={isImage ? "image" : "document-text"} size={22} color={colors.textSecondary} />
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.attName, { color: colors.text }]} numberOfLines={1}>{att.fileName}</Text>
+                          <Text style={[styles.attKind, { color: colors.textSecondary }]}>
+                            {att.kind === "receipt" ? "Ricevuta" : "Documento"}
+                          </Text>
+                        </View>
+                      </Pressable>
+                      <Pressable onPress={() => handleDeleteAttachment(att.id)} style={styles.iconButton}>
+                        <Ionicons name="trash-outline" size={18} color={colors.error} />
+                      </Pressable>
+                    </View>
+                  );
+                })
+              )}
+              {uploading && <ActivityIndicator color={colors.primary} style={{ marginVertical: 8 }} />}
+              <View style={styles.attButtons}>
+                <Pressable onPress={() => handleAddPhoto("document")} style={[styles.attActionBtn, { borderColor: colors.border }]}>
+                  <Ionicons name="image-outline" size={18} color={colors.text} />
+                  <Text style={[styles.attActionText, { color: colors.text }]}>Foto bolletta</Text>
+                </Pressable>
+                <Pressable onPress={() => handleAddDocument("document")} style={[styles.attActionBtn, { borderColor: colors.border }]}>
+                  <Ionicons name="document-outline" size={18} color={colors.text} />
+                  <Text style={[styles.attActionText, { color: colors.text }]}>PDF</Text>
+                </Pressable>
+                <Pressable onPress={() => handleAddPhoto("receipt")} style={[styles.attActionBtn, { borderColor: colors.border }]}>
+                  <Ionicons name="receipt-outline" size={18} color={colors.text} />
+                  <Text style={[styles.attActionText, { color: colors.text }]}>Ricevuta</Text>
+                </Pressable>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Storico pagamenti */}
+        {isSubscribed && bill.history.length > 0 && (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Storico pagamenti</Text>
+            <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              {bill.history.map((h) => (
+                <View key={h.id} style={styles.splitRow}>
+                  <View>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatEuro(h.amount)}</Text>
+                    <Text style={[styles.attKind, { color: colors.textSecondary }]}>
+                      {h.paidByName ?? "—"} · {formatDueDate(h.paidAt.slice(0, 10))}
+                    </Text>
+                  </View>
+                  {h.note ? <Text style={[styles.muted, { color: colors.textSecondary, flex: 1, textAlign: "right" }]}>{h.note}</Text> : null}
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function PremiumLock({ colors, text, onPress }: { colors: any; text: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={styles.premiumLock}>
+      <Ionicons name="lock-closed" size={20} color={colors.textSecondary} />
+      <Text style={[styles.muted, { color: colors.textSecondary, flex: 1 }]}>{text}</Text>
+      <Text style={[styles.linkText, { color: colors.primary }]}>Premium</Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  center: { justifyContent: "center", alignItems: "center" },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+  },
+  headerTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", flex: 1, textAlign: "center" },
+  headerActions: { flexDirection: "row" },
+  iconButton: { width: 40, height: 40, justifyContent: "center", alignItems: "center" },
+  content: { flex: 1, paddingHorizontal: 16 },
+  heroCard: {
+    alignItems: "center",
+    padding: 24,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 6,
+  },
+  catIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  heroTitle: { fontSize: 20, fontFamily: "Inter_700Bold", textAlign: "center" },
+  heroSub: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  heroAmount: { fontSize: 32, fontFamily: "Inter_700Bold", marginVertical: 4 },
+  statusBadge: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 10 },
+  statusText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  heroDue: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 4 },
+  section: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 20,
+    gap: 8,
+  },
+  sectionTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold", marginBottom: 10 },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  linkText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  muted: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
+  infoColumn: { paddingVertical: 4 },
+  infoLabel: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  infoValue: { fontSize: 15, fontFamily: "Inter_500Medium" },
+  memberInline: { flexDirection: "row", alignItems: "center", gap: 8 },
+  reminderRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 4 },
+  reminderLabel: { fontSize: 14, fontFamily: "Inter_500Medium", flex: 1 },
+  reminderDate: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  splitRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+  },
+  splitAmount: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  splitActions: { marginTop: 8, flexDirection: "row" },
+  attRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  attMain: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  attThumb: { width: 44, height: 44, borderRadius: 8 },
+  attName: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  attKind: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  attButtons: { flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" },
+  attActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  attActionText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  premiumLock: { flexDirection: "row", alignItems: "center", gap: 10 },
+});

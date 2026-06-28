@@ -29,6 +29,12 @@ export const recipeSourceEnum = pgEnum("recipe_source", ["ai", "manual"]);
 export const ingredientUnitEnum = pgEnum("ingredient_unit", ["g", "kg", "ml", "l", "pcs", "tbsp", "tsp", "cup", "pinch", "to_taste"]);
 export const purchasePlatformEnum = pgEnum("purchase_platform", ["google", "apple", "revenuecat"]);
 export const entitlementStatusEnum = pgEnum("entitlement_status", ["active", "expired", "canceled", "pending"]);
+export const billCategoryEnum = pgEnum("bill_category", ["luce", "gas", "acqua", "telefono", "scuola", "assicurazione", "tasse", "altro"]);
+// Stato MEMORIZZATO della bolletta. "scaduta" NON è qui: si calcola a runtime
+// (dueDate passata e bolletta non pagata) — vedi server/lib/bills.ts.
+export const billStatusEnum = pgEnum("bill_status", ["da_pagare", "pagata"]);
+export const billSplitTypeEnum = pgEnum("bill_split_type", ["equal", "custom"]);
+export const billAttachmentKindEnum = pgEnum("bill_attachment_kind", ["document", "receipt"]);
 
 // USERS
 export const users = pgTable("users", {
@@ -394,6 +400,89 @@ export const entitlements = pgTable("entitlements", {
 ]);
 
 export type Entitlement = typeof entitlements.$inferSelect;
+
+// BILLS — Bollette & Scadenze. Gestione/promemoria/archiviazione/ripartizione.
+// NESSUN pagamento reale: nessun dato bancario (carta/CVV/IBAN) viene salvato.
+export const bills = pgTable("bills", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  provider: varchar("provider", { length: 255 }),
+  category: billCategoryEnum("category").notNull().default("altro"),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  dueDate: date("due_date").notNull(),
+  // Intestatario (testo libero, es. nome sulla bolletta).
+  holder: varchar("holder", { length: 255 }),
+  // Assegnazione a un membro della famiglia (responsabile).
+  assignedTo: uuid("assigned_to").references(() => familyMembers.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  status: billStatusEnum("status").notNull().default("da_pagare"),
+  // Ripartizione: tipo scelto (null = nessuna ripartizione). Le quote in bill_splits.
+  splitType: billSplitTypeEnum("split_type"),
+  remindersEnabled: boolean("reminders_enabled").notNull().default(true),
+  paidAt: timestamp("paid_at"),
+  paidBy: uuid("paid_by").references(() => users.id, { onDelete: "set null" }),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("bills_family_status_idx").on(table.familyId, table.status, table.dueDate),
+]);
+
+export type Bill = typeof bills.$inferSelect;
+
+// BILL SPLITS — ripartizione importo tra membri (uguale o personalizzata).
+export const billSplits = pgTable("bill_splits", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  billId: uuid("bill_id").notNull().references(() => bills.id, { onDelete: "cascade" }),
+  memberId: uuid("member_id").notNull().references(() => familyMembers.id, { onDelete: "cascade" }),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  isPaid: boolean("is_paid").notNull().default(false),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  unique("bill_splits_bill_member_unique").on(table.billId, table.memberId),
+  index("bill_splits_bill_idx").on(table.billId),
+]);
+
+export type BillSplit = typeof billSplits.$inferSelect;
+
+// BILL ATTACHMENTS — allegati (documento bolletta) e ricevute (dopo pagamento).
+// Stesso sistema sicuro upload/media token usato dalla chat.
+export const billAttachments = pgTable("bill_attachments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  billId: uuid("bill_id").notNull().references(() => bills.id, { onDelete: "cascade" }),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  kind: billAttachmentKindEnum("kind").notNull().default("document"),
+  fileUrl: text("file_url").notNull(),
+  fileName: text("file_name"),
+  fileMimeType: varchar("file_mime_type", { length: 100 }),
+  fileSize: integer("file_size"),
+  uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("bill_attachments_bill_idx").on(table.billId),
+]);
+
+export type BillAttachment = typeof billAttachments.$inferSelect;
+
+// BILL PAYMENT HISTORY — storico pagamenti (chi/quando/quanto). Solo tracciamento.
+export const billPaymentHistory = pgTable("bill_payment_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  billId: uuid("bill_id").notNull().references(() => bills.id, { onDelete: "cascade" }),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  memberId: uuid("member_id").references(() => familyMembers.id, { onDelete: "set null" }),
+  paidByUserId: uuid("paid_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  amount: numeric("amount", { precision: 10, scale: 2 }),
+  note: text("note"),
+  paidAt: timestamp("paid_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("bill_payment_history_bill_idx").on(table.billId),
+  index("bill_payment_history_family_idx").on(table.familyId, table.paidAt),
+]);
+
+export type BillPaymentHistory = typeof billPaymentHistory.$inferSelect;
 
 // Insert schemas for validation
 export const insertUserSchema = createInsertSchema(users).pick({

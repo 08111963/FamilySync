@@ -1,0 +1,121 @@
+Voglio aggiungere a FamilySync un modulo “Bollette & Scadenze”.
+
+Importante:
+non voglio pagamenti reali dentro l’app;
+non voglio salvare carte di credito;
+non voglio integrare pagamento bollette;
+questa funzione serve solo per gestione, promemoria, archiviazione e ripartizione familiare.
+
+Funzioni richieste:
+
+1. Creazione bolletta
+   Campi:
+
+* titolo;
+* fornitore;
+* categoria;
+* importo;
+* data scadenza;
+* intestatario;
+* note;
+* allegato PDF/foto;
+* stato.
+
+Categorie:
+
+* luce;
+* gas;
+* acqua;
+* telefono;
+* scuola;
+* assicurazione;
+* tasse;
+* altro.
+
+Stati:
+
+* da pagare;
+* pagata;
+* scaduta.
+
+La voce “scaduta” deve essere calcolata automaticamente quando la data di scadenza è passata e la bolletta non è stata segnata come pagata.
+
+2. Promemoria
+   Creare promemoria automatici:
+
+* 7 giorni prima;
+* 3 giorni prima;
+* il giorno della scadenza;
+* avviso se la bolletta è scaduta.
+
+Ogni bolletta deve poter avere i promemoria attivi/disattivi.
+
+3. Funzioni famiglia
+   Aggiungere:
+
+* assegnazione della bolletta a un membro della famiglia;
+* ripartizione importo tra membri;
+* divisione uguale;
+* divisione personalizzata;
+* storico pagamenti;
+* possibilità di allegare ricevuta PDF/foto dopo il pagamento.
+
+4. Sicurezza e privacy
+
+* Solo i membri della famiglia possono vedere le bollette della famiglia.
+* Gli allegati devono usare lo stesso sistema sicuro già usato per upload/media token.
+* Non salvare numeri di carta, CVV, IBAN o dati bancari.
+* Non avviare pagamenti reali.
+* Non integrare Stripe, carta di credito, pagoPA o CBILL in questa fase.
+
+5. Free/Premium
+   Impostare la funzione in modo compatibile con il modello freemium:
+   Free:
+
+* massimo 5 bollette attive;
+* promemoria base;
+* stato da pagare/pagata/scaduta.
+
+Premium:
+
+* bollette illimitate;
+* allegati PDF/foto;
+* ricevute;
+* ripartizione importi tra membri;
+* storico pagamenti;
+* promemoria avanzati.
+
+6. Backend
+   Creare tabelle e API per:
+
+* bills;
+* bill splits / ripartizioni;
+* bill attachments;
+* bill payment history;
+* reminders o scheduled notifications.
+
+7. Frontend
+   Creare una schermata “Bollette” con:
+
+* elenco bollette;
+* filtri: tutte, da pagare, scadute, pagate;
+* creazione/modifica bolletta;
+* dettaglio bolletta;
+* segna come pagata;
+* allega ricevuta;
+* ripartizione tra membri;
+* promemoria visibili.
+
+8. Test
+   Aggiungere test per:
+
+* creazione bolletta;
+* accesso solo membri famiglia;
+* scaduta calcolata automaticamente;
+* segna come pagata;
+* upload allegato/ricevuta;
+* ripartizione uguale;
+* ripartizione personalizzata;
+* limite Free massimo 5 bollette attive;
+* Premium bollette illimitate;
+* promemoria 7 giorni, 3 giorni, giorno stesso e scaduta.
