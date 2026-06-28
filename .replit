@@ -104,4 +104,3 @@ EMAIL_FROM = "noreply@familysync.eu"
 
 [userenv.production]
 EXPO_PUBLIC_DOMAIN = "familysync.eu"
-MIGRATE_TOKEN = "e72d21a70bc5d74672fbc4a2b839baddd9d8f06448b7d7c0"
