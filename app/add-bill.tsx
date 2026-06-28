@@ -11,6 +11,7 @@ import { useFamily } from "@/context/FamilyContext";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
+import { DateField } from "@/components/DateField";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { CATEGORY_META, type Bill } from "@/app/(tabs)/bills";
 
@@ -77,7 +78,7 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
     if (!title.trim()) return showError("Inserisci un titolo");
     const amountNum = parseFloat(amount.replace(",", "."));
     if (isNaN(amountNum) || amountNum < 0) return showError("Inserisci un importo valido");
-    if (!isValidDate(dueDate)) return showError("Inserisci una data di scadenza valida (AAAA-MM-GG)");
+    if (!isValidDate(dueDate)) return showError("Seleziona una data di scadenza");
 
     const payload = {
       title: title.trim(),
@@ -169,7 +170,7 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
         </View>
 
         <View style={styles.field}>
-          <Input label="Scadenza" placeholder="AAAA-MM-GG" value={dueDate} onChangeText={setDueDate} />
+          <DateField label="Scadenza" placeholder="GG/MM/AAAA" value={dueDate} onChange={setDueDate} testID="bill-due-date" />
         </View>
 
         <View style={styles.field}>
