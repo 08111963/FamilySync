@@ -13,6 +13,7 @@ import {
   Alert,
   Linking,
   Pressable,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -173,6 +174,7 @@ export default function ChatScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
   const [isUploading, setIsUploading] = useState(false);
+  const [attachMenuVisible, setAttachMenuVisible] = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -454,13 +456,21 @@ export default function ChatScreen() {
   }, [hasMore, loadingMore, nextCursor, fetchMessages]);
 
   const handleAttachmentMenu = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert("Allega", "Scegli cosa inviare", [
-      { text: "Galleria", onPress: handlePickImage },
-      ...(Platform.OS !== "web" ? [{ text: "Fotocamera", onPress: handleTakePhoto }] : []),
-      { text: "Annulla", style: "cancel" as const },
-    ]);
-  }, [handlePickImage, handleTakePhoto]);
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setAttachMenuVisible(true);
+  }, []);
+
+  const handleSelectGallery = useCallback(() => {
+    setAttachMenuVisible(false);
+    handlePickImage();
+  }, [handlePickImage]);
+
+  const handleSelectCamera = useCallback(() => {
+    setAttachMenuVisible(false);
+    handleTakePhoto();
+  }, [handleTakePhoto]);
 
   const typingText = useMemo(() => {
     const names = Array.from(typingUsers.values());
@@ -602,6 +612,46 @@ export default function ChatScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={attachMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAttachMenuVisible(false)}
+      >
+        <Pressable style={styles.attachOverlay} onPress={() => setAttachMenuVisible(false)}>
+          <Pressable
+            style={[styles.attachSheet, { backgroundColor: colors.surface, paddingBottom: insets.bottom + 16 }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.attachHandle} />
+            <Text style={[styles.attachTitle, { color: colors.text }]}>Allega</Text>
+
+            <TouchableOpacity style={styles.attachOption} onPress={handleSelectGallery}>
+              <View style={[styles.attachIconCircle, { backgroundColor: colors.primary + "22" }]}>
+                <Ionicons name="images-outline" size={24} color={colors.primary} />
+              </View>
+              <Text style={[styles.attachOptionText, { color: colors.text }]}>Galleria</Text>
+            </TouchableOpacity>
+
+            {Platform.OS !== "web" && (
+              <TouchableOpacity style={styles.attachOption} onPress={handleSelectCamera}>
+                <View style={[styles.attachIconCircle, { backgroundColor: colors.primary + "22" }]}>
+                  <Ionicons name="camera-outline" size={24} color={colors.primary} />
+                </View>
+                <Text style={[styles.attachOptionText, { color: colors.text }]}>Fotocamera</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.attachCancel, { borderColor: colors.border }]}
+              onPress={() => setAttachMenuVisible(false)}
+            >
+              <Text style={[styles.attachCancelText, { color: colors.textSecondary }]}>Annulla</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -631,6 +681,58 @@ const styles = StyleSheet.create({
   messageList: {
     paddingHorizontal: 12,
     paddingTop: 8,
+  },
+  attachOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  attachSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  attachHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#999",
+    alignSelf: "center",
+    marginBottom: 12,
+  },
+  attachTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 8,
+  },
+  attachOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  attachIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 14,
+  },
+  attachOptionText: {
+    fontSize: 16,
+    fontFamily: "Inter_500Medium",
+  },
+  attachCancel: {
+    marginTop: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  attachCancelText: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
   },
   dateHeaderContainer: {
     alignItems: "center",
