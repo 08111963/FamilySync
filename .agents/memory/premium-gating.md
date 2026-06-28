@@ -25,3 +25,10 @@ description: How Premium status, AI quotas, and store purchases work in FamilySy
 - **Never trust client `productId`** in `/api/purchases/verify|restore` — the route forces `config.premiumProductIdFor(platform)` so a client can't validate a different SKU into a premium entitlement.
 - **`lib/iap.ts` (client) is intentionally a STUB**: `isIapAvailable()` returns false; purchase/restore throw `IAP_NOT_AVAILABLE`. Real native IAP (StoreKit / Play Billing) needs a production native build + store credentials — not possible in Expo Go. The backend + verification are fully real and unit-tested with a fake verifier.
 - Stripe remains dormant (`PREMIUM_PAYMENTS_ENABLED=false`) and must NOT unlock mobile premium. `premium-disabled.test.ts` guards the no-Stripe invariant.
+
+# Owner premium permanente (account proprietario)
+- Account "proprietario" (env `PREMIUM_OWNER_EMAILS`, CSV → config) hanno Premium permanente gratuito realizzato come VERO record `entitlements` (active, expiresAt=null), NON come bypass in isPremium → l'invariante "entitlements = unica fonte di verità" resta intatta.
+- **Meccanismo**: seed idempotente all'avvio crea/aggiorna l'entitlement per le famiglie con un membro owner; un guard nella sync RevenueCat forza active per l'owner così la sync senza acquisto reale (active=false) non lo declassa mai.
+- **Regola**: isPremium NON deve mai consultare la lista owner — un fallback email dentro isPremium rompe l'invariante (già bocciato in review). L'eleggibilità owner vale SOLO per seed+guard.
+- **Why**: il proprietario voleva accesso a tutte le funzioni per sempre senza rompere il modello. La env è `shared`, quindi il prod applica la seed al boot dopo un republish.
+- **Limite noto**: la seed è additiva (non revoca `owner_grant` se un account smette di essere owner). Accettabile per single-owner; aggiungere revoca solo se servirà.

@@ -101,6 +101,7 @@ EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY = "goog_jwLjkvSNEuTiisoiwKkvhGOsGdK"
 REVENUECAT_ENTITLEMENT_RC_ID = "entlccdde24edc"
 CLIENT_URL = "https://familysync.eu"
 EMAIL_FROM = "noreply@familysync.eu"
+PREMIUM_OWNER_EMAILS = "marino.pizzuti@gmail.com"
 
 [userenv.production]
 EXPO_PUBLIC_DOMAIN = "familysync.eu"

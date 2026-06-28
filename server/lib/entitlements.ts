@@ -1,6 +1,7 @@
 import { db } from "../db";
-import { entitlements, families } from "../../shared/schema";
-import { eq } from "drizzle-orm";
+import { entitlements, families, familyMembers, users } from "../../shared/schema";
+import { eq, inArray, sql } from "drizzle-orm";
+import { config } from "./config";
 
 /**
  * Stato Premium UNICO dell'app, derivato dalla tabella `entitlements`. La
@@ -138,7 +139,16 @@ export async function syncEntitlementFromRevenueCat(params: {
   expiresAt: Date | null;
   productId?: string | null;
 }): Promise<{ premium: boolean; status: EntitlementStatus; expiresAt: Date | null }> {
-  const status = deriveStatus({ active: params.active, expiresAt: params.expiresAt });
+  let active = params.active;
+  let expiresAt = params.expiresAt;
+  // Account proprietario: Premium permanente. La sync RevenueCat non lo declassa
+  // mai (es. quando non esiste un acquisto reale lo store risponderebbe active=false).
+  if (await isOwnerPremiumFamily(params.familyId)) {
+    active = true;
+    expiresAt = null;
+  }
+
+  const status = deriveStatus({ active, expiresAt });
   const premium = status === "active";
 
   await store.upsert({
@@ -147,7 +157,7 @@ export async function syncEntitlementFromRevenueCat(params: {
     platform: "revenuecat",
     productId: params.productId ?? "premium",
     status,
-    expiresAt: params.expiresAt,
+    expiresAt,
     purchaseToken: null,
     originalTransactionId: null,
     transactionId: null,
@@ -156,7 +166,30 @@ export async function syncEntitlementFromRevenueCat(params: {
 
   await store.setFamilySubscriptionStatus(params.familyId, premium ? "premium" : "free");
 
-  return { premium, status, expiresAt: params.expiresAt };
+  return { premium, status, expiresAt };
+}
+
+/**
+ * True se la famiglia ha tra i membri un account "proprietario"
+ * (config.premiumOwnerEmails). Usato SOLO per (1) seedare un entitlement
+ * permanente all'avvio e (2) impedire che la sync RevenueCat lo declassi.
+ * NON è usato da isPremium: la fonte di verità resta la tabella entitlements.
+ * Lista vuota -> nessuna query (nessun impatto su test/perf).
+ */
+async function isOwnerPremiumFamily(familyId: string): Promise<boolean> {
+  const owners = config.premiumOwnerEmails;
+  if (owners.length === 0) return false;
+  try {
+    const rows = await db
+      .select({ email: users.email })
+      .from(familyMembers)
+      .innerJoin(users, eq(familyMembers.userId, users.id))
+      .where(eq(familyMembers.familyId, familyId));
+    return rows.some((r) => owners.includes(r.email.toLowerCase()));
+  } catch {
+    // Best-effort: in caso di errore (es. id non valido) trattiamo come non-proprietario.
+    return false;
+  }
 }
 
 /** Fonte di verità unica del Premium. Fail-closed: in caso di errore -> false. */
@@ -167,6 +200,43 @@ export async function isPremium(familyId: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Reconciliazione all'avvio: garantisce un entitlement Premium permanente
+ * (status=active, expiresAt=null) per ogni famiglia che ha tra i membri un
+ * account proprietario (config.premiumOwnerEmails). Mantiene `entitlements`
+ * come unica fonte di verità (isPremium continua a leggere solo dal DB).
+ * No-op se la lista è vuota; gli errori sono propagati al chiamante (che logga).
+ */
+export async function seedOwnerEntitlements(): Promise<number> {
+  const owners = config.premiumOwnerEmails;
+  if (owners.length === 0) return 0;
+  const rows = await db
+    .select({ familyId: familyMembers.familyId, userId: familyMembers.userId })
+    .from(familyMembers)
+    .innerJoin(users, eq(familyMembers.userId, users.id))
+    .where(inArray(sql`lower(${users.email})`, owners));
+
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (seen.has(r.familyId)) continue;
+    seen.add(r.familyId);
+    await store.upsert({
+      familyId: r.familyId,
+      userId: r.userId,
+      platform: "revenuecat",
+      productId: "owner_grant",
+      status: "active",
+      expiresAt: null,
+      purchaseToken: null,
+      originalTransactionId: null,
+      transactionId: null,
+      latestReceipt: null,
+    });
+    await store.setFamilySubscriptionStatus(r.familyId, "premium");
+  }
+  return seen.size;
 }
 
 export async function getEntitlement(familyId: string): Promise<EntitlementRecord | null> {

@@ -5,6 +5,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { config } from './lib/config';
 import { logger, generateRequestId } from './lib/logger';
+import { seedOwnerEntitlements } from './lib/entitlements';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -380,6 +381,11 @@ function setupErrorHandler(app: express.Application) {
     },
     () => {
       log(`express server serving on port ${port}`);
+      void seedOwnerEntitlements()
+        .then((n) => {
+          if (n > 0) log(`owner premium reconciled for ${n} family(ies)`);
+        })
+        .catch((err) => log(`owner premium seed failed: ${String(err)}`));
     },
   );
 })();

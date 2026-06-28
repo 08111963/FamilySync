@@ -9,6 +9,14 @@ export const config = {
   // Vedi server/middleware/ai-guard.ts (requireAiEnabled).
   aiRequiresPremium: process.env.AI_REQUIRES_PREMIUM === "true",
 
+  // Email (separate da virgola) di account "proprietario" con Premium permanente.
+  // Ogni famiglia di cui questi account fanno parte è sempre Premium, a
+  // prescindere da acquisti/scadenze. Vuoto = nessun account privilegiato.
+  premiumOwnerEmails: (process.env.PREMIUM_OWNER_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+
   // RevenueCat è il motore degli acquisti store-native (Premium mobile). Il
   // backend sincronizza lo stato da RevenueCat (REST v2) verso la tabella
   // entitlements; isPremium(familyId) resta letto dal DB. AppUserID = familyId.
