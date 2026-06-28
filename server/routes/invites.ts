@@ -33,6 +33,7 @@ const strongPasswordSchema = z
 const acceptSchema = z.object({
   name: z.string().trim().min(2, "Il nome deve avere almeno 2 caratteri").max(255).optional(),
   password: strongPasswordSchema,
+  acceptedTerms: z.literal(true),
 });
 
 // GET /api/invites/:token — stato pubblico dell'invito (nessun dato sensibile).
@@ -80,6 +81,13 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
   try {
     const token = getParam(req, 'token');
     const tokenHash = hashInviteToken(token);
+
+    // Il consenso ai termini deve essere esplicito: nessun default lato server.
+    if (req.body?.acceptedTerms !== true) {
+      return res.status(400).json({
+        error: { code: "TERMS_REQUIRED", message: "Devi accettare i Termini di servizio e la Privacy Policy" },
+      });
+    }
 
     const parsed = acceptSchema.safeParse(req.body);
     if (!parsed.success) {

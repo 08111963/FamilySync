@@ -159,7 +159,7 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     const { data } = await createInvite(email, "teen", "Giulia");
     const token = tokenFromLink(data.inviteLink);
 
-    const res = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12" });
+    const res = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12", acceptedTerms: true });
     const out = await res.json();
     assert.equal(res.status, 201);
     assert.ok(out.accessToken && out.refreshToken, "auto-login tokens presenti");
@@ -169,16 +169,17 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     const raw = JSON.stringify(out).toLowerCase();
     assert.ok(!raw.includes("\"password\"") && !raw.includes("passwordhash"));
 
-    // utente in DB verificato e membro della famiglia
+    // utente in DB verificato, membro della famiglia, e consenso registrato
     const [u] = await db.select().from(users).where(eq(users.email, email)).limit(1);
     created.users.push(u.id);
     assert.equal(u.emailVerified, true);
+    assert.ok(u.termsAcceptedAt instanceof Date, "termsAcceptedAt valorizzato dopo consenso esplicito");
     const [m] = await db.select().from(familyMembers).where(eq(familyMembers.userId, u.id)).limit(1);
     assert.ok(m, "membership creata");
     assert.equal(m.role, "teen");
 
     // token monouso: secondo accept bloccato
-    const res2 = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12" });
+    const res2 = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12", acceptedTerms: true });
     assert.equal(res2.status, 409);
   });
 
@@ -186,8 +187,48 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     const email = `weak-${uniq()}@example.com`;
     const { data } = await createInvite(email);
     const token = tokenFromLink(data.inviteLink);
-    const res = await request("POST", `/api/invites/${token}/accept`, { password: "weak" });
+    const res = await request("POST", `/api/invites/${token}/accept`, { password: "weak", acceptedTerms: true });
     assert.equal(res.status, 400);
+  });
+
+  test("accept SENZA acceptedTerms -> 400 TERMS_REQUIRED e nessun account creato", async () => {
+    const email = `noterms-${uniq()}@example.com`;
+    const { data } = await createInvite(email);
+    const token = tokenFromLink(data.inviteLink);
+
+    // assente
+    const res = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12" });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.error.code, "TERMS_REQUIRED");
+
+    // esplicitamente false
+    const resFalse = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12", acceptedTerms: false });
+    assert.equal(resFalse.status, 400);
+    assert.equal((await resFalse.json()).error.code, "TERMS_REQUIRED");
+
+    // nessun utente creato e invito ancora valido (non consumato)
+    const [u] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    assert.equal(u, undefined, "nessun account deve essere creato senza consenso");
+    const look = await (await request("GET", `/api/invites/${token}`)).json();
+    assert.equal(look.status, "valid");
+  });
+
+  test("accept CON acceptedTerms=true crea account e valorizza termsAcceptedAt; niente password in risposta", async () => {
+    const email = `withterms-${uniq()}@example.com`;
+    const { data } = await createInvite(email, "adult", "Luca");
+    const token = tokenFromLink(data.inviteLink);
+
+    const res = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12", acceptedTerms: true });
+    assert.equal(res.status, 201);
+    const out = await res.json();
+    const raw = JSON.stringify(out).toLowerCase();
+    assert.ok(!raw.includes("\"password\"") && !raw.includes("passwordhash"), "nessuna password nella risposta");
+
+    const [u] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    created.users.push(u.id);
+    assert.ok(u, "account creato");
+    assert.ok(u.termsAcceptedAt instanceof Date, "termsAcceptedAt valorizzato solo dopo consenso esplicito");
   });
 
   test("accept con email GIÀ registrata -> USER_EXISTS; accetta da loggato via join", async () => {
@@ -202,7 +243,7 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     assert.equal(look.userExists, true);
 
     // accept pubblico deve rifiutare (l'utente esiste già)
-    const acc = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12" });
+    const acc = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12", acceptedTerms: true });
     assert.equal(acc.status, 409);
 
     // join da loggato (email coincide) -> ok
@@ -244,8 +285,10 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     const look = await (await request("GET", `/api/invites/${token}`)).json();
     assert.equal(look.status, "expired");
 
-    const acc = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12" });
+    // con consenso valido, deve bloccare per scadenza (non per termini)
+    const acc = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12", acceptedTerms: true });
     assert.equal(acc.status, 400);
+    assert.equal((await acc.json()).error.code, "INVITE_EXPIRED");
   });
 
   test("in PRODUZIONE senza SendGrid: 503 EMAIL_NOT_CONFIGURED e nessun invito creato", async () => {

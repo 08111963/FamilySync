@@ -48,6 +48,7 @@ export default function JoinFamilyScreen() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -143,19 +144,25 @@ export default function JoinFamilyScreen() {
       setFormError("Le password non coincidono");
       return;
     }
+    if (!acceptedTerms) {
+      setFormError("Devi accettare i Termini di servizio e la Privacy Policy");
+      return;
+    }
     setSubmitting(true);
     try {
       const url = new URL(`/api/invites/${token}/accept`, getApiUrl());
       const res = await globalThis.fetch(url.toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() || undefined, password }),
+        body: JSON.stringify({ name: name.trim() || undefined, password, acceptedTerms }),
       });
       const data = await res.json();
       if (!res.ok) {
         const code = data?.error?.code;
         if (code === "USER_EXISTS") {
           setScreen("login_required");
+        } else if (code === "TERMS_REQUIRED") {
+          setFormError("Devi accettare i Termini di servizio e la Privacy Policy");
         } else if (code === "INVITE_EXPIRED") {
           setScreen("expired");
         } else if (code === "ALREADY_ACCEPTED") {
@@ -287,11 +294,46 @@ export default function JoinFamilyScreen() {
                 autoCapitalize="none"
                 testID="input-confirm"
               />
+              <Pressable
+                onPress={() => setAcceptedTerms((v) => !v)}
+                style={styles.termsRow}
+                testID="terms-checkbox"
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: acceptedTerms }}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    { borderColor: acceptedTerms ? colors.primary : colors.border },
+                    acceptedTerms && { backgroundColor: colors.primary },
+                  ]}
+                >
+                  {acceptedTerms && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
+                </View>
+                <Text style={[styles.termsText, { color: colors.textSecondary }]}>
+                  Accetto i{" "}
+                  <Text
+                    style={[styles.termsLink, { color: colors.primary }]}
+                    onPress={() => router.push("/legal/terms")}
+                    testID="terms-link"
+                  >
+                    Termini di servizio
+                  </Text>{" "}
+                  e la{" "}
+                  <Text
+                    style={[styles.termsLink, { color: colors.primary }]}
+                    onPress={() => router.push("/legal/privacy")}
+                    testID="privacy-link"
+                  >
+                    Privacy Policy
+                  </Text>
+                </Text>
+              </Pressable>
               {formError && <Text style={[styles.errorText, { color: colors.error }]}>{formError}</Text>}
               <Button
                 title={submitting ? "Creazione..." : "Crea account ed entra"}
                 onPress={handleCreateAccount}
-                disabled={submitting}
+                disabled={submitting || !acceptedTerms}
                 testID="create-account-button"
               />
             </View>
@@ -395,6 +437,18 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontFamily: "Inter_700Bold", textAlign: "center" },
   message: { fontSize: 16, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 24 },
   errorText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
+  termsRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 4 },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  termsText: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  termsLink: { fontFamily: "Inter_600SemiBold", textDecorationLine: "underline" },
   button: {
     paddingVertical: 14,
     paddingHorizontal: 32,
