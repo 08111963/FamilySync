@@ -392,6 +392,25 @@ router.patch('/:familyId/:billId/pay', requireFamilyMember(), async (req: Reques
 
     const markPaid = parsed.data.paid;
 
+    // Anti-aggiramento limite Free: riportare una bolletta pagata a "da_pagare"
+    // non deve permettere di superare il limite di bollette attive del piano Free.
+    // Se è già "da_pagare" non si conta due volte (nessun controllo).
+    if (!markPaid && existing.status !== 'da_pagare') {
+      const plan = await getPlanForFamily(familyId);
+      const activeRows = await db
+        .select({ id: bills.id })
+        .from(bills)
+        .where(and(eq(bills.familyId, familyId), eq(bills.status, 'da_pagare')));
+      if (!canCreateBill(plan, activeRows.length)) {
+        return res.status(403).json({
+          error: {
+            code: 'FREE_LIMIT_REACHED',
+            message: 'Hai raggiunto il limite di 5 bollette attive del piano Free. Passa a Premium per bollette illimitate.',
+          },
+        });
+      }
+    }
+
     const [bill] = await db
       .update(bills)
       .set({

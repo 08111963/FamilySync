@@ -10,6 +10,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { FamilyProvider } from "@/context/FamilyContext";
+import { BillNotificationsSyncProvider } from "@/context/BillNotificationsProvider";
 import { SubscriptionProvider, initializeRevenueCat } from "@/lib/revenuecat";
 
 SplashScreen.preventAutoHideAsync();
@@ -100,13 +101,15 @@ export default function RootLayout() {
         <SubscriptionProvider>
           <AuthProvider>
             <FamilyProvider>
-              <GestureHandlerRootView>
-                <KeyboardProvider>
-                  <AuthGate>
-                    <RootLayoutNav />
-                  </AuthGate>
-                </KeyboardProvider>
-              </GestureHandlerRootView>
+              <BillNotificationsSyncProvider>
+                <GestureHandlerRootView>
+                  <KeyboardProvider>
+                    <AuthGate>
+                      <RootLayoutNav />
+                    </AuthGate>
+                  </KeyboardProvider>
+                </GestureHandlerRootView>
+              </BillNotificationsSyncProvider>
             </FamilyProvider>
           </AuthProvider>
         </SubscriptionProvider>

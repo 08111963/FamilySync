@@ -106,7 +106,16 @@ function formatDueLabel(dueDate: string): string {
  * le notifiche di una bolletta.
  */
 export function billNotificationSignature(bill: NotifiableBill, plan: BillPlan): string {
-  return `${bill.dueDate}|${bill.remindersEnabled ? 1 : 0}|${bill.status}|${plan}`;
+  // Include title e amount perché compaiono nel testo della notifica: se cambiano,
+  // le notifiche già programmate vanno riprogrammate con il testo aggiornato.
+  return [
+    bill.title,
+    String(bill.amount),
+    bill.dueDate,
+    bill.remindersEnabled ? 1 : 0,
+    bill.status,
+    plan,
+  ].join("|");
 }
 
 export interface StoredBillNotification {

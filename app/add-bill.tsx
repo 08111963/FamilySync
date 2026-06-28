@@ -31,7 +31,7 @@ export default function AddBillScreen() {
   const familyId = currentFamily?.id;
 
   const editQuery = useQuery<Bill & any>({
-    queryKey: ["/api/bills", familyId, editId],
+    queryKey: [`/api/bills/${familyId}/${editId}`],
     enabled: !!familyId && !!editId,
   });
 
@@ -96,11 +96,11 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
     try {
       if (editId) {
         await apiRequest("PUT", `/api/bills/${familyId}/${editId}`, payload);
-        queryClient.invalidateQueries({ queryKey: ["/api/bills", familyId, editId] });
+        queryClient.invalidateQueries({ queryKey: [`/api/bills/${familyId}/${editId}`] });
       } else {
         await apiRequest("POST", `/api/bills/${familyId}`, payload);
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/bills", familyId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bills/${familyId}`] });
       router.back();
     } catch (e: any) {
       const msg = String(e?.message ?? "");

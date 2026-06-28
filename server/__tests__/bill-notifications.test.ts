@@ -86,6 +86,16 @@ describe("computeBillNotificationTriggers", () => {
 });
 
 describe("billNotificationSignature", () => {
+  test("cambia se cambia il titolo (compare nel testo notifica)", () => {
+    const a = billNotificationSignature(bill({ title: "Luce" }), "premium");
+    const b = billNotificationSignature(bill({ title: "Gas" }), "premium");
+    assert.notEqual(a, b);
+  });
+  test("cambia se cambia l'importo (compare nel testo notifica)", () => {
+    const a = billNotificationSignature(bill({ amount: "42.50" }), "premium");
+    const b = billNotificationSignature(bill({ amount: "99.00" }), "premium");
+    assert.notEqual(a, b);
+  });
   test("cambia se cambia la scadenza", () => {
     const a = billNotificationSignature(bill({ dueDate: "2026-12-20" }), "premium");
     const b = billNotificationSignature(bill({ dueDate: "2026-12-21" }), "premium");

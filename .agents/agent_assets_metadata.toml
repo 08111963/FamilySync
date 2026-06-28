@@ -42,3 +42,9 @@ id = "8S8X6jp51HZ1PYjcNhcGk"
 uri = "file://exports/familysync-bollette-review-v2.zip"
 type = "unspecified"
 title = "FamilySync — Bollette (correzioni v2)"
+
+[[outputs]]
+id = "xqh9kCMsWLOoAjJYB7181"
+uri = "file://exports/familysync-bollette-review-v3.zip"
+type = "unspecified"
+title = "FamilySync — Bollette (correzioni v3)"

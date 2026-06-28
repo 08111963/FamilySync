@@ -133,6 +133,22 @@ describe("canCreateBill (limite Free)", () => {
   test("Premium -> sempre consentito anche oltre il limite", () => {
     assert.equal(canCreateBill("premium", 999), true);
   });
+
+  // Anti-aggiramento: riportare una bolletta pagata a "da_pagare" (paid=false) usa
+  // la stessa regola della creazione. La bolletta riattivata è "pagata" e quindi
+  // NON è inclusa nel conteggio delle attive: se le attive sono già 5 -> bloccato.
+  test("riattivazione (paid=false) con 5 attive su Free -> bloccato", () => {
+    const activeNonPaidCount = 5; // la bolletta in riattivazione è pagata, non contata
+    assert.equal(canCreateBill("free", activeNonPaidCount), false);
+  });
+
+  test("riattivazione (paid=false) con 4 attive su Free -> consentito", () => {
+    assert.equal(canCreateBill("free", 4), true);
+  });
+
+  test("riattivazione (paid=false) su Premium -> sempre consentito", () => {
+    assert.equal(canCreateBill("premium", 50), true);
+  });
 });
 
 describe("splitEqually (ripartizione)", () => {

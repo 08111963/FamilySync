@@ -94,7 +94,7 @@ export default function BillDetailScreen() {
   const [uploading, setUploading] = useState(false);
 
   const detailQuery = useQuery<BillDetail>({
-    queryKey: ["/api/bills", familyId, id],
+    queryKey: [`/api/bills/${familyId}/${id}`],
     enabled: !!familyId && !!id,
     staleTime: 5000,
   });
@@ -107,8 +107,8 @@ export default function BillDetailScreen() {
   };
 
   const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["/api/bills", familyId, id] });
-    queryClient.invalidateQueries({ queryKey: ["/api/bills", familyId] });
+    queryClient.invalidateQueries({ queryKey: [`/api/bills/${familyId}/${id}`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/bills/${familyId}`] });
   };
 
   const handleTogglePaid = async () => {
@@ -132,7 +132,7 @@ export default function BillDetailScreen() {
       setBusy(true);
       try {
         await apiRequest("DELETE", `/api/bills/${familyId}/${bill.id}`);
-        queryClient.invalidateQueries({ queryKey: ["/api/bills", familyId] });
+        queryClient.invalidateQueries({ queryKey: [`/api/bills/${familyId}`] });
         router.back();
       } catch {
         showError("Impossibile eliminare la bolletta");

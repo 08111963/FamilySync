@@ -1,0 +1,99 @@
+Ho controllato lo ZIP v2 del modulo Bollette & Scadenze.
+
+La versione è molto migliorata: media-token per allegati bollette, notifiche locali schedulate, validazione assignedTo e split personalizzato sono stati corretti bene.
+
+Prima dell’approvazione finale, però, correggi questi punti.
+
+1. Sincronizzazione notifiche locali globale
+
+Ora useBillLocalNotifications è usato solo in app/(tabs)/bills.tsx.
+
+Questo significa che le notifiche locali vengono programmate solo quando l’utente apre la tab Bollette.
+
+Voglio invece che la sincronizzazione avvenga anche:
+
+* quando l’app si apre;
+* quando cambia currentFamily;
+* quando l’elenco bollette viene sincronizzato;
+* anche se l’utente non entra nella tab Bollette.
+
+Correzione richiesta:
+
+* crea un componente/provider globale, per esempio BillNotificationsSyncProvider;
+* montalo in app/_layout.tsx oppure dentro il provider famiglia;
+* questo provider deve leggere currentFamily, caricare le bollette attive e chiamare useBillLocalNotifications;
+* la tab Bollette può continuare solo a mostrare UI e messaggio permessi notifiche.
+
+2. Firma notifiche incompleta
+
+In lib/bill-notifications.ts, billNotificationSignature include dueDate, remindersEnabled, status e plan, ma non include title e amount.
+
+Poiché il testo della notifica contiene titolo e importo, se l’utente modifica titolo/importo ma lascia stessa scadenza, le notifiche già programmate possono restare con testo vecchio.
+
+Correzione richiesta:
+billNotificationSignature deve includere almeno:
+
+* title;
+* amount;
+* dueDate;
+* remindersEnabled;
+* status;
+* plan.
+
+3. Limite Free aggirabile con “segna come da pagare”
+
+La creazione bolletta controlla correttamente il limite Free di 5 bollette attive.
+
+Però nella rotta PATCH /api/bills/:familyId/:billId/pay, quando paid=false, una bolletta pagata torna da_pagare.
+
+Questo può aggirare il limite Free:
+
+* creo 5 bollette;
+* le segno pagate;
+* creo altre 5;
+* rimetto le prime 5 come da pagare;
+* ottengo più di 5 bollette attive.
+
+Correzione richiesta:
+quando paid=false e la famiglia è Free:
+
+* contare le bollette attive da_pagare della famiglia;
+* se sono già 5, bloccare con FREE_LIMIT_REACHED;
+* se la bolletta è già da_pagare, non contare doppio.
+
+4. Query frontend più esplicite
+
+Nello ZIP vedo queryKey come:
+queryKey: ["/api/bills", familyId]
+queryKey: ["/api/bills", familyId, id]
+
+Se il query-client costruisce l’URL da tutti gli elementi va bene, ma per evitare ambiguità preferisco usare URL espliciti:
+
+queryKey: [`/api/bills/${familyId}`]
+queryKey: [`/api/bills/${familyId}/${id}`]
+
+oppure queryFn esplicita.
+
+Controlla anche add-bill.tsx e bill/[id].tsx.
+
+5. Test aggiornati
+
+Aggiungi/aggiorna test per:
+
+* billNotificationSignature cambia se cambia title;
+* billNotificationSignature cambia se cambia amount;
+* Free non può superare 5 bollette attive usando paid=false;
+* sync notifiche è montata globalmente e non solo nella tab Bollette;
+* query frontend usa endpoint completi o queryFn esplicita.
+
+Dopo queste correzioni, prepara nuovo ZIP con:
+
+* lib/bill-notifications.ts
+* hooks/useBillLocalNotifications.ts
+* nuovo provider/componente globale notifiche bollette
+* app/_layout.tsx
+* app/(tabs)/bills.tsx
+* app/add-bill.tsx
+* app/bill/[id].tsx
+* server/routes/bills.ts
+* test aggiornati.

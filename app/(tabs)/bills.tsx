@@ -8,7 +8,7 @@ import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { useSubscription } from "@/lib/revenuecat";
-import { useBillLocalNotifications } from "@/hooks/useBillLocalNotifications";
+import { useBillNotificationsStatus } from "@/context/BillNotificationsProvider";
 import { EmptyState } from "@/components/EmptyState";
 import { useQuery } from "@tanstack/react-query";
 
@@ -108,7 +108,7 @@ export default function BillsScreen() {
   const [filter, setFilter] = useState<FilterKey>("all");
 
   const billsQuery = useQuery<Bill[]>({
-    queryKey: ["/api/bills", familyId],
+    queryKey: [`/api/bills/${familyId}`],
     enabled: !!familyId,
     staleTime: 15000,
   });
@@ -130,11 +130,7 @@ export default function BillsScreen() {
     [bills]
   );
 
-  const { permissionDenied } = useBillLocalNotifications({
-    familyId,
-    bills,
-    plan: isSubscribed ? "premium" : "free",
-  });
+  const { permissionDenied } = useBillNotificationsStatus();
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const tabBarHeight = Platform.OS === "web" ? 84 : 49 + insets.bottom;
