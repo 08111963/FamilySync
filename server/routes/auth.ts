@@ -112,17 +112,23 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     const { email, password } = parsed.data;
-    
+
+    logger.info('Login attempt', { tag: 'LOGIN_DEBUG', email, passwordLength: password.length });
+
     const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
     
     if (!user) {
+      logger.info('Login failed: user not found', { tag: 'LOGIN_DEBUG', email });
       return res.status(401).json({ error: { code: "INVALID_CREDENTIALS", message: "Credenziali non valide" } });
     }
     
     const validPassword = await bcrypt.compare(password, user.passwordHash);
     if (!validPassword) {
+      logger.info('Login failed: wrong password', { tag: 'LOGIN_DEBUG', email, userId: user.id });
       return res.status(401).json({ error: { code: "INVALID_CREDENTIALS", message: "Credenziali non valide" } });
     }
+
+    logger.info('Login success', { tag: 'LOGIN_DEBUG', email, userId: user.id });
     
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
