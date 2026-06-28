@@ -66,3 +66,9 @@ id = "yRTcBJNn7li3pCV8yFkwi"
 uri = "file://dist/invito-sicuro-consenso-revisione.zip"
 type = "unspecified"
 title = "Consenso Termini/Privacy — File aggiornati per revisione"
+
+[[outputs]]
+id = "pDwmdtH_I8Q3yzVa72b7t"
+uri = "file://familysync-password-review.zip"
+type = "unspecified"
+title = "Revisione gestione password (ZIP)"
