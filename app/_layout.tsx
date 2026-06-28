@@ -24,7 +24,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (isLoading) return;
 
     const root = segments[0];
-    const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "legal" || root === "help";
+    const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "legal" || root === "help" || root === "forgot-password" || root === "reset-password";
     const needsVerification = isAuthenticated && !!user && user.emailVerified === false;
     const inVerifyScreen = root === "verify-email";
     const verificationAllowed = inVerifyScreen || root === "legal" || root === "help";
@@ -33,7 +33,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       router.replace("/welcome");
     } else if (needsVerification && !verificationAllowed) {
       router.replace("/verify-email");
-    } else if (isAuthenticated && !needsVerification && (inVerifyScreen || (inPublicGroup && root !== "join" && root !== "legal" && root !== "help"))) {
+    } else if (isAuthenticated && !needsVerification && (inVerifyScreen || (inPublicGroup && root !== "join" && root !== "legal" && root !== "help" && root !== "forgot-password" && root !== "reset-password"))) {
       router.replace("/");
     }
   }, [isAuthenticated, isLoading, user, segments]);
@@ -50,6 +50,8 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="add-member" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="change-password" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
+      <Stack.Screen name="reset-password/[token]" options={{ headerShown: false }} />
       <Stack.Screen name="add-event" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="add-chore" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="add-bill" options={{ presentation: "modal", headerShown: false }} />

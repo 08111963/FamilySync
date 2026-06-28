@@ -178,6 +178,16 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
+            {!isSignup && (
+              <TouchableOpacity
+                onPress={() => router.push('/forgot-password')}
+                style={styles.forgotButton}
+                testID="forgot-password-link"
+              >
+                <Text style={[styles.forgotText, { color: colors.primary }]}>Password dimenticata?</Text>
+              </TouchableOpacity>
+            )}
+
             {isSignup && (
               <View style={styles.inputContainer}>
                 <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
@@ -387,6 +397,16 @@ const styles = StyleSheet.create({
   submitButtonText: {
     color: '#fff',
     fontSize: 17,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  forgotButton: {
+    alignSelf: 'flex-end',
+    marginTop: -4,
+    marginBottom: 14,
+    paddingVertical: 4,
+  },
+  forgotText: {
+    fontSize: 13,
     fontFamily: 'Inter_600SemiBold',
   },
   toggleButton: {

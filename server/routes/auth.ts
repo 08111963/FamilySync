@@ -7,12 +7,27 @@ import { users, emailVerificationTokens, passwordResetTokens } from '../../share
 import { eq } from 'drizzle-orm';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken, generateMediaToken } from '../lib/jwt';
 import { resolveUploadFileAccess, userIsFamilyMember } from '../lib/media-auth';
-import { sendVerificationEmail, sendPasswordResetEmail } from '../lib/email';
+import { sendVerificationEmail, sendPasswordResetEmail, isEmailConfigured } from '../lib/email';
 import { authenticate, requireEmailVerified } from '../middleware/auth';
 import { logger } from '../lib/logger';
 import { v4 as uuidv4 } from 'uuid';
+import rateLimit from 'express-rate-limit';
+import { config } from '../lib/config';
+import { generateResetToken, hashResetToken } from '../lib/reset-token';
 
 const router = Router();
+
+/**
+ * Rate limiter dedicato ai flussi di password reset: protegge da brute force ed
+ * enumeration. Disattivato in ambiente di test per non interferire con la suite.
+ */
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+});
 
 const emailSchema = z.string().trim().toLowerCase().email("Email non valida");
 
@@ -321,7 +336,7 @@ router.post('/media-token', authenticate, requireEmailVerified, async (req: Requ
   }
 });
 
-router.post('/request-password-reset', async (req: Request, res: Response) => {
+router.post('/request-password-reset', passwordResetLimiter, async (req: Request, res: Response) => {
   try {
     const parsed = requestPasswordResetSchema.safeParse(req.body);
 
@@ -331,32 +346,54 @@ router.post('/request-password-reset', async (req: Request, res: Response) => {
       });
     }
 
-    const { email } = parsed.data;
-    
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    
-    if (!user) {
-      return res.json({ message: 'Se l\'email esiste, riceverai un link' });
+    // In produzione l'email DEVE poter partire davvero: senza SendGrid
+    // configurato falliamo in modo esplicito. È un errore di configurazione del
+    // server, indipendente dall'esistenza dell'email utente (nessun enumeration).
+    if (config.isProduction && !isEmailConfigured()) {
+      return res.status(503).json({ error: { code: "EMAIL_NOT_CONFIGURED", message: "Servizio email non configurato" } });
     }
-    
-    const resetToken = uuidv4();
+
+    const { email } = parsed.data;
+    // Risposta generica identica in tutti i casi per evitare user enumeration.
+    const genericMessage = { message: "Se l'email esiste, riceverai un link" };
+
+    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+
+    if (!user) {
+      return res.json(genericMessage);
+    }
+
+    // Un solo link valido per utente: rimuovi eventuali token precedenti.
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+
+    // Salviamo SOLO l'hash; il token in chiaro vive unicamente nel link/email.
+    const rawToken = generateResetToken();
+    const tokenHash = hashResetToken(rawToken);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-    
+
     await db.insert(passwordResetTokens).values({
       userId: user.id,
-      token: resetToken,
+      token: tokenHash,
       expiresAt,
     });
-    
-    await sendPasswordResetEmail(email, user.name, resetToken);
-    
-    res.json({ message: 'Se l\'email esiste, riceverai un link' });
+
+    // Un fallimento dell'invio email NON deve cambiare la risposta: altrimenti
+    // diventerebbe un canale di enumeration (utente esistente → 500, inesistente
+    // → 200). Logghiamo l'errore lato server e rispondiamo comunque generico.
+    try {
+      await sendPasswordResetEmail(email, user.name, rawToken);
+    } catch (mailError) {
+      logger.error('Password reset email send failed', { error: String(mailError) });
+    }
+
+    return res.json(genericMessage);
   } catch (error) {
+    logger.error('Request password reset error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante la richiesta" } });
   }
 });
 
-router.post('/reset-password', async (req: Request, res: Response) => {
+router.post('/reset-password', passwordResetLimiter, async (req: Request, res: Response) => {
   try {
     const parsed = resetPasswordSchema.safeParse(req.body);
 
@@ -367,31 +404,31 @@ router.post('/reset-password', async (req: Request, res: Response) => {
     }
 
     const { token, newPassword } = parsed.data;
-    
-    const [tokenRecord] = await db.select()
-      .from(passwordResetTokens)
-      .where(eq(passwordResetTokens.token, token))
-      .limit(1);
-    
-    if (!tokenRecord) {
-      return res.status(400).json({ error: { code: "INVALID_TOKEN", message: "Token non valido" } });
+    const tokenHash = hashResetToken(token);
+
+    // Claim atomico monouso: cancella e recupera la riga in un'unica operazione.
+    // Se non esiste (token errato o già usato) → INVALID_TOKEN.
+    const [claimed] = await db.delete(passwordResetTokens)
+      .where(eq(passwordResetTokens.token, tokenHash))
+      .returning();
+
+    if (!claimed) {
+      return res.status(400).json({ error: { code: "INVALID_TOKEN", message: "Token non valido o già utilizzato" } });
     }
-    
-    if (new Date() > tokenRecord.expiresAt) {
+
+    if (new Date() > claimed.expiresAt) {
       return res.status(400).json({ error: { code: "TOKEN_EXPIRED", message: "Token scaduto" } });
     }
-    
+
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    
+
     await db.update(users)
       .set({ passwordHash })
-      .where(eq(users.id, tokenRecord.userId));
-    
-    await db.delete(passwordResetTokens)
-      .where(eq(passwordResetTokens.token, token));
-    
+      .where(eq(users.id, claimed.userId));
+
     res.json({ message: 'Password reimpostata con successo' });
   } catch (error) {
+    logger.error('Reset password error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante il reset" } });
   }
 });
