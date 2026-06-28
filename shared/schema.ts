@@ -27,7 +27,7 @@ export const reportStatusEnum = pgEnum("report_status", ["open", "actioned", "di
 export const mealTypeEnum = pgEnum("meal_type", ["breakfast", "lunch", "dinner", "snack"]);
 export const recipeSourceEnum = pgEnum("recipe_source", ["ai", "manual"]);
 export const ingredientUnitEnum = pgEnum("ingredient_unit", ["g", "kg", "ml", "l", "pcs", "tbsp", "tsp", "cup", "pinch", "to_taste"]);
-export const purchasePlatformEnum = pgEnum("purchase_platform", ["google", "apple"]);
+export const purchasePlatformEnum = pgEnum("purchase_platform", ["google", "apple", "revenuecat"]);
 export const entitlementStatusEnum = pgEnum("entitlement_status", ["active", "expired", "canceled", "pending"]);
 
 // USERS

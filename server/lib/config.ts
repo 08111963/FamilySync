@@ -9,31 +9,19 @@ export const config = {
   // Vedi server/middleware/ai-guard.ts (requireAiEnabled).
   aiRequiresPremium: process.env.AI_REQUIRES_PREMIUM === "true",
 
-  // Acquisti in-app store-native (Premium mobile). I productId sono configurabili
-  // via env per allinearli a quanto creato in Google Play Console / App Store
-  // Connect. Le credenziali di verifica server-side sono opzionali in sviluppo:
-  // se mancanti, gli endpoint di verifica rispondono 503 (configurabile/futuro).
-  iap: {
-    androidProductId: process.env.ANDROID_PREMIUM_PRODUCT_ID || "familysync_premium",
-    iosProductId: process.env.IOS_PREMIUM_PRODUCT_ID || "familysync_premium",
-    androidPackageName: process.env.ANDROID_PACKAGE_NAME || "",
-    // JSON del service account Google Play Developer API (per verificare i token).
-    googleServiceAccountJson: process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || "",
-    // Shared secret App Store (per verifyReceipt degli abbonamenti Apple).
-    appleSharedSecret: process.env.APPLE_SHARED_SECRET || "",
-  },
-
-  /** Verifica server-side configurata per la piattaforma indicata? */
-  isIapVerificationConfigured(platform: "google" | "apple"): boolean {
-    if (platform === "google") {
-      return config.iap.googleServiceAccountJson.trim().length > 0 && config.iap.androidPackageName.trim().length > 0;
-    }
-    return config.iap.appleSharedSecret.trim().length > 0;
-  },
-
-  /** productId Premium per la piattaforma del client. */
-  premiumProductIdFor(platform: "google" | "apple" | string): string {
-    return platform === "apple" ? config.iap.iosProductId : config.iap.androidProductId;
+  // RevenueCat è il motore degli acquisti store-native (Premium mobile). Il
+  // backend sincronizza lo stato da RevenueCat (REST v2) verso la tabella
+  // entitlements; isPremium(familyId) resta letto dal DB. AppUserID = familyId.
+  revenuecat: {
+    projectId: process.env.REVENUECAT_PROJECT_ID || "",
+    // lookup_key dell'entitlement Premium (es. "premium").
+    entitlementId: process.env.REVENUECAT_ENTITLEMENT_ID || "premium",
+    // id oggetto RevenueCat dell'entitlement (es. entl...), usato come ulteriore
+    // confronto perché l'endpoint active_entitlements espone l'entitlement_id.
+    entitlementRcId: process.env.REVENUECAT_ENTITLEMENT_RC_ID || "",
+    // Valore atteso nell'header Authorization dei webhook RevenueCat. Se vuoto,
+    // i webhook NON sono autenticati (accettabile solo in sviluppo).
+    webhookAuthHeader: process.env.REVENUECAT_WEBHOOK_AUTH_HEADER || "",
   },
 
   port: parseInt(process.env.PORT || "5000", 10),

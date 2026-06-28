@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   isEntitlementActive,
   deriveStatus,
-  applyPurchase,
+  syncEntitlementFromRevenueCat,
   isPremium,
   getPlanForFamily,
   __setEntitlementStoreForTest,
@@ -12,15 +12,6 @@ import {
   type ApplyPurchaseInput,
   type EntitlementRecord,
 } from "../lib/entitlements";
-import {
-  verifyPurchase,
-  __setIapVerifierForTest,
-  __resetIapVerifierForTest,
-  PurchaseVerificationError,
-  isPurchaseVerificationError,
-  type IapVerifier,
-  type VerifyOutcome,
-} from "../lib/iap-verifier";
 
 function makeMemoryEntitlementStore() {
   const state: { record: EntitlementRecord | null; upserts: ApplyPurchaseInput[]; subStatus: string | null } = {
@@ -43,22 +34,8 @@ function makeMemoryEntitlementStore() {
   return { store, state };
 }
 
-function outcome(partial: Partial<VerifyOutcome>): VerifyOutcome {
-  return {
-    valid: true,
-    productId: "familysync_premium",
-    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    canceled: false,
-    originalTransactionId: null,
-    transactionId: null,
-    rawReceipt: "receipt",
-    ...partial,
-  };
-}
-
 afterEach(() => {
   __resetEntitlementStoreForTest();
-  __resetIapVerifierForTest();
 });
 
 describe("isEntitlementActive", () => {
@@ -79,46 +56,47 @@ describe("isEntitlementActive", () => {
   });
 });
 
-describe("deriveStatus", () => {
-  test("canceled -> canceled", () => {
-    assert.equal(deriveStatus(outcome({ canceled: true })), "canceled");
+describe("deriveStatus (sync RevenueCat)", () => {
+  test("non attivo -> expired", () => {
+    assert.equal(deriveStatus({ active: false, expiresAt: null }), "expired");
   });
-  test("non valido -> expired", () => {
-    assert.equal(deriveStatus(outcome({ valid: false })), "expired");
+  test("attivo ma scaduto -> expired", () => {
+    assert.equal(deriveStatus({ active: true, expiresAt: new Date(Date.now() - 1000) }), "expired");
   });
-  test("scaduto -> expired", () => {
-    assert.equal(deriveStatus(outcome({ valid: true, expiresAt: new Date(Date.now() - 1000) })), "expired");
+  test("attivo senza scadenza -> active", () => {
+    assert.equal(deriveStatus({ active: true, expiresAt: null }), "active");
   });
-  test("valido e non scaduto -> active", () => {
-    assert.equal(deriveStatus(outcome({})), "active");
+  test("attivo e non scaduto -> active", () => {
+    assert.equal(deriveStatus({ active: true, expiresAt: new Date(Date.now() + 1000) }), "active");
   });
 });
 
-describe("applyPurchase + isPremium + getPlanForFamily", () => {
-  test("acquisto valido -> premium true, subStatus premium, piano premium", async () => {
+describe("syncEntitlementFromRevenueCat + isPremium + getPlanForFamily", () => {
+  test("entitlement attivo -> premium true, subStatus premium, piano premium", async () => {
     const { store, state } = makeMemoryEntitlementStore();
     __setEntitlementStoreForTest(store);
-    const res = await applyPurchase({
+    const res = await syncEntitlementFromRevenueCat({
       familyId: "fam-1",
       userId: "u1",
-      platform: "google",
-      outcome: outcome({}),
+      active: true,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
     assert.equal(res.premium, true);
     assert.equal(res.status, "active");
     assert.equal(state.subStatus, "premium");
+    assert.equal(state.upserts[0].platform, "revenuecat");
     assert.equal(await isPremium("fam-1"), true);
     assert.equal(await getPlanForFamily("fam-1"), "premium");
   });
 
-  test("acquisto scaduto -> premium false, subStatus free, piano free", async () => {
+  test("entitlement non attivo -> premium false, subStatus free, piano free", async () => {
     const { store, state } = makeMemoryEntitlementStore();
     __setEntitlementStoreForTest(store);
-    const res = await applyPurchase({
+    const res = await syncEntitlementFromRevenueCat({
       familyId: "fam-2",
       userId: "u1",
-      platform: "apple",
-      outcome: outcome({ valid: false, expiresAt: new Date(Date.now() - 1000) }),
+      active: false,
+      expiresAt: new Date(Date.now() - 1000),
     });
     assert.equal(res.premium, false);
     assert.equal(state.subStatus, "free");
@@ -133,39 +111,5 @@ describe("applyPurchase + isPremium + getPlanForFamily", () => {
       async setFamilySubscriptionStatus() {},
     });
     assert.equal(await isPremium("fam-x"), false);
-  });
-});
-
-describe("verifyPurchase (verifier iniettabile)", () => {
-  test("instrada al verifier iniettato e ritorna l'esito", async () => {
-    const fake: IapVerifier = {
-      async verify(input) {
-        return outcome({ productId: input.productId });
-      },
-    };
-    __setIapVerifierForTest(fake);
-    const res = await verifyPurchase({ platform: "google", productId: "familysync_premium", purchaseToken: "tok" });
-    assert.equal(res.valid, true);
-    assert.equal(res.productId, "familysync_premium");
-  });
-
-  test("verifier che lancia PurchaseVerificationError viene propagato", async () => {
-    __setIapVerifierForTest({
-      async verify() {
-        throw new PurchaseVerificationError("PURCHASE_INVALID", "test");
-      },
-    });
-    await assert.rejects(
-      verifyPurchase({ platform: "apple", productId: "p", receiptData: "r" }),
-      (e: unknown) => isPurchaseVerificationError(e) && (e as PurchaseVerificationError).httpStatus === 400,
-    );
-  });
-});
-
-describe("PurchaseVerificationError", () => {
-  test("mappa codice -> http status corretto", () => {
-    assert.equal(new PurchaseVerificationError("PURCHASE_VERIFICATION_UNAVAILABLE").httpStatus, 503);
-    assert.equal(new PurchaseVerificationError("PURCHASE_INVALID").httpStatus, 400);
-    assert.equal(new PurchaseVerificationError("PURCHASE_VERIFICATION_FAILED").httpStatus, 502);
   });
 });

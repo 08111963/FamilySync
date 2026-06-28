@@ -1,18 +1,22 @@
 import { db } from "../db";
 import { entitlements, families } from "../../shared/schema";
 import { eq } from "drizzle-orm";
-import type { VerifyOutcome, VerifyPlatform } from "./iap-verifier";
 
 /**
- * Stato Premium UNICO dell'app, derivato dalla tabella `entitlements`
- * (acquisti store-native). isPremium(familyId) è l'unica fonte di verità usata
- * da AI (quote) e da qualunque funzione premium. Stripe NON entra qui.
+ * Stato Premium UNICO dell'app, derivato dalla tabella `entitlements`. La
+ * tabella è la fonte operativa: isPremium(familyId) la legge dal DB ed è
+ * l'unica fonte di verità usata da AI (quote) e da qualunque funzione premium.
+ *
+ * Il motore degli acquisti è RevenueCat (store-native): il backend sincronizza
+ * lo stato da RevenueCat (vedi syncEntitlementFromRevenueCat) verso questa
+ * tabella. Il client NON decide il Premium. Stripe NON entra qui.
  *
  * Lo store è INIETTABILE (__setEntitlementStoreForTest) per testare senza DB.
  */
 
 export type Plan = "free" | "premium";
 export type EntitlementStatus = "active" | "expired" | "canceled" | "pending";
+export type EntitlementPlatform = "google" | "apple" | "revenuecat";
 
 export interface EntitlementRecord {
   status: EntitlementStatus;
@@ -22,7 +26,7 @@ export interface EntitlementRecord {
 export interface ApplyPurchaseInput {
   familyId: string;
   userId: string | null;
-  platform: VerifyPlatform;
+  platform: EntitlementPlatform;
   productId: string;
   status: EntitlementStatus;
   expiresAt: Date | null;
@@ -105,44 +109,54 @@ export function isEntitlementActive(ent: EntitlementRecord | null | undefined, n
   return true;
 }
 
-/** Deriva lo status di entitlement dall'esito della verifica store. */
-export function deriveStatus(outcome: VerifyOutcome, now: Date = new Date()): EntitlementStatus {
-  if (outcome.canceled) return "canceled";
-  if (!outcome.valid) return "expired";
-  if (outcome.expiresAt && outcome.expiresAt.getTime() <= now.getTime()) return "expired";
-  return "active";
+/** Deriva lo status di entitlement dall'esito della sync RevenueCat. */
+export function deriveStatus(
+  result: { active: boolean; expiresAt: Date | null },
+  now: Date = new Date(),
+): EntitlementStatus {
+  if (result.active) {
+    if (result.expiresAt && result.expiresAt.getTime() <= now.getTime()) return "expired";
+    return "active";
+  }
+  // RevenueCat non riporta l'entitlement tra quelli attivi: scaduto/annullato.
+  if (result.expiresAt && result.expiresAt.getTime() <= now.getTime()) return "expired";
+  return "expired";
 }
 
 /**
- * Applica l'esito di una verifica: aggiorna l'entitlement della famiglia e
- * sincronizza families.subscriptionStatus ("premium" se attivo, altrimenti "free").
- * Ritorna lo stato premium risultante.
+ * Applica l'esito di una sincronizzazione da RevenueCat: aggiorna l'entitlement
+ * della famiglia e sincronizza families.subscriptionStatus ("premium" se attivo,
+ * altrimenti "free"). Ritorna lo stato premium risultante.
+ *
+ * productId è best-effort: l'endpoint active_entitlements di RevenueCat non
+ * espone il prodotto, quindi salviamo l'identificativo dell'entitlement Premium.
  */
-export async function applyPurchase(params: {
+export async function syncEntitlementFromRevenueCat(params: {
   familyId: string;
   userId: string | null;
-  platform: VerifyPlatform;
-  outcome: VerifyOutcome;
+  active: boolean;
+  expiresAt: Date | null;
+  productId?: string | null;
 }): Promise<{ premium: boolean; status: EntitlementStatus; expiresAt: Date | null }> {
-  const status = deriveStatus(params.outcome);
+  const status = deriveStatus({ active: params.active, expiresAt: params.expiresAt });
   const premium = status === "active";
 
   await store.upsert({
     familyId: params.familyId,
     userId: params.userId,
-    platform: params.platform,
-    productId: params.outcome.productId,
+    platform: "revenuecat",
+    productId: params.productId ?? "premium",
     status,
-    expiresAt: params.outcome.expiresAt,
-    purchaseToken: params.platform === "google" ? params.outcome.rawReceipt : null,
-    originalTransactionId: params.outcome.originalTransactionId,
-    transactionId: params.outcome.transactionId,
-    latestReceipt: params.outcome.rawReceipt,
+    expiresAt: params.expiresAt,
+    purchaseToken: null,
+    originalTransactionId: null,
+    transactionId: null,
+    latestReceipt: null,
   });
 
   await store.setFamilySubscriptionStatus(params.familyId, premium ? "premium" : "free");
 
-  return { premium, status, expiresAt: params.outcome.expiresAt };
+  return { premium, status, expiresAt: params.expiresAt };
 }
 
 /** Fonte di verità unica del Premium. Fail-closed: in caso di errore -> false. */

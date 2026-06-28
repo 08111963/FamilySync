@@ -2,6 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { Alert } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
@@ -9,6 +10,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { FamilyProvider } from "@/context/FamilyContext";
+import { SubscriptionProvider, initializeRevenueCat } from "@/lib/revenuecat";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -78,6 +80,14 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
+  useEffect(() => {
+    try {
+      initializeRevenueCat();
+    } catch (err: any) {
+      Alert.alert("RevenueCat non disponibile", err?.message ?? "Errore sconosciuto");
+    }
+  }, []);
+
   if (!fontsLoaded) {
     return null;
   }
@@ -85,17 +95,19 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <FamilyProvider>
-            <GestureHandlerRootView>
-              <KeyboardProvider>
-                <AuthGate>
-                  <RootLayoutNav />
-                </AuthGate>
-              </KeyboardProvider>
-            </GestureHandlerRootView>
-          </FamilyProvider>
-        </AuthProvider>
+        <SubscriptionProvider>
+          <AuthProvider>
+            <FamilyProvider>
+              <GestureHandlerRootView>
+                <KeyboardProvider>
+                  <AuthGate>
+                    <RootLayoutNav />
+                  </AuthGate>
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </FamilyProvider>
+          </AuthProvider>
+        </SubscriptionProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

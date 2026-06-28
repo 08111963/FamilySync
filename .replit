@@ -31,7 +31,7 @@ PORT = "5000"
 
 [agent]
 stack = "EXPO"
-integrations = ["stripe:2.0.0", "javascript_openai_ai_integrations:2.0.0"]
+integrations = ["stripe:2.0.0", "javascript_openai_ai_integrations:2.0.0", "revenuecat:1.0.0"]
 
 [workflows]
 runButton = "Project"
@@ -78,3 +78,16 @@ task = "shell.exec"
 args = "npm run expo:dev"
 waitForPort = 8081
 ensurePreviewReachable = "/status"
+
+[userenv]
+
+[userenv.shared]
+REVENUECAT_PROJECT_ID = "proj526bcb9a"
+REVENUECAT_TEST_STORE_APP_ID = "app42c86b5c5a"
+REVENUECAT_APPLE_APP_STORE_APP_ID = "appbe34b13fe7"
+REVENUECAT_GOOGLE_PLAY_STORE_APP_ID = "app5e42f82fab"
+REVENUECAT_ENTITLEMENT_ID = "premium"
+EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_YkkBoTcxdgUQwhzVIdVtwpDTBSW"
+EXPO_PUBLIC_REVENUECAT_IOS_API_KEY = "appl_oZJqowvfSUUDDXXjzpRzjTpLYVU"
+EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY = "goog_jwLjkvSNEuTiisoiwKkvhGOsGdK"
+REVENUECAT_ENTITLEMENT_RC_ID = "entlccdde24edc"

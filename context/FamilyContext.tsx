@@ -5,6 +5,7 @@ import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { loginRevenueCat } from "@/lib/revenuecat";
 
 const ACTIVE_FAMILY_KEY = "@family_sync_active_family";
 
@@ -173,6 +174,16 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     setCurrentFamilyId(nextId);
     AsyncStorage.setItem(ACTIVE_FAMILY_KEY, nextId).catch(() => {});
   }, [familiesQuery.data, currentFamilyId]);
+
+  // AppUserID RevenueCat = familyId: associa gli acquisti alla famiglia attiva.
+  useEffect(() => {
+    if (!currentFamilyId || !isAuthenticated) return;
+    loginRevenueCat(currentFamilyId)
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ["revenuecat"] });
+      })
+      .catch(() => {});
+  }, [currentFamilyId, isAuthenticated, qc]);
 
   const familyDetailQuery = useQuery<any>({
     queryKey: ["/api/families", currentFamilyId],
