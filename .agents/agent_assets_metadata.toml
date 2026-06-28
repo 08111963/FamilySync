@@ -30,3 +30,9 @@ id = "GcHFHvVLvxF4m_h9CLeX3"
 uri = "file://exports/stripe-review.zip"
 type = "unspecified"
 title = "Stripe disattivato sul mobile — review FamilySync"
+
+[[outputs]]
+id = "sP4Q97khGHDHzdVy7vpb1"
+uri = "file://exports/familysync-bollette-review.zip"
+type = "unspecified"
+title = "FamilySync — Bollette & Scadenze (ZIP revisione)"
