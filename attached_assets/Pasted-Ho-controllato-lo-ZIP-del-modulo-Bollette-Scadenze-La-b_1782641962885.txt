@@ -1,0 +1,93 @@
+Ho controllato lo ZIP del modulo Bollette & Scadenze. La base è buona, ma non è ancora approvabile. Ci sono due problemi bloccanti da correggere.
+
+1. Allegati bollette e media-token
+
+Nel file server/lib/media-auth.ts, resolveUploadFileAccess() sembra autorizzare solo file collegati alla chat tramite chatMessages.fileUrl.
+
+Ora però le bollette salvano file in billAttachments.fileUrl.
+
+Quindi gli allegati bollette rischiano di essere caricati correttamente ma non apribili tramite /uploads con media-token, perché authenticateMedia non trova il file tra i chatMessages.
+
+Correzione richiesta:
+
+* estendere resolveUploadFileAccess() per riconoscere anche billAttachments.fileUrl;
+* verificare che l’utente sia membro della famiglia della bolletta;
+* per gli allegati bollette, rispettare il gating Premium: se la famiglia non è Premium, non deve ottenere media-token/accesso agli allegati premium;
+* aggiornare anche /api/auth/media-token se necessario;
+* aggiungere test che provino:
+
+  * membro Premium famiglia può aprire allegato bolletta;
+  * membro Free non può aprire allegato Premium;
+  * non membro non può aprire allegato;
+  * token familyId/filePath non permette accesso a file di altra famiglia.
+
+2. Promemoria locali reali
+
+Attualmente il backend calcola i promemoria, ma nel frontend vedo solo presentLocalNotification(), cioè una notifica immediata di test.
+
+Serve implementare davvero le notifiche locali future.
+
+Correzione richiesta:
+
+* creare una utility/hook, per esempio useBillLocalNotifications;
+* chiedere permesso notifiche locali;
+* programmare notifiche future con Notifications.scheduleNotificationAsync;
+* orario predefinito 09:00 ora locale;
+* notifiche:
+
+  * 7 giorni prima per Premium;
+  * 3 giorni prima per Premium;
+  * giorno della scadenza;
+  * giorno dopo la scadenza se non pagata;
+* salvare in AsyncStorage gli ID delle notifiche programmate, per esempio per familyId + billId;
+* cancellare le notifiche quando:
+
+  * la bolletta viene segnata come pagata;
+  * la bolletta viene eliminata;
+  * remindersEnabled diventa false;
+  * cambia la data di scadenza;
+* riprogrammare quando:
+
+  * viene creata una bolletta;
+  * viene modificata una bolletta;
+  * l’app si apre;
+  * cambia currentFamily;
+  * viene sincronizzato l’elenco bollette;
+* se il permesso notifiche è negato, l’app deve continuare a funzionare e mostrare un messaggio chiaro.
+
+3. Validazione assignedTo
+
+In creazione/modifica bolletta, assignedTo non deve essere solo un UUID valido.
+Deve essere verificato lato backend che assignedTo appartenga alla stessa familyId.
+
+Se assignedTo non appartiene alla famiglia, rispondere:
+400 INVALID_MEMBER
+
+4. Test aggiuntivi
+
+Aggiungere test per:
+
+* media-token su billAttachments;
+* Free non può accedere ad allegati/ricevute/ripartizioni/storico;
+* Premium può accedere;
+* assignedTo di altra famiglia respinto;
+* programmazione notifiche locali;
+* cancellazione notifiche quando la bolletta viene pagata;
+* cancellazione notifiche quando la bolletta viene eliminata;
+* riprogrammazione notifiche quando cambia dueDate;
+* permesso notifiche negato non manda in errore l’app.
+
+5. Dopo la correzione, prepara un nuovo ZIP con almeno:
+
+* server/lib/media-auth.ts
+* server/middleware/auth.ts
+* server/routes/auth.ts, se modificato
+* server/routes/bills.ts
+* server/lib/bills.ts
+* shared/schema.ts
+* hooks/usePushNotifications.ts
+* nuovo hook/utility notifiche bollette
+* app/(tabs)/bills.tsx
+* app/add-bill.tsx
+* app/bill/[id].tsx
+* test aggiornati.

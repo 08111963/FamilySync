@@ -120,6 +120,16 @@ const updateBillSchema = z.object({
   remindersEnabled: z.boolean().optional(),
 }).strict();
 
+// Verifica che il membro assegnato (assignedTo) appartenga alla stessa famiglia.
+async function assignedToBelongsToFamily(assignedTo: string, familyId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: familyMembers.id })
+    .from(familyMembers)
+    .where(and(eq(familyMembers.id, assignedTo), eq(familyMembers.familyId, familyId)))
+    .limit(1);
+  return !!row;
+}
+
 function serializeBill(bill: typeof bills.$inferSelect) {
   return {
     ...bill,
@@ -259,6 +269,15 @@ router.post('/:familyId', requireFamilyMember(), async (req: Request, res: Respo
       });
     }
 
+    if (parsed.data.assignedTo) {
+      const ok = await assignedToBelongsToFamily(parsed.data.assignedTo, familyId);
+      if (!ok) {
+        return res.status(400).json({
+          error: { code: 'INVALID_MEMBER', message: 'Il membro assegnato non appartiene a questa famiglia' },
+        });
+      }
+    }
+
     const plan = await getPlanForFamily(familyId);
     const activeRows = await db
       .select({ id: bills.id })
@@ -309,6 +328,15 @@ router.put('/:familyId/:billId', requireFamilyMember(), async (req: Request, res
       return res.status(400).json({
         error: { code: 'VALIDATION_ERROR', message: 'Dati non validi', details: parsed.error.flatten().fieldErrors },
       });
+    }
+
+    if (parsed.data.assignedTo) {
+      const ok = await assignedToBelongsToFamily(parsed.data.assignedTo, familyId);
+      if (!ok) {
+        return res.status(400).json({
+          error: { code: 'INVALID_MEMBER', message: 'Il membro assegnato non appartiene a questa famiglia' },
+        });
+      }
     }
 
     const updateData: Record<string, any> = { ...parsed.data, updatedAt: new Date() };

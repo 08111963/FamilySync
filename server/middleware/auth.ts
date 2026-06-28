@@ -3,7 +3,7 @@ import { verifyAccessToken, verifyMediaToken } from '../lib/jwt';
 import { db } from '../db';
 import { users } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
-import { normalizeUploadFileUrl, resolveUploadFileAccess } from '../lib/media-auth';
+import { normalizeUploadFileUrl, resolveUploadFileAccess, authorizeMediaRequest } from '../lib/media-auth';
 
 declare global {
   namespace Express {
@@ -46,22 +46,18 @@ export async function authenticateMedia(req: Request, res: Response, next: NextF
 
   const requestedFileUrl = normalizeUploadFileUrl(req.path);
 
-  if (payload.filePath) {
-    const allowedFileUrl = normalizeUploadFileUrl(payload.filePath);
-    if (requestedFileUrl !== allowedFileUrl) {
-      return res.status(403).json({ error: { code: "FORBIDDEN_FILE", message: "Token non valido per questo file" } });
-    }
-  }
-
   try {
     const fileFamilyId = await resolveUploadFileAccess(payload.userId, requestedFileUrl);
 
-    if (!fileFamilyId) {
-      return res.status(403).json({ error: { code: "FORBIDDEN_FILE", message: "Non hai i permessi per accedere a questo file" } });
-    }
+    const decision = authorizeMediaRequest({
+      requestedFileUrl,
+      fileFamilyId,
+      tokenFilePath: payload.filePath,
+      tokenFamilyId: payload.familyId,
+    });
 
-    if (payload.familyId && payload.familyId !== fileFamilyId) {
-      return res.status(403).json({ error: { code: "FORBIDDEN_FILE", message: "Token non valido per questo file" } });
+    if (!decision.ok) {
+      return res.status(403).json({ error: { code: "FORBIDDEN_FILE", message: "Non hai i permessi per accedere a questo file" } });
     }
   } catch {
     return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante la verifica dei permessi" } });

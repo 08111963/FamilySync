@@ -8,6 +8,7 @@ import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { useSubscription } from "@/lib/revenuecat";
+import { useBillLocalNotifications } from "@/hooks/useBillLocalNotifications";
 import { EmptyState } from "@/components/EmptyState";
 import { useQuery } from "@tanstack/react-query";
 
@@ -129,6 +130,12 @@ export default function BillsScreen() {
     [bills]
   );
 
+  const { permissionDenied } = useBillLocalNotifications({
+    familyId,
+    bills,
+    plan: isSubscribed ? "premium" : "free",
+  });
+
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const tabBarHeight = Platform.OS === "web" ? 84 : 49 + insets.bottom;
 
@@ -161,6 +168,15 @@ export default function BillsScreen() {
             Piano Free: {activeCount}/5 bollette attive. Passa a Premium per illimitate, allegati e ripartizioni.
           </Text>
         </Pressable>
+      )}
+
+      {permissionDenied && (
+        <View style={[styles.freeBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name="notifications-off" size={16} color={colors.textSecondary} />
+          <Text style={[styles.freeBannerText, { color: colors.textSecondary }]}>
+            Notifiche disattivate: attivale dalle impostazioni del telefono per ricevere i promemoria delle scadenze.
+          </Text>
+        </View>
       )}
 
       <View style={styles.filters}>
