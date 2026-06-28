@@ -14,6 +14,7 @@ import { useSubscription } from "@/lib/revenuecat";
 import { useMediaToken } from "@/hooks/useMediaToken";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
+import { Input } from "@/components/Input";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
 import { presentLocalNotification } from "@/hooks/usePushNotifications";
@@ -92,6 +93,8 @@ export default function BillDetailScreen() {
 
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [splitMode, setSplitMode] = useState<"equal" | "custom">("equal");
+  const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
 
   const detailQuery = useQuery<BillDetail>({
     queryKey: [`/api/bills/${familyId}/${id}`],
@@ -161,6 +164,49 @@ export default function BillDetailScreen() {
       refresh();
     } catch (e: any) {
       if (String(e?.message ?? "").includes("PREMIUM_REQUIRED")) router.push("/premium");
+      else showError("Impossibile creare la ripartizione");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const parseAmount = (v: string) => {
+    const n = parseFloat((v || "").replace(",", "."));
+    return isNaN(n) ? 0 : n;
+  };
+
+  const billTotal = bill ? parseAmount(bill.amount) : 0;
+  const enteredTotal = useMemo(
+    () => data.members.reduce((sum, m) => sum + parseAmount(customAmounts[m.id] ?? ""), 0),
+    [data.members, customAmounts]
+  );
+  // Stessa identica formula del backend (server/routes/bills.ts): nessun arrotondamento
+  // anticipato, così se il frontend abilita il salvataggio anche il backend lo accetta.
+  const splitDifferenceRaw = billTotal - enteredTotal;
+  const splitDifference = Math.round(splitDifferenceRaw * 100) / 100; // solo per visualizzazione
+  const customSplitValid = Math.abs(splitDifferenceRaw) <= 0.01 && enteredTotal > 0;
+
+  const handleSplitCustom = async () => {
+    if (!familyId || !bill) return;
+    if (!isSubscribed) return router.push("/premium");
+    if (data.members.length === 0) return showError("Aggiungi prima dei membri alla famiglia");
+    const splits = data.members
+      .map((m) => ({ memberId: m.id, amount: parseAmount(customAmounts[m.id] ?? "") }))
+      .filter((s) => s.amount > 0);
+    if (splits.length === 0) return showError("Inserisci almeno una quota");
+    if (!customSplitValid) {
+      return showError("La somma delle quote deve coincidere con l'importo della bolletta");
+    }
+    setBusy(true);
+    try {
+      await apiRequest("PUT", `/api/bills/${familyId}/${bill.id}/splits`, { type: "custom", splits });
+      setCustomAmounts({});
+      refresh();
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      if (msg.includes("PREMIUM_REQUIRED")) router.push("/premium");
+      else if (msg.includes("VALIDATION_ERROR")) showError("La somma delle quote non coincide con l'importo della bolletta");
+      else if (msg.includes("INVALID_MEMBER")) showError("Uno dei membri non è valido per questa famiglia");
       else showError("Impossibile creare la ripartizione");
     } finally {
       setBusy(false);
@@ -382,27 +428,114 @@ export default function BillDetailScreen() {
         <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {!isSubscribed ? (
             <PremiumLock colors={colors} text="Dividi la bolletta tra i membri con Premium." onPress={() => router.push("/premium")} />
-          ) : bill.splits.length === 0 ? (
-            <>
-              <Text style={[styles.muted, { color: colors.textSecondary, marginBottom: 12 }]}>
-                Nessuna ripartizione. Dividi l'importo equamente tra i membri.
-              </Text>
-              <Button title="Dividi equamente" onPress={handleSplitEqual} size="small" loading={busy} />
-            </>
           ) : (
             <>
-              {bill.splits.map((s) => (
-                <View key={s.id} style={styles.splitRow}>
-                  <View style={styles.memberInline}>
-                    <Avatar name={s.memberName ?? "?"} color={s.memberColor ?? colors.primary} size={24} />
-                    <Text style={[styles.infoValue, { color: colors.text }]}>{s.memberName ?? "Membro"}</Text>
-                  </View>
-                  <Text style={[styles.splitAmount, { color: colors.text }]}>{formatEuro(s.amount)}</Text>
+              {bill.splits.length > 0 && (
+                <View style={{ marginBottom: 16 }}>
+                  {bill.splits.map((s) => (
+                    <View key={s.id} style={styles.splitRow}>
+                      <View style={styles.memberInline}>
+                        <Avatar name={s.memberName ?? "?"} color={s.memberColor ?? colors.primary} size={24} />
+                        <Text style={[styles.infoValue, { color: colors.text }]}>{s.memberName ?? "Membro"}</Text>
+                      </View>
+                      <Text style={[styles.splitAmount, { color: colors.text }]}>{formatEuro(s.amount)}</Text>
+                    </View>
+                  ))}
+                  <Text style={[styles.muted, { color: colors.textSecondary, marginTop: 8 }]}>
+                    Ripartizione attuale: {bill.splitType === "custom" ? "personalizzata" : "equa"}. Modificala qui sotto.
+                  </Text>
                 </View>
-              ))}
-              <View style={styles.splitActions}>
-                <Button title="Ricalcola equa" onPress={handleSplitEqual} size="small" variant="outline" loading={busy} />
+              )}
+
+              {/* Selettore modalità */}
+              <View style={[styles.modeToggle, { borderColor: colors.border }]}>
+                <Pressable
+                  testID="split-mode-equal"
+                  onPress={() => setSplitMode("equal")}
+                  style={[styles.modeBtn, splitMode === "equal" && { backgroundColor: colors.primary }]}
+                >
+                  <Text style={[styles.modeBtnText, { color: splitMode === "equal" ? "#FFF" : colors.text }]}>
+                    Dividi equamente
+                  </Text>
+                </Pressable>
+                <Pressable
+                  testID="split-mode-custom"
+                  onPress={() => setSplitMode("custom")}
+                  style={[styles.modeBtn, splitMode === "custom" && { backgroundColor: colors.primary }]}
+                >
+                  <Text style={[styles.modeBtnText, { color: splitMode === "custom" ? "#FFF" : colors.text }]}>
+                    Personalizzata
+                  </Text>
+                </Pressable>
               </View>
+
+              {splitMode === "equal" ? (
+                <>
+                  <Text style={[styles.muted, { color: colors.textSecondary, marginBottom: 12 }]}>
+                    L'importo verrà diviso in parti uguali tra tutti i membri della famiglia.
+                  </Text>
+                  <Button title="Dividi equamente" onPress={handleSplitEqual} size="small" loading={busy} />
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.muted, { color: colors.textSecondary, marginBottom: 12 }]}>
+                    Inserisci la quota di ogni membro. La somma deve corrispondere all'importo della bolletta.
+                  </Text>
+                  {data.members.map((m) => (
+                    <View key={m.id} style={styles.customRow}>
+                      <View style={styles.memberInline}>
+                        <Avatar name={m.name} color={m.color} size={24} />
+                        <Text style={[styles.infoValue, { color: colors.text }]}>{m.name}</Text>
+                      </View>
+                      <Input
+                        testID={`split-amount-${m.id}`}
+                        placeholder="0,00"
+                        keyboardType="decimal-pad"
+                        value={customAmounts[m.id] ?? ""}
+                        onChangeText={(t) => setCustomAmounts((prev) => ({ ...prev, [m.id]: t }))}
+                        style={styles.customInput}
+                      />
+                    </View>
+                  ))}
+
+                  <View style={[styles.totalsBox, { borderColor: colors.border }]}>
+                    <View style={styles.totalsRow}>
+                      <Text style={[styles.muted, { color: colors.textSecondary }]}>Totale bolletta</Text>
+                      <Text style={[styles.infoValue, { color: colors.text }]}>{formatEuro(billTotal.toFixed(2))}</Text>
+                    </View>
+                    <View style={styles.totalsRow}>
+                      <Text style={[styles.muted, { color: colors.textSecondary }]}>Totale quote inserite</Text>
+                      <Text style={[styles.infoValue, { color: colors.text }]}>{formatEuro(enteredTotal.toFixed(2))}</Text>
+                    </View>
+                    <View style={styles.totalsRow}>
+                      <Text style={[styles.muted, { color: colors.textSecondary }]}>Differenza residua</Text>
+                      <Text
+                        testID="split-difference"
+                        style={[styles.infoValue, { color: customSplitValid ? colors.success ?? "#00B894" : colors.error }]}
+                      >
+                        {formatEuro(splitDifference.toFixed(2))}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {enteredTotal > 0 && !customSplitValid && (
+                    <Text testID="split-error" style={[styles.error, { color: colors.error }]}>
+                      La somma delle quote ({formatEuro(enteredTotal.toFixed(2))}) non coincide con l'importo della bolletta ({formatEuro(billTotal.toFixed(2))}).
+                    </Text>
+                  )}
+
+                  <View style={styles.splitActions}>
+                    <Button
+                      testID="split-save-custom"
+                      title="Salva ripartizione"
+                      onPress={handleSplitCustom}
+                      size="small"
+                      loading={busy}
+                      disabled={!customSplitValid}
+                    />
+                  </View>
+                </>
+              )}
             </>
           )}
         </View>
@@ -569,6 +702,14 @@ const styles = StyleSheet.create({
   },
   splitAmount: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   splitActions: { marginTop: 8, flexDirection: "row" },
+  modeToggle: { flexDirection: "row", borderWidth: 1, borderRadius: 10, padding: 3, marginBottom: 14, gap: 4 },
+  modeBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
+  modeBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  customRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 },
+  customInput: { width: 110, textAlign: "right" },
+  totalsBox: { borderWidth: 1, borderRadius: 10, padding: 12, marginTop: 6, gap: 6 },
+  totalsRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  error: { fontSize: 13, fontFamily: "Inter_500Medium", marginTop: 10 },
   attRow: {
     flexDirection: "row",
     alignItems: "center",

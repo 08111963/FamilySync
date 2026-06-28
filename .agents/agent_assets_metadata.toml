@@ -48,3 +48,9 @@ id = "xqh9kCMsWLOoAjJYB7181"
 uri = "file://exports/familysync-bollette-review-v3.zip"
 type = "unspecified"
 title = "FamilySync — Bollette (correzioni v3)"
+
+[[outputs]]
+id = "ntHF6UWkvYsGP_4DwcBvv"
+uri = "file://exports/familysync-bollette-review-v4.zip"
+type = "unspecified"
+title = "FamilySync — Bollette: Ripartizione personalizzata (v4)"

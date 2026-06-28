@@ -1,0 +1,71 @@
+Ho controllato lo ZIP v3 del modulo Bollette & Scadenze.
+
+La versione è molto migliorata e i problemi principali risultano corretti:
+
+* sync notifiche locali globale;
+* BillNotificationsSyncProvider montato in app/_layout.tsx;
+* firma notifiche con title e amount;
+* limite Free corretto anche su paid=false;
+* query frontend esplicite;
+* media-token per allegati bollette;
+* assignedTo validato;
+* gating Premium sugli allegati;
+* split custom validato lato backend.
+
+Rimane però un blocco funzionale prima dell’approvazione finale: manca la ripartizione personalizzata nel frontend.
+
+Nel backend supporti già:
+type = "custom"
+splits = [{ memberId, amount }]
+
+Però in app/bill/[id].tsx vedo solo la funzione “Dividi equamente” con type = "equal".
+
+Richiedo quindi di aggiungere la UI per la ripartizione personalizzata.
+
+Funzione richiesta:
+
+1. Nella sezione “Ripartizione” aggiungi anche:
+
+   * “Dividi equamente”;
+   * “Ripartizione personalizzata”.
+
+2. Con “Ripartizione personalizzata” l’utente Premium deve poter inserire un importo per ogni membro della famiglia.
+
+Esempio:
+
+* Mario €60
+* Anna €40
+* Luca €20
+
+3. Il frontend deve mostrare:
+
+   * totale bolletta;
+   * totale quote inserite;
+   * differenza residua;
+   * errore se la somma non coincide con l’importo della bolletta.
+
+4. La validazione backend già presente resta obbligatoria:
+
+   * la somma delle quote deve coincidere con l’importo della bolletta;
+   * tolleranza massimo 1 centesimo;
+   * i membri devono appartenere alla famiglia.
+
+5. Se la famiglia non è Premium:
+
+   * la ripartizione personalizzata deve essere bloccata;
+   * mostrare CTA Premium.
+
+6. Aggiungi test o almeno verifica statica per:
+
+   * frontend contiene chiamata type = "custom";
+   * invio splits personalizzati;
+   * errore se somma quote diversa dall’importo;
+   * successo se somma quote corretta;
+   * Free non accede alla funzione.
+
+Dopo questa correzione prepara un ultimo ZIP con:
+
+* app/bill/[id].tsx
+* eventuali componenti creati per la ripartizione personalizzata
+* server/routes/bills.ts se modificato
+* test aggiornati.

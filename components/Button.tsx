@@ -10,6 +10,7 @@ interface ButtonProps {
   disabled?: boolean;
   loading?: boolean;
   style?: ViewStyle;
+  testID?: string;
 }
 
 export function Button({
@@ -20,6 +21,7 @@ export function Button({
   disabled = false,
   loading = false,
   style,
+  testID,
 }: ButtonProps) {
   const { colors } = useTheme();
 
@@ -67,6 +69,7 @@ export function Button({
 
   return (
     <Pressable
+      testID={testID}
       onPress={handlePress}
       disabled={disabled || loading}
       style={({ pressed }) => [
