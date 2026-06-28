@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/context/AuthContext";
@@ -430,6 +431,59 @@ export default function ChatScreen() {
     }
   }, [familyId, baseUrl, getHeaders]);
 
+  const handlePickDocument = useCallback(async () => {
+    if (!familyId) return;
+
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "application/pdf",
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setIsUploading(true);
+
+    try {
+      const asset = result.assets[0];
+      const headers = await getHeaders();
+      const formData = new FormData();
+
+      if (Platform.OS === "web" && asset.file) {
+        formData.append("file", asset.file, asset.name);
+      } else {
+        formData.append("file", {
+          uri: asset.uri,
+          name: asset.name || `file_${Date.now()}`,
+          type: asset.mimeType || "application/octet-stream",
+        } as any);
+      }
+
+      const url = new URL(`/api/chat/${familyId}/upload`, baseUrl);
+      const res = await globalThis.fetch(url.toString(), {
+        method: "POST",
+        headers: { ...headers },
+        credentials: "include",
+        body: formData,
+      } as any);
+
+      if (!res.ok) throw new Error("Errore upload");
+      const sentMsg = await res.json() as ChatMsg;
+      setMessages(prev => {
+        if (prev.some(m => m.id === sentMsg.id)) return prev;
+        return [sentMsg, ...prev];
+      });
+    } catch (error) {
+      console.error("Errore upload documento:", error);
+      Alert.alert("Errore", "Impossibile caricare il documento");
+    } finally {
+      setIsUploading(false);
+    }
+  }, [familyId, baseUrl, getHeaders]);
+
   const handleDeleteMessage = useCallback(async (messageId: string) => {
     if (!familyId) return;
     Alert.alert("Elimina messaggio", "Vuoi eliminare questo messaggio?", [
@@ -471,6 +525,11 @@ export default function ChatScreen() {
     setAttachMenuVisible(false);
     handleTakePhoto();
   }, [handleTakePhoto]);
+
+  const handleSelectDocument = useCallback(() => {
+    setAttachMenuVisible(false);
+    handlePickDocument();
+  }, [handlePickDocument]);
 
   const typingText = useMemo(() => {
     const names = Array.from(typingUsers.values());
@@ -642,6 +701,13 @@ export default function ChatScreen() {
                 <Text style={[styles.attachOptionText, { color: colors.text }]}>Fotocamera</Text>
               </TouchableOpacity>
             )}
+
+            <TouchableOpacity style={styles.attachOption} onPress={handleSelectDocument}>
+              <View style={[styles.attachIconCircle, { backgroundColor: colors.primary + "22" }]}>
+                <Ionicons name="document-text-outline" size={24} color={colors.primary} />
+              </View>
+              <Text style={[styles.attachOptionText, { color: colors.text }]}>Documento (PDF)</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.attachCancel, { borderColor: colors.border }]}
