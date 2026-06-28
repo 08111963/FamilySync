@@ -102,7 +102,8 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
         await apiRequest("POST", `/api/bills/${familyId}`, payload);
       }
       queryClient.invalidateQueries({ queryKey: [`/api/bills/${familyId}`] });
-      router.back();
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)/bills");
     } catch (e: any) {
       const msg = String(e?.message ?? "");
       if (msg.includes("FREE_LIMIT_REACHED") || msg.includes("403")) {
@@ -120,7 +121,7 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
-        <Pressable onPress={() => router.back()} style={styles.closeButton}>
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/bills"))} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.title, { color: colors.text }]}>{editId ? "Modifica Bolletta" : "Nuova Bolletta"}</Text>
