@@ -22,6 +22,7 @@ import mealPlansRoutes from "./routes/meal-plans";
 import chatRoutes from "./routes/chat";
 import notificationsRoutes from "./routes/notifications";
 import billsRoutes from "./routes/bills";
+import migrateRoutes from "./routes/migrate";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(helmet({
@@ -43,6 +44,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  // Endpoint TEMPORANEO di migrazione dati (disattivo se MIGRATE_TOKEN assente).
+  app.use('/api/_migrate', migrateRoutes);
   app.use('/api/auth', authRoutes);
   // Inviti: router PUBBLICO (lookup stato + accept nuovo utente) montato senza
   // authenticate, con rate limiter dedicato.

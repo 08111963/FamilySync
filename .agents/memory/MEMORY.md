@@ -10,3 +10,4 @@
 - [Password reset conventions](password-reset-conventions.md) — store SHA-256 token hash only; single-use via DELETE…RETURNING; anti-enumeration on EVERY path incl. email-send failure (always generic 200, log only).
 - [Secure invite flow](secure-invite-flow.md) — invito famiglia via email-link: solo tokenHash nel DB, consumo monouso in transazione (claim+membership), rate limiter dedicato, prod email 503/502+rollback, EMAIL_MISMATCH.
 - [Bills split validation parity](bills-split-validation.md) — la validazione numerica FE deve usare la stessa formula grezza del BE (no arrotondamento prima del confronto) e intercettare i codici errore reali del BE.
+- [Dev->Prod data migration](db-dev-prod-migration.md) — dev & prod DBs are SEPARATE; publish copies schema not data; only write path to prod is a token-gated app endpoint.

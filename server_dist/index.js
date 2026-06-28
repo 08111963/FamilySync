@@ -6936,6 +6936,102 @@ router17.delete("/:familyId/:billId/attachments/:attachmentId", requireFamilyMem
 });
 var bills_default = router17;
 
+// server/routes/migrate.ts
+init_db();
+import { Router as Router18 } from "express";
+var INSERT_ORDER = [
+  "users",
+  "families",
+  "family_members",
+  "recipes",
+  "meal_plans",
+  "shopping_lists",
+  "ai_insights",
+  "ai_usage",
+  "blocks",
+  "chat_messages",
+  "entitlements",
+  "family_invites",
+  "reports",
+  "shopping_history",
+  "push_tokens",
+  "email_verification_tokens",
+  "password_reset_tokens",
+  "calendar_events",
+  "chores",
+  "bills",
+  "recipe_ingredients",
+  "meal_plan_items",
+  "shopping_items",
+  "bill_attachments",
+  "bill_payment_history",
+  "bill_splits"
+];
+var router18 = Router18();
+router18.post("/import", async (req, res) => {
+  const token = process.env.MIGRATE_TOKEN;
+  if (!token) {
+    return res.status(404).json({ error: { code: "NOT_FOUND" } });
+  }
+  if (req.header("x-migrate-token") !== token) {
+    return res.status(403).json({ error: { code: "FORBIDDEN" } });
+  }
+  const tables = req.body && req.body.tables;
+  if (!tables || typeof tables !== "object") {
+    return res.status(400).json({ error: { code: "MISSING_TABLES" } });
+  }
+  const counts = {};
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const truncateList = INSERT_ORDER.map((t) => `"${t}"`).join(", ");
+    await client.query(`TRUNCATE TABLE ${truncateList} RESTART IDENTITY CASCADE`);
+    for (const table of INSERT_ORDER) {
+      const rows = tables[table];
+      if (!Array.isArray(rows) || rows.length === 0) {
+        counts[table] = 0;
+        continue;
+      }
+      const cols = Object.keys(rows[0]);
+      const colList = cols.map((c) => `"${c}"`).join(", ");
+      const CHUNK = 200;
+      let inserted = 0;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const slice = rows.slice(i, i + CHUNK);
+        const params = [];
+        const groups = [];
+        let p = 1;
+        for (const row of slice) {
+          const placeholders = [];
+          for (const c of cols) {
+            let v = row[c];
+            if (v !== null && typeof v === "object") {
+              v = JSON.stringify(v);
+            }
+            params.push(v);
+            placeholders.push(`$${p++}`);
+          }
+          groups.push(`(${placeholders.join(", ")})`);
+        }
+        await client.query(
+          `INSERT INTO "${table}" (${colList}) VALUES ${groups.join(", ")}`,
+          params
+        );
+        inserted += slice.length;
+      }
+      counts[table] = inserted;
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    client.release();
+    return res.status(500).json({ error: { code: "IMPORT_FAILED", message: String(error?.message ?? error) } });
+  }
+  client.release();
+  return res.json({ ok: true, counts });
+});
+var migrate_default = router18;
+
 // server/routes.ts
 async function registerRoutes(app2) {
   app2.use(helmet({
@@ -6953,6 +7049,7 @@ async function registerRoutes(app2) {
   app2.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
   });
+  app2.use("/api/_migrate", migrate_default);
   app2.use("/api/auth", auth_default);
   app2.use("/api/invites", inviteLimiter, invites_default);
   app2.use("/api/families", authenticate, requireEmailVerified, families_default);
@@ -7102,6 +7199,7 @@ function setupCors(app2) {
 function setupBodyParsing(app2) {
   app2.use(
     express2.json({
+      limit: "25mb",
       verify: (req, _res, buf) => {
         req.rawBody = buf;
       }
