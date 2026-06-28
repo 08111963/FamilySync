@@ -6,13 +6,17 @@ channel = "stable-24_05"
 packages = ["jq", "imagemagick", "chromium", "glib", "nss", "nspr", "at-spi2-atk", "cups", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXrandr", "mesa", "pango", "cairo", "alsa-lib", "xorg.libxcb", "xorg.libX11", "zip"]
 
 [deployment]
-deploymentTarget = "cloudrun"
-build = ["sh", "-c", "npm run expo:static:build && npm run server:build"]
+deploymentTarget = "autoscale"
+build = ["sh", "-c", "EXPO_PUBLIC_DOMAIN=familysync.eu npx expo export --platform web --output-dir web-build && npm run server:build"]
 run = ["npm", "run", "server:prod"]
 
 [[ports]]
 localPort = 5000
 externalPort = 5000
+
+[[ports]]
+localPort = 5055
+externalPort = 4200
 
 [[ports]]
 localPort = 5077

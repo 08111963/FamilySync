@@ -258,23 +258,28 @@ function configureExpoAndLanding(app: express.Application) {
   const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
 
-  log("Serving static Expo files with dynamic manifest routing");
+  const webBuildDir = path.resolve(process.cwd(), "web-build");
+  const hasWebBuild = fs.existsSync(path.join(webBuildDir, "index.html"));
+
+  log(
+    hasWebBuild
+      ? "Serving Expo web app from web-build with native manifest routing"
+      : "Serving static Expo files with dynamic manifest routing",
+  );
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/api")) {
       return next();
     }
 
-    if (req.path !== "/" && req.path !== "/manifest") {
-      return next();
+    if (req.path === "/" || req.path === "/manifest") {
+      const platform = req.header("expo-platform");
+      if (platform === "ios" || platform === "android") {
+        return serveExpoManifest(platform, res);
+      }
     }
 
-    const platform = req.header("expo-platform");
-    if (platform && (platform === "ios" || platform === "android")) {
-      return serveExpoManifest(platform, res);
-    }
-
-    if (req.path === "/") {
+    if (!hasWebBuild && req.path === "/") {
       return serveLandingPage({
         req,
         res,
@@ -297,10 +302,36 @@ function configureExpoAndLanding(app: express.Application) {
     }
   });
 
+  if (hasWebBuild) {
+    app.use(express.static(webBuildDir));
+  }
+
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   log("Expo routing: Checking expo-platform header on / and /manifest");
+}
+
+function setupWebAppFallback(app: express.Application) {
+  const webIndexPath = path.resolve(process.cwd(), "web-build", "index.html");
+  if (!fs.existsSync(webIndexPath)) {
+    return;
+  }
+
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "GET") {
+      return next();
+    }
+    if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) {
+      return next();
+    }
+    // Only serve the SPA shell for browser navigations (HTML requests).
+    // Missing assets/endpoints fall through to a real 404 instead of index.html.
+    if (!req.accepts("html")) {
+      return next();
+    }
+    res.sendFile(webIndexPath);
+  });
 }
 
 function setupErrorHandler(app: express.Application) {
@@ -335,6 +366,8 @@ function setupErrorHandler(app: express.Application) {
   configureExpoAndLanding(app);
 
   const server = await registerRoutes(app);
+
+  setupWebAppFallback(app);
 
   setupErrorHandler(app);
 

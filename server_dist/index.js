@@ -7180,19 +7180,22 @@ function configureExpoAndLanding(app2) {
   );
   const landingPageTemplate = fs4.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
-  log("Serving static Expo files with dynamic manifest routing");
+  const webBuildDir = path4.resolve(process.cwd(), "web-build");
+  const hasWebBuild = fs4.existsSync(path4.join(webBuildDir, "index.html"));
+  log(
+    hasWebBuild ? "Serving Expo web app from web-build with native manifest routing" : "Serving static Expo files with dynamic manifest routing"
+  );
   app2.use((req, res, next) => {
     if (req.path.startsWith("/api")) {
       return next();
     }
-    if (req.path !== "/" && req.path !== "/manifest") {
-      return next();
+    if (req.path === "/" || req.path === "/manifest") {
+      const platform = req.header("expo-platform");
+      if (platform === "ios" || platform === "android") {
+        return serveExpoManifest(platform, res);
+      }
     }
-    const platform = req.header("expo-platform");
-    if (platform && (platform === "ios" || platform === "android")) {
-      return serveExpoManifest(platform, res);
-    }
-    if (req.path === "/") {
+    if (!hasWebBuild && req.path === "/") {
       return serveLandingPage({
         req,
         res,
@@ -7212,9 +7215,30 @@ function configureExpoAndLanding(app2) {
       res.status(404).send("File not found");
     }
   });
+  if (hasWebBuild) {
+    app2.use(express2.static(webBuildDir));
+  }
   app2.use("/assets", express2.static(path4.resolve(process.cwd(), "assets")));
   app2.use(express2.static(path4.resolve(process.cwd(), "static-build")));
   log("Expo routing: Checking expo-platform header on / and /manifest");
+}
+function setupWebAppFallback(app2) {
+  const webIndexPath = path4.resolve(process.cwd(), "web-build", "index.html");
+  if (!fs4.existsSync(webIndexPath)) {
+    return;
+  }
+  app2.use((req, res, next) => {
+    if (req.method !== "GET") {
+      return next();
+    }
+    if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) {
+      return next();
+    }
+    if (!req.accepts("html")) {
+      return next();
+    }
+    res.sendFile(webIndexPath);
+  });
 }
 function setupErrorHandler(app2) {
   app2.use((err, _req, res, next) => {
@@ -7236,6 +7260,7 @@ function setupErrorHandler(app2) {
   setupRequestLogging(app);
   configureExpoAndLanding(app);
   const server = await registerRoutes(app);
+  setupWebAppFallback(app);
   setupErrorHandler(app);
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(
