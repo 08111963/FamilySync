@@ -10,6 +10,11 @@ description: How Premium status, AI quotas, and store purchases work in FamilySy
 - `app/premium.tsx` reads premium state ONLY from `GET /api/purchases/status/:familyId` (derived from entitlements) — no `currentFamily.subscriptionStatus` fallback.
 - `server/middleware/ai-guard.ts`: when `config.aiRequiresPremium` is true it gates via `isPremium(familyId)`, not the families table. With the flag false (default), AI is open to any consenting user (GDPR `users.aiFeaturesEnabled`).
 
+# Frontend Premium must read backend status, NOT client RevenueCat
+- The client-side `useSubscription()` (`lib/revenuecat.tsx`) must derive `isSubscribed` from `GET /api/purchases/status/:familyId` (entitlements), the SAME source as `app/premium.tsx` — NOT from `Purchases.getCustomerInfo().entitlements.active[...]`.
+- **Why:** the RevenueCat client customerInfo is empty for any server-side grant without a real store purchase (e.g. `owner_grant`), so reading it showed Premium families as "Piano Free" on the Bills tab. Every premium consumer (bills banner, bill detail gating, BillNotifications plan) flows through `useSubscription`, so this one source must be backend-driven.
+- `SubscriptionProvider` must sit INSIDE `FamilyProvider` (provider order in `app/_layout.tsx`) so `useSubscription` can call `useFamily()` for the familyId. This creates a lazy circular import FamilyContext<->revenuecat — safe because both imports are used only inside hooks/effects, never at module top level.
+
 # Premium gating must cover READS, not just writes
 - Detail/GET endpoints that bundle premium-only sub-resources (e.g. bills detail returning splits/attachments/history) must gate EACH premium sub-resource on `getPlanForFamily`/`isPremium`, returning `[]` for free families — not only the write endpoints.
 - **Why:** a UI lock alone is bypassable via the raw API; if a GET returns premium data to free families the backend stops being the single source of truth. Mirror every write-gate with a read-gate.

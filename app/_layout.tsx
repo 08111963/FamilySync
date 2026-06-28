@@ -99,9 +99,9 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <SubscriptionProvider>
-          <AuthProvider>
-            <FamilyProvider>
+        <AuthProvider>
+          <FamilyProvider>
+            <SubscriptionProvider>
               <BillNotificationsSyncProvider>
                 <GestureHandlerRootView>
                   <KeyboardProvider>
@@ -111,9 +111,9 @@ export default function RootLayout() {
                   </KeyboardProvider>
                 </GestureHandlerRootView>
               </BillNotificationsSyncProvider>
-            </FamilyProvider>
-          </AuthProvider>
-        </SubscriptionProvider>
+            </SubscriptionProvider>
+          </FamilyProvider>
+        </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

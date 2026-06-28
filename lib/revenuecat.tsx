@@ -7,6 +7,7 @@ import Purchases, {
 } from "react-native-purchases";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
+import { useFamily } from "@/context/FamilyContext";
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
 const REVENUECAT_IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
@@ -75,6 +76,8 @@ export async function loginRevenueCat(familyId: string): Promise<void> {
 
 function useSubscriptionContext() {
   const qc = useQueryClient();
+  const { currentFamily } = useFamily();
+  const familyId = currentFamily?.id;
 
   const customerInfoQuery = useQuery<CustomerInfo>({
     queryKey: ["revenuecat", "customer-info"],
@@ -101,20 +104,30 @@ function useSubscriptionContext() {
     onSuccess: () => customerInfoQuery.refetch(),
   });
 
-  const isSubscribed =
-    customerInfoQuery.data?.entitlements.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER] !== undefined;
+  // Fonte di verità UNICA: backend /api/purchases/status (derivato da
+  // entitlements), NON lo stato client RevenueCat. Così il Premium server-side
+  // (inclusi gli owner_grant senza acquisto store) è riflesso ovunque
+  // (bollette, notifiche, dettaglio bolletta, ecc.).
+  const statusQuery = useQuery<{ premium?: boolean }>({
+    queryKey: ["/api/purchases/status", familyId],
+    enabled: !!familyId,
+  });
+  const isSubscribed = statusQuery.data?.premium === true;
 
   return {
     customerInfo: customerInfoQuery.data,
     offerings: offeringsQuery.data,
     isSubscribed,
-    isLoading: customerInfoQuery.isLoading || offeringsQuery.isLoading,
+    isLoading: customerInfoQuery.isLoading || offeringsQuery.isLoading || statusQuery.isLoading,
     purchase: purchaseMutation.mutateAsync,
     restore: restoreMutation.mutateAsync,
     isPurchasing: purchaseMutation.isPending,
     isRestoring: restoreMutation.isPending,
     refetch: () => {
       qc.invalidateQueries({ queryKey: ["revenuecat"] });
+      if (familyId) {
+        qc.invalidateQueries({ queryKey: ["/api/purchases/status", familyId] });
+      }
     },
   };
 }
