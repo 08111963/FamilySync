@@ -443,7 +443,11 @@ export default function ChatScreen() {
     if (!familyId) return;
 
     const result = await DocumentPicker.getDocumentAsync({
-      type: "application/pdf",
+      type: [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ],
       copyToCacheDirectory: true,
       multiple: false,
     });
@@ -712,7 +716,7 @@ export default function ChatScreen() {
               <View style={[styles.attachIconCircle, { backgroundColor: colors.primary + "22" }]}>
                 <Ionicons name="document-text-outline" size={24} color={colors.primary} />
               </View>
-              <Text style={[styles.attachOptionText, { color: colors.text }]}>Documento (PDF)</Text>
+              <Text style={[styles.attachOptionText, { color: colors.text }]}>Documento (PDF/Word)</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
