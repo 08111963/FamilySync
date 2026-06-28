@@ -381,6 +381,14 @@ export default function ChatScreen() {
   const handleTakePhoto = useCallback(async () => {
     if (!familyId) return;
 
+    if (Platform.OS === "web") {
+      Alert.alert(
+        "Fotocamera non disponibile sul web",
+        "La fotocamera funziona solo nell'app sul telefono (apri FamilySync con Expo Go o l'app installata). Sul web puoi usare Galleria o Documento."
+      );
+      return;
+    }
+
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
       Alert.alert("Permesso necessario", "Serve il permesso per usare la fotocamera");
@@ -693,14 +701,12 @@ export default function ChatScreen() {
               <Text style={[styles.attachOptionText, { color: colors.text }]}>Galleria</Text>
             </TouchableOpacity>
 
-            {Platform.OS !== "web" && (
-              <TouchableOpacity style={styles.attachOption} onPress={handleSelectCamera}>
-                <View style={[styles.attachIconCircle, { backgroundColor: colors.primary + "22" }]}>
-                  <Ionicons name="camera-outline" size={24} color={colors.primary} />
-                </View>
-                <Text style={[styles.attachOptionText, { color: colors.text }]}>Fotocamera</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity style={styles.attachOption} onPress={handleSelectCamera}>
+              <View style={[styles.attachIconCircle, { backgroundColor: colors.primary + "22" }]}>
+                <Ionicons name="camera-outline" size={24} color={colors.primary} />
+              </View>
+              <Text style={[styles.attachOptionText, { color: colors.text }]}>Fotocamera</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity style={styles.attachOption} onPress={handleSelectDocument}>
               <View style={[styles.attachIconCircle, { backgroundColor: colors.primary + "22" }]}>
