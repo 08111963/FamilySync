@@ -7,7 +7,7 @@ import { users, emailVerificationTokens, passwordResetTokens } from '../../share
 import { eq } from 'drizzle-orm';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken, generateMediaToken } from '../lib/jwt';
 import { resolveUploadFileAccess, userIsFamilyMember } from '../lib/media-auth';
-import { sendVerificationEmail, sendPasswordResetEmail, isEmailConfigured } from '../lib/email';
+import { sendVerificationEmail, sendPasswordResetEmail, isPasswordResetEmailConfigured, isVerificationEmailConfigured } from '../lib/email';
 import { authenticate, requireEmailVerified } from '../middleware/auth';
 import { logger } from '../lib/logger';
 import { v4 as uuidv4 } from 'uuid';
@@ -100,7 +100,15 @@ router.post('/signup', async (req: Request, res: Response) => {
       expiresAt,
     });
     
-    await sendVerificationEmail(email, name, verificationToken);
+    // In produzione l'email di verifica contiene un link basato su CLIENT_URL:
+    // se l'invio reale non è possibile (manca SendGrid o CLIENT_URL) logghiamo e
+    // continuiamo, ma NON inviamo un link rotto. L'utente potrà richiedere un
+    // nuovo invio quando la configurazione sarà corretta.
+    if (!config.isProduction || isVerificationEmailConfigured()) {
+      await sendVerificationEmail(email, name, verificationToken);
+    } else {
+      logger.warn('Verification email skipped: email service not fully configured', { userId: newUser.id });
+    }
     
     const accessToken = generateAccessToken(newUser);
     const refreshToken = generateRefreshToken(newUser);
@@ -270,6 +278,12 @@ router.post('/resend-verification-email', authenticate, async (req: Request, res
       return res.json({ message: 'Email già verificata' });
     }
 
+    // Invio esplicito richiesto dall'utente: in produzione serve un servizio email
+    // pienamente configurato (SendGrid + CLIENT_URL) per non inviare link rotti.
+    if (config.isProduction && !isVerificationEmailConfigured()) {
+      return res.status(503).json({ error: { code: "EMAIL_NOT_CONFIGURED", message: "Servizio email non configurato (SendGrid e CLIENT_URL richiesti)" } });
+    }
+
     await db.delete(emailVerificationTokens)
       .where(eq(emailVerificationTokens.userId, user.id));
 
@@ -346,11 +360,13 @@ router.post('/request-password-reset', passwordResetLimiter, async (req: Request
       });
     }
 
-    // In produzione l'email DEVE poter partire davvero: senza SendGrid
-    // configurato falliamo in modo esplicito. È un errore di configurazione del
-    // server, indipendente dall'esistenza dell'email utente (nessun enumeration).
-    if (config.isProduction && !isEmailConfigured()) {
-      return res.status(503).json({ error: { code: "EMAIL_NOT_CONFIGURED", message: "Servizio email non configurato" } });
+    // In produzione l'email DEVE poter partire davvero CON un link valido: serve
+    // SendGrid E un CLIENT_URL configurato, altrimenti invieremmo email con link
+    // rotto (es. "undefined/reset-password/<token>"). Falliamo in modo esplicito.
+    // È un errore di configurazione del server, indipendente dall'esistenza
+    // dell'email utente (nessun enumeration).
+    if (config.isProduction && !isPasswordResetEmailConfigured()) {
+      return res.status(503).json({ error: { code: "EMAIL_NOT_CONFIGURED", message: "Servizio email non configurato (SendGrid e CLIENT_URL richiesti)" } });
     }
 
     const { email } = parsed.data;

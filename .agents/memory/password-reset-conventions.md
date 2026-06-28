@@ -20,8 +20,22 @@ check expiry on the returned row. No row → INVALID_TOKEN; expired row → TOKE
   for an existing user while a missing user gets 200, that difference is itself an
   enumeration side-channel. **Why:** this exact gap was caught in review.
 - Only exception that may return non-200: production fail-closed
-  `EMAIL_NOT_CONFIGURED` (config.isProduction && !isEmailConfigured()), checked
-  BEFORE the DB lookup so it is independent of whether the email exists.
+  `EMAIL_NOT_CONFIGURED`, checked BEFORE the DB lookup so it is independent of
+  whether the email exists.
+
+**Link-bearing emails (reset + verify) need MORE than SendGrid in prod:** the link
+is built from `CLIENT_URL`, so SendGrid alone isn't enough — without `CLIENT_URL`
+you'd send `undefined/reset-password/<token>`. Guard with
+`isPasswordResetEmailConfigured()` / `isVerificationEmailConfigured()` (alias of
+`isLinkEmailConfigured()` = SendGrid + CLIENT_URL + sender). **Why:** real bug — SendGrid set but CLIENT_URL missing shipped broken links.
+- `server/lib/email.ts` reads env at RUNTIME (apiKey/clientBaseUrl/fromAddress
+  functions, `sgMail.setApiKey` inside each send) — NOT at module load — so config
+  helpers reflect live env and are deterministically testable.
+- Family invite link uses `CLIENT_URL || config.getBaseUrl(req)` fallback, so it
+  can't break and only needs the SendGrid-only `isEmailConfigured()` guard.
+- Verify-email guards differ by intent: `/signup` is non-blocking in prod (skip
+  send + log warning, user still created); `/resend-verification-email` is an
+  explicit user action so it returns 503 when not fully configured.
 
 Dedicated `rateLimit` on both `/request-password-reset` and `/reset-password`,
 with `skip: () => process.env.NODE_ENV === 'test'` so the integration suite

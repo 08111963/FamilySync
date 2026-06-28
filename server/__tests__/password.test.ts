@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { users, passwordResetTokens } from "../../shared/schema";
+import { users, passwordResetTokens, emailVerificationTokens } from "../../shared/schema";
 import { registerRoutes } from "../routes";
 import { generateAccessToken } from "../lib/jwt";
 import { generateResetToken, hashResetToken } from "../lib/reset-token";
@@ -116,6 +116,108 @@ describe("gestione password (DB + HTTP)", { skip: hasDb ? false : "DATABASE_URL 
     assert.notEqual(first[0].token, second[0].token, "il token deve essere rigenerato");
   });
 
+  // --- produzione: email + CLIENT_URL obbligatori ----------------------------
+
+  // Imposta env di produzione per il singolo test e ripristina sempre lo stato
+  // di test (non-produzione, nessuna email/url configurati) nel finally.
+  async function withProdEnv(
+    env: { sendgrid?: string; clientUrl?: string },
+    fn: () => Promise<void>,
+  ) {
+    Object.assign(process.env, { NODE_ENV: "production" });
+    if (env.sendgrid) process.env.SENDGRID_API_KEY = env.sendgrid;
+    else delete process.env.SENDGRID_API_KEY;
+    if (env.clientUrl) process.env.CLIENT_URL = env.clientUrl;
+    else delete process.env.CLIENT_URL;
+    try {
+      await fn();
+    } finally {
+      Object.assign(process.env, { NODE_ENV: "test" });
+      delete process.env.SENDGRID_API_KEY;
+      delete process.env.CLIENT_URL;
+    }
+  }
+
+  test("produzione + SendGrid presente ma CLIENT_URL mancante → EMAIL_NOT_CONFIGURED", async () => {
+    const user = await seedUser(`prod1-${uniq()}@example.com`, "OldPass123");
+    await withProdEnv({ sendgrid: "SG.test-key" }, async () => {
+      const res = await request("POST", "/api/auth/request-password-reset", { email: user.email });
+      assert.equal(res.status, 503);
+      const body = await res.json();
+      assert.equal(body.error.code, "EMAIL_NOT_CONFIGURED");
+    });
+    // La guardia scatta PRIMA di toccare il DB: nessun token deve essere creato.
+    const rows = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+    assert.equal(rows.length, 0);
+  });
+
+  test("produzione + SendGrid mancante → EMAIL_NOT_CONFIGURED", async () => {
+    const user = await seedUser(`prod2-${uniq()}@example.com`, "OldPass123");
+    await withProdEnv({ clientUrl: "https://app.example.com" }, async () => {
+      const res = await request("POST", "/api/auth/request-password-reset", { email: user.email });
+      assert.equal(res.status, 503);
+      const body = await res.json();
+      assert.equal(body.error.code, "EMAIL_NOT_CONFIGURED");
+    });
+    const rows = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+    assert.equal(rows.length, 0);
+  });
+
+  test("produzione + SendGrid e CLIENT_URL presenti → procede (nessun errore di configurazione)", async () => {
+    // Email inesistente: la guardia di configurazione viene superata e si arriva
+    // alla risposta generica, senza alcun tentativo reale di invio (nessun enumeration).
+    const ghost = `prod3-${uniq()}@example.com`;
+    await withProdEnv({ sendgrid: "SG.test-key", clientUrl: "https://app.example.com" }, async () => {
+      const res = await request("POST", "/api/auth/request-password-reset", { email: ghost });
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.match(body.message, /email esiste/i);
+    });
+  });
+
+  // --- verifica email: stessa regola di configurazione in produzione ----------
+
+  test("signup in produzione con email non configurata → NON blocca (utente creato, email saltata)", async () => {
+    const email = `signup-prod-${uniq()}@example.com`;
+    await withProdEnv({}, async () => {
+      const res = await request("POST", "/api/auth/signup", {
+        email,
+        password: "StrongPass123",
+        name: "Test Prod",
+        acceptedTerms: true,
+      });
+      assert.equal(res.status, 201);
+      const body = await res.json();
+      assert.equal(body.user.emailVerified, false);
+      assert.equal(body.user.password, undefined);
+      assert.equal(body.user.passwordHash, undefined);
+    });
+    // cleanup: rimuovi eventuali token di verifica così after() può eliminare l'utente
+    const [u] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    assert.ok(u, "l'utente deve essere stato creato nonostante l'email non configurata");
+    await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, u.id));
+    created.users.push(u.id);
+  });
+
+  test("resend-verification-email in produzione con email non configurata → EMAIL_NOT_CONFIGURED", async () => {
+    const [u] = await db.insert(users).values({
+      email: `resend-prod-${uniq()}@example.com`,
+      passwordHash: await bcrypt.hash("OldPass123", 10),
+      name: "Resend Prod",
+      emailVerified: false,
+      termsAcceptedAt: new Date(),
+    }).returning();
+    created.users.push(u.id);
+    const token = generateAccessToken(u as any);
+
+    await withProdEnv({}, async () => {
+      const res = await request("POST", "/api/auth/resend-verification-email", {}, token);
+      assert.equal(res.status, 503);
+      const body = await res.json();
+      assert.equal(body.error.code, "EMAIL_NOT_CONFIGURED");
+    });
+  });
+
   // --- reset-password ---------------------------------------------------------
 
   test("reset-password: token valido → password aggiornata, login con la nuova password", async () => {
@@ -219,10 +321,13 @@ describe("gestione password (DB + HTTP)", { skip: hasDb ? false : "DATABASE_URL 
       const raw = generateResetToken();
       await sendPasswordResetEmail("user@example.com", "Mario", raw);
       const joined = logs.join("\n");
-      assert.ok(joined.includes(`/reset-password/${raw}`), "l'email deve contenere il link di reset col token");
+      // Il link deve usare esattamente CLIENT_URL come base, col token nel path.
+      assert.ok(joined.includes(`https://app.example.com/reset-password/${raw}`), "l'email deve contenere il link basato su CLIENT_URL col token");
+      assert.ok(!joined.includes("undefined/reset-password"), "il link non deve mai essere rotto (undefined/...)");
       assert.ok(!/password\s*[:=]\s*\S/i.test(joined), "l'email non deve contenere una password in chiaro");
     } finally {
       console.log = original;
+      delete process.env.CLIENT_URL;
     }
   });
 });
