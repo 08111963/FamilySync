@@ -37,7 +37,7 @@ export default function PrivacyPolicyScreen() {
       >
         <Section title="1. Titolare del Trattamento" colors={colors}>
           <P colors={colors}>Il titolare del trattamento dei dati personali e FamilySync Team.</P>
-          <P colors={colors}>Per qualsiasi domanda o richiesta relativa alla privacy, puoi contattarci all'indirizzo email: support@familysync.app</P>
+          <P colors={colors}>Per qualsiasi domanda o richiesta relativa alla privacy, puoi contattarci all'indirizzo email: assistenza@familysync.it</P>
         </Section>
 
         <Section title="2. Dati Raccolti" colors={colors}>
@@ -88,7 +88,7 @@ export default function PrivacyPolicyScreen() {
           <Bullet colors={colors}>Cancellazione: richiedere la cancellazione dei tuoi dati personali</Bullet>
           <Bullet colors={colors}>Portabilita: ricevere i tuoi dati in formato strutturato e leggibile</Bullet>
           <Bullet colors={colors}>Opposizione: opporti al trattamento dei tuoi dati in determinate circostanze</Bullet>
-          <P colors={colors}>Per esercitare questi diritti, contattaci all'indirizzo support@familysync.app</P>
+          <P colors={colors}>Per esercitare questi diritti, contattaci all'indirizzo assistenza@familysync.it</P>
         </Section>
 
         <Section title="8. Minori" colors={colors}>
@@ -101,7 +101,7 @@ export default function PrivacyPolicyScreen() {
         </Section>
 
         <Section title="10. Contatti" colors={colors}>
-          <P colors={colors}>Per qualsiasi domanda relativa a questa Privacy Policy: support@familysync.app</P>
+          <P colors={colors}>Per qualsiasi domanda relativa a questa Privacy Policy: assistenza@familysync.it</P>
         </Section>
 
         <Text style={[styles.updateDate, { color: colors.textSecondary }]}>

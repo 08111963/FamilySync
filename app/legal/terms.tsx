@@ -85,7 +85,7 @@ export default function TermsScreen() {
 
         <Section title="8. Sospensione e Chiusura Account" colors={colors}>
           <P colors={colors}>Ci riserviamo il diritto di sospendere temporaneamente o chiudere definitivamente un account in caso di violazione dei presenti Termini, rimuovere contenuti che violino le nostre politiche, e interrompere il servizio con un preavviso ragionevole.</P>
-          <P colors={colors}>L'utente puo chiudere il proprio account in qualsiasi momento contattandoci all'indirizzo support@familysync.app</P>
+          <P colors={colors}>L'utente puo chiudere il proprio account in qualsiasi momento contattandoci all'indirizzo assistenza@familysync.it</P>
         </Section>
 
         <Section title="9. Abbonamenti Premium" colors={colors}>
@@ -108,7 +108,7 @@ export default function TermsScreen() {
         </Section>
 
         <Section title="13. Contatti" colors={colors}>
-          <P colors={colors}>Per qualsiasi domanda o segnalazione: support@familysync.app</P>
+          <P colors={colors}>Per qualsiasi domanda o segnalazione: assistenza@familysync.it</P>
         </Section>
 
         <Text style={[styles.updateDate, { color: colors.textSecondary }]}>

@@ -519,7 +519,7 @@ L'AI genera un piano completo per 7 giorni con colazione, pranzo, cena e spuntin
 Dalla scheda Famiglia, tocca il pulsante + per creare un link di invito. Puoi inviarlo via email o condividerlo tramite WhatsApp, Telegram o qualsiasi app di messaggistica. Chi riceve il link puo registrarsi e unirsi alla tua famiglia con un tocco.
 
 **Come posso segnalare un problema?**
-Puoi contattarci all'indirizzo **support@familysync.app** per qualsiasi problema o suggerimento.
+Puoi contattarci all'indirizzo **assistenza@familysync.it** per qualsiasi problema o suggerimento.
 
 ---
 

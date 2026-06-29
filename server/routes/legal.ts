@@ -7,7 +7,7 @@ const router = Router();
 const LAST_UPDATED = "7 febbraio 2026";
 const APP_NAME = "FamilySync";
 const DEVELOPER = "FamilySync Team";
-const CONTACT_EMAIL = "support@familysync.app";
+const CONTACT_EMAIL = "assistenza@familysync.it";
 
 function getBaseUrl(req: Request): string {
   return config.getBaseUrl(req);
