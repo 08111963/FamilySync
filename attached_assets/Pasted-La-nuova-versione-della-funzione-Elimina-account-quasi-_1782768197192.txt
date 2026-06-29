@@ -1,0 +1,58 @@
+La nuova versione della funzione “Elimina account” è quasi approvata.
+
+Hai corretto bene:
+
+* migration users.deleted_at;
+* endpoint DELETE /api/auth/account;
+* accesso anche per email non verificata;
+* rate limit;
+* schermata in app;
+* pagina pubblica /legal/delete-account;
+* pulizia sicura dei file fisici in uploads;
+* Privacy Policy;
+* Termini d’Uso;
+* email unica [assistenza@familysync.it](mailto:assistenza@familysync.it);
+* Resend come provider reale.
+
+Prima dell’approvazione finale correggi/verifica solo questi punti:
+
+1. Middleware authenticate
+
+Nel pacchetto di revisione non vedo `server/middleware/auth.ts`.
+
+Conferma e, se necessario, modifica il middleware `authenticate` in modo che ogni endpoint protetto rifiuti un account eliminato:
+
+* carica l’utente dal DB;
+* se l’utente non esiste oppure `deletedAt` è valorizzato, rispondi 401;
+* non limitarti a controllare deletedAt solo in `/me` o `/refresh`.
+
+Obiettivo:
+dopo DELETE /api/auth/account, qualsiasi vecchio access token deve essere rifiutato su tutti gli endpoint protetti.
+
+Includi il file `server/middleware/auth.ts` nel prossimo ZIP, oppure conferma che era già aggiornato e mostrami il codice rilevante.
+
+2. Termini d’Uso: frase sugli allegati
+
+Rendi più precisa la frase sugli allegati.
+
+Non scrivere in modo generico che “i file allegati vengono rimossi quando l’account viene eliminato”, perché se la famiglia resta attiva con altri membri i file condivisi possono restare.
+
+Usa invece una formulazione tipo:
+
+“Se l’utente è l’unico membro di una famiglia e la famiglia viene eliminata, vengono rimossi anche gli allegati fisici collegati, come immagini della chat, documenti delle bollette e avatar. Se invece la famiglia continua a esistere con altri membri, i contenuti e gli allegati già condivisi possono restare disponibili agli altri membri in forma associata a ‘Utente eliminato’.”
+
+Aggiorna questa formulazione sia in:
+
+* server/routes/legal.ts
+* app/legal/terms.tsx
+
+3. Test
+
+Esegui i test e conferma:
+
+* test cancellazione account passati;
+* test documenti legali passati;
+* test middleware deletedAt passato;
+* typecheck passato.
+
+Dopo queste micro-correzioni, prepara nuovo ZIP o incolla il riepilogo con i file modificati.

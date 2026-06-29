@@ -299,7 +299,7 @@ router.get('/terms', (_req: Request, res: Response) => {
       <li>L'utente e responsabile dei contenuti che invia e non deve caricare materiale illegale, offensivo o in violazione di diritti altrui</li>
       <li>Gli allegati sono soggetti a limiti di dimensione e di tipo di file (sono ammesse immagini e documenti, con un limite massimo per file)</li>
       <li>I messaggi degli utenti bloccati non vengono mostrati al membro che ha effettuato il blocco</li>
-      <li>I file allegati vengono conservati sui nostri server per consentire la visualizzazione e possono essere rimossi quando la famiglia o l'account vengono eliminati</li>
+      <li>I file allegati vengono conservati sui nostri server per consentire la visualizzazione. Se l'utente e l'unico membro di una famiglia e la famiglia viene eliminata, vengono rimossi anche gli allegati fisici collegati, come immagini della chat, documenti delle bollette e avatar. Se invece la famiglia continua a esistere con altri membri, i contenuti e gli allegati gia condivisi possono restare disponibili agli altri membri in forma associata a "Utente eliminato"</li>
     </ul>
 
     <h2>7. Gestione Bollette e Scadenze</h2>

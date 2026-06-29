@@ -76,7 +76,7 @@ export default function TermsScreen() {
           <Bullet colors={colors}>L'utente e responsabile dei contenuti che invia e non deve caricare materiale illegale o in violazione di diritti altrui</Bullet>
           <Bullet colors={colors}>Gli allegati sono soggetti a limiti di dimensione e di tipo di file (immagini e documenti, con un limite massimo per file)</Bullet>
           <Bullet colors={colors}>I messaggi degli utenti bloccati non vengono mostrati al membro che ha effettuato il blocco</Bullet>
-          <Bullet colors={colors}>I file allegati vengono rimossi quando la famiglia o l'account vengono eliminati</Bullet>
+          <Bullet colors={colors}>Se l'utente e l'unico membro di una famiglia e la famiglia viene eliminata, vengono rimossi anche gli allegati fisici collegati, come immagini della chat, documenti delle bollette e avatar. Se invece la famiglia continua a esistere con altri membri, i contenuti e gli allegati gia condivisi possono restare disponibili agli altri membri in forma associata a "Utente eliminato"</Bullet>
         </Section>
 
         <Section title="7. Gestione Bollette e Scadenze" colors={colors}>
