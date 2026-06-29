@@ -133,7 +133,10 @@ Lingua di comunicazione: Rispondere SEMPRE in italiano.
 
 ### Variabili Opzionali
 - `OPENAI_API_KEY`: Per funzionalità AI (suggerimenti spesa, ottimizzazione faccende)
-- `SENDGRID_API_KEY`: Per email transazionali (verifica, reset password)
+- `RESEND_API_KEY`: Per email transazionali (inviti famiglia, verifica account, reset password) via Resend
+- `EMAIL_FROM`: Mittente email (default `noreply@familysync.eu`)
+- `SUPPORT_EMAIL`: Indirizzo Reply-To per le risposte degli utenti (`assistenza@familysync.it`)
+- `CLIENT_URL`: Base URL pubblica per i link nelle email (`https://familysync.eu`)
 
 ## Recenti Modifiche (Febbraio 2026)
 

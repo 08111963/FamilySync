@@ -183,7 +183,7 @@ router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamil
 
     const { email, invitedName, role } = parsed.data;
 
-    // In produzione l'invio email è obbligatorio: senza SendGrid non possiamo
+    // In produzione l'invio email è obbligatorio: senza Resend non possiamo
     // recapitare il link, quindi non creiamo nemmeno l'invito.
     if (config.isProduction && !isEmailConfigured()) {
       return res.status(503).json({

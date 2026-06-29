@@ -101,7 +101,7 @@ router.post('/signup', async (req: Request, res: Response) => {
     });
     
     // In produzione l'email di verifica contiene un link basato su CLIENT_URL:
-    // se l'invio reale non è possibile (manca SendGrid o CLIENT_URL) logghiamo e
+    // se l'invio reale non è possibile (manca Resend o CLIENT_URL) logghiamo e
     // continuiamo, ma NON inviamo un link rotto. L'utente potrà richiedere un
     // nuovo invio quando la configurazione sarà corretta.
     if (!config.isProduction || isVerificationEmailConfigured()) {
@@ -279,9 +279,9 @@ router.post('/resend-verification-email', authenticate, async (req: Request, res
     }
 
     // Invio esplicito richiesto dall'utente: in produzione serve un servizio email
-    // pienamente configurato (SendGrid + CLIENT_URL) per non inviare link rotti.
+    // pienamente configurato (Resend + CLIENT_URL) per non inviare link rotti.
     if (config.isProduction && !isVerificationEmailConfigured()) {
-      return res.status(503).json({ error: { code: "EMAIL_NOT_CONFIGURED", message: "Servizio email non configurato (SendGrid e CLIENT_URL richiesti)" } });
+      return res.status(503).json({ error: { code: "EMAIL_NOT_CONFIGURED", message: "Servizio email non configurato (Resend e CLIENT_URL richiesti)" } });
     }
 
     await db.delete(emailVerificationTokens)
@@ -361,12 +361,12 @@ router.post('/request-password-reset', passwordResetLimiter, async (req: Request
     }
 
     // In produzione l'email DEVE poter partire davvero CON un link valido: serve
-    // SendGrid E un CLIENT_URL configurato, altrimenti invieremmo email con link
+    // Resend E un CLIENT_URL configurato, altrimenti invieremmo email con link
     // rotto (es. "undefined/reset-password/<token>"). Falliamo in modo esplicito.
     // È un errore di configurazione del server, indipendente dall'esistenza
     // dell'email utente (nessun enumeration).
     if (config.isProduction && !isPasswordResetEmailConfigured()) {
-      return res.status(503).json({ error: { code: "EMAIL_NOT_CONFIGURED", message: "Servizio email non configurato (SendGrid e CLIENT_URL richiesti)" } });
+      return res.status(503).json({ error: { code: "EMAIL_NOT_CONFIGURED", message: "Servizio email non configurato (Resend e CLIENT_URL richiesti)" } });
     }
 
     const { email } = parsed.data;
