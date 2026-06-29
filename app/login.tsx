@@ -8,6 +8,14 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 
+function validatePassword(pw: string): string | null {
+  if (pw.length < 8) return 'La password deve avere almeno 8 caratteri';
+  if (!/[a-z]/.test(pw)) return 'La password deve contenere almeno una lettera minuscola';
+  if (!/[A-Z]/.test(pw)) return 'La password deve contenere almeno una lettera maiuscola';
+  if (!/[0-9]/.test(pw)) return 'La password deve contenere almeno un numero';
+  return null;
+}
+
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
@@ -41,8 +49,9 @@ export default function LoginScreen() {
         setError('Le password non coincidono');
         return;
       }
-      if (password.length < 6) {
-        setError('La password deve avere almeno 6 caratteri');
+      const pwError = validatePassword(password);
+      if (pwError) {
+        setError(pwError);
         return;
       }
       if (!acceptedTerms) {
