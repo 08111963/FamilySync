@@ -102,6 +102,7 @@ REVENUECAT_ENTITLEMENT_RC_ID = "entlccdde24edc"
 CLIENT_URL = "https://familysync.eu"
 EMAIL_FROM = "noreply@familysync.eu"
 PREMIUM_OWNER_EMAILS = "marino.pizzuti@gmail.com"
+SUPPORT_EMAIL = "assistenza@familysync.it"
 
 [userenv.production]
 EXPO_PUBLIC_DOMAIN = "familysync.eu"
