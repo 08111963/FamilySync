@@ -263,6 +263,22 @@ function htmlWrapper(title: string, body: string): string {
       height: 18px;
       accent-color: #4A90D9;
     }
+    figure {
+      margin: 20px 0;
+      text-align: center;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 12px;
+      border: 1px solid #eee;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    figcaption {
+      font-size: 13px;
+      color: #888;
+      margin-top: 8px;
+    }
     @media (max-width: 480px) {
       .header { padding: 40px 16px 24px; }
       .content { padding: 24px 16px 48px; }
