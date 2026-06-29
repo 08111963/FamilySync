@@ -1,0 +1,144 @@
+Dobbiamo aggiornare la Privacy Policy di FamilySync perché quella attuale non è più allineata all’app.
+
+Dominio principale dell’app:
+https://familysync.eu
+
+Email ufficiale unica da usare per privacy, supporto, diritti utente e comunicazioni:
+[assistenza@familysync.it](mailto:assistenza@familysync.it)
+
+Prima controlla il codice e poi aggiorna la Privacy Policy in modo coerente con le funzioni reali presenti nell’app.
+
+La nuova Privacy Policy deve includere almeno:
+
+1. Titolare del trattamento
+   Usare:
+   Titolare: Marino Pizzuti / FamilySync
+   Email privacy: [assistenza@familysync.it](mailto:assistenza@familysync.it)
+
+2. Dati raccolti
+   Aggiungere tutte le categorie oggi presenti nell’app:
+
+* dati account: nome, email, password hashata;
+* verifica email, reset password, inviti familiari;
+* dati famiglia: membri, ruoli, inviti, token invito hashati;
+* calendario;
+* liste spesa;
+* faccende domestiche;
+* chat e messaggi;
+* allegati caricati dagli utenti;
+* bollette e scadenze;
+* importi bollette;
+* fornitori;
+* intestatari;
+* note;
+* ricevute;
+* ripartizioni tra membri;
+* storico pagamenti bollette;
+* notifiche locali;
+* push token se presenti;
+* dati tecnici: log, device info, IP se raccolto, token sessione.
+
+3. Bollette & Scadenze
+   Aggiungere una sezione specifica:
+   FamilySync consente di registrare bollette, scadenze, importi, fornitori, intestatari, allegati e ricevute.
+   L’app non effettua pagamenti reali, non salva carte di credito, non salva CVV, non salva IBAN e non avvia pagamenti verso terzi.
+
+4. Email transazionali
+   Indicare Twilio SendGrid come fornitore email per:
+
+* verifica account;
+* inviti familiari;
+* reset password;
+* comunicazioni essenziali.
+
+Specificare che le email non contengono password.
+
+5. AI / OpenAI
+   Aggiornare la sezione AI:
+
+* AI opzionale o comunque gestita secondo impostazioni/quote dell’app;
+* dati inviati minimizzati;
+* nessuna password, email, dati pagamento o allegati inviati a OpenAI;
+* dati API non usati per addestramento salvo opt-in/configurazione diversa;
+* citare OpenAI come fornitore.
+
+6. Pagamenti / Premium
+   Rimuovere Stripe come fornitore attivo del mobile.
+
+Sostituire con:
+
+* RevenueCat per gestione abbonamenti/entitlements;
+* Google Play Billing per Android;
+* Apple In-App Purchase / StoreKit per iOS.
+
+Specificare che Stripe non è usato per vendere Premium nell’app mobile.
+
+7. Hosting/database
+   Indicare i fornitori effettivi usati:
+
+* Replit per hosting/deploy se usato;
+* Neon/PostgreSQL per database se usato;
+* eventuali altri provider reali presenti nel codice.
+
+8. Notifiche
+   Distinguere:
+
+* notifiche locali: programmate sul dispositivo, per esempio promemoria bollette;
+* notifiche push remote, se presenti: possono usare push token e servizi di notifica.
+
+9. Conservazione dati
+   Aggiornare la sezione retention:
+
+* account fino a cancellazione;
+* dati famiglia fino a cancellazione famiglia/account;
+* bollette/allegati/ricevute fino a cancellazione;
+* inviti scaduti o usati da cancellare/ignorare dopo scadenza;
+* reset token scadenza 1 ora;
+* family invite token scadenza 72 ore;
+* sessioni/refresh token scadenza 7 giorni;
+* log massimo 12 mesi, se vero.
+
+10. Diritti utente
+    Aggiungere esplicitamente:
+
+* diritto di revocare il consenso;
+* diritto di limitazione del trattamento;
+* diritto di reclamo al Garante per la protezione dei dati personali;
+* come esercitare i diritti scrivendo a [assistenza@familysync.it](mailto:assistenza@familysync.it).
+
+11. Cancellazione account
+    Aggiungere sezione chiara:
+    L’utente può richiedere la cancellazione dell’account e dei dati associati dall’app, se la funzione esiste, oppure scrivendo a [assistenza@familysync.it](mailto:assistenza@familysync.it).
+
+Controlla se l’app ha già una funzione delete account. Se manca, segnalalo perché serve per la pubblicazione.
+
+12. Minori
+    Mantenere la sezione minori, ma assicurarsi che sia coerente con target e uso familiare.
+
+13. Trasferimenti extra UE
+    Aggiungere una sezione sui trasferimenti extra UE se usiamo provider come OpenAI, SendGrid/Twilio, RevenueCat, Apple/Google, Replit o altri con infrastrutture fuori SEE.
+    Indicare che vengono usate garanzie adeguate ove applicabile.
+
+14. Store
+    La privacy policy deve essere coerente con:
+
+* Google Play Data Safety;
+* Apple App Privacy Details.
+
+Evitare dichiarazioni vaghe o contraddittorie.
+
+15. Data aggiornamento
+    Aggiornare la data all’attuale versione della policy.
+
+16. Configurazione email
+    Ricordare che i Secrets devono essere coerenti:
+    CLIENT_URL=https://familysync.eu
+    EMAIL_FROM=[assistenza@familysync.it](mailto:assistenza@familysync.it)
+
+Dopo l’aggiornamento, prepara uno ZIP o incolla il testo finale della Privacy Policy aggiornata e indica:
+
+* file modificato;
+* principali differenze;
+* eventuali dati/funzioni presenti nell’app ma non ancora coperti;
+* se manca la funzione cancellazione account;
+* conferma che l’unica email indicata nella Privacy Policy è [assistenza@familysync.it](mailto:assistenza@familysync.it).

@@ -4,9 +4,10 @@ import { config } from '../lib/config';
 
 const router = Router();
 
-const LAST_UPDATED = "7 febbraio 2026";
+const LAST_UPDATED = "29 giugno 2026";
 const APP_NAME = "FamilySync";
 const DEVELOPER = "FamilySync Team";
+const OWNER = "Marino Pizzuti / FamilySync";
 const CONTACT_EMAIL = "assistenza@familysync.it";
 
 function getBaseUrl(req: Request): string {
@@ -100,63 +101,106 @@ function htmlWrapper(title: string, body: string): string {
 router.get('/privacy', (_req: Request, res: Response) => {
   const body = `
     <h2>1. Titolare del Trattamento</h2>
-    <p>Il titolare del trattamento dei dati personali e <strong>${DEVELOPER}</strong>.</p>
-    <p>Per qualsiasi domanda o richiesta relativa alla privacy, puoi contattarci all'indirizzo email: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+    <p>Il titolare del trattamento dei dati personali e <strong>${OWNER}</strong>.</p>
+    <p>Per qualsiasi domanda o richiesta relativa alla privacy, all'esercizio dei tuoi diritti o al supporto, puoi contattarci all'unico indirizzo email: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+    <p>Sito di riferimento: <a href="https://familysync.eu" target="_blank">https://familysync.eu</a></p>
 
     <h2>2. Dati Raccolti</h2>
-    <p>${APP_NAME} raccoglie e tratta i seguenti dati personali:</p>
+    <p>${APP_NAME} raccoglie e tratta le seguenti categorie di dati personali, in base alle funzioni che utilizzi:</p>
     <ul>
-      <li><strong>Dati di account:</strong> nome, indirizzo email e password (conservata in forma crittografata)</li>
-      <li><strong>Dati familiari:</strong> nomi dei membri della famiglia, ruoli all'interno del gruppo familiare</li>
+      <li><strong>Dati di account:</strong> nome, indirizzo email e password (conservata in forma crittografata con hashing, mai in chiaro)</li>
+      <li><strong>Verifica e sicurezza account:</strong> token di verifica email (a scadenza temporale) e token di reset password (conservati in forma hashata), stato di verifica</li>
+      <li><strong>Dati familiari:</strong> nomi dei membri, ruoli nel gruppo, inviti familiari e relativi token di invito (conservati in forma hashata)</li>
       <li><strong>Eventi calendario:</strong> titoli, date, orari, luoghi e descrizioni degli eventi condivisi</li>
-      <li><strong>Liste della spesa:</strong> nomi delle liste e articoli inseriti</li>
+      <li><strong>Liste della spesa:</strong> nomi delle liste, articoli inseriti e relativo storico</li>
       <li><strong>Faccende domestiche:</strong> attivita assegnate, stato di completamento, punti accumulati</li>
-      <li><strong>Dati tecnici:</strong> informazioni sul dispositivo, log di accesso, token di sessione</li>
+      <li><strong>Chat e messaggi:</strong> contenuti dei messaggi scambiati tra i membri della famiglia ed eventuali file/immagini allegati</li>
+      <li><strong>Allegati caricati dagli utenti:</strong> immagini e documenti caricati nell'app (ad esempio nelle chat o associati alle bollette)</li>
+      <li><strong>Bollette e scadenze:</strong> titoli, categorie, importi, date di scadenza, fornitori, intestatari, responsabili, note, ricevute e allegati</li>
+      <li><strong>Ripartizioni e pagamenti:</strong> suddivisione degli importi tra i membri e storico dei pagamenti registrati manualmente</li>
+      <li><strong>Notifiche:</strong> preferenze di notifica e, se attive le notifiche push, il token push del dispositivo</li>
+      <li><strong>Dati tecnici:</strong> informazioni sul dispositivo, log di accesso e di sistema, indirizzo IP (se raccolto dai log), token di sessione</li>
     </ul>
 
-    <h2>3. Finalita del Trattamento</h2>
+    <h2>3. Bollette e Scadenze</h2>
+    <p>${APP_NAME} consente di registrare bollette e scadenze domestiche, inclusi importi, date di scadenza, fornitori, intestatari, note, allegati e ricevute, oltre alla ripartizione delle spese tra i membri della famiglia e allo storico dei pagamenti.</p>
+    <p><strong>Importante:</strong> l'app NON effettua pagamenti reali, NON elabora transazioni verso terzi, NON salva carte di credito, NON salva codici CVV e NON salva coordinate bancarie (IBAN). Lo stato "pagato" e i relativi importi sono registrazioni inserite manualmente dagli utenti a scopo organizzativo.</p>
+
+    <h2>4. Finalita del Trattamento</h2>
     <p>I dati vengono raccolti e utilizzati per le seguenti finalita:</p>
     <ul>
-      <li><strong>Erogazione del servizio:</strong> consentire la sincronizzazione familiare, la gestione di eventi, liste della spesa e faccende</li>
-      <li><strong>Comunicazioni di servizio:</strong> invio di email di verifica account, notifiche di reset password e comunicazioni essenziali relative al servizio</li>
-      <li><strong>Suggerimenti intelligenti:</strong> generazione di consigli personalizzati tramite intelligenza artificiale per ottimizzare la gestione domestica (funzionalita opzionale)</li>
+      <li><strong>Erogazione del servizio:</strong> sincronizzazione familiare, gestione di calendario, liste della spesa, faccende, chat, bollette e scadenze</li>
+      <li><strong>Comunicazioni di servizio:</strong> invio di email di verifica account, reset password, inviti familiari e comunicazioni essenziali</li>
+      <li><strong>Notifiche:</strong> promemoria locali (ad esempio scadenze bollette) ed eventuali notifiche push remote</li>
+      <li><strong>Suggerimenti intelligenti:</strong> generazione di consigli tramite intelligenza artificiale (funzionalita opzionale)</li>
       <li><strong>Miglioramento del servizio:</strong> analisi aggregate per migliorare le funzionalita dell'applicazione</li>
-      <li><strong>Supporto tecnico:</strong> assistenza nella risoluzione di problemi segnalati dagli utenti</li>
+      <li><strong>Supporto tecnico e sicurezza:</strong> assistenza, prevenzione abusi e protezione degli account</li>
     </ul>
 
-    <h2>4. Funzionalita di Intelligenza Artificiale (AI)</h2>
-    <p>${APP_NAME} offre funzionalita opzionali basate sull'intelligenza artificiale tramite il servizio OpenAI. L'utilizzo di queste funzionalita e completamente facoltativo e puo essere attivato o disattivato in qualsiasi momento nelle impostazioni dell'app.</p>
-    <p><strong>Dati inviati a OpenAI quando le funzionalita AI sono attive:</strong></p>
+    <h2>5. Email Transazionali</h2>
+    <p>${APP_NAME} invia email transazionali tramite il fornitore <strong>Resend</strong> per le seguenti finalita:</p>
     <ul>
-      <li><strong>Suggerimenti spesa:</strong> numero di membri familiari (senza nomi), nomi dei prodotti acquistati di recente, titoli degli eventi in programma, stagione corrente</li>
+      <li>verifica dell'account;</li>
+      <li>inviti familiari;</li>
+      <li>reset della password;</li>
+      <li>comunicazioni essenziali relative al servizio.</li>
+    </ul>
+    <p>Le email <strong>non contengono mai la password</strong> dell'utente. I link di verifica e reset hanno una durata limitata nel tempo (vedi sezione Conservazione dei Dati).</p>
+
+    <h2>6. Funzionalita di Intelligenza Artificiale (AI)</h2>
+    <p>${APP_NAME} offre funzionalita opzionali basate sull'intelligenza artificiale tramite il fornitore <strong>OpenAI</strong>. L'uso e facoltativo, soggetto al tuo consenso e gestito tramite impostazioni e limiti di utilizzo (quote) dell'app; puo essere attivato o disattivato in qualsiasi momento.</p>
+    <p><strong>I dati inviati a OpenAI sono minimizzati.</strong> Quando le funzioni AI sono attive vengono inviati, ad esempio:</p>
+    <ul>
+      <li><strong>Suggerimenti spesa:</strong> numero di membri (senza nomi), nomi dei prodotti recenti, titoli degli eventi in programma, stagione corrente</li>
       <li><strong>Ottimizzazione faccende:</strong> soprannomi dei membri, punti accumulati, titoli e durata stimata delle faccende</li>
-      <li><strong>Insights familiari:</strong> conteggi aggregati (numero eventi, faccende completate/in sospeso), soprannome del miglior contributore, punti settimanali</li>
+      <li><strong>Insights familiari:</strong> conteggi aggregati (eventi, faccende completate/in sospeso), soprannome del miglior contributore, punti settimanali</li>
     </ul>
-    <p><strong>Dati NON inviati a OpenAI:</strong> indirizzi email, password, indirizzi fisici, numeri di telefono, dati di pagamento, contenuto delle descrizioni di eventi o faccende.</p>
-    <p>I dati inviati a OpenAI sono trattati secondo la <a href="https://openai.com/policies/privacy-policy" target="_blank">Privacy Policy di OpenAI</a> e non vengono utilizzati per addestrare i modelli AI.</p>
-    <p><strong>Base giuridica:</strong> il trattamento dei dati tramite AI avviene sulla base del tuo consenso esplicito, che puoi revocare in qualsiasi momento disattivando la funzionalita nelle impostazioni.</p>
+    <p><strong>Dati NON inviati a OpenAI:</strong> password, indirizzi email, dati di pagamento, allegati, ricevute, contenuti delle chat, indirizzi fisici o numeri di telefono.</p>
+    <p>I dati inviati tramite l'API di OpenAI non vengono utilizzati per l'addestramento dei modelli, salvo diversa configurazione o opt-in esplicito. Il trattamento e regolato anche dalla <a href="https://openai.com/policies/privacy-policy" target="_blank">Privacy Policy di OpenAI</a>.</p>
+    <p><strong>Base giuridica:</strong> consenso esplicito dell'utente, revocabile in qualsiasi momento disattivando la funzionalita nelle impostazioni.</p>
 
-    <h2>5. Condivisione con Terze Parti</h2>
-    <p>I dati personali possono essere condivisi con i seguenti fornitori di servizi, esclusivamente per le finalita sopra indicate:</p>
+    <h2>7. Pagamenti e Abbonamenti Premium</h2>
+    <p>Gli eventuali abbonamenti Premium nell'app mobile sono gestiti tramite gli acquisti in-app degli store, con la gestione degli abbonamenti e dei diritti (entitlements) affidata a <strong>RevenueCat</strong>:</p>
     <ul>
-      <li><strong>Provider di hosting e database:</strong> i dati sono archiviati su server sicuri gestiti da provider cloud affidabili (Neon/PostgreSQL)</li>
-      <li><strong>Servizio email:</strong> per l'invio di email transazionali (verifica account, reset password)</li>
-      <li><strong>OpenAI:</strong> per la generazione di suggerimenti AI (solo dati aggregati come descritto alla sezione 4, funzionalita attivabile/disattivabile dall'utente)</li>
-      <li><strong>Stripe:</strong> per l'elaborazione dei pagamenti relativi ad abbonamenti Premium. Nota: il servizio di pagamento non e attualmente attivo e verra comunicato al momento della sua eventuale attivazione</li>
+      <li><strong>Apple In-App Purchase / StoreKit</strong> su iOS;</li>
+      <li><strong>Google Play Billing</strong> su Android;</li>
+      <li><strong>RevenueCat</strong> per la gestione di abbonamenti, stato dell'abbonamento ed entitlements.</li>
+    </ul>
+    <p><strong>Stripe non e utilizzato</strong> per la vendita di Premium nell'app mobile. I dati di pagamento (carte, ecc.) sono trattati direttamente da Apple o Google secondo le rispettive policy; ${APP_NAME} non ha accesso ai dati completi della tua carta.</p>
+
+    <h2>8. Notifiche</h2>
+    <ul>
+      <li><strong>Notifiche locali:</strong> programmate direttamente sul dispositivo (ad esempio i promemoria per le scadenze delle bollette); non richiedono l'invio dei contenuti a server esterni.</li>
+      <li><strong>Notifiche push remote:</strong> se attivate, possono utilizzare un token push del dispositivo e i servizi di notifica di Expo/Apple/Google per recapitare gli avvisi.</li>
+    </ul>
+
+    <h2>9. Condivisione con Terze Parti e Fornitori</h2>
+    <p>I dati possono essere trattati dai seguenti fornitori, esclusivamente per le finalita indicate:</p>
+    <ul>
+      <li><strong>Replit:</strong> hosting e deploy dell'applicazione e del backend</li>
+      <li><strong>Neon / PostgreSQL:</strong> database in cui sono archiviati i dati</li>
+      <li><strong>Resend:</strong> invio di email transazionali</li>
+      <li><strong>OpenAI:</strong> generazione di suggerimenti AI (solo dati minimizzati, funzione opzionale)</li>
+      <li><strong>RevenueCat, Apple, Google:</strong> gestione di abbonamenti e acquisti in-app</li>
+      <li><strong>Servizi di notifica push</strong> (Expo/Apple/Google): recapito delle notifiche push, se attive</li>
     </ul>
     <p>Non vendiamo, affittiamo o condividiamo i tuoi dati personali con terze parti per finalita di marketing.</p>
 
-    <h2>6. Conservazione dei Dati</h2>
-    <p>I dati personali vengono conservati per il tempo necessario a fornire il servizio e per adempiere agli obblighi di legge. In particolare:</p>
+    <h2>10. Trasferimenti Extra-UE</h2>
+    <p>Alcuni fornitori (ad esempio OpenAI, Resend, RevenueCat, Apple, Google o Replit) possono trattare i dati su infrastrutture situate al di fuori dello Spazio Economico Europeo (SEE). In tali casi, i trasferimenti avvengono adottando garanzie adeguate ove applicabile (ad esempio le Clausole Contrattuali Standard della Commissione Europea o meccanismi equivalenti).</p>
+
+    <h2>11. Conservazione dei Dati</h2>
     <ul>
-      <li>I dati dell'account vengono conservati fino alla cancellazione dell'account da parte dell'utente</li>
-      <li>I dati familiari condivisi vengono conservati finche la famiglia rimane attiva nell'applicazione</li>
-      <li>I log di accesso vengono conservati per un massimo di 12 mesi</li>
-      <li>I token di sessione scadono automaticamente dopo 7 giorni di inattivita</li>
+      <li>I dati dell'account sono conservati fino alla cancellazione dell'account</li>
+      <li>I dati familiari (calendario, liste, faccende, chat, bollette, allegati, ricevute) sono conservati fino alla cancellazione della famiglia o dell'account</li>
+      <li>I token di reset password scadono dopo <strong>1 ora</strong></li>
+      <li>I token di verifica email scadono dopo <strong>6 ore</strong></li>
+      <li>I token di invito familiare scadono dopo <strong>72 ore</strong>; gli inviti scaduti o gia utilizzati non sono piu validi</li>
+      <li>Le sessioni / refresh token scadono dopo <strong>7 giorni</strong></li>
+      <li>I log di sistema sono conservati per il tempo necessario, fino a un massimo di 12 mesi</li>
     </ul>
 
-    <h2>7. Sicurezza</h2>
-    <p>Adottiamo misure di sicurezza tecniche e organizzative adeguate per proteggere i dati personali, tra cui:</p>
+    <h2>12. Sicurezza</h2>
     <ul>
       <li>Crittografia delle password con algoritmo bcrypt</li>
       <li>Comunicazioni protette tramite protocollo HTTPS/TLS</li>
@@ -165,26 +209,32 @@ router.get('/privacy', (_req: Request, res: Response) => {
       <li>Headers di sicurezza HTTP (Helmet)</li>
     </ul>
 
-    <h2>8. Diritti dell'Utente</h2>
+    <h2>13. Diritti dell'Utente</h2>
     <p>In conformita con la normativa vigente (incluso il GDPR), hai il diritto di:</p>
     <ul>
       <li><strong>Accesso:</strong> richiedere una copia dei tuoi dati personali</li>
       <li><strong>Rettifica:</strong> correggere dati inesatti o incompleti</li>
-      <li><strong>Cancellazione:</strong> richiedere la cancellazione dei tuoi dati personali</li>
+      <li><strong>Cancellazione:</strong> richiedere la cancellazione dei tuoi dati</li>
       <li><strong>Portabilita:</strong> ricevere i tuoi dati in formato strutturato e leggibile</li>
-      <li><strong>Opposizione:</strong> opporti al trattamento dei tuoi dati in determinate circostanze</li>
+      <li><strong>Opposizione:</strong> opporti al trattamento in determinate circostanze</li>
+      <li><strong>Limitazione:</strong> chiedere la limitazione del trattamento dei tuoi dati</li>
+      <li><strong>Revoca del consenso:</strong> revocare in qualsiasi momento i consensi prestati (ad esempio per le funzioni AI), senza pregiudicare la liceita del trattamento precedente</li>
+      <li><strong>Reclamo:</strong> proporre reclamo al Garante per la protezione dei dati personali</li>
     </ul>
-    <p>Per esercitare questi diritti, contattaci all'indirizzo <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+    <p>Per esercitare questi diritti, scrivi a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
 
-    <h2>9. Minori</h2>
-    <p>${APP_NAME} e un'applicazione per il coordinamento familiare. L'utilizzo dell'app da parte di minori di 14 anni e consentito esclusivamente sotto la supervisione e con il consenso di un genitore o tutore legale che sia gia membro della famiglia nell'applicazione.</p>
+    <h2>14. Cancellazione dell'Account</h2>
+    <p>Puoi richiedere la cancellazione del tuo account e dei dati associati scrivendo a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. Daremo seguito alla richiesta nei tempi previsti dalla normativa applicabile, salvo eventuali obblighi di legge che impongano una conservazione piu lunga.</p>
+
+    <h2>15. Minori</h2>
+    <p>${APP_NAME} e un'applicazione per il coordinamento familiare. L'utilizzo da parte di minori di 14 anni e consentito esclusivamente sotto la supervisione e con il consenso di un genitore o tutore legale che sia gia membro della famiglia nell'applicazione.</p>
     <p>Non raccogliamo consapevolmente dati personali di minori di 14 anni senza il consenso verificabile di un genitore o tutore. Se veniamo a conoscenza di aver raccolto dati di un minore senza il consenso appropriato, provvederemo alla loro cancellazione tempestiva.</p>
 
-    <h2>10. Modifiche alla Privacy Policy</h2>
+    <h2>16. Modifiche alla Privacy Policy</h2>
     <p>Ci riserviamo il diritto di aggiornare questa Privacy Policy in qualsiasi momento. Le modifiche saranno comunicate tramite l'applicazione e/o via email. L'uso continuato del servizio dopo la pubblicazione delle modifiche costituisce accettazione della nuova Privacy Policy.</p>
 
-    <h2>11. Contatti</h2>
-    <p>Per qualsiasi domanda o richiesta relativa a questa Privacy Policy, puoi contattarci all'indirizzo:</p>
+    <h2>17. Contatti</h2>
+    <p>Per qualsiasi domanda o richiesta relativa a questa Privacy Policy, puoi contattarci all'unico indirizzo:</p>
     <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
   `;
 
