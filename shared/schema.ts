@@ -46,6 +46,7 @@ export const users = pgTable("users", {
   emailVerified: boolean("email_verified").default(false),
   termsAcceptedAt: timestamp("terms_accepted_at"),
   aiFeaturesEnabled: boolean("ai_features_enabled").default(true).notNull(),
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

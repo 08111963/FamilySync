@@ -51,6 +51,7 @@ function RootLayoutNav() {
       <Stack.Screen name="add-member" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="contact-support" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="change-password" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="delete-account" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
       <Stack.Screen name="reset-password/[token]" options={{ headerShown: false }} />
       <Stack.Screen name="add-event" options={{ presentation: "modal", headerShown: false }} />

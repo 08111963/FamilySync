@@ -502,6 +502,20 @@ export default function FamilyScreen() {
         </Pressable>
         <Pressable
           onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push("/delete-account");
+          }}
+          style={({ pressed }) => [
+            styles.logoutButton,
+            { borderColor: colors.error, opacity: pressed ? 0.7 : 1, marginBottom: 12 },
+          ]}
+          testID="delete-account-link"
+        >
+          <Ionicons name="trash-outline" size={20} color={colors.error} />
+          <Text style={[styles.logoutText, { color: colors.error }]}>Elimina account</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             logout();
           }}

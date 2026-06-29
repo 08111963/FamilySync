@@ -14,6 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import rateLimit from 'express-rate-limit';
 import { config } from '../lib/config';
 import { generateResetToken, hashResetToken } from '../lib/reset-token';
+import { deleteUserAccount } from '../lib/account-deletion';
 
 const router = Router();
 
@@ -62,6 +63,11 @@ const resetPasswordSchema = z.object({
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "La password attuale è obbligatoria"),
   newPassword: strongPasswordSchema,
+});
+
+const deleteAccountSchema = z.object({
+  password: z.string().min(1, "La password attuale è obbligatoria"),
+  confirmation: z.string().min(1, "Conferma richiesta"),
 });
 
 router.post('/signup', async (req: Request, res: Response) => {
@@ -173,7 +179,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
     
     const [user] = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
     
-    if (!user) {
+    if (!user || user.deletedAt) {
       return res.status(401).json({ error: { code: "USER_NOT_FOUND", message: "Utente non trovato" } });
     }
     
@@ -189,7 +195,7 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
   try {
     const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
     
-    if (!user) {
+    if (!user || user.deletedAt) {
       return res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utente non trovato" } });
     }
     
@@ -446,6 +452,44 @@ router.post('/reset-password', passwordResetLimiter, async (req: Request, res: R
   } catch (error) {
     logger.error('Reset password error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante il reset" } });
+  }
+});
+
+// Eliminazione account: accessibile a qualsiasi utente autenticato (anche con
+// email non verificata, perche e un diritto fondamentale e richiesto dagli store).
+router.delete('/account', authenticate, async (req: Request, res: Response) => {
+  try {
+    const parsed = deleteAccountSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    const { password, confirmation } = parsed.data;
+
+    if (confirmation.trim().toUpperCase() !== "ELIMINA") {
+      return res.status(400).json({
+        error: { code: "INVALID_CONFIRMATION", message: 'Digita "ELIMINA" per confermare' },
+      });
+    }
+
+    const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
+    if (!user || user.deletedAt) {
+      return res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utente non trovato" } });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) {
+      return res.status(400).json({ error: { code: "INVALID_PASSWORD", message: "La password attuale non è corretta" } });
+    }
+
+    await deleteUserAccount(user.id);
+
+    res.json({ message: "Account eliminato con successo" });
+  } catch (error) {
+    logger.error('Delete account error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante l'eliminazione dell'account" } });
   }
 });
 

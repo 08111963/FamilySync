@@ -13,18 +13,39 @@ declare global {
   }
 }
 
-export function authenticate(req: Request, res: Response, next: NextFunction) {
+export async function authenticate(req: Request, res: Response, next: NextFunction) {
+  let payload;
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
       return res.status(401).json({ error: { code: "NO_TOKEN", message: "Token di autenticazione mancante" } });
     }
-    
+
     const token = authHeader.substring(7);
-    req.user = verifyAccessToken(token);
-    next();
+    payload = verifyAccessToken(token);
   } catch {
     return res.status(401).json({ error: { code: "INVALID_TOKEN", message: "Token non valido o scaduto" } });
+  }
+
+  try {
+    // Revoca immediata per account cancellati: il token resta valido fino a
+    // scadenza, ma un account anonimizzato (deletedAt valorizzato) non deve
+    // poter accedere ad alcun endpoint protetto ("disconnessione da tutti i
+    // dispositivi"). Lookup su PK indicizzata.
+    const [record] = await db
+      .select({ deletedAt: users.deletedAt })
+      .from(users)
+      .where(eq(users.id, payload.userId))
+      .limit(1);
+
+    if (!record || record.deletedAt) {
+      return res.status(401).json({ error: { code: "INVALID_TOKEN", message: "Token non valido o scaduto" } });
+    }
+
+    req.user = payload;
+    next();
+  } catch {
+    return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante l'autenticazione" } });
   }
 }
 

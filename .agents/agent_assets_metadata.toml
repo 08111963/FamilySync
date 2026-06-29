@@ -72,3 +72,9 @@ id = "pDwmdtH_I8Q3yzVa72b7t"
 uri = "file://familysync-password-review.zip"
 type = "unspecified"
 title = "Revisione gestione password + fix email produzione (ZIP)"
+
+[[outputs]]
+id = "vd5_UxdB-DFMwlDV8aZj7"
+uri = "file://dist/elimina-account.zip"
+type = "unspecified"
+title = "Elimina account - file modificati"

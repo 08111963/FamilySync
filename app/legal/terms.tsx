@@ -85,7 +85,7 @@ export default function TermsScreen() {
 
         <Section title="8. Sospensione e Chiusura Account" colors={colors}>
           <P colors={colors}>Ci riserviamo il diritto di sospendere temporaneamente o chiudere definitivamente un account in caso di violazione dei presenti Termini, rimuovere contenuti che violino le nostre politiche, e interrompere il servizio con un preavviso ragionevole.</P>
-          <P colors={colors}>L'utente puo chiudere il proprio account in qualsiasi momento contattandoci all'indirizzo assistenza@familysync.it</P>
+          <P colors={colors}>L'utente puo eliminare il proprio account in qualsiasi momento direttamente dall'app (scheda Famiglia → Elimina account) oppure contattandoci all'indirizzo assistenza@familysync.it. L'eliminazione e definitiva: comporta l'anonimizzazione del profilo e, se l'utente e l'unico membro di una famiglia, la cancellazione della famiglia e dei relativi contenuti. I contenuti gia condivisi con altri membri possono restare visibili in forma anonima. L'eliminazione dell'account non annulla eventuali abbonamenti Premium, che vanno gestiti separatamente dallo store (Apple o Google).</P>
         </Section>
 
         <Section title="9. Abbonamenti Premium" colors={colors}>

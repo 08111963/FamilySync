@@ -224,7 +224,9 @@ router.get('/privacy', (_req: Request, res: Response) => {
     <p>Per esercitare questi diritti, scrivi a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
 
     <h2>14. Cancellazione dell'Account</h2>
-    <p>Puoi richiedere la cancellazione del tuo account e dei dati associati scrivendo a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. Daremo seguito alla richiesta nei tempi previsti dalla normativa applicabile, salvo eventuali obblighi di legge che impongano una conservazione piu lunga.</p>
+    <p>Puoi eliminare il tuo account in autonomia e in qualsiasi momento direttamente dall'app, nella scheda <strong>Famiglia</strong> &rarr; <strong>Elimina account</strong>, confermando con la tua password. In alternativa puoi richiedere la cancellazione scrivendo a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
+    <p>Con l'eliminazione, il tuo profilo personale viene reso anonimo e le tue informazioni di contatto vengono rimosse. Se sei l'unico membro di una famiglia, quella famiglia e tutti i suoi dati (calendario, liste, faccende, chat, allegati, bollette e ricevute) vengono eliminati. I contenuti condivisi in famiglie con altri membri possono restare visibili agli altri, ma in forma anonima (autore mostrato come "Utente eliminato").</p>
+    <p>L'eliminazione e definitiva e irreversibile. Alcuni dati possono essere conservati per il tempo necessario ad adempiere a obblighi di legge. L'eliminazione dell'account non annulla automaticamente eventuali abbonamenti Premium, che vanno gestiti dallo store (Apple o Google). Maggiori dettagli sono disponibili alla pagina dedicata all'<a href="${getBaseUrl(_req)}/legal/delete-account">eliminazione dell'account</a>.</p>
 
     <h2>15. Minori</h2>
     <p>${APP_NAME} e un'applicazione per il coordinamento familiare. L'utilizzo da parte di minori di 14 anni e consentito esclusivamente sotto la supervisione e con il consenso di un genitore o tutore legale che sia gia membro della famiglia nell'applicazione.</p>
@@ -322,7 +324,7 @@ router.get('/terms', (_req: Request, res: Response) => {
       <li>Rimuovere contenuti che violino le nostre politiche o le leggi applicabili</li>
       <li>Interrompere il servizio con un preavviso ragionevole</li>
     </ul>
-    <p>L'utente puo chiudere il proprio account in qualsiasi momento contattandoci all'indirizzo <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+    <p>L'utente puo eliminare il proprio account in qualsiasi momento direttamente dall'app (scheda <strong>Famiglia</strong> &rarr; <strong>Elimina account</strong>) oppure contattandoci all'indirizzo <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. L'eliminazione e definitiva: comporta l'anonimizzazione del profilo e, se l'utente e l'unico membro di una famiglia, la cancellazione della famiglia e dei relativi contenuti. I contenuti gia condivisi con altri membri possono restare visibili in forma anonima. L'eliminazione dell'account non annulla eventuali abbonamenti Premium, che vanno gestiti separatamente dallo store (Apple o Google).</p>
 
     <h2>10. Abbonamenti Premium</h2>
     <p>${APP_NAME} offre funzionalita premium a pagamento. I dettagli specifici relativi a prezzi, modalita di pagamento e politica di rimborso verranno comunicati al momento dell'attivazione del servizio di pagamento. L'utilizzo delle funzionalita base dell'applicazione rimane gratuito.</p>
@@ -351,6 +353,56 @@ router.get('/terms', (_req: Request, res: Response) => {
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(htmlWrapper("Termini d'Uso", body));
+});
+
+router.get('/delete-account', (_req: Request, res: Response) => {
+  const body = `
+    <h2>Come eliminare il tuo account ${APP_NAME}</h2>
+    <p>Questa pagina spiega come eliminare il tuo account ${APP_NAME} e quali dati vengono rimossi. L'eliminazione e <strong>definitiva e irreversibile</strong>.</p>
+
+    <h2>1. Eliminazione direttamente dall'app (consigliato)</h2>
+    <p>Puoi eliminare il tuo account in autonomia, in qualsiasi momento, direttamente dall'applicazione:</p>
+    <ul>
+      <li>Apri l'app e accedi al tuo account</li>
+      <li>Vai nella scheda <strong>Famiglia</strong></li>
+      <li>Scorri fino in fondo e tocca <strong>Elimina account</strong></li>
+      <li>Inserisci la tua password e digita <strong>ELIMINA</strong> per confermare</li>
+    </ul>
+    <p>Al termine verrai disconnesso automaticamente da tutti i dispositivi.</p>
+
+    <h2>2. Eliminazione tramite richiesta via email</h2>
+    <p>Se non riesci ad accedere all'app, puoi richiedere l'eliminazione scrivendo a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> dall'indirizzo email associato al tuo account. Daremo seguito alla richiesta nei tempi previsti dalla normativa applicabile.</p>
+
+    <h2>3. Quali dati vengono eliminati</h2>
+    <ul>
+      <li>Il tuo profilo personale viene reso anonimo e le tue informazioni di contatto (email, nome, foto) vengono rimosse</li>
+      <li>Se sei l'unico membro di una famiglia, quella famiglia e tutti i suoi dati vengono eliminati: calendario, liste della spesa, faccende, chat e allegati, bollette, scadenze e ricevute</li>
+      <li>I token di accesso, i token di verifica/reset e i token push del dispositivo vengono eliminati</li>
+      <li>Eventuali blocchi e inviti collegati al tuo account vengono rimossi</li>
+    </ul>
+
+    <h2>4. Quali dati possono essere conservati</h2>
+    <ul>
+      <li>I contenuti che hai condiviso in famiglie con altri membri (ad esempio eventi o messaggi) possono restare visibili agli altri membri, ma senza il tuo nome (autore mostrato come "Utente eliminato")</li>
+      <li>Alcuni dati possono essere conservati per il tempo necessario ad adempiere a obblighi di legge, contabili o di sicurezza, e i log di sistema fino a un massimo di 12 mesi</li>
+    </ul>
+
+    <h2>5. Abbonamenti Premium</h2>
+    <p>L'eliminazione dell'account <strong>non annulla automaticamente</strong> un eventuale abbonamento Premium. Gli abbonamenti sono gestiti dallo store. Per non essere piu addebitato, annulla l'abbonamento dalle impostazioni del tuo account:</p>
+    <ul>
+      <li><strong>iOS:</strong> Impostazioni &rarr; il tuo nome &rarr; Abbonamenti</li>
+      <li><strong>Android:</strong> Google Play Store &rarr; Pagamenti e abbonamenti &rarr; Abbonamenti</li>
+    </ul>
+
+    <h2>6. Tempi</h2>
+    <p>L'eliminazione effettuata dall'app e immediata. Le richieste via email vengono evase nei tempi previsti dalla normativa applicabile.</p>
+
+    <h2>7. Contatti</h2>
+    <p>Per qualsiasi domanda relativa all'eliminazione del tuo account, scrivi a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+  `;
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(htmlWrapper("Eliminazione Account", body));
 });
 
 export default router;

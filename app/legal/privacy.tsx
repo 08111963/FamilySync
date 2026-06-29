@@ -141,7 +141,9 @@ export default function PrivacyPolicyScreen() {
         </Section>
 
         <Section title="14. Cancellazione dell'Account" colors={colors}>
-          <P colors={colors}>Puoi richiedere la cancellazione del tuo account e dei dati associati scrivendo a assistenza@familysync.it. Daremo seguito nei tempi previsti dalla normativa applicabile, salvo obblighi di legge che impongano una conservazione piu lunga.</P>
+          <P colors={colors}>Puoi eliminare il tuo account in autonomia e in qualsiasi momento direttamente dall'app, nella scheda Famiglia → Elimina account, confermando con la tua password. In alternativa puoi richiedere la cancellazione scrivendo a assistenza@familysync.it.</P>
+          <P colors={colors}>Con l'eliminazione, il tuo profilo personale viene reso anonimo e le tue informazioni di contatto vengono rimosse. Se sei l'unico membro di una famiglia, quella famiglia e tutti i suoi dati (calendario, liste, faccende, chat, allegati, bollette e ricevute) vengono eliminati. I contenuti condivisi con altri membri possono restare visibili in forma anonima (autore mostrato come "Utente eliminato").</P>
+          <P colors={colors}>L'eliminazione e definitiva e irreversibile. Alcuni dati possono essere conservati per adempiere a obblighi di legge. L'eliminazione dell'account non annulla automaticamente eventuali abbonamenti Premium, che vanno gestiti dallo store (Apple o Google).</P>
         </Section>
 
         <Section title="15. Minori" colors={colors}>

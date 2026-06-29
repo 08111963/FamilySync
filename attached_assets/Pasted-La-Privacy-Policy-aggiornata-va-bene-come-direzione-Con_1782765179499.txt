@@ -1,0 +1,130 @@
+La Privacy Policy aggiornata va bene come direzione.
+
+Confermo anche che, se il codice reale usa Resend, manteniamo Resend e non SendGrid.
+
+Configurazione email corretta:
+
+* RESEND_API_KEY
+* EMAIL_FROM=[assistenza@familysync.it](mailto:assistenza@familysync.it)
+* CLIENT_URL=https://familysync.eu
+
+Il dominio da autenticare per l’invio email sarà familysync.it, perché il mittente ufficiale è [assistenza@familysync.it](mailto:assistenza@familysync.it).
+
+Procedi ora con la funzione di cancellazione account in-app, perché serve prima della pubblicazione.
+
+Requisiti funzione “Elimina account”:
+
+1. Frontend
+   Aggiungi una sezione in Profilo/Impostazioni:
+
+* “Elimina account”
+* spiegazione chiara delle conseguenze;
+* richiesta password attuale;
+* conferma esplicita, per esempio scrivere “ELIMINA”;
+* avviso che l’operazione è irreversibile;
+* logout automatico dopo cancellazione.
+
+2. Backend
+   Crea endpoint protetto, per esempio:
+   DELETE /api/auth/account
+   oppure
+   DELETE /api/account
+
+Requisiti:
+
+* utente autenticato;
+* email verificata se coerente con il resto dell’app;
+* password attuale obbligatoria;
+* verifica bcrypt della password attuale;
+* se password errata → errore chiaro;
+* nessuna password nei log;
+* nessuna password nella risposta API.
+
+3. Cosa cancellare/anonymizzare
+   Implementa cancellazione conforme al modello dati reale.
+
+Deve gestire almeno:
+
+* dati account;
+* sessioni/token se presenti;
+* membership famiglia;
+* inviti creati o ricevuti;
+* dati personali del profilo;
+* push token;
+* eventuali dati personali collegati all’utente.
+
+Per contenuti condivisi in famiglia:
+
+* non cancellare automaticamente dati della famiglia se servono agli altri membri;
+* però rimuovere/anonymizzare riferimenti personali dell’utente cancellato dove possibile;
+* se l’utente è unico owner/admin della famiglia, definire una regola sicura:
+
+  * impedire cancellazione finché trasferisce ownership;
+    oppure
+  * trasferire ownership a un altro admin/membro;
+    oppure
+  * cancellare la famiglia se è l’unico membro.
+
+4. Allegati e contenuti
+   Gestire in modo coerente:
+
+* chat;
+* allegati;
+* bollette;
+* ricevute;
+* faccende;
+* calendario;
+* liste spesa.
+
+Se alcuni contenuti condivisi restano per gli altri membri, indicare chiaramente che l’autore viene rimosso/anonymizzato.
+
+5. RevenueCat/Premium
+   Se l’utente ha un abbonamento Premium:
+
+* non tentare di cancellare direttamente l’abbonamento dallo store;
+* mostrare istruzione: “Annulla l’abbonamento da Apple App Store o Google Play”;
+* eliminare/anonymizzare i dati account lato FamilySync secondo possibilità;
+* mantenere eventuali dati necessari per obblighi tecnici/legali.
+
+6. Privacy Policy / Terms
+   Aggiorna Privacy Policy e Termini d’Uso dopo l’implementazione:
+
+* aggiungi che la cancellazione account può essere avviata dall’app;
+* mantieni anche [assistenza@familysync.it](mailto:assistenza@familysync.it) come canale di supporto;
+* specifica cosa accade ai contenuti condivisi.
+
+7. Link web per richiesta cancellazione
+   Serve anche una pagina pubblica web, per esempio:
+   https://familysync.eu/legal/delete-account
+   oppure
+   https://familysync.eu/delete-account
+
+La pagina deve spiegare:
+
+* come eliminare l’account dall’app;
+* come richiedere cancellazione scrivendo a [assistenza@familysync.it](mailto:assistenza@familysync.it);
+* quali dati vengono cancellati;
+* quali dati possono essere conservati per obblighi legali/sicurezza;
+* tempi indicativi di gestione.
+
+8. Test richiesti
+   Aggiungi test per:
+
+* cancellazione con password corretta;
+* cancellazione con password errata;
+* utente non autenticato bloccato;
+* push token rimossi;
+* membership rimossa o gestita;
+* caso unico owner/admin gestito correttamente;
+* contenuti condivisi non causano errori;
+* risposta non contiene dati sensibili;
+* dopo cancellazione login non più possibile.
+
+Dopo l’implementazione prepara ZIP di revisione con:
+
+* backend account/delete;
+* frontend impostazioni/profilo;
+* pagine legal/delete-account;
+* Privacy Policy aggiornata;
+* Termini d’Uso aggiornati se modificati;
+* test.
