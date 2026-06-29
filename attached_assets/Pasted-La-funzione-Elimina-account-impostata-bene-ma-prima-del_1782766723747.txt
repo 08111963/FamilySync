@@ -1,0 +1,115 @@
+La funzione “Elimina account” è impostata bene, ma prima dell’approvazione servono alcune correzioni.
+
+Correggi questi punti:
+
+1. Migration database obbligatoria
+
+Hai aggiunto `users.deletedAt` / colonna `deleted_at`, ma nello ZIP non vedo migration.
+
+Aggiungi una migration sicura per produzione:
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at timestamp;
+
+Oppure usa il sistema Drizzle già previsto dal progetto, ma deve essere chiaro quale migration verrà applicata al database reale.
+
+Senza questa migration il backend può andare in errore quando legge `users.deletedAt`.
+
+2. AuthGate: consentire delete-account anche a email non verificata
+
+Nel backend hai correttamente permesso la cancellazione account anche a utenti con email non verificata.
+
+Però in `app/_layout.tsx`, AuthGate rimanda gli utenti non verificati alla schermata `verify-email`.
+
+Aggiungi `delete-account` tra le schermate consentite anche se l’email non è verificata.
+
+Obiettivo:
+
+* utente autenticato ma non verificato deve poter aprire `/delete-account`;
+* deve poter cancellare l’account;
+* poi logout automatico.
+
+3. Cancellazione file fisici caricati
+
+Quando l’utente è unico membro di una famiglia e la famiglia viene eliminata, il DB cascade elimina i record, ma bisogna evitare che rimangano file fisici orfani in `/uploads`.
+
+Prima di eliminare la famiglia, raccogli in modo sicuro i file collegati a quella famiglia:
+
+* chatMessages.fileUrl;
+* billAttachments.fileUrl;
+* eventuali avatar famiglia/utente se salvati in uploads;
+* altri allegati realmente presenti nello schema.
+
+Poi elimina i file fisici dal filesystem con una funzione sicura:
+
+* solo dentro la directory uploads;
+* niente path traversal;
+* ignora file già mancanti;
+* logga errori senza esporre path sensibili all’utente.
+
+Attenzione:
+
+* se la famiglia continua a esistere con altri membri, non cancellare gli allegati condivisi;
+* in quel caso i contenuti possono restare visibili agli altri membri in forma anonima.
+
+4. Rate limit su DELETE /api/auth/account
+
+Aggiungi un rate limiter all’endpoint di eliminazione account, per evitare tentativi ripetuti sulla password.
+
+Esempio:
+
+* 5 tentativi ogni 15 minuti;
+* disattivabile in test come per password reset.
+
+5. Termini d’Uso ancora da allineare
+
+Aggiorna davvero sia:
+
+* server/routes/legal.ts
+* app/legal/terms.tsx
+
+I Termini devono includere:
+
+* Bollette & Scadenze;
+* nessun pagamento reale delle bollette;
+* nessun salvataggio carte/CVV/IBAN;
+* chat e allegati;
+* AI e limiti dei suggerimenti;
+* piano Free e Premium;
+* RevenueCat, Apple In-App Purchase / StoreKit, Google Play Billing;
+* Stripe non usato per vendere Premium mobile;
+* cancellazione account dall’app e via [assistenza@familysync.it](mailto:assistenza@familysync.it);
+* limitazioni di responsabilità “nei limiti consentiti dalla legge”;
+* proprietà intellettuale e licenza limitata sui contenuti inseriti dall’utente;
+* data aggiornata al 29 giugno 2026.
+
+La versione nativa `app/legal/terms.tsx` ha ancora data 7 febbraio 2026: correggere.
+
+6. Coerenza titolare/footer
+
+In `server/routes/legal.ts` c’è ancora `DEVELOPER = "FamilySync Team"`.
+
+Rendi coerente con:
+Marino Pizzuti / FamilySync
+
+oppure spiegami se vuoi mantenere “FamilySync Team” solo come nome commerciale nel footer.
+
+7. Test
+
+Aggiungi o aggiorna test per:
+
+* migration/colonna deleted_at presente;
+* utente non verificato può aprire/cancellare account;
+* DELETE /api/auth/account rate-limited;
+* famiglia unico membro: DB eliminato + file fisici allegati rimossi;
+* famiglia con altri membri: contenuti condivisi restano, file non rimossi;
+* Terms web e Terms nativi aggiornati e coerenti;
+* unica email presente: [assistenza@familysync.it](mailto:assistenza@familysync.it).
+
+Dopo le correzioni, prepara nuovo ZIP di revisione e indica:
+
+* file modificati;
+* migration aggiunta;
+* come hai gestito la cancellazione dei file fisici;
+* test eseguiti;
+* conferma che `/legal/delete-account` funziona;
+* conferma che `delete-account` è accessibile anche a email non verificata.

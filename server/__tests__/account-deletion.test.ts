@@ -2,8 +2,10 @@ import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
 import type { Server } from "node:http";
+import fs from "node:fs/promises";
+import path from "node:path";
 import bcrypt from "bcryptjs";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   users,
@@ -12,9 +14,13 @@ import {
   calendarEvents,
   pushTokens,
   blocks,
+  bills,
+  billAttachments,
+  chatMessages,
 } from "../../shared/schema";
 import { registerRoutes } from "../routes";
 import { generateAccessToken } from "../lib/jwt";
+import { uploadsDir, resolveSafeUploadPath, deleteUploadFiles } from "../lib/uploads-cleanup";
 
 /**
  * Test di INTEGRAZIONE della cancellazione account contro il DB reale e l'app
@@ -277,5 +283,217 @@ describe("cancellazione account (DB + HTTP)", { skip: hasDb ? false : "DATABASE_
 
     const remaining = await db.select().from(blocks).where(eq(blocks.blockerUserId, blocker.id));
     assert.equal(remaining.length, 0, "i blocchi creati dall'utente devono essere rimossi");
+  });
+
+  // --- schema / migration -----------------------------------------------------
+
+  test("la colonna users.deleted_at esiste (migration applicata)", async () => {
+    const res = await db.execute(sql`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'users' AND column_name = 'deleted_at'
+    `);
+    const rows = (res as any).rows ?? res;
+    assert.equal(rows.length, 1, "la colonna deleted_at deve esistere nella tabella users");
+  });
+
+  // --- accesso non verificato -------------------------------------------------
+
+  test("utente con email NON verificata puo cancellare il proprio account", async () => {
+    const email = `del-unverified-${uniq()}@example.com`;
+    const passwordHash = await bcrypt.hash("RightPass123", 10);
+    const [user] = await db.insert(users).values({
+      email: email.toLowerCase(),
+      passwordHash,
+      name: email.split("@")[0],
+      emailVerified: false, // email NON verificata
+      termsAcceptedAt: new Date(),
+    }).returning();
+    created.users.push(user.id);
+    const token = generateAccessToken(user as any);
+
+    const res = await request("DELETE", "/api/auth/account", { password: "RightPass123", confirmation: "ELIMINA" }, token);
+    assert.equal(res.status, 200, "l'eliminazione deve riuscire anche senza email verificata");
+
+    const [row] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+    assert.ok(row.deletedAt, "l'account non verificato deve risultare cancellato");
+  });
+
+  // --- file fisici ------------------------------------------------------------
+
+  async function makeUploadFile(prefix: string) {
+    await fs.mkdir(uploadsDir, { recursive: true });
+    const name = `test-${prefix}-${uniq()}.bin`;
+    const abs = path.join(uploadsDir, name);
+    await fs.writeFile(abs, "x");
+    return { url: `/uploads/${name}`, abs };
+  }
+
+  async function exists(p: string) {
+    try { await fs.access(p); return true; } catch { return false; }
+  }
+
+  test("unico membro: i file fisici allegati (chat + bolletta + avatar) vengono rimossi", async () => {
+    const user = await seedUser(`del-files-${uniq()}@example.com`, "RightPass123");
+    const family = await seedFamily(`Files ${uniq()}`);
+    const member = await addMember(family.id, user.id, "admin");
+
+    const chatFile = await makeUploadFile("chat");
+    const billFile = await makeUploadFile("bill");
+
+    await db.insert(chatMessages).values({
+      familyId: family.id,
+      userId: user.id,
+      messageType: "image",
+      fileUrl: chatFile.url,
+    });
+    const [bill] = await db.insert(bills).values({
+      familyId: family.id,
+      title: "Luce",
+      amount: "42.00",
+      dueDate: "2026-07-15",
+      createdBy: user.id,
+    }).returning();
+    await db.insert(billAttachments).values({
+      billId: bill.id,
+      familyId: family.id,
+      fileUrl: billFile.url,
+    });
+
+    void member;
+    const token = generateAccessToken(user as any);
+    const res = await request("DELETE", "/api/auth/account", { password: "RightPass123", confirmation: "ELIMINA" }, token);
+    assert.equal(res.status, 200);
+
+    assert.equal(await exists(chatFile.abs), false, "il file della chat deve essere cancellato dal disco");
+    assert.equal(await exists(billFile.abs), false, "il file della bolletta deve essere cancellato dal disco");
+
+    const body = await res.json();
+    assert.ok((body.filesDeleted ?? 0) >= 2, "il riepilogo deve contare i file rimossi");
+  });
+
+  test("famiglia che sopravvive: i file condivisi NON vengono cancellati", async () => {
+    const leaver = await seedUser(`del-keepfile-${uniq()}@example.com`, "RightPass123");
+    const keeper = await seedUser(`keep-keepfile-${uniq()}@example.com`, "RightPass123");
+    const family = await seedFamily(`KeepFiles ${uniq()}`);
+    await addMember(family.id, leaver.id, "adult");
+    await addMember(family.id, keeper.id, "admin");
+
+    const chatFile = await makeUploadFile("keepchat");
+    await db.insert(chatMessages).values({
+      familyId: family.id,
+      userId: leaver.id,
+      messageType: "image",
+      fileUrl: chatFile.url,
+    });
+
+    const token = generateAccessToken(leaver as any);
+    const res = await request("DELETE", "/api/auth/account", { password: "RightPass123", confirmation: "ELIMINA" }, token);
+    assert.equal(res.status, 200);
+
+    assert.equal(await exists(chatFile.abs), true, "il file condiviso con una famiglia viva NON deve essere cancellato");
+    // pulizia manuale del file di test
+    await fs.unlink(chatFile.abs).catch(() => {});
+  });
+
+  // --- sicurezza util cancellazione file --------------------------------------
+
+  test("resolveSafeUploadPath: blocca path traversal e url esterni", () => {
+    assert.equal(resolveSafeUploadPath("/uploads/../../etc/passwd"), null);
+    assert.equal(resolveSafeUploadPath("https://altrodominio.example/uploads/x.png"), null);
+    assert.equal(resolveSafeUploadPath("/uploads"), null);
+    assert.ok(resolveSafeUploadPath("/uploads/ok.png")?.endsWith(path.join("uploads", "ok.png")));
+  });
+
+  test("deleteUploadFiles: ignora i file mancanti senza errori", async () => {
+    const result = await deleteUploadFiles(["/uploads/non-esiste-mai.bin", null, undefined]);
+    assert.equal(result.deleted, 0);
+    assert.equal(result.missing, 1);
+    assert.equal(result.failed, 0);
+  });
+
+  // --- rate limit -------------------------------------------------------------
+
+  test("DELETE /account: rate limit (5/15min) → 429 dopo i tentativi consentiti", async () => {
+    // Il limiter e disattivato in test (skip su NODE_ENV=test): lo riattiviamo
+    // temporaneamente forzando un altro ambiente per verificare il comportamento.
+    const env = process.env as Record<string, string | undefined>;
+    const prev = env.NODE_ENV;
+    env.NODE_ENV = "production";
+    try {
+      const statuses: number[] = [];
+      for (let i = 0; i < 6; i++) {
+        // Senza token: il limiter gira PRIMA di authenticate, quindi conta comunque.
+        const res = await request("DELETE", "/api/auth/account", { password: "x", confirmation: "ELIMINA" });
+        statuses.push(res.status);
+      }
+      // I primi 5 passano il limiter (poi 401 per mancanza auth), il 6° e bloccato.
+      assert.ok(statuses.slice(0, 5).every((s) => s === 401), `attesi 401 nei primi 5, ricevuti ${statuses}`);
+      assert.equal(statuses[5], 429, "il 6° tentativo deve essere bloccato dal rate limiter");
+    } finally {
+      env.NODE_ENV = prev;
+    }
+  });
+
+  // --- coerenza documenti legali ----------------------------------------------
+
+  test("Termini web (/legal/terms): clausole obbligatorie e data 29 giugno 2026", async () => {
+    const res = await request("GET", "/legal/terms");
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    const required = [
+      "29 giugno 2026",
+      "NON elabora pagamenti reali",
+      "IBAN",
+      "Chat e Allegati",
+      "Intelligenza Artificiale",
+      "Free",
+      "Premium",
+      "RevenueCat",
+      "StoreKit",
+      "Google Play Billing",
+      "Stripe NON viene utilizzato",
+      "Licenza limitata sui contenuti",
+      "limiti consentiti dalla legge",
+      "Elimina account",
+      "Marino Pizzuti / FamilySync",
+    ];
+    for (const term of required) {
+      assert.ok(html.includes(term), `i Termini web devono contenere: "${term}"`);
+    }
+  });
+
+  test("Termini native (app/legal/terms.tsx): allineati con la data e le clausole chiave", async () => {
+    const native = await fs.readFile(path.resolve("app/legal/terms.tsx"), "utf8");
+    const required = [
+      "29 giugno 2026",
+      "NON elabora pagamenti reali",
+      "IBAN",
+      "Chat e Allegati",
+      "Intelligenza Artificiale",
+      "RevenueCat",
+      "StoreKit",
+      "Google Play Billing",
+      "Stripe NON viene utilizzato",
+      "Licenza limitata sui contenuti",
+      "Marino Pizzuti / FamilySync",
+    ];
+    for (const term of required) {
+      assert.ok(native.includes(term), `i Termini native devono contenere: "${term}"`);
+    }
+  });
+
+  test("documenti legali: unica email di supporto assistenza@familysync.it", async () => {
+    const termsHtml = await (await request("GET", "/legal/terms")).text();
+    const privacyHtml = await (await request("GET", "/legal/privacy")).text();
+    const nativeTerms = await fs.readFile(path.resolve("app/legal/terms.tsx"), "utf8");
+
+    for (const [label, doc] of [["terms web", termsHtml], ["privacy web", privacyHtml], ["terms native", nativeTerms]] as const) {
+      assert.ok(doc.includes("assistenza@familysync.it"), `${label} deve usare assistenza@familysync.it`);
+      // Nessun altro indirizzo di supporto/contatto familysync diverso da assistenza/noreply.
+      const matches = (doc.match(/[a-z0-9._-]+@familysync\.[a-z]+/gi) ?? [])
+        .map((e) => e.toLowerCase())
+        .filter((e) => !e.startsWith("assistenza@") && !e.startsWith("noreply@") && !e.startsWith("deleted-"));
+      assert.deepEqual(matches, [], `${label} non deve contenere altre email familysync: ${matches}`);
+    }
   });
 });

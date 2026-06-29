@@ -30,6 +30,18 @@ const passwordResetLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === 'test',
 });
 
+/**
+ * Rate limiter per l'eliminazione account: protegge da tentativi ripetuti sulla
+ * password (brute force). Disattivato in test come per il password reset.
+ */
+const deleteAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
 const emailSchema = z.string().trim().toLowerCase().email("Email non valida");
 
 const strongPasswordSchema = z
@@ -457,7 +469,7 @@ router.post('/reset-password', passwordResetLimiter, async (req: Request, res: R
 
 // Eliminazione account: accessibile a qualsiasi utente autenticato (anche con
 // email non verificata, perche e un diritto fondamentale e richiesto dagli store).
-router.delete('/account', authenticate, async (req: Request, res: Response) => {
+router.delete('/account', deleteAccountLimiter, authenticate, async (req: Request, res: Response) => {
   try {
     const parsed = deleteAccountSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -484,9 +496,15 @@ router.delete('/account', authenticate, async (req: Request, res: Response) => {
       return res.status(400).json({ error: { code: "INVALID_PASSWORD", message: "La password attuale non è corretta" } });
     }
 
-    await deleteUserAccount(user.id);
+    const summary = await deleteUserAccount(user.id);
 
-    res.json({ message: "Account eliminato con successo" });
+    res.json({
+      message: "Account eliminato con successo",
+      familiesDeleted: summary.familiesDeleted,
+      membershipsRemoved: summary.membershipsRemoved,
+      ownershipTransfers: summary.ownershipTransfers,
+      filesDeleted: summary.filesDeleted,
+    });
   } catch (error) {
     logger.error('Delete account error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante l'eliminazione dell'account" } });

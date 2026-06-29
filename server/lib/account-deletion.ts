@@ -11,12 +11,16 @@ import {
   blocks,
   pushTokens,
   entitlements,
+  chatMessages,
+  billAttachments,
 } from "../../shared/schema";
+import { deleteUploadFiles } from "./uploads-cleanup";
 
 export interface AccountDeletionSummary {
   familiesDeleted: number;
   membershipsRemoved: number;
   ownershipTransfers: number;
+  filesDeleted: number;
 }
 
 /**
@@ -38,7 +42,12 @@ export interface AccountDeletionSummary {
 export async function deleteUserAccount(
   userId: string
 ): Promise<AccountDeletionSummary> {
-  return db.transaction(async (tx) => {
+  // File fisici da rimuovere DOPO il commit della transazione: solo per le
+  // famiglie effettivamente eliminate (utente unico membro). Se la famiglia
+  // sopravvive con altri membri, gli allegati condivisi NON vengono toccati.
+  const filesToDelete: Array<string | null | undefined> = [];
+
+  const summary = await db.transaction(async (tx) => {
     const [user] = await tx
       .select()
       .from(users)
@@ -48,6 +57,9 @@ export async function deleteUserAccount(
     if (!user) {
       throw new Error("USER_NOT_FOUND");
     }
+
+    // L'avatar personale dell'utente (se salvato in /uploads) va rimosso.
+    filesToDelete.push(user.avatarUrl);
 
     let familiesDeleted = 0;
     let membershipsRemoved = 0;
@@ -70,7 +82,28 @@ export async function deleteUserAccount(
         );
 
       if (others.length === 0) {
-        // Unico membro: elimina l'intera famiglia (cascade rimuove tutti i dati).
+        // Unico membro: raccogli i file collegati alla famiglia PRIMA di
+        // eliminarla (il cascade DB rimuove i record, non i file fisici).
+        const [familyRow] = await tx
+          .select({ avatarUrl: families.avatarUrl })
+          .from(families)
+          .where(eq(families.id, membership.familyId))
+          .limit(1);
+        if (familyRow) filesToDelete.push(familyRow.avatarUrl);
+
+        const chatFiles = await tx
+          .select({ fileUrl: chatMessages.fileUrl })
+          .from(chatMessages)
+          .where(eq(chatMessages.familyId, membership.familyId));
+        for (const c of chatFiles) filesToDelete.push(c.fileUrl);
+
+        const attachmentFiles = await tx
+          .select({ fileUrl: billAttachments.fileUrl })
+          .from(billAttachments)
+          .where(eq(billAttachments.familyId, membership.familyId));
+        for (const a of attachmentFiles) filesToDelete.push(a.fileUrl);
+
+        // Elimina l'intera famiglia (cascade rimuove tutti i record collegati).
         await tx.delete(families).where(eq(families.id, membership.familyId));
         familiesDeleted++;
         continue;
@@ -149,4 +182,11 @@ export async function deleteUserAccount(
 
     return { familiesDeleted, membershipsRemoved, ownershipTransfers };
   });
+
+  // Cancellazione file fisici SOLO dopo il commit riuscito della transazione:
+  // le operazioni su filesystem non sono transazionali e non vanno eseguite se
+  // il DB fa rollback. La funzione e sicura (solo /uploads, ignora i mancanti).
+  const cleanup = await deleteUploadFiles(filesToDelete);
+
+  return { ...summary, filesDeleted: cleanup.deleted };
 }

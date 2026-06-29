@@ -27,7 +27,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "legal" || root === "help" || root === "forgot-password" || root === "reset-password";
     const needsVerification = isAuthenticated && !!user && user.emailVerified === false;
     const inVerifyScreen = root === "verify-email";
-    const verificationAllowed = inVerifyScreen || root === "legal" || root === "help";
+    // L'eliminazione account e un diritto fondamentale: deve restare accessibile
+    // anche a utenti autenticati con email non ancora verificata.
+    const verificationAllowed = inVerifyScreen || root === "legal" || root === "help" || root === "delete-account";
 
     if (!isAuthenticated && !inPublicGroup && !inVerifyScreen) {
       router.replace("/welcome");
