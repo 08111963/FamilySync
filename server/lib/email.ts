@@ -1,14 +1,23 @@
-import sgMail from '@sendgrid/mail';
+import { Resend } from 'resend';
 
 // Le variabili d'ambiente vengono lette a RUNTIME (non a load-time) così che le
 // funzioni di configurazione riflettano sempre lo stato reale del processo e
 // siano testabili in modo deterministico.
 function apiKey(): string {
-  return (process.env.SENDGRID_API_KEY || '').trim();
+  return (process.env.RESEND_API_KEY || '').trim();
 }
 
 function fromAddress(): string {
-  return (process.env.EMAIL_FROM || 'noreply@familysync.app').trim();
+  return (process.env.EMAIL_FROM || 'noreply@familysync.eu').trim();
+}
+
+/**
+ * Indirizzo a cui rispondono gli utenti (Reply-To). Il mittente è un dominio
+ * "no-reply", quindi le risposte vengono indirizzate alla casella di assistenza
+ * vera. Se non configurato, l'email viene comunque inviata senza Reply-To.
+ */
+function supportAddress(): string {
+  return (process.env.SUPPORT_EMAIL || '').trim();
 }
 
 /**
@@ -21,7 +30,7 @@ function clientBaseUrl(): string {
 }
 
 /**
- * True se il servizio email (SendGrid) è configurato e può inviare davvero.
+ * True se il servizio email (Resend) è configurato e può inviare davvero.
  * Se false, in sviluppo le email vengono solo loggate; in produzione gli
  * endpoint che richiedono email devono fallire con EMAIL_NOT_CONFIGURED.
  */
@@ -31,7 +40,7 @@ export function isEmailConfigured(): boolean {
 
 /**
  * True se è possibile inviare email che contengono un LINK basato su CLIENT_URL
- * (verifica account, reset password). Oltre a SendGrid serve un CLIENT_URL valido
+ * (verifica account, reset password). Oltre a Resend serve un CLIENT_URL valido
  * e un mittente: senza CLIENT_URL invieremmo link rotti tipo
  * `undefined/reset-password/<token>`.
  */
@@ -48,6 +57,26 @@ export function isVerificationEmailConfigured(): boolean {
   return isLinkEmailConfigured();
 }
 
+/**
+ * Invia un'email tramite Resend. Centralizza la creazione del client e
+ * l'aggiunta del Reply-To verso l'assistenza, così che ogni flusso resti
+ * conciso. Lancia in caso di errore API (il chiamante gestisce/logga).
+ */
+async function sendEmail(params: { to: string; subject: string; html: string }): Promise<void> {
+  const resend = new Resend(apiKey());
+  const support = supportAddress();
+  const { error } = await resend.emails.send({
+    from: fromAddress(),
+    to: params.to,
+    subject: params.subject,
+    html: params.html,
+    ...(support ? { replyTo: support } : {}),
+  });
+  if (error) {
+    throw new Error(`Resend send failed: ${error.message ?? 'unknown error'}`);
+  }
+}
+
 export async function sendVerificationEmail(email: string, name: string, token: string) {
   const link = `${clientBaseUrl()}/verify-email/${token}`;
 
@@ -56,10 +85,8 @@ export async function sendVerificationEmail(email: string, name: string, token: 
     return;
   }
 
-  sgMail.setApiKey(apiKey());
-  await sgMail.send({
+  await sendEmail({
     to: email,
-    from: fromAddress(),
     subject: 'Verifica il tuo account Family Sync',
     html: `<h1>Ciao ${name}!</h1><p><a href="${link}">Verifica Email</a></p>`,
   });
@@ -73,10 +100,8 @@ export async function sendPasswordResetEmail(email: string, name: string, token:
     return;
   }
 
-  sgMail.setApiKey(apiKey());
-  await sgMail.send({
+  await sendEmail({
     to: email,
-    from: fromAddress(),
     subject: 'Reset Password - Family Sync',
     html: `<h1>Ciao ${name}</h1><p><a href="${link}">Reset Password</a></p>`,
   });
@@ -103,10 +128,8 @@ export async function sendFamilyInviteEmail(
     return;
   }
 
-  sgMail.setApiKey(apiKey());
-  await sgMail.send({
+  await sendEmail({
     to: email,
-    from: fromAddress(),
     subject: `${inviterName} ti ha invitato su FamilySync`,
     html: `
       <h1>${greeting}</h1>

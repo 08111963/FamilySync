@@ -61,7 +61,7 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
 
   before(async () => {
     if (!process.env.SESSION_SECRET) process.env.SESSION_SECRET = "test-secret";
-    delete process.env.SENDGRID_API_KEY; // assicura email non configurata
+    delete process.env.RESEND_API_KEY; // assicura email non configurata
 
     const app = express();
     app.set("trust proxy", 1);
@@ -291,11 +291,11 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     assert.equal((await acc.json()).error.code, "INVITE_EXPIRED");
   });
 
-  test("in PRODUZIONE senza SendGrid: 503 EMAIL_NOT_CONFIGURED e nessun invito creato", async () => {
+  test("in PRODUZIONE senza email configurata: 503 EMAIL_NOT_CONFIGURED e nessun invito creato", async () => {
     const env = process.env as Record<string, string | undefined>;
     const prev = env.NODE_ENV;
     env.NODE_ENV = "production";
-    delete process.env.SENDGRID_API_KEY;
+    delete process.env.RESEND_API_KEY;
     try {
       const email = `prod-${uniq()}@example.com`;
       const res = await request("POST", `/api/families/${familyId}/invite`, { email }, adminToken);

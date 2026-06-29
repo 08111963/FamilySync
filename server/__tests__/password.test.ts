@@ -58,7 +58,7 @@ describe("gestione password (DB + HTTP)", { skip: hasDb ? false : "DATABASE_URL 
   before(async () => {
     if (!process.env.SESSION_SECRET) process.env.SESSION_SECRET = "test-secret";
     Object.assign(process.env, { NODE_ENV: "test" }); // disattiva il rate limiter dedicato e forza non-produzione
-    delete process.env.SENDGRID_API_KEY;
+    delete process.env.RESEND_API_KEY;
 
     const app = express();
     app.set("trust proxy", 1);
@@ -121,26 +121,26 @@ describe("gestione password (DB + HTTP)", { skip: hasDb ? false : "DATABASE_URL 
   // Imposta env di produzione per il singolo test e ripristina sempre lo stato
   // di test (non-produzione, nessuna email/url configurati) nel finally.
   async function withProdEnv(
-    env: { sendgrid?: string; clientUrl?: string },
+    env: { resend?: string; clientUrl?: string },
     fn: () => Promise<void>,
   ) {
     Object.assign(process.env, { NODE_ENV: "production" });
-    if (env.sendgrid) process.env.SENDGRID_API_KEY = env.sendgrid;
-    else delete process.env.SENDGRID_API_KEY;
+    if (env.resend) process.env.RESEND_API_KEY = env.resend;
+    else delete process.env.RESEND_API_KEY;
     if (env.clientUrl) process.env.CLIENT_URL = env.clientUrl;
     else delete process.env.CLIENT_URL;
     try {
       await fn();
     } finally {
       Object.assign(process.env, { NODE_ENV: "test" });
-      delete process.env.SENDGRID_API_KEY;
+      delete process.env.RESEND_API_KEY;
       delete process.env.CLIENT_URL;
     }
   }
 
-  test("produzione + SendGrid presente ma CLIENT_URL mancante → EMAIL_NOT_CONFIGURED", async () => {
+  test("produzione + email presente ma CLIENT_URL mancante → EMAIL_NOT_CONFIGURED", async () => {
     const user = await seedUser(`prod1-${uniq()}@example.com`, "OldPass123");
-    await withProdEnv({ sendgrid: "SG.test-key" }, async () => {
+    await withProdEnv({ resend: "re_test-key" }, async () => {
       const res = await request("POST", "/api/auth/request-password-reset", { email: user.email });
       assert.equal(res.status, 503);
       const body = await res.json();
@@ -151,7 +151,7 @@ describe("gestione password (DB + HTTP)", { skip: hasDb ? false : "DATABASE_URL 
     assert.equal(rows.length, 0);
   });
 
-  test("produzione + SendGrid mancante → EMAIL_NOT_CONFIGURED", async () => {
+  test("produzione + email mancante → EMAIL_NOT_CONFIGURED", async () => {
     const user = await seedUser(`prod2-${uniq()}@example.com`, "OldPass123");
     await withProdEnv({ clientUrl: "https://app.example.com" }, async () => {
       const res = await request("POST", "/api/auth/request-password-reset", { email: user.email });
@@ -163,11 +163,11 @@ describe("gestione password (DB + HTTP)", { skip: hasDb ? false : "DATABASE_URL 
     assert.equal(rows.length, 0);
   });
 
-  test("produzione + SendGrid e CLIENT_URL presenti → procede (nessun errore di configurazione)", async () => {
+  test("produzione + email e CLIENT_URL presenti → procede (nessun errore di configurazione)", async () => {
     // Email inesistente: la guardia di configurazione viene superata e si arriva
     // alla risposta generica, senza alcun tentativo reale di invio (nessun enumeration).
     const ghost = `prod3-${uniq()}@example.com`;
-    await withProdEnv({ sendgrid: "SG.test-key", clientUrl: "https://app.example.com" }, async () => {
+    await withProdEnv({ resend: "re_test-key", clientUrl: "https://app.example.com" }, async () => {
       const res = await request("POST", "/api/auth/request-password-reset", { email: ghost });
       assert.equal(res.status, 200);
       const body = await res.json();
