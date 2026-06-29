@@ -58,23 +58,43 @@ export function isVerificationEmailConfigured(): boolean {
 }
 
 /**
+ * True se è possibile inviare una richiesta di assistenza: serve Resend
+ * configurato E una casella di assistenza (SUPPORT_EMAIL) a cui recapitarla.
+ */
+export function isSupportEmailConfigured(): boolean {
+  return isEmailConfigured() && supportAddress().length > 0;
+}
+
+/**
  * Invia un'email tramite Resend. Centralizza la creazione del client e
  * l'aggiunta del Reply-To verso l'assistenza, così che ogni flusso resti
  * conciso. Lancia in caso di errore API (il chiamante gestisce/logga).
  */
-async function sendEmail(params: { to: string; subject: string; html: string }): Promise<void> {
+async function sendEmail(params: { to: string; subject: string; html: string; replyTo?: string }): Promise<void> {
   const resend = new Resend(apiKey());
-  const support = supportAddress();
+  // Default: le risposte vanno alla casella di assistenza. Un chiamante può
+  // sovrascrivere il Reply-To (es. richiesta di assistenza: rispondere all'utente).
+  const replyTo = params.replyTo ?? supportAddress();
   const { error } = await resend.emails.send({
     from: fromAddress(),
     to: params.to,
     subject: params.subject,
     html: params.html,
-    ...(support ? { replyTo: support } : {}),
+    ...(replyTo ? { replyTo } : {}),
   });
   if (error) {
     throw new Error(`Resend send failed: ${error.message ?? 'unknown error'}`);
   }
+}
+
+/** Escape minimale per inserire testo utente dentro l'HTML dell'email. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 export async function sendVerificationEmail(email: string, name: string, token: string) {
@@ -138,6 +158,49 @@ export async function sendFamilyInviteEmail(
       <p><a href="${link}">Accetta l'invito</a></p>
       <p>Il link è personale, monouso e scade tra 72 ore. Non condividerlo con nessuno.</p>
       <p>Se non ti aspettavi questo invito, ignora questa email.</p>
+    `,
+  });
+}
+
+/**
+ * Invia alla casella di assistenza una richiesta inviata da un utente dall'app.
+ * Il Reply-To è impostato sull'email dell'utente, così l'assistenza può
+ * rispondere direttamente con un semplice "Rispondi". Il chiamante deve aver già
+ * verificato `isSupportEmailConfigured()` (in produzione fallisce esplicitamente).
+ */
+export async function sendSupportRequestEmail(params: {
+  userName: string;
+  userEmail: string;
+  subject: string;
+  message: string;
+}) {
+  const support = supportAddress();
+
+  if (!isSupportEmailConfigured()) {
+    console.log(`[DEV] Richiesta assistenza da ${params.userEmail}: ${params.subject}`);
+    return;
+  }
+
+  const name = escapeHtml(params.userName);
+  const userEmail = escapeHtml(params.userEmail);
+  const subject = escapeHtml(params.subject);
+  const messageHtml = escapeHtml(params.message).replace(/\n/g, '<br/>');
+
+  // Rimuovi CR/LF dall'oggetto: hardening contro header-injection.
+  const safeSubject = params.subject.replace(/[\r\n]+/g, ' ').trim();
+
+  await sendEmail({
+    to: support,
+    replyTo: params.userEmail,
+    subject: `[Assistenza] ${safeSubject}`,
+    html: `
+      <h2>Nuova richiesta di assistenza</h2>
+      <p><strong>Da:</strong> ${name} &lt;${userEmail}&gt;</p>
+      <p><strong>Oggetto:</strong> ${subject}</p>
+      <hr/>
+      <p>${messageHtml}</p>
+      <hr/>
+      <p style="color:#888;font-size:12px;">Rispondi a questa email per contattare direttamente l'utente.</p>
     `,
   });
 }

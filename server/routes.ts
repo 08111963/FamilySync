@@ -22,6 +22,7 @@ import mealPlansRoutes from "./routes/meal-plans";
 import chatRoutes from "./routes/chat";
 import notificationsRoutes from "./routes/notifications";
 import billsRoutes from "./routes/bills";
+import supportRoutes from "./routes/support";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(helmet({
@@ -63,6 +64,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/chat', authenticate, requireEmailVerified, chatRoutes);
   app.use('/api/notifications', authenticate, requireEmailVerified, notificationsRoutes);
   app.use('/api/bills', authenticate, requireEmailVerified, billsRoutes);
+  app.use('/api/support', authenticate, requireEmailVerified, supportRoutes);
 
   app.use('/uploads', authenticateMedia, requireEmailVerified, express.static('uploads'));
 

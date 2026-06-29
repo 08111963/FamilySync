@@ -14,6 +14,11 @@ FamilySync invia email (inviti famiglia, verifica account, reset password) trami
 
 **Why**: il dominio `.eu` su Aruba ha solo DNS, NESSUN servizio di posta; la casella di assistenza vera vive sul dominio `.it`. Per questo il mittente è no-reply su `.eu` e le risposte vanno a `.it`.
 
+## Reply-To: default vs override
+`sendEmail()` accetta un `replyTo` opzionale. Default = `SUPPORT_EMAIL` (le risposte degli utenti arrivano all'assistenza). **Eccezione**: il modulo "Contatta assistenza" (`/api/support` → `sendSupportRequestEmail`) invia ALLA casella assistenza con `replyTo` = email dell'utente, così l'admin risponde all'utente con un semplice "Rispondi".
+
+**Why**: i due flussi hanno direzioni opposte (email→utente vs email→assistenza), quindi il Reply-To non può essere fisso. Input utente nell'HTML va sempre passato da `escapeHtml()` e l'oggetto ripulito da CR/LF.
+
 ## Verifica dominio Resend
 Il dominio `familysync.eu` è **verificato** su Resend (regione EU `eu-west-1`). Record DNS configurati su Aruba:
 - DKIM: `TXT resend._domainkey` (chiave lunga `p=MIGf...`)
