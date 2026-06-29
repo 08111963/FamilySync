@@ -2,11 +2,14 @@ import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
-import Constants from "expo-constants";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest } from "@/lib/query-client";
 
 export const PUSH_TOKEN_STORAGE_KEY = "@family_sync_push_token";
+
+const isExpoGo =
+  Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -40,6 +43,7 @@ export async function presentLocalNotification(
 async function registerForPush(): Promise<string | null> {
   try {
     if (Platform.OS === "web") return null;
+    if (isExpoGo) return null;
     if (!Device.isDevice) return null;
 
     if (Platform.OS === "android") {
