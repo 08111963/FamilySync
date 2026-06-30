@@ -12,7 +12,7 @@
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "family-sync-coordination.replit.app"
+        "EXPO_PUBLIC_DOMAIN": "familysync.eu"
       }
     },
     "production-apk": {
@@ -20,7 +20,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "family-sync-coordination.replit.app"
+        "EXPO_PUBLIC_DOMAIN": "familysync.eu"
       }
     }
   },
