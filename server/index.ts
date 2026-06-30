@@ -392,6 +392,8 @@ function setupErrorHandler(app: express.Application) {
       void ensureDemoAccount()
         .then((r) => {
           if (r.created) log(`demo account created (${r.email})`);
+          else if (r.skipped && r.reason === "missing_password")
+            log(`demo account skipped: set DEMO_ACCOUNT_PASSWORD to enable`);
         })
         .catch((err) => log(`demo account seed failed: ${String(err)}`));
     },

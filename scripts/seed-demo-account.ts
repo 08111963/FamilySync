@@ -5,12 +5,27 @@
  * DATABASE_URL. La logica vive in server/lib/demo-account.ts ed e la stessa
  * usata all'avvio del server (che pero crea solo se manca).
  *
+ * Richiede le variabili ambiente:
+ *   ENABLE_DEMO_ACCOUNT=true
+ *   DEMO_ACCOUNT_EMAIL=demo@familysync.eu   (opzionale, ha un default)
+ *   DEMO_ACCOUNT_PASSWORD=...               (secret, obbligatorio)
+ *
  * Avvio:  npx tsx scripts/seed-demo-account.ts
  */
 import { ensureDemoAccount, DEMO_EMAIL, DEMO_PASSWORD } from "../server/lib/demo-account";
 
 ensureDemoAccount({ reset: true })
-  .then(() => {
+  .then((r) => {
+    if (r.skipped) {
+      console.log("\nSeed demo SALTATO.");
+      if (r.reason === "disabled") {
+        console.log("Motivo: ENABLE_DEMO_ACCOUNT non e impostato a 'true'.");
+      } else if (r.reason === "missing_password") {
+        console.log("Motivo: il secret DEMO_ACCOUNT_PASSWORD non e impostato.");
+      }
+      console.log("Imposta le variabili ambiente e riprova.\n");
+      process.exit(0);
+    }
     console.log("\n========================================");
     console.log("  ACCOUNT DEMO PER I REVISORI - PRONTO");
     console.log("========================================");

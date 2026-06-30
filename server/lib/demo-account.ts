@@ -38,11 +38,18 @@ import {
   entitlements,
 } from "../../shared/schema";
 
-export const DEMO_EMAIL = "demo@familysync.eu";
-export const DEMO_PASSWORD = "FamilyDemo2026!";
+// Configurazione da variabili ambiente / secret: NESSUNA password hardcoded.
+// La creazione avviene SOLO se ENABLE_DEMO_ACCOUNT === "true" (vedi sotto).
+export const DEMO_ENABLED = process.env.ENABLE_DEMO_ACCOUNT === "true";
+export const DEMO_EMAIL = process.env.DEMO_ACCOUNT_EMAIL || "demo@familysync.eu";
+// La password vive in un secret: nessun valore di default nel codice.
+export const DEMO_PASSWORD = process.env.DEMO_ACCOUNT_PASSWORD || "";
 const DEMO_NAME = "Account Demo";
 
-const PARTNER_EMAIL = "demo.partner@familysync.eu";
+// Partner demo: solo dati dimostrativi (non un login per i revisori).
+// Email derivata da quella demo per restare coerente con il dominio.
+const [demoLocal, demoDomain] = DEMO_EMAIL.split("@");
+const PARTNER_EMAIL = `${demoLocal}.partner@${demoDomain || "familysync.eu"}`;
 const PARTNER_NAME = "Giulia (Demo)";
 
 // Marker deterministico: la pulizia cancella SOLO la famiglia con questo nome.
@@ -107,16 +114,27 @@ async function cleanup(tx: Tx): Promise<{ users: number; families: number }> {
 
 export interface EnsureDemoResult {
   created: boolean;
+  skipped: boolean;
+  reason?: "disabled" | "missing_password";
   email: string;
 }
 
 /**
  * Garantisce l'account demo. Con `reset: false` (default) crea solo se manca.
  * Con `reset: true` rigenera da zero. Idempotente, marker-scoped, in transazione.
+ *
+ * Crea l'account SOLO se `ENABLE_DEMO_ACCOUNT === "true"` e se la password
+ * (secret `DEMO_ACCOUNT_PASSWORD`) e impostata; altrimenti non tocca nulla.
  */
 export async function ensureDemoAccount(
   opts: { reset?: boolean } = {},
 ): Promise<EnsureDemoResult> {
+  if (!DEMO_ENABLED) {
+    return { created: false, skipped: true, reason: "disabled", email: DEMO_EMAIL };
+  }
+  if (!DEMO_PASSWORD) {
+    return { created: false, skipped: true, reason: "missing_password", email: DEMO_EMAIL };
+  }
   return db.transaction(async (tx): Promise<EnsureDemoResult> => {
     // Lock advisory transazionale: serializza chiamate concorrenti (deploy
     // multi-istanza / restart simultanei) evitando insert duplicati su email.
@@ -130,7 +148,7 @@ export async function ensureDemoAccount(
       .limit(1);
 
     if (present && !opts.reset) {
-      return { created: false, email: DEMO_EMAIL };
+      return { created: false, skipped: false, email: DEMO_EMAIL };
     }
 
     // Pulizia marker-scoped: rimuove eventuali residui demo (anche solo il
@@ -425,6 +443,6 @@ export async function ensureDemoAccount(
       actionData: { item: "Caffè" },
     });
 
-    return { created: true, email: DEMO_EMAIL };
+    return { created: true, skipped: false, email: DEMO_EMAIL };
   });
 }
