@@ -10,7 +10,7 @@
  * Le credenziali da consegnare ai revisori vengono stampate alla fine.
  */
 import bcrypt from "bcryptjs";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../server/db";
 import {
   users,
@@ -39,6 +39,13 @@ const DEMO_NAME = "Account Demo";
 const PARTNER_EMAIL = "demo.partner@familysync.eu";
 const PARTNER_NAME = "Giulia (Demo)";
 
+// Marker deterministico: il seed cancella SOLO la famiglia con questo nome.
+// Cosi un rerun non puo mai eliminare una famiglia reale a cui un utente demo
+// fosse stato aggiunto.
+const DEMO_FAMILY_NAME = "Famiglia Demo";
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 // --- Helper date ------------------------------------------------------------
 const iso = (d: Date): string => d.toISOString().slice(0, 10);
 const addDays = (n: number): Date => {
@@ -56,8 +63,8 @@ const mondayOfThisWeek = (): Date => {
   return d;
 };
 
-async function cleanup(): Promise<void> {
-  const existing = await db
+async function cleanup(tx: Tx): Promise<void> {
+  const existing = await tx
     .select({ id: users.id })
     .from(users)
     .where(inArray(users.email, [DEMO_EMAIL, PARTNER_EMAIL]));
@@ -65,30 +72,39 @@ async function cleanup(): Promise<void> {
   if (existing.length === 0) return;
 
   const userIds = existing.map((u) => u.id);
-  const memberships = await db
-    .select({ familyId: familyMembers.familyId })
-    .from(familyMembers)
-    .where(inArray(familyMembers.userId, userIds));
 
-  const familyIds = Array.from(new Set(memberships.map((m) => m.familyId)));
-  for (const fid of familyIds) {
-    // ON DELETE CASCADE rimuove membri, eventi, spesa, faccende, ricette,
-    // piani, bollette, chat, entitlement collegati alla famiglia.
-    await db.delete(families).where(eq(families.id, fid));
+  // Cancella SOLO la famiglia demo (riconosciuta dal nome marker) a cui gli
+  // utenti demo appartengono. Mai famiglie reali, anche se un demo user vi
+  // fosse stato aggiunto. ON DELETE CASCADE rimuove tutti i dati collegati.
+  const demoFamilies = await tx
+    .selectDistinct({ familyId: families.id })
+    .from(families)
+    .innerJoin(familyMembers, eq(familyMembers.familyId, families.id))
+    .where(
+      and(
+        eq(families.name, DEMO_FAMILY_NAME),
+        inArray(familyMembers.userId, userIds),
+      ),
+    );
+
+  const familyIds = demoFamilies.map((f) => f.familyId);
+  if (familyIds.length > 0) {
+    await tx.delete(families).where(inArray(families.id, familyIds));
   }
-  await db.delete(users).where(inArray(users.id, userIds));
-  console.log(`Pulizia: rimossi ${userIds.length} utenti demo e ${familyIds.length} famiglie.`);
+  // Gli utenti demo usano email riservate al seed: eliminarli e sicuro.
+  await tx.delete(users).where(inArray(users.id, userIds));
+  console.log(`Pulizia: rimossi ${userIds.length} utenti demo e ${familyIds.length} famiglie demo.`);
 }
 
-async function main(): Promise<void> {
-  await cleanup();
+async function seed(tx: Tx): Promise<void> {
+  await cleanup(tx);
 
   // 1) Utenti -------------------------------------------------------------
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
   const partnerHash = await bcrypt.hash(DEMO_PASSWORD, 10);
   const now = new Date();
 
-  const [demoUser] = await db
+  const [demoUser] = await tx
     .insert(users)
     .values({
       email: DEMO_EMAIL,
@@ -100,7 +116,7 @@ async function main(): Promise<void> {
     })
     .returning();
 
-  const [partnerUser] = await db
+  const [partnerUser] = await tx
     .insert(users)
     .values({
       email: PARTNER_EMAIL,
@@ -113,7 +129,7 @@ async function main(): Promise<void> {
     .returning();
 
   // 2) Famiglia + membri --------------------------------------------------
-  const [family] = await db
+  const [family] = await tx
     .insert(families)
     .values({
       name: "Famiglia Demo",
@@ -122,7 +138,7 @@ async function main(): Promise<void> {
     })
     .returning();
 
-  const [adminMember] = await db
+  const [adminMember] = await tx
     .insert(familyMembers)
     .values({
       familyId: family.id,
@@ -134,7 +150,7 @@ async function main(): Promise<void> {
     })
     .returning();
 
-  const [partnerMember] = await db
+  const [partnerMember] = await tx
     .insert(familyMembers)
     .values({
       familyId: family.id,
@@ -147,7 +163,7 @@ async function main(): Promise<void> {
     .returning();
 
   // 3) Premium attivo (fonte di verita: entitlements) ---------------------
-  await db.insert(entitlements).values({
+  await tx.insert(entitlements).values({
     familyId: family.id,
     userId: demoUser.id,
     platform: "revenuecat",
@@ -157,7 +173,7 @@ async function main(): Promise<void> {
   });
 
   // 4) Calendario ---------------------------------------------------------
-  await db.insert(calendarEvents).values([
+  await tx.insert(calendarEvents).values([
     {
       familyId: family.id,
       title: "Visita dal pediatra",
@@ -195,7 +211,7 @@ async function main(): Promise<void> {
   ]);
 
   // 5) Spesa --------------------------------------------------------------
-  const [list] = await db
+  const [list] = await tx
     .insert(shoppingLists)
     .values({
       familyId: family.id,
@@ -205,7 +221,7 @@ async function main(): Promise<void> {
     })
     .returning();
 
-  await db.insert(shoppingItems).values([
+  await tx.insert(shoppingItems).values([
     { listId: list.id, name: "Latte", quantity: "2", unit: "l", category: "food", createdBy: demoUser.id, position: 0 },
     { listId: list.id, name: "Pane", quantity: "1", unit: "kg", category: "food", createdBy: demoUser.id, position: 1 },
     { listId: list.id, name: "Mele", quantity: "6", unit: "pcs", category: "food", createdBy: partnerUser.id, position: 2 },
@@ -223,7 +239,7 @@ async function main(): Promise<void> {
   ]);
 
   // 6) Faccende -----------------------------------------------------------
-  await db.insert(chores).values([
+  await tx.insert(chores).values([
     {
       familyId: family.id,
       title: "Portare fuori la spazzatura",
@@ -259,7 +275,7 @@ async function main(): Promise<void> {
   ]);
 
   // 7) Ricette + ingredienti ---------------------------------------------
-  const [recipe] = await db
+  const [recipe] = await tx
     .insert(recipes)
     .values({
       familyId: family.id,
@@ -280,7 +296,7 @@ async function main(): Promise<void> {
     })
     .returning();
 
-  await db.insert(recipeIngredients).values([
+  await tx.insert(recipeIngredients).values([
     { recipeId: recipe.id, name: "Pasta", quantity: "320", unit: "g", normalizedName: "pasta", category: "food" },
     { recipeId: recipe.id, name: "Passata di pomodoro", quantity: "400", unit: "ml", normalizedName: "passata di pomodoro", category: "food" },
     { recipeId: recipe.id, name: "Basilico", unit: "to_taste", normalizedName: "basilico", category: "food" },
@@ -289,7 +305,7 @@ async function main(): Promise<void> {
 
   // 8) Piano pasti --------------------------------------------------------
   const weekStart = mondayOfThisWeek();
-  const [plan] = await db
+  const [plan] = await tx
     .insert(mealPlans)
     .values({
       familyId: family.id,
@@ -300,7 +316,7 @@ async function main(): Promise<void> {
     })
     .returning();
 
-  await db.insert(mealPlanItems).values([
+  await tx.insert(mealPlanItems).values([
     {
       mealPlanId: plan.id,
       date: iso(weekStart),
@@ -325,7 +341,7 @@ async function main(): Promise<void> {
   ]);
 
   // 9) Bollette + ripartizione -------------------------------------------
-  const [billLuce] = await db
+  const [billLuce] = await tx
     .insert(bills)
     .values({
       familyId: family.id,
@@ -343,12 +359,12 @@ async function main(): Promise<void> {
     })
     .returning();
 
-  await db.insert(billSplits).values([
+  await tx.insert(billSplits).values([
     { billId: billLuce.id, memberId: adminMember.id, amount: "42.25" },
     { billId: billLuce.id, memberId: partnerMember.id, amount: "42.25" },
   ]);
 
-  await db.insert(bills).values({
+  await tx.insert(bills).values({
     familyId: family.id,
     title: "Abbonamento internet - Maggio",
     provider: "TIM",
@@ -363,7 +379,7 @@ async function main(): Promise<void> {
   });
 
   // 10) Chat --------------------------------------------------------------
-  await db.insert(chatMessages).values([
+  await tx.insert(chatMessages).values([
     {
       familyId: family.id,
       userId: partnerUser.id,
@@ -381,7 +397,7 @@ async function main(): Promise<void> {
   ]);
 
   // 11) Suggerimento AI (cosi la sezione AI mostra contenuti) -------------
-  await db.insert(aiInsights).values({
+  await tx.insert(aiInsights).values({
     familyId: family.id,
     type: "shopping_suggestion",
     title: "Potrebbe servirti: caffè",
@@ -409,7 +425,9 @@ function addDaysFrom(base: Date, n: number): Date {
   return d;
 }
 
-main()
+// Tutto il seed gira in una singola transazione: in caso di errore a meta,
+// rollback completo (niente stati parziali o famiglie orfane).
+db.transaction(seed)
   .then(() => process.exit(0))
   .catch((err) => {
     console.error("Errore durante il seed dell'account demo:", err);
