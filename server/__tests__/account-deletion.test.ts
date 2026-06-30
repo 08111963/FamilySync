@@ -496,4 +496,28 @@ describe("cancellazione account (DB + HTTP)", { skip: hasDb ? false : "DATABASE_
       assert.deepEqual(matches, [], `${label} non deve contenere altre email familysync: ${matches}`);
     }
   });
+
+  test("Privacy web (/legal/privacy): pagina raggiungibile con contenuti chiave", async () => {
+    const res = await request("GET", "/legal/privacy");
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    for (const term of ["Pagamenti e Abbonamenti Premium", "RevenueCat", "Resend", "Conservazione dei Dati"]) {
+      assert.ok(html.includes(term), `la Privacy web deve contenere: "${term}"`);
+    }
+  });
+
+  test("Pagina pubblica /legal/delete-account: raggiungibile (no auth) con istruzioni chiave", async () => {
+    const res = await request("GET", "/legal/delete-account");
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    for (const term of [
+      "Come eliminare il tuo account",
+      "Elimina account",
+      "definitiva e irreversibile",
+      "assistenza@familysync.it",
+      "Abbonamenti Premium",
+    ]) {
+      assert.ok(html.includes(term), `la pagina delete-account deve contenere: "${term}"`);
+    }
+  });
 });
