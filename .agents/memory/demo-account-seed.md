@@ -19,6 +19,11 @@ Script: `scripts/seed-demo-account.ts`, eseguibile con `npx tsx scripts/seed-dem
 - Non c'e write diretto al DB di prod dagli strumenti (executeSql prod = solo SELECT). La via supportata: far girare il seeding nell'ambiente di produzione **all'avvio**.
   **How to apply:** `ensureDemoAccount()` (server/lib/demo-account.ts, modalita crea-se-manca) e chiamata in server/index.ts accanto a `seedOwnerEntitlements`. Entra in prod solo dopo un **nuovo Publish**; un cambio di codice non basta finche non si rideploya.
 
+## Credenziali via env/secret, mai hardcoded (decisione di sicurezza)
+- L'account demo e gated da `ENABLE_DEMO_ACCOUNT === "true"` (env shared); email da `DEMO_ACCOUNT_EMAIL` (env shared, default demo@familysync.eu); password dal secret `DEMO_ACCOUNT_PASSWORD`. Nessuna password nel codice.
+  **Why:** una password hardcoded permanente nel repo e una superficie di leak; i revisori store richiedono credenziali demo gestite come secret.
+  **How to apply:** `ensureDemoAccount` fa fail-closed (ritorna skipped) se la flag non e "true" o se la password manca; lo script CLI non stampa mai la password. Il partner demo ha email derivata da quella demo.
+
 ## Idempotenza sicura (lezione dalla code review)
 - Il cleanup cancella SOLO la famiglia con nome marker `DEMO_FAMILY_NAME` ("Famiglia Demo") a cui appartengono gli utenti demo, mai tutte le famiglie dei demo user.
   **Why:** una cleanup che cancella ogni famiglia contenente un demo user puo distruggere dati reali via ON DELETE CASCADE se l'account demo venisse aggiunto a una famiglia vera.

@@ -12,7 +12,7 @@
  *
  * Avvio:  npx tsx scripts/seed-demo-account.ts
  */
-import { ensureDemoAccount, DEMO_EMAIL, DEMO_PASSWORD } from "../server/lib/demo-account";
+import { ensureDemoAccount, DEMO_EMAIL } from "../server/lib/demo-account";
 
 ensureDemoAccount({ reset: true })
   .then((r) => {
@@ -30,7 +30,7 @@ ensureDemoAccount({ reset: true })
     console.log("  ACCOUNT DEMO PER I REVISORI - PRONTO");
     console.log("========================================");
     console.log(`  Email:    ${DEMO_EMAIL}`);
-    console.log(`  Password: ${DEMO_PASSWORD}`);
+    console.log(`  Password: (nel secret DEMO_ACCOUNT_PASSWORD)`);
     console.log("----------------------------------------");
     console.log("  Email verificata: SI");
     console.log("  Premium: ATTIVO (tutte le funzioni)");
