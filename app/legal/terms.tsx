@@ -131,7 +131,6 @@ export default function TermsScreen() {
           <Bullet colors={colors}>Gli abbonamenti su mobile sono gestiti tramite gli store ufficiali, Apple App Store (StoreKit) su iOS e Google Play Billing su Android, con il supporto tecnico di RevenueCat</Bullet>
           <Bullet colors={colors}>Addebito, rinnovo automatico e cancellazione avvengono tramite l'account dello store; la disinstallazione dell'app non annulla l'abbonamento</Bullet>
           <Bullet colors={colors}>I rimborsi sono soggetti alle politiche dello store (Apple o Google)</Bullet>
-          <Bullet colors={colors}>Stripe NON viene utilizzato per attivare o gestire il Premium sulle app mobili</Bullet>
           <Bullet colors={colors}>Alcune funzionalità Premium possono essere disponibili solo dopo l'attivazione del servizio di abbonamento</Bullet>
         </Section>
 

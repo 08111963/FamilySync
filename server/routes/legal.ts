@@ -368,7 +368,6 @@ router.get('/terms', (_req: Request, res: Response) => {
       <li><strong>Acquisti su mobile:</strong> gli abbonamenti Premium sulle app mobili vengono gestiti tramite i sistemi di pagamento degli store ufficiali, ovvero <strong>Apple App Store (StoreKit)</strong> su iOS e <strong>Google Play Billing</strong> su Android, con il supporto tecnico del fornitore <strong>RevenueCat</strong> per la gestione degli abbonamenti</li>
       <li>L'addebito, il rinnovo automatico e la gestione o cancellazione dell'abbonamento avvengono tramite l'account dello store (Apple o Google). Per disdire occorre agire nelle impostazioni del proprio account store; la disinstallazione dell'app non annulla l'abbonamento</li>
       <li>I rimborsi sono soggetti alle politiche dello store di riferimento (Apple o Google)</li>
-      <li><strong>Stripe NON viene utilizzato</strong> per attivare o gestire il Premium sulle app mobili: eventuali pagamenti tramite Stripe non sbloccano le funzionalità Premium dell'app mobile</li>
       <li>Alcune funzionalità Premium possono essere disponibili solo dopo l'attivazione del servizio di abbonamento</li>
     </ul>
 
