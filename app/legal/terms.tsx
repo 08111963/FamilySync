@@ -79,7 +79,7 @@ export default function TermsScreen() {
         <Section title="7. Chat e Allegati" colors={colors}>
           <Bullet colors={colors}>I messaggi e gli allegati della chat sono visibili a tutti i membri del gruppo familiare</Bullet>
           <Bullet colors={colors}>L'utente è responsabile dei contenuti che invia e non deve caricare materiale illegale o in violazione di diritti altrui</Bullet>
-          <Bullet colors={colors}>Sono ammessi solo i tipi di file consentiti dall'app, ovvero immagini (JPG, PNG, GIF, WEBP), PDF e documenti Word (DOC, DOCX), entro un limite massimo per file</Bullet>
+          <Bullet colors={colors}>Sono ammessi solo i tipi di file consentiti dall'app, in particolare immagini e PDF, entro i limiti di dimensione previsti</Bullet>
           <Bullet colors={colors}>I messaggi degli utenti bloccati non vengono mostrati al membro che ha effettuato il blocco</Bullet>
           <Bullet colors={colors}>Se l'utente è l'unico membro di una famiglia e la famiglia viene eliminata, vengono rimossi anche gli allegati fisici collegati, come immagini della chat, documenti delle bollette e avatar. Se invece la famiglia continua a esistere con altri membri, i contenuti e gli allegati già condivisi possono restare disponibili agli altri membri in forma associata a "Utente eliminato"</Bullet>
         </Section>

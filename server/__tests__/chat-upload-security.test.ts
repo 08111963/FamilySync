@@ -27,12 +27,6 @@ const VALID_SIGNATURES: Record<string, Buffer> = {
     Buffer.from("WEBP", "latin1"),
   ]),
   "application/pdf": Buffer.from("%PDF-1.7\n", "latin1"),
-  // .doc = OLE compound file
-  "application/msword": Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
-  // .docx = ZIP container "PK\x03\x04"
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": Buffer.from([
-    0x50, 0x4b, 0x03, 0x04,
-  ]),
 };
 
 describe("Caso 1 — upload con nome file spoofato", () => {
@@ -79,23 +73,18 @@ describe("Caso 2 — upload con MIME non consentito", () => {
     }
   });
 
-  test("doc/docx sono consentiti; txt resta disabilitato", () => {
-    // I documenti Word (.doc/.docx) sono ora consentiti: la firma del container
-    // (OLE per .doc, ZIP per .docx) viene verificata. text/plain resta bloccato
-    // perche' non ha alcuna firma da controllare.
-    assert.equal(isAllowedUploadMime("application/msword"), true);
-    assert.equal(resolveUploadExtension("application/msword"), ".doc");
-    assert.equal(
-      isAllowedUploadMime("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-      true
-    );
-    assert.equal(
-      resolveUploadExtension("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-      ".docx"
-    );
-
-    assert.equal(isAllowedUploadMime("text/plain"), false, "text/plain deve restare disabilitato");
-    assert.equal(resolveUploadExtension("text/plain"), "", "text/plain non deve produrre estensione");
+  test("doc/docx/txt sono disabilitati: non sono nella allowlist", () => {
+    // Disabilitati temporaneamente: il controllo magic bytes non garantisce
+    // abbastanza per questi tipi, quindi non sono piu' consentiti all'upload.
+    const disabled = [
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain",
+    ];
+    for (const mime of disabled) {
+      assert.equal(isAllowedUploadMime(mime), false, `${mime} deve essere disabilitato`);
+      assert.equal(resolveUploadExtension(mime), "", `${mime} non deve produrre estensione`);
+    }
   });
 
   test("MIME spoofato (nome .pdf ma tipo non consentito) viene respinto in base al MIME", () => {
@@ -171,31 +160,19 @@ describe("Caso 4 — MIME spoofato verificato sui magic bytes", () => {
     assert.equal(verifyMagicBytes(Buffer.alloc(0), "application/pdf"), false);
   });
 
-  test("doc/docx con contenuto non valido vengono respinti dalla verifica firma", () => {
-    // Ora doc/docx sono in MAGIC_VERIFIED_MIMES: un contenuto che non corrisponde
-    // alla firma del container (OLE per .doc, ZIP per .docx) viene respinto.
+  test("verifyMagicBytes non copre doc/docx/txt, ma sono comunque bloccati dalla allowlist", () => {
+    // verifyMagicBytes lascia passare i MIME non in MAGIC_VERIFIED_MIMES (non ha
+    // una firma da controllare). Per doc/docx/txt questo ramo e' ormai
+    // irraggiungibile: il fileFilter (isAllowedUploadMime) li respinge prima.
     const anything = Buffer.from("contenuto qualsiasi", "utf8");
-    assert.equal(verifyMagicBytes(anything, "application/msword"), false);
-    assert.equal(
-      verifyMagicBytes(anything, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-      false
-    );
-    // Un .doc spacciato come .docx (firma OLE su MIME zip) viene respinto.
-    assert.equal(
-      verifyMagicBytes(
-        VALID_SIGNATURES["application/msword"],
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      ),
-      false
-    );
-  });
-
-  test("text/plain resta scoperto da verifyMagicBytes ma bloccato dalla allowlist", () => {
-    // text/plain non ha firma: verifyMagicBytes lo lascia passare, ma il
-    // fileFilter (isAllowedUploadMime) lo respinge prima dell'upload.
-    const anything = Buffer.from("contenuto qualsiasi", "utf8");
-    assert.equal(verifyMagicBytes(anything, "text/plain"), true);
-    assert.equal(isAllowedUploadMime("text/plain"), false);
+    for (const mime of [
+      "text/plain",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]) {
+      assert.equal(verifyMagicBytes(anything, mime), true);
+      assert.equal(isAllowedUploadMime(mime), false, `${mime} non deve superare la allowlist`);
+    }
   });
 
   test("simulazione handler: file spoofato viene cancellato dal disco e non genera record", () => {

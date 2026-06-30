@@ -447,11 +447,14 @@ describe("cancellazione account (DB + HTTP)", { skip: hasDb ? false : "DATABASE_
       "non intermedia alcun pagamento",
       "promemoria e le notifiche hanno funzione di supporto",
       "Chat e Allegati",
-      "PDF e documenti Word (DOC, DOCX)",
+      "in particolare immagini e PDF",
+      "Bollette e Scadenze",
       "Intelligenza Artificiale",
       "consulenza medica, nutrizionale, legale o finanziaria",
       "Minori",
       "almeno 14 anni",
+      "Sospensione e Chiusura Account",
+      "Contatti",
       "Free",
       "Premium",
       "RevenueCat",
@@ -479,11 +482,14 @@ describe("cancellazione account (DB + HTTP)", { skip: hasDb ? false : "DATABASE_
       "non intermedia alcun pagamento",
       "promemoria e le notifiche hanno funzione di supporto",
       "Chat e Allegati",
-      "PDF e documenti Word (DOC, DOCX)",
+      "in particolare immagini e PDF",
+      "Gestione Bollette e Scadenze",
       "Intelligenza Artificiale",
       "consulenza medica, nutrizionale, legale o finanziaria",
       "4. Minori",
       "almeno 14 anni",
+      "Piani Free e Premium",
+      "Contatti",
       "RevenueCat",
       "StoreKit",
       "Google Play Billing",
@@ -495,6 +501,28 @@ describe("cancellazione account (DB + HTTP)", { skip: hasDb ? false : "DATABASE_
     ];
     for (const term of required) {
       assert.ok(native.includes(term), `i Termini native devono contenere: "${term}"`);
+    }
+  });
+
+  test("Termini: nessun formato DOC/DOCX/TXT promesso (upload approvato = immagini + PDF)", async () => {
+    const html = await (await request("GET", "/legal/terms")).text();
+    const native = await fs.readFile(path.resolve("app/legal/terms.tsx"), "utf8");
+    for (const [label, doc] of [["terms web", html], ["terms native", native]] as const) {
+      assert.ok(!/DOCX/i.test(doc), `${label} non deve menzionare DOCX`);
+      assert.ok(!/documenti Word/i.test(doc), `${label} non deve promettere documenti Word`);
+      assert.ok(!/\.docx?\b/i.test(doc), `${label} non deve elencare .doc/.docx`);
+    }
+  });
+
+  test("Codice upload chat (server/routes/chat.ts): allowlist = solo immagini + PDF", async () => {
+    const chat = await fs.readFile(path.resolve("server/routes/chat.ts"), "utf8");
+    assert.ok(!chat.includes('"application/msword": '), "chat.ts non deve ammettere application/msword");
+    assert.ok(
+      !chat.includes('"application/vnd.openxmlformats-officedocument.wordprocessingml.document": '),
+      "chat.ts non deve ammettere DOCX",
+    );
+    for (const allowed of ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"]) {
+      assert.ok(chat.includes(`"${allowed}"`), `chat.ts deve ammettere ${allowed}`);
     }
   });
 

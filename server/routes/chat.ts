@@ -93,8 +93,6 @@ export const MIME_EXTENSIONS: Record<string, string> = {
   "image/gif": ".gif",
   "image/webp": ".webp",
   "application/pdf": ".pdf",
-  "application/msword": ".doc",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
 };
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -136,20 +134,20 @@ export const MAGIC_VERIFIED_MIMES = new Set<string>([
   "image/gif",
   "image/webp",
   "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
 
-// WORD DOCUMENTS: we verify the container signature, with the documented caveat
-// that these signatures are NOT specific to Word:
-// - .docx is a ZIP container (signature "PK\x03\x04"), shared with every other
-//   zip-based format (xlsx, pptx, plain .zip, ...). We confirm it is a valid zip
-//   container but cannot prove the inner content is a Word document.
-// - .doc is an OLE compound file ("D0 CF 11 E0 A1 B1 1A E1"), shared with legacy
-//   xls/ppt. We confirm the OLE signature but not that it is specifically a Word
-//   file.
-// text/plain (.txt) is still intentionally NOT allowed because it has no
-// signature at all (any byte sequence is valid text).
+// DISABLED TYPES: application/msword (.doc),
+// application/vnd.openxmlformats-officedocument.wordprocessingml.document (.docx)
+// and text/plain (.txt) are intentionally NOT in the allowlist (MIME_EXTENSIONS)
+// because their content cannot be verified reliably via magic bytes:
+// - .docx is a ZIP container (signature "PK\x03\x04") shared with every other
+//   zip-based format, so the signature alone cannot confirm it is a Word file.
+// - .doc is an OLE compound file ("D0 CF 11 E0 A1 B1 1A E1") shared with legacy
+//   xls/ppt, so again the signature is not specific.
+// - text/plain has no signature at all (any byte sequence is valid text).
+// To re-enable them in the future, add the MIME(s) back to MIME_EXTENSIONS. They
+// would be accepted on the declared MIME only (no magic-byte guarantee), unless a
+// deeper structural validation is added first.
 
 // Verifies that the leading bytes of a file match the signature expected for the
 // declared MIME. Returns true for types not in MAGIC_VERIFIED_MIMES (see the
@@ -188,22 +186,6 @@ export function verifyMagicBytes(buffer: Buffer, mimetype: string): boolean {
       return (
         buffer.length >= 5 &&
         buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46 && buffer[4] === 0x2d
-      );
-    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-      // .docx is a ZIP container: "PK" 03 04 (also 05 06 / 07 08 for empty/spanned)
-      return (
-        buffer.length >= 4 &&
-        buffer[0] === 0x50 && buffer[1] === 0x4b &&
-        ((buffer[2] === 0x03 && buffer[3] === 0x04) ||
-          (buffer[2] === 0x05 && buffer[3] === 0x06) ||
-          (buffer[2] === 0x07 && buffer[3] === 0x08))
-      );
-    case "application/msword":
-      // .doc is an OLE compound file: D0 CF 11 E0 A1 B1 1A E1
-      return (
-        buffer.length >= 8 &&
-        buffer[0] === 0xd0 && buffer[1] === 0xcf && buffer[2] === 0x11 && buffer[3] === 0xe0 &&
-        buffer[4] === 0xa1 && buffer[5] === 0xb1 && buffer[6] === 0x1a && buffer[7] === 0xe1
       );
     default:
       return false;

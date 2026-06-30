@@ -1,0 +1,95 @@
+Ho revisionato `termini-uso-revisione.zip`.
+
+Stiamo lavorando solo sui Termini d’Uso.
+
+Non approvo ancora lo ZIP perché contiene modifiche fuori perimetro e una possibile regressione sulla sicurezza upload.
+
+Correggi questi punti:
+
+1. Non modificare codice funzionale fuori dai Termini
+
+Per questa fase devono essere modificati solo:
+
+* `server/routes/legal.ts`, limitatamente alla route dei Termini d’Uso;
+* `app/legal/terms.tsx`;
+* eventuali test specifici dei Termini d’Uso.
+
+Non modificare:
+
+* `server/routes/chat.ts`;
+* `server/middleware/ai-guard.ts`;
+* altri middleware o funzionalità applicative.
+
+Se questi file sono stati inclusi nello ZIP solo per errore, escludili dal prossimo pacchetto. Se invece li hai modificati, reverti quelle modifiche.
+
+2. Upload allegati: rimuovere DOC/DOCX
+
+Nel file `server/routes/chat.ts` ora risultano ammessi DOC e DOCX.
+
+Questo non va bene in questa fase.
+
+Il modulo upload/chat era stato approvato con file più restrittivi:
+
+* immagini JPG/JPEG;
+* PNG;
+* GIF;
+* WEBP;
+* PDF.
+
+Non aggiungere DOC/DOCX/TXT o altri formati.
+
+Quindi:
+
+* reverti le modifiche a `server/routes/chat.ts`;
+* togli dai Termini la frase “documenti Word (DOC, DOCX)”;
+* togli dai test l’aspettativa “PDF e documenti Word (DOC, DOCX)”.
+
+Nei Termini usa una formulazione prudente:
+
+“Sono ammessi solo i tipi di file consentiti dall’app, in particolare immagini e PDF, entro i limiti di dimensione previsti.”
+
+3. AI
+
+Non modificare `server/middleware/ai-guard.ts` in questa fase.
+
+Nei Termini puoi mantenere una formula prudente:
+
+“Le funzionalità AI sono disponibili secondo le impostazioni dell’app e nei limiti previsti dal piano Free o Premium.”
+
+Se esiste già un interruttore AI nel codice, puoi citare l’attivazione/disattivazione. Se non esiste, non promettere un toggle dedicato.
+
+4. Test Termini
+
+Aggiorna i test dei Termini in modo che verifichino:
+
+* route `/legal/terms` raggiungibile;
+* schermata nativa `app/legal/terms.tsx` aggiornata;
+* email unica `assistenza@familysync.it`;
+* presenza sezioni:
+
+  * Minori;
+  * Chat e allegati;
+  * Bollette e scadenze;
+  * AI;
+  * Free e Premium;
+  * Cancellazione account;
+  * Legge applicabile e foro;
+  * Contatti;
+* assenza di DOC/DOCX tra i formati ammessi se il codice upload approvato resta immagini + PDF.
+
+5. Prossimo ZIP
+
+Prepara un nuovo ZIP contenente solo:
+
+* `server/routes/legal.ts`;
+* `app/legal/terms.tsx`;
+* test specifici aggiornati dei Termini.
+
+Nel riepilogo indica:
+
+* file modificati;
+* conferma che `chat.ts` non è stato modificato;
+* conferma che `ai-guard.ts` non è stato modificato;
+* conferma che DOC/DOCX non sono stati aggiunti agli upload;
+* test eseguiti;
+* typecheck.
