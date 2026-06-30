@@ -13,3 +13,4 @@
 - [Secure invite flow](secure-invite-flow.md) — invito famiglia via email-link: solo tokenHash nel DB, consumo monouso in transazione (claim+membership), rate limiter dedicato, prod email 503/502+rollback, EMAIL_MISMATCH.
 - [Bills split validation parity](bills-split-validation.md) — la validazione numerica FE deve usare la stessa formula grezza del BE (no arrotondamento prima del confronto) e intercettare i codici errore reali del BE.
 - [Dev->Prod data migration](db-dev-prod-migration.md) — dev & prod DBs are SEPARATE; publish copies schema not data; only write path to prod is a token-gated app endpoint.
+- [Email sender config](email-sender-config.md) — EMAIL_FROM stays noreply@familysync.eu (verified Resend domain); assistenza@familysync.it is Reply-To/contact only until familysync.it is verified.
