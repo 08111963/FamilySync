@@ -1,0 +1,166 @@
+Adesso lavoriamo solo sui Termini d’Uso di FamilySync.
+
+Non modificare altri documenti legali o altre sezioni non richieste.
+
+Testo base dei Termini d’Uso da aggiornare/verificare: quello attuale già presente nell’app.
+
+Obiettivo:
+rendere i Termini d’Uso coerenti con il codice reale e pronti per pubblicazione su store.
+
+Controlla prima il codice reale e poi aggiorna solo i file relativi ai Termini d’Uso, ad esempio:
+
+* route web pubblica dei Termini;
+* schermata nativa dei Termini dentro l’app;
+* eventuali test dedicati ai Termini.
+
+Verifiche e correzioni richieste:
+
+1. Coerenza con funzioni reali
+   Controlla che i Termini descrivano solo funzioni realmente presenti o previste nel codice:
+
+* calendario;
+* liste spesa;
+* faccende domestiche;
+* chat;
+* allegati;
+* bollette e scadenze;
+* ricette e piani pasti;
+* AI;
+* Free/Premium;
+* segnalazione/blocco utenti;
+* cancellazione account.
+
+Se una funzione non è presente o non è ancora attiva, usa una formulazione prudente tipo “ove disponibile” o “quando attiva”.
+
+2. AI
+   Verifica se esiste davvero un consenso/toggle AI nel codice.
+
+Se esiste, puoi mantenere il concetto:
+“funzionalità AI attivate previo consenso”.
+
+Se non esiste un consenso esplicito, modifica la frase in modo più corretto:
+“Le funzionalità AI sono disponibili secondo le impostazioni dell’app e i limiti previsti dal piano Free o Premium.”
+
+Mantieni anche:
+
+* i suggerimenti AI possono essere imprecisi;
+* non sono consulenza medica, nutrizionale, legale o finanziaria;
+* l’utente deve verificarli prima di usarli;
+* l’uso AI può essere soggetto a quote Free/Premium.
+
+3. Chat e allegati
+   Verifica i tipi file realmente ammessi.
+
+Se il codice permette solo immagini e PDF, scrivi:
+“Sono ammessi solo i tipi di file consentiti dall’app, ad esempio immagini e PDF.”
+
+Evita di promettere genericamente “documenti” se DOC, DOCX, TXT o altri formati non sono accettati.
+
+Mantieni la distinzione:
+
+* se l’utente è unico membro e la famiglia viene eliminata, vengono rimossi anche gli allegati fisici collegati;
+* se la famiglia resta attiva con altri membri, contenuti e allegati già condivisi possono restare disponibili in forma associata a “Utente eliminato”.
+
+4. Bollette e scadenze
+   Mantieni chiaramente:
+
+* FamilySync non effettua pagamenti reali;
+* non salva carte di credito;
+* non salva CVV;
+* non salva IBAN;
+* non intermedia pagamenti verso fornitori o terzi;
+* l’utente resta responsabile del pagamento effettivo.
+
+Aggiungi anche:
+“I promemoria e le notifiche hanno funzione di supporto e potrebbero non essere sempre ricevuti, ad esempio per impostazioni del dispositivo, assenza di rete, limitazioni del sistema operativo o disattivazione delle notifiche.”
+
+5. Segnalazione, blocco e moderazione
+   Verifica che il codice abbia davvero:
+
+* segnalazione contenuti;
+* segnalazione utenti;
+* blocco utenti;
+* sblocco utenti;
+* gestione segnalazioni;
+* contatto [assistenza@familysync.it](mailto:assistenza@familysync.it).
+
+Se alcune funzioni non sono ancora implementate, segnalarlo chiaramente e non prometterle nei Termini.
+
+6. Free e Premium
+   La sezione deve restare coerente con la strategia mobile:
+
+* piano Free;
+* piano Premium;
+* RevenueCat per gestione entitlement/stato abbonamento;
+* Apple In-App Purchase / StoreKit su iOS;
+* Google Play Billing su Android;
+* Stripe non usato per attivare o gestire il Premium mobile;
+* cancellazione e rimborsi gestiti secondo le regole dello store Apple o Google;
+* la disinstallazione dell’app non annulla l’abbonamento.
+
+Se il Premium non è ancora attivo in produzione, aggiungi una frase prudente:
+“Alcune funzionalità Premium possono essere disponibili solo dopo l’attivazione del servizio di abbonamento.”
+
+7. Cancellazione account
+   Verifica che il testo sia coerente con la funzione implementata:
+
+* eliminazione dall’app;
+* eliminazione possibile anche con email non verificata;
+* anonimizzazione profilo;
+* gestione contenuti condivisi;
+* cancellazione famiglia se l’utente è unico membro;
+* abbonamento Premium da annullare separatamente tramite store Apple o Google.
+
+8. Minori
+   Aggiungi una sezione autonoma “Minori”:
+
+* per creare un account occorre avere almeno 14 anni;
+* i minori di 14 anni possono usare l’app solo sotto supervisione/consenso di genitore o tutore;
+* l’app è pensata per il coordinamento familiare e non come servizio autonomo destinato principalmente ai bambini.
+
+9. Lingua e forma
+   Sistema accenti e apostrofi nel testo italiano:
+
+* è
+* attività
+* possibilità
+* stabilità
+* responsabilità
+* proprietà
+* così com’è
+* già
+
+Mantieni un linguaggio chiaro, semplice e non troppo legale.
+
+10. Email e contatti
+    Usare solo:
+    [assistenza@familysync.it](mailto:assistenza@familysync.it)
+
+11. Data
+    Aggiorna la data dell’ultima modifica alla data attuale usata nel progetto.
+
+12. Test
+    Aggiungi o aggiorna test che verifichino:
+
+* route pubblica dei Termini raggiungibile;
+* schermata nativa dei Termini aggiornata;
+* presenza email [assistenza@familysync.it](mailto:assistenza@familysync.it);
+* assenza di email diverse;
+* presenza sezioni chiave:
+
+  * Chat e allegati;
+  * Bollette e scadenze;
+  * AI;
+  * Free e Premium;
+  * Cancellazione account;
+  * Minori;
+  * Legge applicabile e foro;
+* nessuna promessa non coerente con il codice reale.
+
+Al termine prepara uno ZIP di revisione e indica:
+
+* file modificati;
+* modifiche principali;
+* funzioni trovate nel codice e coperte dai Termini;
+* eventuali funzioni promesse dai Termini ma non presenti nel codice;
+* test eseguiti e risultato typecheck.

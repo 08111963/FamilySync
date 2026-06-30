@@ -78,3 +78,9 @@ id = "vd5_UxdB-DFMwlDV8aZj7"
 uri = "file://dist/elimina-account.zip"
 type = "unspecified"
 title = "FamilySync — Elimina account (Privacy aggiornata)"
+
+[[outputs]]
+id = "_OqDLjL_-ddj30NVw3hd_"
+uri = "file://dist/termini-uso-revisione.zip"
+type = "unspecified"
+title = "FamilySync — Termini d'Uso (revisione pre-store)"

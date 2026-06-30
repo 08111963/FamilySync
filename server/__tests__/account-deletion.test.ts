@@ -436,24 +436,32 @@ describe("cancellazione account (DB + HTTP)", { skip: hasDb ? false : "DATABASE_
 
   // --- coerenza documenti legali ----------------------------------------------
 
-  test("Termini web (/legal/terms): clausole obbligatorie e data 29 giugno 2026", async () => {
+  test("Termini web (/legal/terms): clausole obbligatorie e data 30 giugno 2026", async () => {
     const res = await request("GET", "/legal/terms");
     assert.equal(res.status, 200);
     const html = await res.text();
     const required = [
-      "29 giugno 2026",
+      "30 giugno 2026",
       "NON elabora pagamenti reali",
       "IBAN",
+      "non intermedia alcun pagamento",
+      "promemoria e le notifiche hanno funzione di supporto",
       "Chat e Allegati",
+      "PDF e documenti Word (DOC, DOCX)",
       "Intelligenza Artificiale",
+      "consulenza medica, nutrizionale, legale o finanziaria",
+      "Minori",
+      "almeno 14 anni",
       "Free",
       "Premium",
       "RevenueCat",
       "StoreKit",
       "Google Play Billing",
       "Stripe NON viene utilizzato",
+      "Alcune funzionalità Premium possono essere disponibili solo dopo l'attivazione",
       "Licenza limitata sui contenuti",
       "limiti consentiti dalla legge",
+      "Legge Applicabile e Foro Competente",
       "Elimina account",
       "Marino Pizzuti / FamilySync",
     ];
@@ -465,16 +473,24 @@ describe("cancellazione account (DB + HTTP)", { skip: hasDb ? false : "DATABASE_
   test("Termini native (app/legal/terms.tsx): allineati con la data e le clausole chiave", async () => {
     const native = await fs.readFile(path.resolve("app/legal/terms.tsx"), "utf8");
     const required = [
-      "29 giugno 2026",
+      "30 giugno 2026",
       "NON elabora pagamenti reali",
       "IBAN",
+      "non intermedia alcun pagamento",
+      "promemoria e le notifiche hanno funzione di supporto",
       "Chat e Allegati",
+      "PDF e documenti Word (DOC, DOCX)",
       "Intelligenza Artificiale",
+      "consulenza medica, nutrizionale, legale o finanziaria",
+      "4. Minori",
+      "almeno 14 anni",
       "RevenueCat",
       "StoreKit",
       "Google Play Billing",
       "Stripe NON viene utilizzato",
+      "Alcune funzionalità Premium possono essere disponibili solo dopo l'attivazione",
       "Licenza limitata sui contenuti",
+      "Legge Applicabile e Foro Competente",
       "Marino Pizzuti / FamilySync",
     ];
     for (const term of required) {

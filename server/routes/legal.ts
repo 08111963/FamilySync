@@ -4,7 +4,7 @@ import { config } from '../lib/config';
 
 const router = Router();
 
-const LAST_UPDATED = "29 giugno 2026";
+const LAST_UPDATED = "30 giugno 2026";
 const APP_NAME = "FamilySync";
 const OWNER = "Marino Pizzuti / FamilySync";
 const CONTACT_EMAIL = "assistenza@familysync.it";
@@ -249,27 +249,33 @@ router.get('/terms', (_req: Request, res: Response) => {
     <p>Utilizzando ${APP_NAME}, accetti di essere vincolato dai presenti Termini d'Uso. Se non accetti questi termini, ti preghiamo di non utilizzare l'applicazione.</p>
 
     <h2>2. Descrizione del Servizio</h2>
-    <p>${APP_NAME} e un'applicazione per il coordinamento familiare che consente ai membri di una famiglia di:</p>
+    <p>${APP_NAME} è un'applicazione per il coordinamento familiare che consente ai membri di una famiglia di:</p>
     <ul>
       <li>Gestire un calendario condiviso</li>
       <li>Creare e condividere liste della spesa</li>
       <li>Organizzare e assegnare faccende domestiche con un sistema di punti</li>
-      <li>Tenere traccia delle bollette e delle scadenze domestiche, con possibilita di allegare documenti</li>
+      <li>Tenere traccia delle bollette e delle scadenze domestiche, con possibilità di allegare documenti</li>
       <li>Pianificare ricette e menu settimanali</li>
       <li>Comunicare tramite una chat interna con messaggi, immagini e allegati</li>
-      <li>Ricevere suggerimenti intelligenti basati sull'intelligenza artificiale</li>
-      <li>Sincronizzare le informazioni in tempo reale tra tutti i dispositivi</li>
+      <li>Ricevere suggerimenti basati sull'intelligenza artificiale, ove disponibili</li>
+      <li>Sincronizzare le informazioni in tempo reale tra i dispositivi</li>
     </ul>
 
     <h2>3. Account e Registrazione</h2>
     <ul>
-      <li>Per utilizzare ${APP_NAME} e necessario creare un account fornendo un indirizzo email valido, un nome e una password</li>
+      <li>Per utilizzare ${APP_NAME} è necessario creare un account fornendo un indirizzo email valido, un nome e una password</li>
       <li>Sei responsabile della riservatezza delle tue credenziali di accesso</li>
-      <li>Devi avere almeno 14 anni per creare un account. I minori di 14 anni possono utilizzare l'app solo sotto la supervisione di un genitore/tutore</li>
       <li>Le informazioni fornite durante la registrazione devono essere accurate e aggiornate</li>
     </ul>
 
-    <h2>4. Gruppi Familiari</h2>
+    <h2>4. Minori</h2>
+    <ul>
+      <li>Per creare un account occorre avere almeno 14 anni</li>
+      <li>I minori di 14 anni possono utilizzare l'app solo sotto la supervisione e con il consenso di un genitore o tutore legale</li>
+      <li>${APP_NAME} è pensata per il coordinamento familiare e non è un servizio autonomo destinato principalmente ai bambini</li>
+    </ul>
+
+    <h2>5. Gruppi Familiari</h2>
     <ul>
       <li>L'utente che crea un gruppo familiare ne diventa automaticamente l'amministratore</li>
       <li>Gli amministratori possono invitare nuovi membri, rimuovere membri esistenti e gestire le impostazioni del gruppo</li>
@@ -277,8 +283,8 @@ router.get('/terms', (_req: Request, res: Response) => {
       <li>L'uscita da un gruppo familiare non comporta la cancellazione dei contenuti precedentemente condivisi</li>
     </ul>
 
-    <h2>5. Responsabilita dei Contenuti (UGC)</h2>
-    <p>L'utente e l'unico responsabile dei contenuti inseriti nell'applicazione (contenuti generati dagli utenti, "UGC"), inclusi ma non limitati a:</p>
+    <h2>6. Responsabilità dei Contenuti (UGC)</h2>
+    <p>L'utente è l'unico responsabile dei contenuti inseriti nell'applicazione (contenuti generati dagli utenti, "UGC"), inclusi ma non limitati a:</p>
     <ul>
       <li>Nomi degli eventi e relative descrizioni</li>
       <li>Articoli nelle liste della spesa</li>
@@ -290,108 +296,111 @@ router.get('/terms', (_req: Request, res: Response) => {
     </ul>
     <p>I contenuti non devono essere illegali, offensivi, diffamatori o in violazione dei diritti di terzi.</p>
     <p>${APP_NAME} non effettua un monitoraggio preventivo dei contenuti generati dagli utenti, ma si riserva il diritto di rimuovere contenuti che violino i presenti Termini a seguito di segnalazione o controllo.</p>
-    <p><strong>Licenza limitata sui contenuti:</strong> l'utente mantiene la piena titolarita dei propri contenuti. Caricando contenuti, l'utente concede a ${APP_NAME} una licenza limitata, non esclusiva, gratuita e revocabile, valida per la sola durata dell'utilizzo del servizio e al solo scopo di erogare le funzionalita dell'app (ad esempio archiviazione, sincronizzazione tra dispositivi e condivisione con gli altri membri della famiglia). Questa licenza non attribuisce a ${APP_NAME} alcun diritto di utilizzare i contenuti per finalita diverse e cessa al momento della rimozione dei contenuti o dell'eliminazione dell'account, salvo i contenuti gia condivisi con altri membri o gli obblighi di conservazione previsti dalla legge.</p>
+    <p><strong>Licenza limitata sui contenuti:</strong> l'utente mantiene la piena titolarità dei propri contenuti. Caricando contenuti, l'utente concede a ${APP_NAME} una licenza limitata, non esclusiva, gratuita e revocabile, valida per la sola durata dell'utilizzo del servizio e al solo scopo di erogare le funzionalità dell'app (ad esempio archiviazione, sincronizzazione tra dispositivi e condivisione con gli altri membri della famiglia). Questa licenza non attribuisce a ${APP_NAME} alcun diritto di utilizzare i contenuti per finalità diverse e cessa al momento della rimozione dei contenuti o dell'eliminazione dell'account, salvo i contenuti già condivisi con altri membri o gli obblighi di conservazione previsti dalla legge.</p>
 
-    <h2>6. Chat e Allegati</h2>
+    <h2>7. Chat e Allegati</h2>
     <p>L'app include una chat interna che consente ai membri della stessa famiglia di scambiarsi messaggi di testo, immagini e file allegati.</p>
     <ul>
       <li>I messaggi e gli allegati sono visibili a tutti i membri del gruppo familiare</li>
-      <li>L'utente e responsabile dei contenuti che invia e non deve caricare materiale illegale, offensivo o in violazione di diritti altrui</li>
-      <li>Gli allegati sono soggetti a limiti di dimensione e di tipo di file (sono ammesse immagini e documenti, con un limite massimo per file)</li>
+      <li>L'utente è responsabile dei contenuti che invia e non deve caricare materiale illegale, offensivo o in violazione di diritti altrui</li>
+      <li>Sono ammessi solo i tipi di file consentiti dall'app, ovvero immagini (JPG, PNG, GIF, WEBP), PDF e documenti Word (DOC, DOCX), entro un limite massimo per file</li>
       <li>I messaggi degli utenti bloccati non vengono mostrati al membro che ha effettuato il blocco</li>
-      <li>I file allegati vengono conservati sui nostri server per consentire la visualizzazione. Se l'utente e l'unico membro di una famiglia e la famiglia viene eliminata, vengono rimossi anche gli allegati fisici collegati, come immagini della chat, documenti delle bollette e avatar. Se invece la famiglia continua a esistere con altri membri, i contenuti e gli allegati gia condivisi possono restare disponibili agli altri membri in forma associata a "Utente eliminato"</li>
+      <li>I file allegati vengono conservati sui nostri server per consentire la visualizzazione. Se l'utente è l'unico membro di una famiglia e la famiglia viene eliminata, vengono rimossi anche gli allegati fisici collegati, come immagini della chat, documenti delle bollette e avatar. Se invece la famiglia continua a esistere con altri membri, i contenuti e gli allegati già condivisi possono restare disponibili agli altri membri in forma associata a "Utente eliminato"</li>
     </ul>
 
-    <h2>7. Gestione Bollette e Scadenze</h2>
+    <h2>8. Gestione Bollette e Scadenze</h2>
     <p>${APP_NAME} offre uno strumento per annotare bollette, importi e scadenze domestiche e per allegare documenti relativi.</p>
     <ul>
-      <li><strong>${APP_NAME} NON elabora pagamenti reali:</strong> la funzione bollette ha finalita esclusivamente organizzativa e di promemoria. L'app non esegue, non gestisce e non intermedia alcun pagamento verso fornitori o terzi</li>
+      <li><strong>${APP_NAME} NON elabora pagamenti reali:</strong> la funzione bollette ha finalità esclusivamente organizzativa e di promemoria. L'app non esegue, non gestisce e non intermedia alcun pagamento verso fornitori o terzi</li>
       <li>L'app <strong>non richiede e non deve essere utilizzata per inserire dati di pagamento sensibili</strong> come numeri di carta di credito, codici CVV, coordinate bancarie complete o IBAN. Si invita l'utente a non inserire tali dati nei campi di testo o negli allegati</li>
-      <li>Gli importi e le scadenze inseriti sono semplici annotazioni a cura dell'utente: ${APP_NAME} non ne garantisce l'esattezza e non e responsabile di mancati pagamenti, more o penali</li>
+      <li>Gli importi e le scadenze inseriti sono semplici annotazioni a cura dell'utente: ${APP_NAME} non ne garantisce l'esattezza e non è responsabile di mancati pagamenti, more o penali</li>
       <li>L'utente resta l'unico responsabile del pagamento effettivo delle proprie bollette presso i rispettivi fornitori</li>
+      <li>I promemoria e le notifiche hanno funzione di supporto e potrebbero non essere sempre ricevuti, ad esempio per impostazioni del dispositivo, assenza di rete, limitazioni del sistema operativo o disattivazione delle notifiche</li>
     </ul>
 
-    <h2>8. Funzionalita di Intelligenza Artificiale</h2>
-    <p>${APP_NAME} offre funzionalita basate sull'intelligenza artificiale (ad esempio suggerimenti per la spesa, ottimizzazione delle faccende e proposte di ricette o piani pasti).</p>
+    <h2>9. Funzionalità di Intelligenza Artificiale</h2>
+    <p>${APP_NAME} offre funzionalità basate sull'intelligenza artificiale (ad esempio suggerimenti per la spesa, ottimizzazione delle faccende e proposte di ricette o piani pasti).</p>
     <ul>
-      <li>Le funzionalita AI sono <strong>facoltative</strong> e vengono attivate solo previo consenso dell'utente, modificabile in qualsiasi momento dalle impostazioni</li>
-      <li>Per fornire i suggerimenti, alcuni dati pertinenti possono essere inviati a fornitori terzi di servizi AI; non vengono inviati piu dati del necessario</li>
-      <li>I contenuti generati dall'AI hanno <strong>natura puramente indicativa e possono essere imprecisi, incompleti o non aggiornati</strong>. Non costituiscono consigli professionali (medici, nutrizionali, finanziari o di altro tipo)</li>
-      <li>L'utente e tenuto a valutare in autonomia i suggerimenti prima di agire: ${APP_NAME} non e responsabile delle decisioni assunte sulla base dei contenuti generati dall'AI</li>
-      <li>L'uso dell'AI puo essere soggetto a limiti di utilizzo (quota) differenziati tra piano Free e Premium</li>
+      <li>Le funzionalità AI sono <strong>disponibili secondo le impostazioni dell'app</strong>, con un interruttore dedicato per attivarle o disattivarle in qualsiasi momento, e nei limiti previsti dal piano Free o Premium</li>
+      <li>Per fornire i suggerimenti, alcuni dati pertinenti possono essere inviati a fornitori terzi di servizi AI; non vengono inviati più dati del necessario</li>
+      <li>I contenuti generati dall'AI hanno <strong>natura puramente indicativa e possono essere imprecisi, incompleti o non aggiornati</strong>. Non costituiscono consulenza medica, nutrizionale, legale o finanziaria</li>
+      <li>L'utente è tenuto a verificare in autonomia i suggerimenti prima di utilizzarli: ${APP_NAME} non è responsabile delle decisioni assunte sulla base dei contenuti generati dall'AI</li>
+      <li>L'uso dell'AI può essere soggetto a limiti di utilizzo (quota) differenziati tra piano Free e Premium</li>
     </ul>
 
-    <h2>9. Segnalazione e Moderazione Contenuti</h2>
+    <h2>10. Segnalazione e Moderazione Contenuti</h2>
     <p>Per garantire un ambiente sicuro e rispettoso per tutte le famiglie, ${APP_NAME} offre strumenti di segnalazione e moderazione:</p>
     <ul>
-      <li><strong>Segnalazione contenuti:</strong> ogni membro della famiglia puo segnalare contenuti (eventi, articoli spesa, faccende, messaggi chat) o utenti che ritiene inappropriati, offensivi o in violazione dei Termini</li>
+      <li><strong>Segnalazione contenuti:</strong> ogni membro della famiglia può segnalare contenuti (eventi, articoli spesa, faccende, messaggi chat) o utenti che ritiene inappropriati, offensivi o in violazione dei Termini</li>
       <li><strong>Categorie di segnalazione:</strong> spam, molestie, odio, contenuti sessuali, violenza, altro</li>
       <li><strong>Gestione segnalazioni:</strong> le segnalazioni vengono esaminate dagli amministratori del gruppo familiare, che possono prendere provvedimenti (azione o archiviazione)</li>
-      <li><strong>Blocco utenti:</strong> ogni membro puo bloccare un altro membro all'interno della propria famiglia. I contenuti degli utenti bloccati non saranno piu visibili al membro che ha effettuato il blocco</li>
-      <li><strong>Sblocco:</strong> e possibile sbloccare un utente in qualsiasi momento dalle impostazioni</li>
+      <li><strong>Blocco utenti:</strong> ogni membro può bloccare un altro membro all'interno della propria famiglia. I contenuti degli utenti bloccati non saranno più visibili al membro che ha effettuato il blocco</li>
+      <li><strong>Sblocco:</strong> è possibile sbloccare un utente in qualsiasi momento dalle impostazioni</li>
+      <li>Per segnalazioni che richiedono assistenza puoi scrivere a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></li>
     </ul>
-    <p>L'abuso del sistema di segnalazione (segnalazioni false o ripetute in malafede) puo comportare la sospensione dell'account.</p>
+    <p>L'abuso del sistema di segnalazione (segnalazioni false o ripetute in malafede) può comportare la sospensione dell'account.</p>
 
-    <h2>10. Uso Corretto</h2>
+    <h2>11. Uso Corretto</h2>
     <p>L'utente si impegna a:</p>
     <ul>
-      <li>Utilizzare l'applicazione esclusivamente per le finalita previste di coordinamento familiare</li>
+      <li>Utilizzare l'applicazione esclusivamente per le finalità previste di coordinamento familiare</li>
       <li>Non tentare di accedere ad account o dati di altri utenti senza autorizzazione</li>
       <li>Non utilizzare sistemi automatizzati (bot, scraper) per interagire con il servizio</li>
-      <li>Non tentare di compromettere la sicurezza o la stabilita dell'applicazione</li>
+      <li>Non tentare di compromettere la sicurezza o la stabilità dell'applicazione</li>
       <li>Rispettare le leggi applicabili durante l'utilizzo del servizio</li>
     </ul>
 
-    <h2>11. Divieti</h2>
-    <p>E espressamente vietato:</p>
+    <h2>12. Divieti</h2>
+    <p>È espressamente vietato:</p>
     <ul>
-      <li>Creare account falsi o multipli per finalita abusive</li>
-      <li>Utilizzare il servizio per attivita commerciali non autorizzate</li>
+      <li>Creare account falsi o multipli per finalità abusive</li>
+      <li>Utilizzare il servizio per attività commerciali non autorizzate</li>
       <li>Distribuire malware o contenuti dannosi attraverso l'applicazione</li>
       <li>Tentare di effettuare ingegneria inversa del software</li>
       <li>Interferire con il funzionamento dell'applicazione o dei suoi server</li>
     </ul>
 
-    <h2>12. Piani Free e Premium e Abbonamenti</h2>
-    <p>${APP_NAME} e disponibile in un piano <strong>Free</strong> gratuito e in un piano <strong>Premium</strong> a pagamento, attivabile tramite abbonamento.</p>
+    <h2>13. Piani Free e Premium e Abbonamenti</h2>
+    <p>${APP_NAME} è disponibile in un piano <strong>Free</strong> gratuito e in un piano <strong>Premium</strong> a pagamento, attivabile tramite abbonamento.</p>
     <ul>
-      <li><strong>Piano Free:</strong> consente l'utilizzo delle funzionalita di base, con alcuni limiti (ad esempio quota di utilizzo delle funzionalita AI)</li>
-      <li><strong>Piano Premium:</strong> sblocca funzionalita aggiuntive e limiti piu ampi. Prezzi e durata dell'abbonamento sono indicati all'interno dell'app al momento dell'acquisto</li>
+      <li><strong>Piano Free:</strong> consente l'utilizzo delle funzionalità di base, con alcuni limiti (ad esempio quota di utilizzo delle funzionalità AI)</li>
+      <li><strong>Piano Premium:</strong> sblocca funzionalità aggiuntive e limiti più ampi. Prezzi e durata dell'abbonamento sono indicati all'interno dell'app al momento dell'acquisto</li>
       <li><strong>Acquisti su mobile:</strong> gli abbonamenti Premium sulle app mobili vengono gestiti tramite i sistemi di pagamento degli store ufficiali, ovvero <strong>Apple App Store (StoreKit)</strong> su iOS e <strong>Google Play Billing</strong> su Android, con il supporto tecnico del fornitore <strong>RevenueCat</strong> per la gestione degli abbonamenti</li>
       <li>L'addebito, il rinnovo automatico e la gestione o cancellazione dell'abbonamento avvengono tramite l'account dello store (Apple o Google). Per disdire occorre agire nelle impostazioni del proprio account store; la disinstallazione dell'app non annulla l'abbonamento</li>
       <li>I rimborsi sono soggetti alle politiche dello store di riferimento (Apple o Google)</li>
-      <li><strong>Stripe NON viene utilizzato</strong> per attivare o gestire il Premium sulle app mobili: eventuali pagamenti tramite Stripe non sbloccano le funzionalita Premium dell'app mobile</li>
+      <li><strong>Stripe NON viene utilizzato</strong> per attivare o gestire il Premium sulle app mobili: eventuali pagamenti tramite Stripe non sbloccano le funzionalità Premium dell'app mobile</li>
+      <li>Alcune funzionalità Premium possono essere disponibili solo dopo l'attivazione del servizio di abbonamento</li>
     </ul>
 
-    <h2>13. Sospensione e Chiusura Account</h2>
+    <h2>14. Sospensione e Chiusura Account</h2>
     <p>Ci riserviamo il diritto di:</p>
     <ul>
       <li>Sospendere temporaneamente o chiudere definitivamente un account in caso di violazione dei presenti Termini</li>
       <li>Rimuovere contenuti che violino le nostre politiche o le leggi applicabili</li>
       <li>Interrompere il servizio con un preavviso ragionevole</li>
     </ul>
-    <p>L'utente puo eliminare il proprio account in qualsiasi momento direttamente dall'app (scheda <strong>Famiglia</strong> &rarr; <strong>Elimina account</strong>), anche se l'indirizzo email non e ancora stato verificato, oppure contattandoci all'indirizzo <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. L'eliminazione e definitiva: comporta l'anonimizzazione del profilo e, se l'utente e l'unico membro di una famiglia, la cancellazione della famiglia e dei relativi contenuti, inclusi i file fisici allegati (immagini della chat, documenti delle bollette e avatar). I contenuti gia condivisi con una famiglia che continua a esistere con altri membri possono restare visibili in forma anonima. L'eliminazione dell'account non annulla eventuali abbonamenti Premium, che vanno gestiti separatamente dallo store (Apple o Google).</p>
+    <p>L'utente può eliminare il proprio account in qualsiasi momento direttamente dall'app (scheda <strong>Famiglia</strong> &rarr; <strong>Elimina account</strong>), anche se l'indirizzo email non è ancora stato verificato, oppure contattandoci all'indirizzo <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. L'eliminazione è definitiva: comporta l'anonimizzazione del profilo e, se l'utente è l'unico membro di una famiglia, la cancellazione della famiglia e dei relativi contenuti, inclusi i file fisici allegati (immagini della chat, documenti delle bollette e avatar). I contenuti già condivisi con una famiglia che continua a esistere con altri membri possono restare visibili in forma anonima. L'eliminazione dell'account non annulla eventuali abbonamenti Premium, che vanno gestiti separatamente dallo store (Apple o Google).</p>
 
-    <h2>14. Limitazioni di Responsabilita</h2>
+    <h2>15. Limitazioni di Responsabilità</h2>
     <p>Nei limiti consentiti dalla legge applicabile:</p>
     <ul>
-      <li>Il servizio viene fornito "cosi com'e" e "come disponibile", senza garanzie di alcun tipo, espresse o implicite</li>
+      <li>Il servizio viene fornito "così com'è" e "come disponibile", senza garanzie di alcun tipo, espresse o implicite</li>
       <li>Non garantiamo che il servizio sia sempre disponibile, privo di errori o sicuro al 100%</li>
       <li>Non siamo responsabili per eventuali perdite di dati dovute a malfunzionamenti tecnici, salvo dolo o colpa grave</li>
-      <li>La nostra responsabilita massima e limitata all'importo pagato dall'utente per il servizio nei 12 mesi precedenti l'evento</li>
+      <li>La nostra responsabilità massima è limitata all'importo pagato dall'utente per il servizio nei 12 mesi precedenti l'evento</li>
     </ul>
-    <p>Nessuna disposizione dei presenti Termini esclude o limita la responsabilita nei casi in cui cio non sia consentito dalla legge, inclusi i diritti inderogabili riconosciuti ai consumatori.</p>
+    <p>Nessuna disposizione dei presenti Termini esclude o limita la responsabilità nei casi in cui ciò non sia consentito dalla legge, inclusi i diritti inderogabili riconosciuti ai consumatori.</p>
 
-    <h2>15. Proprieta Intellettuale</h2>
-    <p>Tutti i diritti di proprieta intellettuale relativi a ${APP_NAME}, inclusi design, codice, marchi e contenuti originali, sono di proprieta esclusiva di ${OWNER}. L'utente non acquisisce alcun diritto di proprieta intellettuale sull'applicazione. Restano salvi i diritti dell'utente sui propri contenuti (UGC) e la licenza limitata descritta alla sezione 5.</p>
+    <h2>16. Proprietà Intellettuale</h2>
+    <p>Tutti i diritti di proprietà intellettuale relativi a ${APP_NAME}, inclusi design, codice, marchi e contenuti originali, sono di proprietà esclusiva di ${OWNER}. L'utente non acquisisce alcun diritto di proprietà intellettuale sull'applicazione. Restano salvi i diritti dell'utente sui propri contenuti (UGC) e la licenza limitata descritta alla sezione 6.</p>
 
-    <h2>16. Legge Applicabile e Foro Competente</h2>
-    <p>I presenti Termini d'Uso sono regolati dalla legge italiana. Per qualsiasi controversia derivante dall'utilizzo del servizio, sara competente il Foro del luogo di residenza del consumatore, in conformita con il Codice del Consumo italiano.</p>
+    <h2>17. Legge Applicabile e Foro Competente</h2>
+    <p>I presenti Termini d'Uso sono regolati dalla legge italiana. Per qualsiasi controversia derivante dall'utilizzo del servizio, sarà competente il Foro del luogo di residenza del consumatore, in conformità con il Codice del Consumo italiano.</p>
 
-    <h2>17. Modifiche ai Termini</h2>
+    <h2>18. Modifiche ai Termini</h2>
     <p>Ci riserviamo il diritto di modificare i presenti Termini d'Uso in qualsiasi momento. Le modifiche saranno comunicate tramite l'applicazione e/o via email. L'uso continuato del servizio dopo la pubblicazione delle modifiche costituisce accettazione dei nuovi Termini.</p>
 
-    <h2>18. Contatti</h2>
+    <h2>19. Contatti</h2>
     <p>Per qualsiasi domanda o segnalazione relativa ai presenti Termini d'Uso:</p>
     <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
   `;
