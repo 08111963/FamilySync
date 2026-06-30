@@ -36,7 +36,7 @@ export default function PrivacyPolicyScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Section title="1. Titolare del Trattamento" colors={colors}>
-          <P colors={colors}>Il titolare del trattamento dei dati personali e Marino Pizzuti / FamilySync.</P>
+          <P colors={colors}>Il titolare del trattamento dei dati personali è FamilySync.</P>
           <P colors={colors}>Per qualsiasi domanda relativa alla privacy, all'esercizio dei tuoi diritti o al supporto, puoi contattarci all'unico indirizzo email: assistenza@familysync.it</P>
           <P colors={colors}>Sito di riferimento: https://familysync.eu</P>
         </Section>

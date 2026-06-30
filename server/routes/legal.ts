@@ -100,7 +100,7 @@ function htmlWrapper(title: string, body: string): string {
 router.get('/privacy', (_req: Request, res: Response) => {
   const body = `
     <h2>1. Titolare del Trattamento</h2>
-    <p>Il titolare del trattamento dei dati personali e <strong>${OWNER}</strong>.</p>
+    <p>Il titolare del trattamento dei dati personali è <strong>FamilySync</strong>.</p>
     <p>Per qualsiasi domanda o richiesta relativa alla privacy, all'esercizio dei tuoi diritti o al supporto, puoi contattarci all'unico indirizzo email: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     <p>Sito di riferimento: <a href="https://familysync.eu" target="_blank">https://familysync.eu</a></p>
 
