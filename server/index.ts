@@ -6,6 +6,7 @@ import * as path from "path";
 import { config } from './lib/config';
 import { logger, generateRequestId } from './lib/logger';
 import { seedOwnerEntitlements } from './lib/entitlements';
+import { ensureDemoAccount } from './lib/demo-account';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -386,6 +387,13 @@ function setupErrorHandler(app: express.Application) {
           if (n > 0) log(`owner premium reconciled for ${n} family(ies)`);
         })
         .catch((err) => log(`owner premium seed failed: ${String(err)}`));
+      // Garantisce l'account demo per i revisori store (crea solo se manca).
+      // Funziona anche nel DB di produzione dopo il deploy.
+      void ensureDemoAccount()
+        .then((r) => {
+          if (r.created) log(`demo account created (${r.email})`);
+        })
+        .catch((err) => log(`demo account seed failed: ${String(err)}`));
     },
   );
 })();
