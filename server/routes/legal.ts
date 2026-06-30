@@ -165,7 +165,7 @@ router.get('/privacy', (_req: Request, res: Response) => {
       <li><strong>Google Play Billing</strong> su Android;</li>
       <li><strong>RevenueCat</strong> per la gestione di abbonamenti, stato dell'abbonamento ed entitlements.</li>
     </ul>
-    <p><strong>Stripe non e utilizzato</strong> per la vendita di Premium nell'app mobile. I dati di pagamento (carte, ecc.) sono trattati direttamente da Apple o Google secondo le rispettive policy; ${APP_NAME} non ha accesso ai dati completi della tua carta.</p>
+    <p>I dati di pagamento (carte, ecc.) sono trattati direttamente da Apple o Google secondo le rispettive policy; ${APP_NAME} non ha accesso ai dati completi della tua carta.</p>
 
     <h2>8. Notifiche</h2>
     <ul>

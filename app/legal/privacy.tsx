@@ -87,7 +87,7 @@ export default function PrivacyPolicyScreen() {
           <Bullet colors={colors}>Apple In-App Purchase / StoreKit su iOS</Bullet>
           <Bullet colors={colors}>Google Play Billing su Android</Bullet>
           <Bullet colors={colors}>RevenueCat per abbonamenti, stato dell'abbonamento ed entitlements</Bullet>
-          <P colors={colors}>Stripe non e utilizzato per la vendita di Premium nell'app mobile. I dati delle carte sono trattati direttamente da Apple o Google; FamilySync non ha accesso ai dati completi della tua carta.</P>
+          <P colors={colors}>I dati delle carte sono trattati direttamente da Apple o Google; FamilySync non ha accesso ai dati completi della tua carta.</P>
         </Section>
 
         <Section title="8. Notifiche" colors={colors}>
