@@ -11,11 +11,13 @@
       "distribution": "internal"
     },
     "production": {
+      "node": "22.22.0",
       "env": {
         "EXPO_PUBLIC_DOMAIN": "familysync.eu"
       }
     },
     "production-apk": {
+      "node": "22.22.0",
       "android": {
         "buildType": "apk"
       },
