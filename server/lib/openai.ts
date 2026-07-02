@@ -679,3 +679,36 @@ export async function transcribeAudio(input: {
     throw mapOpenAiError(error);
   }
 }
+
+/**
+ * Genera una foto realistica di una ricetta con gpt-image-1 (qualità low per
+ * contenere i costi). Ritorna il PNG come Buffer, pronto per essere salvato su
+ * disco e servito staticamente da /uploads.
+ */
+export async function generateRecipeImage(input: {
+  title: string;
+  description?: string;
+}): Promise<Buffer> {
+  assertAiConfigured();
+  try {
+    const details = input.description ? ` ${input.description}` : '';
+    const prompt =
+      `Fotografia food professionale del piatto italiano "${input.title}".${details} ` +
+      `Piatto ben impiattato su un tavolo, luce naturale, inquadratura dall'alto leggermente angolata, ` +
+      `sfondo semplice e pulito, aspetto appetitoso e realistico. Nessun testo, nessuna scritta, nessuna persona.`;
+    const response = await getOpenAiClient().images.generate({
+      model: 'gpt-image-1',
+      prompt,
+      n: 1,
+      size: '1024x1024',
+      quality: 'low',
+    });
+    const b64 = response.data?.[0]?.b64_json;
+    if (!b64) {
+      throw new Error('Nessuna immagine generata');
+    }
+    return Buffer.from(b64, 'base64');
+  } catch (error) {
+    throw mapOpenAiError(error);
+  }
+}

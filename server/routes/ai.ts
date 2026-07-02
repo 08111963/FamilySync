@@ -1,5 +1,9 @@
 import { Router } from 'express';
 import multer from 'multer';
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import sharp from 'sharp';
 import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { db } from '../db';
@@ -8,7 +12,7 @@ import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
-import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, transcribeAudio, type ShoppingSuggestionItem } from '../lib/openai';
+import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, transcribeAudio, generateRecipeImage, type ShoppingSuggestionItem } from '../lib/openai';
 import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { recipes, recipeIngredients } from '../../shared/schema';
@@ -835,6 +839,96 @@ router.post('/:familyId/transcribe', authenticate, requireAiEnabled, requireFami
       sendAiError(res, error, 'Errore nella trascrizione vocale');
     }
   });
+});
+
+// ===== FOTO RICETTE (gpt-image-1, cache su disco) =====
+
+const recipeImagesDir = path.resolve('uploads', 'recipe-images');
+if (!fs.existsSync(recipeImagesDir)) {
+  fs.mkdirSync(recipeImagesDir, { recursive: true });
+}
+
+/** Chiave di cache: hash del titolo normalizzato (accenti/maiuscole ignorati). */
+function recipeImageCacheKey(title: string): string {
+  const normalized = title
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 32);
+}
+
+// Dedup richieste concorrenti sulla stessa ricetta: una sola generazione
+// (e un solo slot di quota) anche se più client chiedono la stessa foto insieme.
+// Il valore è la promise del run del "leader", condivisa con i follower
+// così ricevono lo stesso esito reale (ok / limited / unavailable / errore AI).
+type RecipeImageRun = Awaited<ReturnType<typeof withAiUsage<Buffer>>>;
+const inFlightRecipeImages = new Map<string, Promise<RecipeImageRun>>();
+
+/**
+ * POST /api/ai/:familyId/recipe-image
+ * Genera (o recupera dalla cache) la foto di una ricetta proposta dall'AI.
+ * Cache-hit: nessuna chiamata OpenAI e nessun consumo di quota.
+ */
+router.post('/:familyId/recipe-image', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+  const familyId = getParam(req, 'familyId');
+  const userId = req.user!.userId;
+  try {
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+    const description = typeof req.body?.description === 'string' ? req.body.description.trim().slice(0, 300) : undefined;
+    if (title.length < 2 || title.length > 200) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Titolo ricetta non valido' } });
+    }
+
+    const key = recipeImageCacheKey(title);
+    const fileName = `${key}.webp`;
+    const filePath = path.join(recipeImagesDir, fileName);
+    const url = `/uploads/recipe-images/${fileName}`;
+
+    // Cache-hit: la foto esiste già, non consuma quota.
+    if (fs.existsSync(filePath)) {
+      return res.json({ url, cached: true });
+    }
+
+    // Se una generazione per la stessa ricetta è già in corso, condividila
+    // (i follower ricevono lo stesso esito reale del leader, senza consumare quota).
+    let task = inFlightRecipeImages.get(key);
+    const isLeader = !task;
+    if (!task) {
+      task = (async () => {
+        const run = await withAiUsage(
+          { userId, familyId, feature: 'recipe-image' as const },
+          () => generateRecipeImage({ title, description }),
+        );
+        if (run.outcome === 'ok') {
+          // Ridimensiona e comprime (1024px PNG ~1.5MB -> 512px WebP ~35KB).
+          const optimized = await sharp(run.value)
+            .resize(512, 512, { fit: 'cover' })
+            .webp({ quality: 80 })
+            .toBuffer();
+          // Scrittura atomica: prima file temporaneo, poi rename.
+          const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+          await fs.promises.writeFile(tmpPath, optimized);
+          await fs.promises.rename(tmpPath, filePath);
+        }
+        return run;
+      })();
+      inFlightRecipeImages.set(key, task);
+      // Rimuovi la entry quando il run termina (successo o errore).
+      task.catch(() => undefined).finally(() => inFlightRecipeImages.delete(key));
+    }
+
+    const run = await task;
+
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
+    if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
+
+    res.json({ url, cached: !isLeader });
+  } catch (error) {
+    logger.error('Recipe image generation error', { error: String(error), familyId });
+    sendAiError(res, error, "Errore nella generazione dell'immagine");
+  }
 });
 
 export default router;

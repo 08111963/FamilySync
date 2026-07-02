@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
 import { SpeakButton } from "@/components/VoiceInput";
+import { RecipeAiImage } from "@/components/RecipeImage";
 import { useFamily } from "@/context/FamilyContext";
 
 interface RecipeTag {
@@ -43,6 +44,7 @@ interface RecipeDetail {
   cookTimeMinutes?: number | null;
   steps: string[];
   tags?: RecipeTag | null;
+  imageUrl?: string | null;
   source?: string;
   createdAt: string;
   ingredients: Ingredient[];
@@ -175,6 +177,16 @@ export default function RecipeDetailScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {recipe.imageUrl ? (
+          <View style={styles.heroImageWrap}>
+            <RecipeAiImage
+              title={recipe.title}
+              imageUrl={recipe.imageUrl}
+              height={200}
+              borderRadius={16}
+            />
+          </View>
+        ) : null}
         <Text style={[styles.recipeTitle, { color: colors.text }]}>
           {recipe.title}
         </Text>
@@ -396,6 +408,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  heroImageWrap: {
+    marginBottom: 16,
   },
   scrollContent: {
     paddingHorizontal: 20,

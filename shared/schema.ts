@@ -265,6 +265,7 @@ export const recipes = pgTable("recipes", {
   cookTimeMinutes: integer("cook_time_minutes"),
   steps: jsonb("steps").notNull().$type<string[]>(),
   tags: jsonb("tags").$type<{ diet?: string[]; allergens?: string[]; cuisine?: string; difficulty?: string }>(),
+  imageUrl: text("image_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

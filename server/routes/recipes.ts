@@ -102,6 +102,7 @@ const bulkRecipeSchema = z.object({
       cuisine: z.string().optional(),
       difficulty: z.string().optional(),
     }).optional(),
+    imageUrl: z.string().max(500).optional(),
     ingredients: z.array(z.object({
       name: z.string().min(1),
       quantity: z.union([z.number(), z.string(), z.null()]).optional(),
@@ -141,7 +142,7 @@ function sanitizeUnit(unit: string | null | undefined): IngredientUnit | null {
   return 'pcs';
 }
 
-router.post('/bulk', authenticate, async (req: Request, res: Response) => {
+router.post('/bulk', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const parsed = bulkRecipeSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -157,6 +158,13 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
     for (const recipeData of recipesToSave) {
       const { ingredients, ...rest } = recipeData;
 
+      // Accetta solo immagini generate dal nostro backend (path relativo sotto
+      // /uploads/recipe-images/), per evitare URL arbitrari salvati in DB.
+      const safeImageUrl =
+        rest.imageUrl && /^\/uploads\/recipe-images\/[A-Za-z0-9_-]+\.(png|webp)$/.test(rest.imageUrl)
+          ? rest.imageUrl
+          : null;
+
       const [recipe] = await db.insert(recipes).values({
         familyId,
         createdByUserId: req.user!.userId,
@@ -167,6 +175,7 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
         cookTimeMinutes: rest.cookTimeMinutes,
         steps: rest.steps,
         tags: rest.tags,
+        imageUrl: safeImageUrl,
         source: 'ai',
       }).returning();
 

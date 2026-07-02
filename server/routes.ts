@@ -66,6 +66,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/bills', authenticate, requireEmailVerified, billsRoutes);
   app.use('/api/support', authenticate, requireEmailVerified, supportRoutes);
 
+  // Foto ricette generate dall'AI: immagini generiche di piatti (nessun dato
+  // personale, cache condivisa per titolo tra famiglie), servite pubblicamente
+  // con cache lunga. Montate PRIMA di /uploads autenticato.
+  app.use('/uploads/recipe-images', express.static('uploads/recipe-images', { maxAge: '30d', immutable: true }));
+
   app.use('/uploads', authenticateMedia, requireEmailVerified, express.static('uploads'));
 
   app.use('/legal', legalRoutes);

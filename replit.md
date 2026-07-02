@@ -187,3 +187,10 @@ Lingua di comunicazione: Rispondere SEMPRE in italiano.
   - Nella ricerca ricette la dettatura avvia automaticamente la ricerca AI e i risultati vengono letti ad alta voce (titolo + descrizione), incluso il caso "nessuna ricetta trovata"
   - Nuovo helper `speakText()` in components/VoiceInput.tsx; SpeakButton interrompe eventuali letture in corso prima di parlare
   - La copia statica `web-build` va rigenerata (`npx expo export --platform web`) dopo ogni modifica frontend rilevante, altrimenti alcune anteprime mostrano la versione vecchia
+- Implementate FOTO delle ricette proposte dall'AI:
+  - Backend: rotta `POST /api/ai/:familyId/recipe-image` genera la foto del piatto con gpt-image-1 (quality low), quota giornaliera `recipe-image` (free 10/g, premium 50/g in AI_DAILY_LIMITS)
+  - Cache su disco in `uploads/recipe-images/<sha256(titolo normalizzato)>.webp`, condivisa tra famiglie (asset generici, nessun dato personale); cache-hit non consuma quota; dedup in-flight che condivide l'esito reale del leader coi follower
+  - Ottimizzazione con sharp: resize 512px + WebP q80 (~35KB invece di ~1,5MB PNG), scrittura atomica tmp+rename
+  - `/uploads/recipe-images` servito pubblico (maxAge 30d) montato PRIMA di `/uploads` autenticato; gli altri upload restano protetti
+  - Colonna `image_url` su `recipes`; `/api/recipes/bulk` valida imageUrl con regex whitelist e ora richiede `requireFamilyMember()` (fix IDOR)
+  - Frontend: `components/RecipeImage.tsx` (RecipeAiImage con expo-image, cache in-memory, generazione lazy, fallback icona); foto nelle card/modal di preview.tsx, in recipes/index.tsx e nel dettaglio [id].tsx; il salvataggio include imageUrl dalla cache

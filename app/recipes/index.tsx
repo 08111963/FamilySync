@@ -25,6 +25,7 @@ import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiFetch, getApiUrl } from "@/lib/query-client";
 import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
 import { EmptyState } from "@/components/EmptyState";
+import { RecipeAiImage } from "@/components/RecipeImage";
 
 interface RecipeTag {
   diet?: string[];
@@ -43,6 +44,7 @@ interface Recipe {
   cookTimeMinutes?: number | null;
   steps: string[];
   tags?: RecipeTag | null;
+  imageUrl?: string | null;
   source?: string;
   createdAt: string;
 }
@@ -256,6 +258,16 @@ export default function RecipesScreen() {
             },
           ]}
         >
+          {item.imageUrl ? (
+            <View style={styles.recipeImageWrap}>
+              <RecipeAiImage
+                title={item.title}
+                imageUrl={item.imageUrl}
+                height={130}
+                borderRadius={12}
+              />
+            </View>
+          ) : null}
           <View style={styles.recipeCardHeader}>
             <Text
               style={[styles.recipeTitle, { color: colors.text }]}
@@ -551,6 +563,9 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 20,
     paddingTop: 4,
+  },
+  recipeImageWrap: {
+    marginBottom: 12,
   },
   recipeCard: {
     borderRadius: 16,

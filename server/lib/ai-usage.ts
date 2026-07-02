@@ -12,7 +12,8 @@ export type AiFeature =
   | "weekly-meal-plan"
   | "insights"
   | "chore-optimization"
-  | "voice-transcription";
+  | "voice-transcription"
+  | "recipe-image";
 
 export type AiUsageStatus = "started" | "succeeded" | "failed";
 
@@ -43,6 +44,7 @@ export const PLAN_LIMITS: Record<Plan, Record<AiFeature, FeatureLimit>> = {
     insights: { max: 1, window: "week" },
     "chore-optimization": { max: 1, window: "day" },
     "voice-transcription": { max: 5, window: "day" },
+    "recipe-image": { max: 10, window: "day" },
   },
   premium: {
     "shopping-suggestions": { max: 10, window: "day" },
@@ -52,6 +54,7 @@ export const PLAN_LIMITS: Record<Plan, Record<AiFeature, FeatureLimit>> = {
     insights: { max: 5, window: "day" },
     "chore-optimization": { max: 10, window: "day" },
     "voice-transcription": { max: 30, window: "day" },
+    "recipe-image": { max: 50, window: "day" },
   },
 };
 
@@ -67,6 +70,7 @@ export const AI_DAILY_LIMITS: Record<AiFeature, number> = {
   insights: PLAN_LIMITS.premium.insights.max,
   "chore-optimization": PLAN_LIMITS.premium["chore-optimization"].max,
   "voice-transcription": PLAN_LIMITS.premium["voice-transcription"].max,
+  "recipe-image": PLAN_LIMITS.premium["recipe-image"].max,
 };
 
 function startOfToday(): Date {

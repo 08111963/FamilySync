@@ -19,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "@/hooks/useTheme";
 import { SpeakButton } from "@/components/VoiceInput";
+import { RecipeAiImage, getCachedRecipeImage } from "@/components/RecipeImage";
 import { useFamily } from "@/context/FamilyContext";
 import { apiFetch, getApiUrl } from "@/lib/query-client";
 
@@ -89,6 +90,7 @@ function RecipePreviewCard({
   onToggle,
   onOpenDetail,
   colors,
+  familyId,
 }: {
   recipe: AiRecipe;
   index: number;
@@ -96,6 +98,7 @@ function RecipePreviewCard({
   onToggle: () => void;
   onOpenDetail: () => void;
   colors: any;
+  familyId?: string;
 }) {
   const totalTime = (recipe.prepTimeMinutes || 0) + (recipe.cookTimeMinutes || 0);
   const timeStr = formatTime(totalTime || recipe.cookTimeMinutes);
@@ -113,6 +116,15 @@ function RecipePreviewCard({
         },
       ]}
     >
+      <Pressable onPress={onOpenDetail} style={styles.cardImageWrap}>
+        <RecipeAiImage
+          familyId={familyId}
+          title={recipe.title}
+          description={recipe.description}
+          height={140}
+          borderRadius={12}
+        />
+      </Pressable>
       <View style={styles.cardTopRow}>
         <Pressable
           onPress={onToggle}
@@ -235,6 +247,16 @@ function RecipeDetailModal({
           contentContainerStyle={[styles.modalScroll, { paddingBottom: insets.bottom + 40 }]}
           showsVerticalScrollIndicator={false}
         >
+          {getCachedRecipeImage(recipe.title) ? (
+            <View style={styles.modalImageWrap}>
+              <RecipeAiImage
+                title={recipe.title}
+                imageUrl={getCachedRecipeImage(recipe.title)}
+                height={200}
+                borderRadius={16}
+              />
+            </View>
+          ) : null}
           {(prepTime || cookTime || recipe.servings) ? (
             <View style={[styles.infoRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               {prepTime ? (
@@ -425,6 +447,7 @@ export default function RecipePreviewScreen() {
         .map(r => ({
           title: r.title,
           description: r.description,
+          imageUrl: getCachedRecipeImage(r.title),
           servings: r.servings,
           prepTimeMinutes: r.prepTimeMinutes,
           cookTimeMinutes: r.cookTimeMinutes,
@@ -462,9 +485,10 @@ export default function RecipePreviewScreen() {
         onToggle={() => toggleSelect(index)}
         onOpenDetail={() => setDetailIndex(index)}
         colors={colors}
+        familyId={currentFamily?.id}
       />
     );
-  }, [selected, colors, toggleSelect]);
+  }, [selected, colors, toggleSelect, currentFamily?.id]);
 
   const detailRecipe = detailIndex !== null ? allRecipes[detailIndex] ?? null : null;
 
@@ -649,6 +673,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
+  cardImageWrap: {
+    marginBottom: 12,
+  },
   cardTopRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -776,6 +803,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginTop: 2,
+  },
+  modalImageWrap: {
+    marginBottom: 16,
   },
   modalScroll: {
     paddingHorizontal: 20,
