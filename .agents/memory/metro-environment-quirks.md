@@ -31,3 +31,6 @@ truly exists first so you don't chase a phantom version mismatch.
 
 **Note:** `/tmp/logs/*.log` are snapshots written by `refresh_all_logs`, NOT live workflow output.
 Tailing them after a restart shows stale errors — call `refresh_all_logs` to get the current state.
+
+## Processi in background uccisi tra tool call
+Detached/nohup/setsid background processes (e.g. `npx expo export` in background) get killed between agent tool calls — the log file may even vanish. **How to apply:** run long builds like `expo export` synchronously with the swap chained in one command (`export && rm -rf web-build && mv`); it completes within the ~2min timeout even if the tool reports timeout.

@@ -187,6 +187,12 @@ Lingua di comunicazione: Rispondere SEMPRE in italiano.
   - Nella ricerca ricette la dettatura avvia automaticamente la ricerca AI e i risultati vengono letti ad alta voce (titolo + descrizione), incluso il caso "nessuna ricetta trovata"
   - Nuovo helper `speakText()` in components/VoiceInput.tsx; SpeakButton interrompe eventuali letture in corso prima di parlare
   - La copia statica `web-build` va rigenerata (`npx expo export --platform web`) dopo ogni modifica frontend rilevante, altrimenti alcune anteprime mostrano la versione vecchia
+- Implementato "Detta e genera" nel Piano Pasti (dettatura unica + lettura ad alta voce):
+  - Backend: `generateWeeklyMealPlan` accetta `preferences.notes` (testo libero dettato, trim + max 600 caratteri) iniettato nel prompt come "Preferenze della famiglia (dettate a voce)"
+  - Frontend (app/meal-plans/index.tsx): card "Detta e genera" nel tab Genera con un UNICO microfono hold-to-talk; l'utente detta dieta/allergie/preferenze in una volta, al rilascio parte la generazione e il piano viene letto ad alta voce (`buildPlanSpeech` raggruppa per giorno con nomi italiani); anche gli errori vengono letti a voce
+  - Rimossi i microfoni separati dai campi Dieta e Allergie (restano campi di testo); il testo dettato è mostrato in un box con X per cancellarlo e viene riusato anche per il Piano B alternativo
+  - Protezioni concorrenza: guard `if (generating || generatingAlt) return` su entrambe le generazioni, mic disabilitato durante la generazione, contatore `streamSeqRef` che ignora aggiornamenti/letture di stream obsoleti
+  - Niente foto per il piano pasti (solo per le ricette)
 - Implementate FOTO delle ricette proposte dall'AI:
   - Backend: rotta `POST /api/ai/:familyId/recipe-image` genera la foto del piatto con gpt-image-1 (quality low), quota giornaliera `recipe-image` (free 10/g, premium 50/g in AI_DAILY_LIMITS)
   - Cache su disco in `uploads/recipe-images/<sha256(titolo normalizzato)>.webp`, condivisa tra famiglie (asset generici, nessun dato personale); cache-hit non consuma quota; dedup in-flight che condivide l'esito reale del leader coi follower

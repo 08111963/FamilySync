@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -19,7 +19,7 @@ import * as Haptics from "expo-haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
-import { VoiceInput, SpeakButton } from "@/components/VoiceInput";
+import { VoiceInput, SpeakButton, speakText } from "@/components/VoiceInput";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiStream } from "@/lib/query-client";
 import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
@@ -71,6 +71,27 @@ function buildNotes(description?: string, steps?: string[]): string | undefined 
   }
   const joined = parts.join("\n\n");
   return joined ? joined : undefined;
+}
+
+const SPEECH_WEEKDAYS = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
+
+function buildPlanSpeech(title: string, items: MealPlanItem[]): string {
+  const groups = new Map<string, MealPlanItem[]>();
+  for (const item of items) {
+    if (!groups.has(item.date)) groups.set(item.date, []);
+    groups.get(item.date)!.push(item);
+  }
+  const dayParts = Array.from(groups.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, meals]) => {
+      const d = new Date(`${date}T00:00:00`);
+      const dayName = isNaN(d.getTime()) ? date : SPEECH_WEEKDAYS[d.getDay()];
+      const mealsText = meals
+        .map((m) => `${getMealTypeLabel(m.mealType)}: ${m.title}`)
+        .join(". ");
+      return `${dayName}. ${mealsText}`;
+    });
+  return `Ecco il tuo ${title}. ${dayParts.join(". ")}`;
 }
 
 function getNextMonday(): string {
@@ -327,6 +348,7 @@ export default function MealPlansScreen() {
   };
   const [diet, setDiet] = useState("");
   const [allergies, setAllergies] = useState("");
+  const [voicePrefs, setVoicePrefs] = useState("");
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [aiPlans, setAiPlans] = useState<AiMealPlanResponse[]>([]);
@@ -392,20 +414,30 @@ export default function MealPlansScreen() {
   const [generatingAlt, setGeneratingAlt] = useState(false);
   const [aiDisabledError, setAiDisabledError] = useState(false);
 
-  const fetchMealPlanStream = async () => {
-    if (!currentFamily) return;
+  // Contatore degli stream: ogni nuova generazione lo incrementa, così gli
+  // aggiornamenti (e la lettura vocale) di uno stream vecchio vengono ignorati.
+  const streamSeqRef = useRef(0);
+
+  const fetchMealPlanStream = async (opts?: { voiceNotes?: string; speak?: boolean }) => {
+    if (!currentFamily || generating || generatingAlt) return;
+    const seq = ++streamSeqRef.current;
+    const isActive = () => streamSeqRef.current === seq;
     setGenerating(true);
     setAiPlans([]);
     setSelectedPlanIndex(0);
     setAiDisabledError(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
+    const notes = (opts?.voiceNotes ?? voicePrefs).trim();
     const preferences: Record<string, string> = {};
     if (diet.trim()) preferences.diet = diet.trim();
     if (allergies.trim()) preferences.allergies = allergies.trim();
+    if (notes) preferences.notes = notes;
     const body: any = { weekStartDate: weekStart };
     if (Object.keys(preferences).length > 0) body.preferences = preferences;
 
+    const collectedItems: MealPlanItem[] = [];
+    let doneTitle = "Piano Settimanale";
     let started = false;
     let streamErr = false;
     try {
@@ -413,9 +445,11 @@ export default function MealPlansScreen() {
         `/api/ai/${currentFamily.id}/weekly-meal-plan/stream`,
         body,
         (obj) => {
+          if (!isActive()) return;
           if (obj?.type === "error") {
             streamErr = true;
           } else if (obj?.type === "items" && Array.isArray(obj.items)) {
+            collectedItems.push(...(obj.items as MealPlanItem[]));
             if (!started) {
               started = true;
               setAiPlans([{ title: "Piano Settimanale", weekStartDate: weekStart, items: obj.items }]);
@@ -429,6 +463,7 @@ export default function MealPlansScreen() {
               });
             }
           } else if (obj?.type === "done") {
+            if (obj.title) doneTitle = obj.title;
             setAiPlans((prev) => {
               if (prev.length === 0) return prev;
               const first = prev[0]!;
@@ -440,15 +475,21 @@ export default function MealPlansScreen() {
           }
         }
       );
+      if (!isActive()) return;
       if (streamErr) {
+        if (opts?.speak) speakText("Non sono riuscita a generare il piano pasti. Riprova.");
         if (Platform.OS === "web") {
           window.alert("Impossibile generare il piano pasti.");
         } else {
           Alert.alert("Errore", "Impossibile generare il piano pasti.");
         }
         setAiPlans([]);
+      } else if (opts?.speak && collectedItems.length > 0) {
+        speakText(buildPlanSpeech(doneTitle, collectedItems));
       }
     } catch (err: any) {
+      if (!isActive()) return;
+      if (opts?.speak) speakText("Non sono riuscita a generare il piano pasti. Riprova.");
       if (isAiDisabled(err)) {
         setAiDisabledError(true);
       } else {
@@ -461,12 +502,12 @@ export default function MealPlansScreen() {
       }
       setAiPlans([]);
     } finally {
-      setGenerating(false);
+      if (isActive()) setGenerating(false);
     }
   };
 
   const fetchAlternativeStream = async () => {
-    if (!currentFamily) return;
+    if (!currentFamily || generating || generatingAlt) return;
     setGeneratingAlt(true);
     setAiDisabledError(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -474,6 +515,7 @@ export default function MealPlansScreen() {
     const preferences: Record<string, string> = {};
     if (diet.trim()) preferences.diet = diet.trim();
     if (allergies.trim()) preferences.allergies = allergies.trim();
+    if (voicePrefs.trim()) preferences.notes = voicePrefs.trim();
     const body: any = { weekStartDate: weekStart, planVariant: 2 };
     if (Object.keys(preferences).length > 0) body.preferences = preferences;
 
@@ -542,6 +584,15 @@ export default function MealPlansScreen() {
 
   const handleGenerate = () => fetchMealPlanStream();
   const handleGenerateAlternative = () => fetchAlternativeStream();
+
+  // Dettatura completa: l'utente detta dieta, allergie e preferenze in una volta;
+  // al rilascio si genera subito il piano e a fine generazione viene letto ad alta voce.
+  const handleVoiceGenerate = (text: string) => {
+    const spoken = text.trim();
+    if (!spoken) return;
+    setVoicePrefs(spoken);
+    fetchMealPlanStream({ voiceNotes: spoken, speak: true });
+  };
 
   const handleSavePlan = async () => {
     const chosenPlan = aiPlans[selectedPlanIndex];
@@ -698,9 +749,6 @@ export default function MealPlansScreen() {
               placeholderTextColor={colors.textSecondary}
               keyboardAppearance={isDark ? "dark" : "light"}
             />
-            {currentFamily ? (
-              <VoiceInput familyId={currentFamily.id} size={20} onTranscribed={setDiet} />
-            ) : null}
           </View>
 
           <Text style={[styles.sectionLabel, { color: colors.text }]}>Allergie (opzionale)</Text>
@@ -714,10 +762,38 @@ export default function MealPlansScreen() {
               placeholderTextColor={colors.textSecondary}
               keyboardAppearance={isDark ? "dark" : "light"}
             />
-            {currentFamily ? (
-              <VoiceInput familyId={currentFamily.id} size={20} onTranscribed={setAllergies} />
-            ) : null}
           </View>
+
+          {currentFamily ? (
+            <View style={[styles.voiceCard, { backgroundColor: colors.primary + "10", borderColor: colors.primary + "30" }]}>
+              <View style={styles.voiceCardRow}>
+                <View style={styles.voiceCardTextBox}>
+                  <Text style={[styles.voiceCardTitle, { color: colors.text }]}>
+                    Detta e genera
+                  </Text>
+                  <Text style={[styles.voiceCardHint, { color: colors.textSecondary }]}>
+                    Tieni premuto il microfono e detta dieta, allergie e preferenze. Al rilascio genero il piano e te lo leggo.
+                  </Text>
+                </View>
+                <VoiceInput
+                  familyId={currentFamily.id}
+                  size={28}
+                  onTranscribed={handleVoiceGenerate}
+                  disabled={generating || generatingAlt}
+                />
+              </View>
+              {voicePrefs ? (
+                <View style={[styles.voicePrefsBox, { borderColor: colors.border }]}>
+                  <Text style={[styles.voicePrefsText, { color: colors.text }]} numberOfLines={3}>
+                    "{voicePrefs}"
+                  </Text>
+                  <Pressable onPress={() => setVoicePrefs("")} hitSlop={8}>
+                    <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           <Pressable
             onPress={handleGenerate}
@@ -1127,6 +1203,44 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Inter_400Regular",
     height: 48,
+  },
+  voiceCard: {
+    marginTop: 24,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+  },
+  voiceCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  voiceCardTextBox: {
+    flex: 1,
+  },
+  voiceCardTitle: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 4,
+  },
+  voiceCardHint: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 18,
+  },
+  voicePrefsBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+  },
+  voicePrefsText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    fontStyle: "italic",
   },
   generateButton: {
     flexDirection: "row",

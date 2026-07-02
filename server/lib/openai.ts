@@ -504,7 +504,7 @@ function parseMealItems(raw: unknown): MealPlanSuggestion['items'] {
 export async function generateWeeklyMealPlan(context: {
   familySize: number;
   weekStartDate: string;
-  preferences?: { diet?: string; allergies?: string; maxTimeMinutes?: number; mealsPerDay?: number };
+  preferences?: { diet?: string; allergies?: string; maxTimeMinutes?: number; mealsPerDay?: number; notes?: string };
   planVariant?: number;
   onProgress?: (items: MealPlanSuggestion['items']) => void;
 }): Promise<MealPlanSuggestion> {
@@ -520,8 +520,9 @@ export async function generateWeeklyMealPlan(context: {
     ? 'Crea un piano equilibrato e classico con piatti tradizionali italiani.'
     : 'Crea un piano creativo e diverso con piatti più originali e meno convenzionali.';
 
+  const rawNotes = typeof context.preferences?.notes === 'string' ? context.preferences.notes.trim().slice(0, 600) : '';
   const prefText = context.preferences
-    ? `${context.preferences.diet ? ` Dieta: ${context.preferences.diet}.` : ''}${context.preferences.allergies ? ` Allergie: ${context.preferences.allergies}.` : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}`
+    ? `${context.preferences.diet ? ` Dieta: ${context.preferences.diet}.` : ''}${context.preferences.allergies ? ` Allergie: ${context.preferences.allergies}.` : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}${rawNotes ? ` Preferenze della famiglia (dettate a voce, seguile con attenzione): ${rawNotes}.` : ''}`
     : '';
 
   const dates: string[] = [];
