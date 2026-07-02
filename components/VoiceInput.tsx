@@ -52,8 +52,8 @@ interface VoiceInputProps {
 }
 
 /**
- * Pulsante microfono per la dettatura vocale.
- * Tocca per registrare, ritocca per fermare: l'audio viene trascritto in testo
+ * Pulsante microfono per la dettatura vocale, stile "tieni premuto per parlare":
+ * premi e tieni premuto, parla, poi rilascia. L'audio viene trascritto in testo
  * dal backend (OpenAI) e passato a onTranscribed.
  */
 export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: VoiceInputProps) {
@@ -63,6 +63,9 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
   const [transcribing, setTranscribing] = useState(false);
   const idRef = useRef(`mic_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
   const recordingRef = useRef(false);
+  const pressedRef = useRef(false);
+  const startingRef = useRef(false);
+  const recordStartRef = useRef(0);
 
   const activeMic = useSyncExternalStore(subscribeMic, getActiveMic, getActiveMic);
   const lockedByOther = activeMic !== null && activeMic !== idRef.current;
@@ -86,9 +89,26 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const cancelRecording = async (showHint: boolean) => {
+    recordingRef.current = false;
+    setRecording(false);
+    try {
+      await recorder.stop();
+    } catch {}
+    await resetAudioMode();
+    setActiveMic(null);
+    if (showHint) {
+      Alert.alert(
+        "Dettatura",
+        "Tieni premuto il microfono mentre parli, poi rilascia per trascrivere."
+      );
+    }
+  };
+
   const startRecording = async () => {
     if (getActiveMic() !== null) return; // un altro mic sta già registrando
     setActiveMic(idRef.current);
+    startingRef.current = true;
     try {
       const perm = await AudioModule.requestRecordingPermissionsAsync();
       if (!perm.granted) {
@@ -102,10 +122,16 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
+      recordStartRef.current = Date.now();
       recordingRef.current = true;
       setRecording(true);
       if (Platform.OS !== "web") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      // Se l'utente ha già rilasciato mentre stavamo avviando (es. durante la
+      // richiesta di permesso), annulla e mostra il suggerimento d'uso.
+      if (!pressedRef.current) {
+        await cancelRecording(true);
       }
     } catch (err) {
       console.error("Errore avvio registrazione:", err);
@@ -114,6 +140,8 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
       setActiveMic(null);
       await resetAudioMode();
       Alert.alert("Dettatura", "Impossibile avviare la registrazione su questo dispositivo.");
+    } finally {
+      startingRef.current = false;
     }
   };
 
@@ -168,12 +196,46 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
     }
   };
 
-  const handlePress = () => {
-    if (transcribing || lockedByOther) return;
-    if (recording) {
-      stopAndTranscribe();
-    } else {
+  // Web: se il puntatore viene rilasciato fuori dal pulsante o la finestra
+  // perde il focus, l'onPressOut del Pressable può non arrivare. Questi
+  // listener globali garantiscono che la registrazione venga sempre chiusa.
+  useEffect(() => {
+    if (Platform.OS !== "web" || !recording) return;
+    const win = globalThis as any;
+    if (!win?.addEventListener) return;
+    const onPointerUp = () => handlePressOut();
+    const onWindowBlur = () => {
+      pressedRef.current = false;
+      if (recordingRef.current) cancelRecording(false);
+    };
+    win.addEventListener("pointerup", onPointerUp);
+    win.addEventListener("blur", onWindowBlur);
+    return () => {
+      win.removeEventListener("pointerup", onPointerUp);
+      win.removeEventListener("blur", onWindowBlur);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording]);
+
+  const handlePressIn = () => {
+    if (transcribing || lockedByOther || disabled) return;
+    pressedRef.current = true;
+    if (!recordingRef.current && !startingRef.current) {
       startRecording();
+    }
+  };
+
+  const handlePressOut = () => {
+    pressedRef.current = false;
+    // Se stiamo ancora avviando, sarà startRecording a gestire il rilascio
+    if (startingRef.current) return;
+    if (!recordingRef.current) return;
+    const elapsed = Date.now() - recordStartRef.current;
+    if (elapsed < 400) {
+      // Tocco troppo breve: annulla e spiega come si usa
+      cancelRecording(true);
+    } else {
+      stopAndTranscribe();
     }
   };
 
@@ -185,20 +247,34 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
 
   return (
     <Pressable
-      onPress={handlePress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       disabled={isDisabled}
       hitSlop={8}
       style={styles.button}
-      accessibilityLabel={recording ? "Ferma la registrazione" : "Detta con la voce"}
+      accessibilityLabel={recording ? "Rilascia per trascrivere" : "Tieni premuto e parla"}
       testID="voice-input-button"
     >
       <Ionicons
-        name={recording ? "stop-circle" : "mic-outline"}
+        name={recording ? "radio-button-on" : "mic-outline"}
         size={recording ? size + 4 : size}
         color={recording ? "#FF6B6B" : isDisabled ? colors.textSecondary : colors.primary}
       />
     </Pressable>
   );
+}
+
+/**
+ * Legge un testo ad alta voce in italiano (interrompe eventuali letture in corso).
+ * Utile per leggere automaticamente i risultati generati dall'AI.
+ */
+export function speakText(text: string) {
+  const content = (text || "").trim();
+  if (!content) return;
+  Speech.stop();
+  chunkText(content).forEach((chunk) => {
+    Speech.speak(chunk, { language: "it-IT" });
+  });
 }
 
 /** Divide un testo lungo in blocchi pronunciabili (limite TTS Android ~4000 caratteri). */
@@ -250,6 +326,9 @@ export function SpeakButton({ text, size = 22, color }: SpeakButtonProps) {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
+    // Interrompe eventuali letture in corso (es. lettura automatica) per
+    // evitare voci sovrapposte.
+    Speech.stop();
     const chunks = chunkText(content);
     setSpeaking(true);
     chunks.forEach((chunk, i) => {

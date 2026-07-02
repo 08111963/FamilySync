@@ -20,7 +20,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "@/hooks/useTheme";
-import { VoiceInput } from "@/components/VoiceInput";
+import { VoiceInput, speakText } from "@/components/VoiceInput";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiFetch, getApiUrl } from "@/lib/query-client";
 import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
@@ -135,8 +135,9 @@ export default function RecipesScreen() {
     }
   };
 
-  const handleSearch = async () => {
-    if (!currentFamily || !searchQuery.trim() || searchQuery.trim().length < 2) return;
+  const runAiSearch = async (rawQuery: string, opts?: { speakResults?: boolean }) => {
+    const q = rawQuery.trim();
+    if (!currentFamily || q.length < 2) return;
     Keyboard.dismiss();
     setSearching(true);
     setAiError(null);
@@ -144,16 +145,29 @@ export default function RecipesScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const data = await apiFetch<{ recipes?: any[] }>(
         `/api/ai/${currentFamily.id}/recipe-search`,
-        { method: "POST", body: { query: searchQuery.trim() } }
+        { method: "POST", body: { query: q } }
       );
       const list = data.recipes || [];
       if (list.length === 0) {
         setAiError("Nessuna ricetta trovata. Prova con altri termini.");
+        if (opts?.speakResults) {
+          speakText(`Non ho trovato ricette per ${q}. Prova con altre parole.`);
+        }
         return;
+      }
+      if (opts?.speakResults) {
+        const parts = list.map((r: any, i: number) => {
+          const title = r?.title || `Ricetta ${i + 1}`;
+          const desc = (r?.description || "").trim();
+          return desc ? `${title}: ${desc}` : title;
+        });
+        speakText(
+          `Ho trovato ${list.length} ${list.length === 1 ? "ricetta" : "ricette"} per ${q}. ${parts.join(". ")}`
+        );
       }
       router.push({
         pathname: "/recipes/preview" as any,
-        params: { recipesJson: JSON.stringify(list), query: searchQuery.trim() },
+        params: { recipesJson: JSON.stringify(list), query: q },
       });
     } catch (error: any) {
       if (isAiDisabled(error)) {
@@ -164,6 +178,15 @@ export default function RecipesScreen() {
     } finally {
       setSearching(false);
     }
+  };
+
+  const handleSearch = () => runAiSearch(searchQuery);
+
+  // Dettatura vocale: inserisce il testo, avvia subito la ricerca AI
+  // e legge ad alta voce le ricette trovate.
+  const handleVoiceSearch = (text: string) => {
+    setSearchQuery(text);
+    runAiSearch(text, { speakResults: true });
   };
 
   const handleDeleteRecipe = async (recipeId: string, title: string) => {
@@ -418,7 +441,7 @@ export default function RecipesScreen() {
           <VoiceInput
             familyId={currentFamily.id}
             disabled={searching || generatingAi}
-            onTranscribed={setSearchQuery}
+            onTranscribed={handleVoiceSearch}
           />
         ) : null}
       </View>

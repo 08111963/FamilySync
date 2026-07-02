@@ -182,3 +182,8 @@ Lingua di comunicazione: Rispondere SEMPRE in italiano.
   - Frontend: `components/VoiceInput.tsx` con `VoiceInput` (dettatura via expo-audio, lock globale un-solo-mic, cleanup su unmount) e `SpeakButton` (lettura ad alta voce via expo-speech it-IT, chunking testi lunghi)
   - Integrazioni: mic nella ricerca ricette, mic sui campi dieta/allergie del piano pasti; altoparlante su piano generato, anteprima ricetta AI e dettaglio ricetta
   - `app.json`: plugin expo-audio con messaggio permesso microfono in italiano
+- Migliorata UX input vocale (feedback utente):
+  - VoiceInput ora è "tieni premuto per parlare" (premi → parli → rilasci); tocco breve <400ms mostra un suggerimento d'uso; su web listener globali pointerup/blur evitano registrazioni bloccate
+  - Nella ricerca ricette la dettatura avvia automaticamente la ricerca AI e i risultati vengono letti ad alta voce (titolo + descrizione), incluso il caso "nessuna ricetta trovata"
+  - Nuovo helper `speakText()` in components/VoiceInput.tsx; SpeakButton interrompe eventuali letture in corso prima di parlare
+  - La copia statica `web-build` va rigenerata (`npx expo export --platform web`) dopo ogni modifica frontend rilevante, altrimenti alcune anteprime mostrano la versione vecchia

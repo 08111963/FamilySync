@@ -1,5 +1,6 @@
 - [EAS/CI lockfile proxy URLs](eas-lockfile-proxy-urls.md) — `npm ci` crashes ("Exit handler never called!") on EAS/GitHub CI when package-lock.json resolved URLs point to `package-firewall.replit.local`; rewrite to registry.npmjs.org.
 - [Metro environment quirks](metro-environment-quirks.md) — `.local` must stay in metro blockList (FallbackWatcher ENOENT crash); clear Metro cache after installing native modules; `/tmp/logs` are stale snapshots.
+- [Static web-build staleness](expo-static-web-build.md) — backend serves a static Expo export from `web-build/`; regenerate + swap + restart after user-visible frontend changes or previews show old UI.
 - [Backend testing approach](backend-testing.md) — no test runner configured; run `npx tsx server/__tests__/*.test.ts` with node:test, no package.json edits.
 - [Express 5 + TS params](express5-typescript.md) — req.params/query are string|string[] in @types/express 5; use server/lib/http-params helpers; Drizzle numeric/enum/NOT-NULL insert gotchas
 - [AI hardening conventions](ai-hardening-conventions.md) — OpenAI fns: assertAiConfigured + typed mapOpenAiError; per-family quota counts ALL attempts (reserve/finalize, advisory-lock atomic, fail-closed); frontend lib/ai-error-message.ts
