@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { db } from '../db';
@@ -7,7 +8,7 @@ import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
-import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, type ShoppingSuggestionItem } from '../lib/openai';
+import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, transcribeAudio, type ShoppingSuggestionItem } from '../lib/openai';
 import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { recipes, recipeIngredients } from '../../shared/schema';
@@ -735,6 +736,105 @@ router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireF
     logger.error('Recipe search error', { error: String(error) });
     sendAiError(res, error, "Errore nella ricerca ricette");
   }
+});
+
+// ---- Trascrizione vocale (dettatura) ----
+// Audio tenuto SOLO in memoria (mai su disco): viene inoltrato a OpenAI e scartato.
+const AUDIO_ALLOWED_MIMES = new Set([
+  'audio/m4a',
+  'audio/x-m4a',
+  'audio/mp4',
+  'audio/aac',
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/webm',
+  'audio/ogg',
+]);
+
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB (~10 min di voce compressa)
+  fileFilter: (_req, file, cb) => {
+    const mime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
+    if (AUDIO_ALLOWED_MIMES.has(mime)) return cb(null, true);
+    cb(new Error('UNSUPPORTED_AUDIO_TYPE'));
+  },
+});
+
+/**
+ * Verifica i magic bytes del buffer: deve corrispondere a un formato audio
+ * conosciuto (indipendentemente dal MIME dichiarato dal client, che può
+ * essere falsificato). Stesso principio dell'hardening upload della chat.
+ */
+function looksLikeAudio(buf: Buffer): boolean {
+  if (buf.length < 12) return false;
+  // WAV: "RIFF"...."WAVE"
+  if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WAVE') return true;
+  // MP4/M4A container: "ftyp" a offset 4
+  if (buf.toString('ascii', 4, 8) === 'ftyp') return true;
+  // WebM/Matroska: EBML header 1A 45 DF A3
+  if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) return true;
+  // Ogg: "OggS"
+  if (buf.toString('ascii', 0, 4) === 'OggS') return true;
+  // MP3: tag "ID3" oppure frame sync FF Ex/Fx
+  if (buf.toString('ascii', 0, 3) === 'ID3') return true;
+  if (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0) return true; // copre anche AAC ADTS
+  return false;
+}
+
+/** Estensione file coerente col MIME (OpenAI usa il nome per riconoscere il formato). */
+function audioExtension(mime: string): string {
+  const base = (mime || '').split(';')[0].trim().toLowerCase();
+  switch (base) {
+    case 'audio/mpeg':
+    case 'audio/mp3': return 'mp3';
+    case 'audio/wav':
+    case 'audio/x-wav': return 'wav';
+    case 'audio/webm': return 'webm';
+    case 'audio/ogg': return 'ogg';
+    default: return 'm4a'; // m4a/mp4/aac
+  }
+}
+
+router.post('/:familyId/transcribe', authenticate, requireAiEnabled, requireFamilyMember(), (req: Request, res: Response) => {
+  audioUpload.single('audio')(req, res, async (uploadErr: unknown) => {
+    const familyId = getParam(req, 'familyId');
+    const userId = req.user!.userId;
+    try {
+      if (uploadErr) {
+        const msg = uploadErr instanceof Error && uploadErr.message === 'UNSUPPORTED_AUDIO_TYPE'
+          ? 'Formato audio non supportato'
+          : 'File audio troppo grande o non valido (max 10MB)';
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: msg } });
+      }
+      const file = req.file;
+      if (!file || !file.buffer || file.buffer.length === 0) {
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Nessun file audio ricevuto' } });
+      }
+      if (!looksLikeAudio(file.buffer)) {
+        return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Il file ricevuto non sembra un audio valido' } });
+      }
+
+      const mime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
+      const run = await withAiUsage(
+        { userId, familyId, feature: 'voice-transcription' },
+        () => transcribeAudio({
+          buffer: file.buffer,
+          filename: `voice.${audioExtension(mime)}`,
+          mimeType: mime,
+        }),
+      );
+      if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
+      if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
+
+      res.json({ text: run.value.text });
+    } catch (error) {
+      logger.error('Voice transcription error', { error: String(error) });
+      sendAiError(res, error, 'Errore nella trascrizione vocale');
+    }
+  });
 });
 
 export default router;

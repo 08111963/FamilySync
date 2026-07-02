@@ -20,6 +20,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "@/hooks/useTheme";
+import { VoiceInput } from "@/components/VoiceInput";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiFetch, getApiUrl } from "@/lib/query-client";
 import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
@@ -412,6 +413,13 @@ export default function RecipesScreen() {
           <Pressable onPress={handleSearch} hitSlop={8}>
             <Ionicons name="arrow-forward-circle" size={28} color={colors.primary} />
           </Pressable>
+        ) : null}
+        {currentFamily ? (
+          <VoiceInput
+            familyId={currentFamily.id}
+            disabled={searching || generatingAi}
+            onTranscribed={setSearchQuery}
+          />
         ) : null}
       </View>
 

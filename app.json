@@ -46,6 +46,12 @@
           "cameraPermission": "L'app usa la fotocamera per scattare foto da condividere nella chat di famiglia."
         }
       ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "L'app usa il microfono per la dettatura vocale delle richieste AI (ricette e piano pasti)."
+        }
+      ],
       "expo-font",
       "expo-web-browser"
     ],

@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 import { z } from 'zod';
 import { normalizeItemName } from './normalize';
 import { assertAiConfigured, mapOpenAiError } from './ai-errors';
@@ -650,6 +650,31 @@ export async function generateFamilyInsights(context: {
     
     const content = response.choices[0].message.content || '{"insights": []}';
     return JSON.parse(content);
+  } catch (error) {
+    throw mapOpenAiError(error);
+  }
+}
+
+/**
+ * Trascrive un file audio (voce dell'utente) in testo italiano.
+ * Usa l'API audio di OpenAI (gpt-4o-mini-transcribe). Errori sempre tipizzati
+ * via mapOpenAiError; la quota è gestita dalla rotta con withAiUsage.
+ */
+export async function transcribeAudio(input: {
+  buffer: Buffer;
+  filename: string;
+  mimeType: string;
+}): Promise<{ text: string }> {
+  assertAiConfigured();
+  try {
+    const file = await toFile(input.buffer, input.filename, { type: input.mimeType });
+    const response = await getOpenAiClient().audio.transcriptions.create({
+      file,
+      model: 'gpt-4o-mini-transcribe',
+      language: 'it',
+    });
+    const text = (response.text || '').trim();
+    return { text };
   } catch (error) {
     throw mapOpenAiError(error);
   }

@@ -174,3 +174,11 @@ Lingua di comunicazione: Rispondere SEMPRE in italiano.
   - Block filtering applicato ai messaggi chat
   - Tab Chat aggiunto alla navigazione principale (6 tab totali)
   - File statici serviti da `/uploads` con limite 10MB e filtri MIME type
+
+## Recenti Modifiche (Luglio 2026)
+
+- Implementato input vocale nelle schermate AI (per la versione 1.0.2):
+  - Backend: rotta `POST /api/ai/:familyId/transcribe` (multer in memoria, max 10MB, allowlist MIME + verifica magic-bytes audio), trascrizione via OpenAI `gpt-4o-mini-transcribe` (lingua it), quota giornaliera `voice-transcription` (free 5/giorno, premium 30/giorno)
+  - Frontend: `components/VoiceInput.tsx` con `VoiceInput` (dettatura via expo-audio, lock globale un-solo-mic, cleanup su unmount) e `SpeakButton` (lettura ad alta voce via expo-speech it-IT, chunking testi lunghi)
+  - Integrazioni: mic nella ricerca ricette, mic sui campi dieta/allergie del piano pasti; altoparlante su piano generato, anteprima ricetta AI e dettaglio ricetta
+  - `app.json`: plugin expo-audio con messaggio permesso microfono in italiano

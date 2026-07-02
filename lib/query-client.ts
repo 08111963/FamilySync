@@ -138,6 +138,47 @@ export async function apiFetch<T>(route: string, options?: { method?: string; bo
   return res.json();
 }
 
+/**
+ * Upload multipart autenticato (FormData). Non imposta Content-Type manualmente:
+ * il boundary viene gestito da fetch. Errori nello stesso formato di apiFetch
+ * ({ status, body }) così aiErrorMessage funziona anche qui.
+ */
+export async function apiUpload<T>(route: string, formData: FormData): Promise<T> {
+  const baseUrl = getApiUrl();
+  const url = new URL(route, baseUrl);
+  let token = await getAccessToken();
+
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  let res = await globalThis.fetch(url.toString(), {
+    method: "POST",
+    headers,
+    credentials: "include",
+    body: formData as any,
+  });
+
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      headers["Authorization"] = `Bearer ${newToken}`;
+      res = await globalThis.fetch(url.toString(), {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: formData as any,
+      });
+    }
+  }
+
+  if (!res.ok) {
+    let body = null;
+    try { body = await res.json(); } catch { try { await res.text(); } catch {} }
+    throw { status: res.status, body };
+  }
+  return res.json();
+}
+
 export async function apiStream(
   route: string,
   body: any,

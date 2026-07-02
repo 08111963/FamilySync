@@ -13,6 +13,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
+import { SpeakButton } from "@/components/VoiceInput";
 import { useFamily } from "@/context/FamilyContext";
 
 interface RecipeTag {
@@ -146,7 +147,25 @@ export default function RecipeDetailScreen() {
         >
           Dettaglio Ricetta
         </Text>
-        <View style={styles.headerButton} />
+        <View style={styles.headerButton}>
+          <SpeakButton
+            text={[
+              recipe.title,
+              recipe.description || "",
+              ingredients.length
+                ? "Ingredienti: " +
+                  ingredients
+                    .map((ing) => [ing.quantity, ing.unit, ing.name].filter(Boolean).join(" "))
+                    .join(", ")
+                : "",
+              steps.length
+                ? "Preparazione: " + steps.map((s, i) => `Passo ${i + 1}: ${s}`).join(" ")
+                : "",
+            ]
+              .filter(Boolean)
+              .join(". ")}
+          />
+        </View>
       </View>
 
       <ScrollView

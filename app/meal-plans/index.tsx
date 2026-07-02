@@ -19,6 +19,7 @@ import * as Haptics from "expo-haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
+import { VoiceInput, SpeakButton } from "@/components/VoiceInput";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiStream } from "@/lib/query-client";
 import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
@@ -697,6 +698,9 @@ export default function MealPlansScreen() {
               placeholderTextColor={colors.textSecondary}
               keyboardAppearance={isDark ? "dark" : "light"}
             />
+            {currentFamily ? (
+              <VoiceInput familyId={currentFamily.id} size={20} onTranscribed={setDiet} />
+            ) : null}
           </View>
 
           <Text style={[styles.sectionLabel, { color: colors.text }]}>Allergie (opzionale)</Text>
@@ -710,6 +714,9 @@ export default function MealPlansScreen() {
               placeholderTextColor={colors.textSecondary}
               keyboardAppearance={isDark ? "dark" : "light"}
             />
+            {currentFamily ? (
+              <VoiceInput familyId={currentFamily.id} size={20} onTranscribed={setAllergies} />
+            ) : null}
           </View>
 
           <Pressable
@@ -787,7 +794,20 @@ export default function MealPlansScreen() {
                 </>
               ) : null}
 
-              <Text style={[styles.resultTitle, { color: colors.text }]}>{currentPlan.title}</Text>
+              <View style={styles.resultTitleRow}>
+                <Text style={[styles.resultTitle, { color: colors.text, flex: 1 }]}>{currentPlan.title}</Text>
+                <SpeakButton
+                  text={[
+                    currentPlan.title,
+                    ...groupedItems.map(
+                      (g) =>
+                        `${formatDayDate(g.date)}: ${g.items
+                          .map((m) => `${getMealTypeLabel(m.mealType)}, ${m.title}`)
+                          .join(". ")}`
+                    ),
+                  ].join(". ")}
+                />
+              </View>
               <Text style={[styles.resultSubtitle, { color: colors.textSecondary }]}>
                 {formatWeekDate(currentPlan.weekStartDate ?? weekStart)}
               </Text>
@@ -1129,6 +1149,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: "Inter_600SemiBold",
     marginBottom: 4,
+  },
+  resultTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   resultSubtitle: {
     fontSize: 14,

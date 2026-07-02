@@ -31,6 +31,9 @@ Convenzioni adottate per le funzioni AI (OpenAI) di FamilySync, da rispettare in
 
 - **Frontend**: usare `lib/ai-error-message.ts` (`aiErrorMessage`, `isAiDisabled`) per mostrare messaggi italiani semplici; preferisce `err.body.error.message` del server, fallback per codice. AI_DISABLED resta gestito separatamente (toggle impostazioni).
 
+- **Trascrizione vocale**: la baseURL delle Replit AI integrations supporta `audio.transcriptions.create` con `gpt-4o-mini-transcribe` (verificato live). Upload audio: oltre all'allowlist MIME di multer serve la verifica magic-bytes del buffer (RIFF/WAVE, ftyp, EBML, OggS, ID3/frame-sync) perché il MIME dichiarato dal client è falsificabile. Lato Expo: un solo recorder attivo alla volta (lock a livello modulo condiviso tra i VoiceInput) e reset dell'audio mode in `finally`/unmount, altrimenti il device resta in modalità registrazione.
+  **Why:** due mic nella stessa schermata (expo-audio) confliggono su prepare/record; e uno stop() fallito lasciava allowsRecording attivo.
+
 - **Dedup risorse uniche** (es. meal plan settimanale): check di esistenza → 409 + catch race su unique con `isUniqueViolation()` (`server/lib/db-errors.ts`, SQLSTATE 23505).
 
 - **Test**: `npm run test:ai` (node:test via tsx). `ai-usage.test.ts` inietta uno store in-memory atomico via `__setAiUsageStoreForTest`/`__resetAiUsageStoreForTest` (interface `AiUsageStore`): verifica reserve/finalize, withAiUsage (malformato/timeout/provider→failed, ok→succeeded, limited/unavailable→OpenAI NON chiamato), concorrenza→no overshoot. `ai-usage-db.test.ts` è integration sul DB reale (skip se manca `DATABASE_URL`): N richieste concorrenti reserve, assert esatti `max` ok + righe DB; cleanup via cascade delete family+user. I middleware 403 (requireAiEnabled / requireFamilyMember) sono DB-coupled e verificati dal wiring delle rotte.

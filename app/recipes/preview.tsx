@@ -18,6 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "@/hooks/useTheme";
+import { SpeakButton } from "@/components/VoiceInput";
 import { useFamily } from "@/context/FamilyContext";
 import { apiFetch, getApiUrl } from "@/lib/query-client";
 
@@ -182,6 +183,24 @@ function RecipePreviewCard({
   );
 }
 
+/** Testo completo della ricetta per la lettura ad alta voce. */
+function recipeSpeechText(recipe: AiRecipe): string {
+  const parts: string[] = [recipe.title];
+  if (recipe.description) parts.push(recipe.description);
+  if (recipe.ingredients?.length) {
+    parts.push(
+      "Ingredienti: " +
+        recipe.ingredients
+          .map((i) => [i.quantity, formatUnit(i.unit), i.name].filter(Boolean).join(" "))
+          .join(", ")
+    );
+  }
+  if (recipe.steps?.length) {
+    parts.push("Preparazione: " + recipe.steps.map((s, i) => `Passo ${i + 1}: ${s}`).join(" "));
+  }
+  return parts.join(". ");
+}
+
 function RecipeDetailModal({
   recipe,
   visible,
@@ -206,6 +225,7 @@ function RecipeDetailModal({
           <Text style={[styles.modalTitle, { color: colors.text }]} numberOfLines={2}>
             {recipe.title}
           </Text>
+          <SpeakButton text={recipeSpeechText(recipe)} />
           <Pressable onPress={onClose} hitSlop={12} style={styles.modalClose}>
             <Ionicons name="close" size={24} color={colors.text} />
           </Pressable>
