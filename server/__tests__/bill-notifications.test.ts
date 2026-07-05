@@ -23,11 +23,11 @@ function bill(overrides: Partial<NotifiableBill> = {}): NotifiableBill {
 }
 
 describe("offsetsForPlan", () => {
-  test("Premium ha 7/3/0/-1", () => {
-    assert.deepEqual(offsetsForPlan("premium"), [7, 3, 0, -1]);
+  test("Premium ha 7/3/1/0", () => {
+    assert.deepEqual(offsetsForPlan("premium"), [7, 3, 1, 0]);
   });
-  test("Free ha solo giorno/scaduta", () => {
-    assert.deepEqual(offsetsForPlan("free"), [0, -1]);
+  test("Free ha 1 giorno prima + giorno della scadenza", () => {
+    assert.deepEqual(offsetsForPlan("free"), [1, 0]);
   });
 });
 
@@ -41,18 +41,19 @@ describe("formatEuro", () => {
 describe("computeBillNotificationTriggers", () => {
   const now = new Date(2026, 11, 1, 8, 0, 0); // 1 dic 2026
 
-  test("Premium: 4 trigger futuri (7,3,0,-1)", () => {
+  test("Premium: 4 trigger futuri (7,3,1,0)", () => {
     const triggers = computeBillNotificationTriggers(bill(), "premium", now);
     assert.equal(triggers.length, 4);
     // tutte le date sono future
     for (const t of triggers) assert.ok(t.date.getTime() > now.getTime());
-    // tutte alle 09:00
-    for (const t of triggers) assert.equal(t.date.getHours(), 9);
+    // tutte alle 08:00
+    for (const t of triggers) assert.equal(t.date.getHours(), 8);
   });
 
-  test("Free: solo 2 trigger (giorno + scaduta)", () => {
+  test("Free: solo 2 trigger (1 giorno prima + giorno scadenza)", () => {
     const triggers = computeBillNotificationTriggers(bill(), "free", now);
     assert.equal(triggers.length, 2);
+    assert.deepEqual(triggers.map((t) => t.key).sort(), ["0", "1"]);
   });
 
   test("bolletta pagata: nessun trigger", () => {
@@ -66,17 +67,24 @@ describe("computeBillNotificationTriggers", () => {
   });
 
   test("solo i trigger futuri (scadenza vicina salta i giorni passati)", () => {
-    // scadenza fra 2 giorni: 7 e 3 giorni prima sono nel passato, restano 0 e -1
-    const close = new Date(2026, 11, 18, 8, 0, 0);
+    // scadenza fra 2 giorni: 7 e 3 giorni prima sono nel passato, restano 1 e 0
+    const close = new Date(2026, 11, 18, 9, 0, 0);
     const triggers = computeBillNotificationTriggers(bill({ dueDate: "2026-12-20" }), "premium", close);
     const keys = triggers.map((t) => t.key).sort();
-    assert.deepEqual(keys, ["-1", "0"]);
+    assert.deepEqual(keys, ["0", "1"]);
   });
 
   test("scadenza nel passato: nessun trigger", () => {
     const past = new Date(2027, 0, 1, 8, 0, 0);
     const triggers = computeBillNotificationTriggers(bill(), "premium", past);
     assert.equal(triggers.length, 0);
+  });
+
+  test("titolo corretto per il trigger del giorno prima", () => {
+    const triggers = computeBillNotificationTriggers(bill(), "premium", now);
+    const dayBefore = triggers.find((t) => t.key === "1");
+    assert.ok(dayBefore);
+    assert.equal(dayBefore.title, "Bolletta in scadenza domani");
   });
 
   test("dueDate non valida: nessun trigger (no crash)", () => {

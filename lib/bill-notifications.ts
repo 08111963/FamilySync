@@ -27,10 +27,18 @@ export interface BillNotificationTrigger {
 }
 
 /** Offset in giorni PRIMA della scadenza (negativo = dopo la scadenza). */
-const PREMIUM_OFFSETS = [7, 3, 0, -1];
-const FREE_OFFSETS = [0, -1];
+const PREMIUM_OFFSETS = [7, 3, 1, 0];
+const FREE_OFFSETS = [1, 0];
 
-const NOTIFY_HOUR = 9; // 09:00 ora locale.
+const NOTIFY_HOUR = 8; // 08:00 ora locale.
+
+/**
+ * Versione della politica di notifica (orario + offset). Va incrementata ogni
+ * volta che cambiano NOTIFY_HOUR o gli offset: entra nella firma, così le
+ * notifiche già programmate con la vecchia politica vengono riprogrammate.
+ * v2: orario 09:00 -> 08:00, offset free [0,-1] -> [1,0], premium [7,3,0,-1] -> [7,3,1,0].
+ */
+const SCHEDULE_POLICY_VERSION = 2;
 
 export function formatEuro(amount: string | number): string {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -63,6 +71,7 @@ function addDays(date: Date, days: number): Date {
 function titleForOffset(offset: number): string {
   if (offset >= 7) return "Bolletta tra una settimana";
   if (offset === 3) return "Bolletta tra 3 giorni";
+  if (offset === 1) return "Bolletta in scadenza domani";
   if (offset === 0) return "Bolletta in scadenza oggi";
   return "Bolletta scaduta";
 }
@@ -109,6 +118,7 @@ export function billNotificationSignature(bill: NotifiableBill, plan: BillPlan):
   // Include title e amount perché compaiono nel testo della notifica: se cambiano,
   // le notifiche già programmate vanno riprogrammate con il testo aggiornato.
   return [
+    `v${SCHEDULE_POLICY_VERSION}`,
     bill.title,
     String(bill.amount),
     bill.dueDate,

@@ -93,7 +93,7 @@ export function billDueLabel(bill: Bill, now: Date = new Date()): { text: string
   return { text: `Scade il ${formatDueDate(bill.dueDate)}`, urgent: false };
 }
 
-function BillRow({ bill, onPress, onDelete }: { bill: Bill; onPress: () => void; onDelete?: () => void }) {
+function BillRow({ bill, onPress, onDelete, onMarkPaid }: { bill: Bill; onPress: () => void; onDelete?: () => void; onMarkPaid?: () => void }) {
   const { colors } = useTheme();
   const cat = CATEGORY_META[bill.category] ?? CATEGORY_META.altro;
   const status = STATUS_META[bill.computedStatus];
@@ -140,6 +140,22 @@ function BillRow({ bill, onPress, onDelete }: { bill: Bill; onPress: () => void;
           <Text style={[styles.statusText, { color: isOverdue ? "#fff" : status.color }]}>{status.label}</Text>
         </View>
       </View>
+      {onMarkPaid && (
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation();
+            onMarkPaid();
+          }}
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.payBtn,
+            { backgroundColor: STATUS_META.pagata.color, opacity: pressed ? 0.7 : 1 },
+          ]}
+          testID={`pay-bill-${bill.id}`}
+        >
+          <Ionicons name="checkmark" size={20} color="#fff" />
+        </Pressable>
+      )}
       {onDelete && (
         <Pressable
           onPress={(e) => {
@@ -165,6 +181,7 @@ export default function BillsScreen() {
   const familyId = currentFamily?.id;
   const [filter, setFilter] = useState<FilterKey>("all");
   const [addChooserVisible, setAddChooserVisible] = useState(false);
+  const [payingIds, setPayingIds] = useState<Set<string>>(new Set());
 
   const billsQuery = useQuery<Bill[]>({
     queryKey: [`/api/bills/${familyId}`],
@@ -265,6 +282,42 @@ export default function BillsScreen() {
       if (Platform.OS === "web") window.alert("Impossibile eliminare la bolletta");
       else Alert.alert("Errore", "Impossibile eliminare la bolletta");
     }
+  };
+
+  const doMarkPaid = async (bill: Bill) => {
+    // Guard anti doppio tocco: se la richiesta è già in corso, ignora.
+    if (payingIds.has(bill.id)) return;
+    setPayingIds((prev) => new Set(prev).add(bill.id));
+    try {
+      await apiRequest("PATCH", `/api/bills/${familyId}/${bill.id}/pay`, { paid: true });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      queryClient.invalidateQueries({ queryKey: [`/api/bills/${familyId}`] });
+    } catch {
+      if (Platform.OS === "web") window.alert("Impossibile segnare la bolletta come pagata");
+      else Alert.alert("Errore", "Impossibile segnare la bolletta come pagata");
+    } finally {
+      setPayingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(bill.id);
+        return next;
+      });
+    }
+  };
+
+  const handleMarkPaid = (bill: Bill) => {
+    if (!familyId || payingIds.has(bill.id)) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Su web Alert.alert non mostra nulla: usiamo window.confirm.
+    if (Platform.OS === "web") {
+      if (window.confirm(`Segnare "${bill.title}" come pagata?`)) {
+        doMarkPaid(bill);
+      }
+      return;
+    }
+    Alert.alert("Segna come pagata", `Segnare "${bill.title}" come pagata? Passerà tra le bollette pagate.`, [
+      { text: "Annulla", style: "cancel" },
+      { text: "Segna pagata", onPress: () => doMarkPaid(bill) },
+    ]);
   };
 
   const handleDeleteBill = (bill: Bill) => {
@@ -389,6 +442,7 @@ export default function BillsScreen() {
                 bill={item}
                 onPress={() => router.push(`/bill/${item.id}`)}
                 onDelete={item.computedStatus === "pagata" ? () => handleDeleteBill(item) : undefined}
+                onMarkPaid={item.computedStatus === "scaduta" ? () => handleMarkPaid(item) : undefined}
               />
             </View>
           )}
@@ -540,6 +594,15 @@ const styles = StyleSheet.create({
   statusBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8 },
   statusText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   deleteBtn: { marginLeft: 10, padding: 6, alignSelf: "center" },
+  payBtn: {
+    marginLeft: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: "center",
+    alignItems: "center",
+    alignSelf: "center",
+  },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center", padding: 24 },
   modalCard: { width: "100%", maxWidth: 380, borderRadius: 16, padding: 20 },
   modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
