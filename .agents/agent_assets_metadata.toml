@@ -90,3 +90,9 @@ id = "GC8nk5xiK6U-bInmeEwDz"
 uri = "file://docs/guida-utente.md"
 type = "text"
 title = "Guida Utente FamilySync (aggiornata)"
+
+[[outputs]]
+id = "s0WtDUDWG1Y0Bknzf181d"
+uri = "file://exports/guida-utente-familysync.pdf"
+type = "pdf"
+title = "Guida Utente FamilySync (PDF)"
