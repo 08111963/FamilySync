@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { StyleSheet, Text, View, Pressable, SectionList, Platform, RefreshControl, ActivityIndicator, Alert } from "react-native";
+import { StyleSheet, Text, View, Pressable, SectionList, Platform, RefreshControl, ActivityIndicator, Alert, Modal } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -164,6 +164,7 @@ export default function BillsScreen() {
   const { isSubscribed } = useSubscription();
   const familyId = currentFamily?.id;
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [addChooserVisible, setAddChooserVisible] = useState(false);
 
   const billsQuery = useQuery<Bill[]>({
     queryKey: [`/api/bills/${familyId}`],
@@ -256,28 +257,30 @@ export default function BillsScreen() {
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const tabBarHeight = Platform.OS === "web" ? 84 : 49 + insets.bottom;
 
+  const doDeleteBill = async (bill: Bill) => {
+    try {
+      await apiRequest("DELETE", `/api/bills/${familyId}/${bill.id}`);
+      queryClient.invalidateQueries({ queryKey: [`/api/bills/${familyId}`] });
+    } catch {
+      if (Platform.OS === "web") window.alert("Impossibile eliminare la bolletta");
+      else Alert.alert("Errore", "Impossibile eliminare la bolletta");
+    }
+  };
+
   const handleDeleteBill = (bill: Bill) => {
     if (!familyId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert(
-      "Elimina bolletta",
-      `Vuoi eliminare definitivamente "${bill.title}"?`,
-      [
-        { text: "Annulla", style: "cancel" },
-        {
-          text: "Elimina",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await apiRequest("DELETE", `/api/bills/${familyId}/${bill.id}`);
-              queryClient.invalidateQueries({ queryKey: [`/api/bills/${familyId}`] });
-            } catch {
-              Alert.alert("Errore", "Impossibile eliminare la bolletta");
-            }
-          },
-        },
-      ]
-    );
+    // Su web Alert.alert non mostra nulla: usiamo window.confirm.
+    if (Platform.OS === "web") {
+      if (window.confirm(`Vuoi eliminare definitivamente "${bill.title}"?`)) {
+        doDeleteBill(bill);
+      }
+      return;
+    }
+    Alert.alert("Elimina bolletta", `Vuoi eliminare definitivamente "${bill.title}"?`, [
+      { text: "Annulla", style: "cancel" },
+      { text: "Elimina", style: "destructive", onPress: () => doDeleteBill(bill) },
+    ]);
   };
 
   const handleAdd = () => {
@@ -296,12 +299,13 @@ export default function BillsScreen() {
       router.push("/add-bill");
       return;
     }
-    Alert.alert("Aggiungi bolletta", "Quale tipo di bolletta vuoi aggiungere?", [
-      { text: "Da pagare", onPress: () => router.push("/add-bill") },
-      { text: "Scaduta", onPress: () => router.push("/add-bill?overdue=1") },
-      { text: "Già pagata", onPress: () => router.push("/add-bill?paid=1") },
-      { text: "Annulla", style: "cancel" },
-    ]);
+    // Modal cross-platform: su web Alert.alert con più bottoni non funziona.
+    setAddChooserVisible(true);
+  };
+
+  const chooseAdd = (path: string) => {
+    setAddChooserVisible(false);
+    router.push(path as any);
   };
 
   return (
@@ -413,6 +417,42 @@ export default function BillsScreen() {
           }
         />
       )}
+
+      <Modal visible={addChooserVisible} transparent animationType="fade" onRequestClose={() => setAddChooserVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setAddChooserVisible(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.surface }]} onPress={() => {}}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Aggiungi bolletta</Text>
+            <Text style={[styles.modalSub, { color: colors.textSecondary }]}>Quale tipo di bolletta vuoi aggiungere?</Text>
+            <Pressable
+              onPress={() => chooseAdd("/add-bill")}
+              style={[styles.modalOption, { borderColor: colors.border }]}
+              testID="add-choice-da-pagare"
+            >
+              <View style={[styles.sectionDot, { backgroundColor: STATUS_META.da_pagare.color }]} />
+              <Text style={[styles.modalOptionText, { color: colors.text }]}>Da pagare</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => chooseAdd("/add-bill?overdue=1")}
+              style={[styles.modalOption, { borderColor: colors.border }]}
+              testID="add-choice-scaduta"
+            >
+              <View style={[styles.sectionDot, { backgroundColor: STATUS_META.scaduta.color }]} />
+              <Text style={[styles.modalOptionText, { color: colors.text }]}>Scaduta</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => chooseAdd("/add-bill?paid=1")}
+              style={[styles.modalOption, { borderColor: colors.border }]}
+              testID="add-choice-pagata"
+            >
+              <View style={[styles.sectionDot, { backgroundColor: STATUS_META.pagata.color }]} />
+              <Text style={[styles.modalOptionText, { color: colors.text }]}>Già pagata</Text>
+            </Pressable>
+            <Pressable onPress={() => setAddChooserVisible(false)} style={styles.modalCancel} testID="add-choice-annulla">
+              <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>Annulla</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -500,4 +540,12 @@ const styles = StyleSheet.create({
   statusBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8 },
   statusText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   deleteBtn: { marginLeft: 10, padding: 6, alignSelf: "center" },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center", padding: 24 },
+  modalCard: { width: "100%", maxWidth: 380, borderRadius: 16, padding: 20 },
+  modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  modalSub: { fontSize: 14, fontFamily: "Inter_400Regular", marginTop: 4, marginBottom: 16 },
+  modalOption: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, marginBottom: 10 },
+  modalOptionText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  modalCancel: { alignItems: "center", paddingVertical: 12, marginTop: 2 },
+  modalCancelText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });
