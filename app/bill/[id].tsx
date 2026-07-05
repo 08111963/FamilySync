@@ -18,7 +18,7 @@ import { Input } from "@/components/Input";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
 import { presentLocalNotification } from "@/hooks/usePushNotifications";
-import { CATEGORY_META, formatEuro, formatDueDate, type BillComputedStatus } from "@/app/(tabs)/bills";
+import { CATEGORY_META, formatEuro, formatDueDate, billDueLabel, type BillComputedStatus } from "@/app/(tabs)/bills";
 
 const AUTH_STORAGE_KEY = "@family_sync_auth";
 
@@ -323,6 +323,9 @@ export default function BillDetailScreen() {
 
   const cat = CATEGORY_META[bill.category] ?? CATEGORY_META.altro;
   const status = STATUS_META[bill.computedStatus];
+  const due = billDueLabel(bill);
+  const isOverdue = bill.computedStatus === "scaduta";
+  const isPaid = bill.computedStatus === "pagata";
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -342,7 +345,24 @@ export default function BillDetailScreen() {
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
-        <View style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {isOverdue && (
+          <View style={[styles.statusBanner, { backgroundColor: STATUS_META.scaduta.color + "1A", borderColor: STATUS_META.scaduta.color }]}>
+            <Ionicons name="alert-circle" size={20} color={STATUS_META.scaduta.color} />
+            <Text style={[styles.statusBannerText, { color: STATUS_META.scaduta.color }]}>
+              Bolletta scaduta: {due.text.toLowerCase()}. Da saldare al più presto.
+            </Text>
+          </View>
+        )}
+        {isPaid && (
+          <View style={[styles.statusBanner, { backgroundColor: STATUS_META.pagata.color + "1A", borderColor: STATUS_META.pagata.color }]}>
+            <Ionicons name="checkmark-circle" size={20} color={STATUS_META.pagata.color} />
+            <Text style={[styles.statusBannerText, { color: STATUS_META.pagata.color }]}>
+              {due.text}. Nessuna azione necessaria.
+            </Text>
+          </View>
+        )}
+
+        <View style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: isOverdue ? STATUS_META.scaduta.color + "66" : colors.border, borderLeftColor: status.color, borderLeftWidth: 4 }]}>
           <View style={[styles.catIcon, { backgroundColor: cat.color + "22" }]}>
             <Ionicons name={cat.icon} size={28} color={cat.color} />
           </View>
@@ -352,14 +372,16 @@ export default function BillDetailScreen() {
           <View style={[styles.statusBadge, { backgroundColor: status.color + "22" }]}>
             <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
           </View>
-          <Text style={[styles.heroDue, { color: colors.textSecondary }]}>Scadenza: {formatDueDate(bill.dueDate)}</Text>
+          <Text style={[styles.heroDue, { color: due.urgent ? STATUS_META.scaduta.color : colors.textSecondary }, due.urgent && styles.heroDueUrgent]}>
+            {isPaid ? `Scadeva il ${formatDueDate(bill.dueDate)}` : `Scadenza: ${formatDueDate(bill.dueDate)} · ${due.text}`}
+          </Text>
         </View>
 
         <Button
-          title={bill.status === "pagata" ? "Segna come da pagare" : "Segna come pagata"}
+          title={isPaid ? "Riporta a \u201Cda pagare\u201D" : isOverdue ? "Salda ora: segna come pagata" : "Segna come pagata"}
           onPress={handleTogglePaid}
           loading={busy}
-          variant={bill.status === "pagata" ? "outline" : "primary"}
+          variant={isPaid ? "outline" : "primary"}
           style={{ marginBottom: 20 }}
         />
 
@@ -402,7 +424,9 @@ export default function BillDetailScreen() {
           {!bill.remindersEnabled ? (
             <Text style={[styles.muted, { color: colors.textSecondary }]}>Promemoria disattivati per questa bolletta.</Text>
           ) : bill.reminders.length === 0 ? (
-            <Text style={[styles.muted, { color: colors.textSecondary }]}>Nessun promemoria (bolletta pagata).</Text>
+            <Text style={[styles.muted, { color: colors.textSecondary }]}>
+              {isPaid ? "Bolletta pagata: i promemoria non servono più." : "Nessun promemoria per questa bolletta."}
+            </Text>
           ) : (
             bill.reminders.map((r) => (
               <View key={r.type} style={styles.reminderRow}>
@@ -665,6 +689,17 @@ const styles = StyleSheet.create({
   statusBadge: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 10 },
   statusText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   heroDue: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 4 },
+  heroDueUrgent: { fontFamily: "Inter_600SemiBold" },
+  statusBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  statusBannerText: { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold" },
   section: {
     padding: 16,
     borderRadius: 16,
