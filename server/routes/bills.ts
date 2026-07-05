@@ -102,11 +102,22 @@ const createBillSchema = z.object({
   provider: z.string().optional(),
   category: z.enum(['luce', 'gas', 'acqua', 'telefono', 'scuola', 'assicurazione', 'tasse', 'altro']).optional().default('altro'),
   amount: z.number().nonnegative('Importo non valido'),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data scadenza non valida (AAAA-MM-GG)'),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data scadenza non valida (AAAA-MM-GG)').optional(),
   holder: z.string().optional(),
   assignedTo: z.string().uuid().optional().nullable(),
   notes: z.string().optional(),
   remindersEnabled: z.boolean().optional().default(true),
+  // Bolletta registrata come GIÀ pagata: paid=true + data di pagamento.
+  // In questo caso la scadenza è facoltativa (default: la data di pagamento).
+  paid: z.boolean().optional().default(false),
+  paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data pagamento non valida (AAAA-MM-GG)').optional(),
+}).superRefine((data, ctx) => {
+  if (!data.paid && !data.dueDate) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['dueDate'], message: 'Data scadenza obbligatoria' });
+  }
+  if (data.paid && !data.paidAt && !data.dueDate) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paidAt'], message: 'Data pagamento obbligatoria' });
+  }
 });
 
 const updateBillSchema = z.object({
@@ -375,20 +386,31 @@ router.post('/:familyId', requireFamilyMember(), async (req: Request, res: Respo
       }
     }
 
-    const plan = await getPlanForFamily(familyId);
-    const activeRows = await db
-      .select({ id: bills.id })
-      .from(bills)
-      .where(and(eq(bills.familyId, familyId), eq(bills.status, 'da_pagare')));
+    const createAsPaid = parsed.data.paid === true;
 
-    if (!canCreateBill(plan, activeRows.length)) {
-      return res.status(403).json({
-        error: {
-          code: 'FREE_LIMIT_REACHED',
-          message: 'Hai raggiunto il limite di 5 bollette attive del piano Free. Passa a Premium per bollette illimitate.',
-        },
-      });
+    // Il limite Free riguarda solo le bollette ATTIVE (da pagare):
+    // registrare una bolletta già pagata non lo consuma.
+    if (!createAsPaid) {
+      const plan = await getPlanForFamily(familyId);
+      const activeRows = await db
+        .select({ id: bills.id })
+        .from(bills)
+        .where(and(eq(bills.familyId, familyId), eq(bills.status, 'da_pagare')));
+
+      if (!canCreateBill(plan, activeRows.length)) {
+        return res.status(403).json({
+          error: {
+            code: 'FREE_LIMIT_REACHED',
+            message: 'Hai raggiunto il limite di 5 bollette attive del piano Free. Passa a Premium per bollette illimitate.',
+          },
+        });
+      }
     }
+
+    // Per una bolletta già pagata: data pagamento = paidAt (o scadenza se assente);
+    // la scadenza, se non indicata, coincide con la data di pagamento.
+    const paidDateStr = parsed.data.paidAt ?? parsed.data.dueDate ?? new Date().toISOString().slice(0, 10);
+    const dueDate = parsed.data.dueDate ?? paidDateStr;
 
     const [created] = await db
       .insert(bills)
@@ -398,17 +420,36 @@ router.post('/:familyId', requireFamilyMember(), async (req: Request, res: Respo
         provider: parsed.data.provider,
         category: parsed.data.category,
         amount: parsed.data.amount.toFixed(2),
-        dueDate: parsed.data.dueDate,
+        dueDate,
         holder: parsed.data.holder,
         assignedTo: parsed.data.assignedTo ?? null,
         notes: parsed.data.notes,
         remindersEnabled: parsed.data.remindersEnabled,
         createdBy: req.user!.userId,
+        ...(createAsPaid
+          ? {
+              status: 'pagata' as const,
+              paidAt: new Date(`${paidDateStr}T12:00:00.000Z`),
+              paidBy: req.user!.userId,
+            }
+          : {}),
       })
       .returning();
 
-    // Sincronizza col calendario: evento tutto-il-giorno alla scadenza.
-    const bill = await createBillCalendarEvent(created, req.user!.userId);
+    let bill = created;
+    if (createAsPaid) {
+      // Storico pagamenti coerente con PATCH /pay.
+      await db.insert(billPaymentHistory).values({
+        billId: created.id,
+        familyId,
+        paidByUserId: req.user!.userId,
+        amount: parsed.data.amount.toFixed(2),
+      });
+    } else {
+      // Sincronizza col calendario: evento tutto-il-giorno alla scadenza
+      // (solo per bollette da pagare: quelle pagate non vanno in calendario).
+      bill = await createBillCalendarEvent(created, req.user!.userId);
+    }
 
     broadcastToFamily(familyId, 'bill_created', serializeBill(bill));
     res.status(201).json(serializeBill(bill));

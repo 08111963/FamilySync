@@ -239,7 +239,8 @@ export default function BillsScreen() {
 
   const handleAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push("/add-bill");
+    // Dal filtro "Pagate" il modulo parte già impostato su "Già pagata".
+    router.push(filter === "pagata" ? "/add-bill?paid=1" : "/add-bill");
   };
 
   return (

@@ -27,8 +27,9 @@ export default function AddBillScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { currentFamily } = useFamily();
-  const params = useLocalSearchParams<{ id?: string }>();
+  const params = useLocalSearchParams<{ id?: string; paid?: string }>();
   const editId = params.id;
+  const startPaid = params.paid === "1";
   const familyId = currentFamily?.id;
 
   const editQuery = useQuery<Bill & any>({
@@ -48,24 +49,32 @@ export default function AddBillScreen() {
     );
   }
 
-  return <BillForm key={editId ?? "new"} editId={editId} existing={editQuery.data} />;
+  return <BillForm key={editId ?? "new"} editId={editId} existing={editQuery.data} startPaid={startPaid} />;
 }
 
-function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & any) | undefined }) {
+function BillForm({ editId, existing, startPaid }: { editId?: string; existing?: (Bill & any) | undefined; startPaid?: boolean }) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { data, currentFamily } = useFamily();
   const familyId = currentFamily?.id;
 
-  // Bolletta già pagata: il modulo chiede la data di pagamento al posto della scadenza.
-  const isPaid = !!existing && existing.status === "pagata";
+  // Stato del pagamento nel modulo:
+  // - Nuova bolletta: scelta "Da pagare" / "Già pagata" (preimpostata dal filtro Pagate)
+  // - Modifica: derivato dallo stato reale della bolletta
+  const [payStatus, setPayStatus] = useState<"da_pagare" | "pagata">(
+    existing ? (existing.status === "pagata" ? "pagata" : "da_pagare") : startPaid ? "pagata" : "da_pagare"
+  );
+  // Se pagata, il modulo chiede la data di pagamento al posto della scadenza.
+  const isPaid = editId ? !!existing && existing.status === "pagata" : payStatus === "pagata";
 
   const [title, setTitle] = useState(existing?.title ?? "");
   const [provider, setProvider] = useState(existing?.provider ?? "");
   const [category, setCategory] = useState<string>(existing?.category ?? "altro");
   const [amount, setAmount] = useState(existing ? String(parseFloat(existing.amount)).replace(".", ",") : "");
   const [dueDate, setDueDate] = useState(existing?.dueDate ?? "");
-  const [paidDate, setPaidDate] = useState(existing?.paidAt ? String(existing.paidAt).slice(0, 10) : "");
+  const [paidDate, setPaidDate] = useState(
+    existing?.paidAt ? String(existing.paidAt).slice(0, 10) : new Date().toISOString().slice(0, 10)
+  );
   const [holder, setHolder] = useState(existing?.holder ?? "");
   const [assignedTo, setAssignedTo] = useState<string>(existing?.assignedTo ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
@@ -82,7 +91,7 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
     if (!title.trim()) return showError("Inserisci un titolo");
     const amountNum = parseFloat(amount.replace(",", "."));
     if (isNaN(amountNum) || amountNum < 0) return showError("Inserisci un importo valido");
-    if (!isValidDate(dueDate)) return showError("Seleziona una data di scadenza");
+    if (!isPaid && !isValidDate(dueDate)) return showError("Seleziona una data di scadenza");
     if (isPaid && !isValidDate(paidDate)) return showError("Seleziona la data di pagamento");
 
     const payload: Record<string, any> = {
@@ -90,13 +99,18 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
       provider: provider.trim() || undefined,
       category,
       amount: amountNum,
-      dueDate,
+      // Nuova bolletta già pagata: la scadenza coincide con la data di pagamento.
+      dueDate: isPaid && !editId ? paidDate : dueDate,
       holder: holder.trim() || undefined,
       assignedTo: assignedTo || null,
       notes: notes.trim() || undefined,
       remindersEnabled,
     };
-    if (isPaid) payload.paidAt = paidDate;
+    if (isPaid && editId) payload.paidAt = paidDate;
+    if (isPaid && !editId) {
+      payload.paid = true;
+      payload.paidAt = paidDate;
+    }
 
     setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -178,12 +192,48 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
           <Input label="Importo (€)" placeholder="0,00" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
         </View>
 
+        {!editId && (
+          <View style={styles.field}>
+            <Text style={[styles.label, { color: colors.text }]}>Stato</Text>
+            <View style={styles.statusRow}>
+              {([
+                { value: "da_pagare", label: "Da pagare", icon: "time-outline", color: "#3B82F6" },
+                { value: "pagata", label: "Già pagata", icon: "checkmark-circle-outline", color: "#00B894" },
+              ] as const).map((opt) => {
+                const selected = payStatus === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setPayStatus(opt.value);
+                    }}
+                    testID={`bill-status-${opt.value}`}
+                    style={[
+                      styles.statusChip,
+                      {
+                        backgroundColor: selected ? opt.color + "22" : colors.surface,
+                        borderColor: selected ? opt.color : colors.border,
+                      },
+                    ]}
+                  >
+                    <Ionicons name={opt.icon} size={18} color={selected ? opt.color : colors.textSecondary} />
+                    <Text style={[styles.statusChipText, { color: selected ? opt.color : colors.text }]}>{opt.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {isPaid ? (
           <>
             <View style={[styles.paidBanner, { backgroundColor: "#00B8941A", borderColor: "#00B894" }]}>
               <Ionicons name="checkmark-circle" size={18} color="#00B894" />
               <Text style={[styles.paidBannerText, { color: "#00B894" }]}>
-                Bolletta pagata: qui puoi correggere la data in cui è stata pagata.
+                {editId
+                  ? "Bolletta pagata: qui puoi correggere la data in cui è stata pagata."
+                  : "Bolletta già pagata: indica la data in cui è stata pagata."}
               </Text>
             </View>
             <View style={styles.field}>
@@ -346,4 +396,16 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   paidBannerText: { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  statusRow: { flexDirection: "row", gap: 10 },
+  statusChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  statusChipText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
 });
