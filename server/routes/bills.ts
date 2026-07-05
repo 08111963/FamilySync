@@ -119,6 +119,8 @@ const updateBillSchema = z.object({
   assignedTo: z.string().uuid().nullable().optional(),
   notes: z.string().nullable().optional(),
   remindersEnabled: z.boolean().optional(),
+  // Data di pagamento (AAAA-MM-GG): modificabile solo per bollette già pagate.
+  paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 }).strict();
 
 // Verifica che il membro assegnato (assignedTo) appartenga alla stessa famiglia.
@@ -437,18 +439,50 @@ router.put('/:familyId/:billId', requireFamilyMember(), async (req: Request, res
       }
     }
 
-    const updateData: Record<string, any> = { ...parsed.data, updatedAt: new Date() };
+    const { paidAt: paidAtInput, ...updateFields } = parsed.data;
+    const updateData: Record<string, any> = { ...updateFields, updatedAt: new Date() };
     if (parsed.data.amount !== undefined) {
       updateData.amount = parsed.data.amount.toFixed(2);
+    }
+
+    // La data di pagamento si può correggere solo su bollette già pagate.
+    if (paidAtInput !== undefined) {
+      const [current] = await db
+        .select({ status: bills.status })
+        .from(bills)
+        .where(and(eq(bills.id, billId), eq(bills.familyId, familyId)))
+        .limit(1);
+      if (!current) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Bolletta non trovata' } });
+      }
+      if (current.status !== 'pagata') {
+        return res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: 'La data di pagamento è modificabile solo per bollette pagate' },
+        });
+      }
+      updateData.paidAt = new Date(`${paidAtInput}T12:00:00.000Z`);
+    }
+
+    // Se si aggiorna paidAt, il vincolo di stato è parte della query (nessuna
+    // finestra tra il check precedente e l'update: se nel frattempo la bolletta
+    // torna "da pagare", l'update non tocca nulla).
+    const whereConditions = [eq(bills.id, billId), eq(bills.familyId, familyId)];
+    if (paidAtInput !== undefined) {
+      whereConditions.push(eq(bills.status, 'pagata'));
     }
 
     let [bill] = await db
       .update(bills)
       .set(updateData)
-      .where(and(eq(bills.id, billId), eq(bills.familyId, familyId)))
+      .where(and(...whereConditions))
       .returning();
 
     if (!bill) {
+      if (paidAtInput !== undefined) {
+        return res.status(409).json({
+          error: { code: 'CONFLICT', message: 'La bolletta non è più pagata: riprova dopo aver aggiornato la pagina' },
+        });
+      }
       return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Bolletta non trovata' } });
     }
 

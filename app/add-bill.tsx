@@ -57,11 +57,15 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
   const { data, currentFamily } = useFamily();
   const familyId = currentFamily?.id;
 
+  // Bolletta già pagata: il modulo chiede la data di pagamento al posto della scadenza.
+  const isPaid = !!existing && existing.status === "pagata";
+
   const [title, setTitle] = useState(existing?.title ?? "");
   const [provider, setProvider] = useState(existing?.provider ?? "");
   const [category, setCategory] = useState<string>(existing?.category ?? "altro");
   const [amount, setAmount] = useState(existing ? String(parseFloat(existing.amount)).replace(".", ",") : "");
   const [dueDate, setDueDate] = useState(existing?.dueDate ?? "");
+  const [paidDate, setPaidDate] = useState(existing?.paidAt ? String(existing.paidAt).slice(0, 10) : "");
   const [holder, setHolder] = useState(existing?.holder ?? "");
   const [assignedTo, setAssignedTo] = useState<string>(existing?.assignedTo ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
@@ -79,8 +83,9 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
     const amountNum = parseFloat(amount.replace(",", "."));
     if (isNaN(amountNum) || amountNum < 0) return showError("Inserisci un importo valido");
     if (!isValidDate(dueDate)) return showError("Seleziona una data di scadenza");
+    if (isPaid && !isValidDate(paidDate)) return showError("Seleziona la data di pagamento");
 
-    const payload = {
+    const payload: Record<string, any> = {
       title: title.trim(),
       provider: provider.trim() || undefined,
       category,
@@ -91,6 +96,7 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
       notes: notes.trim() || undefined,
       remindersEnabled,
     };
+    if (isPaid) payload.paidAt = paidDate;
 
     setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -124,7 +130,9 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/bills"))} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>{editId ? "Modifica Bolletta" : "Nuova Bolletta"}</Text>
+        <Text style={[styles.title, { color: colors.text }]}>
+          {editId ? (isPaid ? "Modifica Bolletta Pagata" : "Modifica Bolletta") : "Nuova Bolletta"}
+        </Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -170,9 +178,23 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
           <Input label="Importo (€)" placeholder="0,00" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
         </View>
 
-        <View style={styles.field}>
-          <DateField label="Scadenza" placeholder="GG/MM/AAAA" value={dueDate} onChange={setDueDate} testID="bill-due-date" />
-        </View>
+        {isPaid ? (
+          <>
+            <View style={[styles.paidBanner, { backgroundColor: "#00B8941A", borderColor: "#00B894" }]}>
+              <Ionicons name="checkmark-circle" size={18} color="#00B894" />
+              <Text style={[styles.paidBannerText, { color: "#00B894" }]}>
+                Bolletta pagata: qui puoi correggere la data in cui è stata pagata.
+              </Text>
+            </View>
+            <View style={styles.field}>
+              <DateField label="Data di pagamento" placeholder="GG/MM/AAAA" value={paidDate} onChange={setPaidDate} testID="bill-paid-date" />
+            </View>
+          </>
+        ) : (
+          <View style={styles.field}>
+            <DateField label="Scadenza" placeholder="GG/MM/AAAA" value={dueDate} onChange={setDueDate} testID="bill-due-date" />
+          </View>
+        )}
 
         <View style={styles.field}>
           <Input label="Intestatario (opzionale)" placeholder="A nome di chi è la bolletta" value={holder} onChangeText={setHolder} />
@@ -236,20 +258,22 @@ function BillForm({ editId, existing }: { editId?: string; existing?: (Bill & an
           />
         </View>
 
-        <View style={[styles.row, { borderColor: colors.border }]}>
-          <View style={styles.rowContent}>
-            <Text style={[styles.rowLabel, { color: colors.text }]}>Promemoria</Text>
-            <Text style={[styles.rowHint, { color: colors.textSecondary }]}>Avvisi prima della scadenza</Text>
+        {!isPaid && (
+          <View style={[styles.row, { borderColor: colors.border }]}>
+            <View style={styles.rowContent}>
+              <Text style={[styles.rowLabel, { color: colors.text }]}>Promemoria</Text>
+              <Text style={[styles.rowHint, { color: colors.textSecondary }]}>Avvisi prima della scadenza</Text>
+            </View>
+            <Switch
+              value={remindersEnabled}
+              onValueChange={(v) => {
+                Haptics.selectionAsync();
+                setRemindersEnabled(v);
+              }}
+              trackColor={{ false: colors.border, true: colors.primary }}
+            />
           </View>
-          <Switch
-            value={remindersEnabled}
-            onValueChange={(v) => {
-              Haptics.selectionAsync();
-              setRemindersEnabled(v);
-            }}
-            trackColor={{ false: colors.border, true: colors.primary }}
-          />
-        </View>
+        )}
 
         <Button
           title={editId ? "Salva modifiche" : "Aggiungi Bolletta"}
@@ -312,4 +336,14 @@ const styles = StyleSheet.create({
   rowContent: { flex: 1 },
   rowLabel: { fontSize: 16, fontFamily: "Inter_500Medium" },
   rowHint: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2 },
+  paidBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 20,
+  },
+  paidBannerText: { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold" },
 });
