@@ -105,8 +105,10 @@ function BillRow({ bill, onPress }: { bill: Bill; onPress: () => void }) {
       style={({ pressed }) => [
         styles.row,
         {
-          backgroundColor: colors.surface,
-          borderColor: isOverdue ? STATUS_META.scaduta.color + "66" : colors.border,
+          // Le scadute hanno sfondo rosato e bordo rosso: devono saltare all'occhio.
+          backgroundColor: isOverdue ? STATUS_META.scaduta.color + "14" : colors.surface,
+          borderColor: isOverdue ? STATUS_META.scaduta.color : colors.border,
+          borderWidth: isOverdue ? 1.5 : 1,
           borderLeftColor: status.color,
           opacity: pressed ? 0.85 : 1,
         },
@@ -129,9 +131,12 @@ function BillRow({ bill, onPress }: { bill: Bill; onPress: () => void }) {
         </Text>
       </View>
       <View style={styles.rowRight}>
-        <Text style={[styles.rowAmount, { color: colors.text }]}>{formatEuro(bill.amount)}</Text>
-        <View style={[styles.statusBadge, { backgroundColor: status.color + "22" }]}>
-          <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
+        <Text style={[styles.rowAmount, { color: isOverdue ? STATUS_META.scaduta.color : colors.text }]}>
+          {formatEuro(bill.amount)}
+        </Text>
+        <View style={[styles.statusBadge, { backgroundColor: isOverdue ? status.color : status.color + "22" }]}>
+          {isOverdue && <Ionicons name="alert-circle" size={12} color="#fff" />}
+          <Text style={[styles.statusText, { color: isOverdue ? "#fff" : status.color }]}>{status.label}</Text>
         </View>
       </View>
     </Pressable>
@@ -445,6 +450,6 @@ const styles = StyleSheet.create({
   rowSubUrgent: { fontFamily: "Inter_600SemiBold" },
   rowRight: { alignItems: "flex-end", gap: 6 },
   rowAmount: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  statusBadge: { paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8 },
+  statusBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8 },
   statusText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
 });
