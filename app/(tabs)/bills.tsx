@@ -93,7 +93,7 @@ export function billDueLabel(bill: Bill, now: Date = new Date()): { text: string
   return { text: `Scade il ${formatDueDate(bill.dueDate)}`, urgent: false };
 }
 
-function BillRow({ bill, onPress, onDelete, onMarkPaid }: { bill: Bill; onPress: () => void; onDelete?: () => void; onMarkPaid?: () => void }) {
+function BillRow({ bill, onPress, onDelete, onMarkPaid, markingPaid }: { bill: Bill; onPress: () => void; onDelete?: () => void; onMarkPaid?: () => void; markingPaid?: boolean }) {
   const { colors } = useTheme();
   const cat = CATEGORY_META[bill.category] ?? CATEGORY_META.altro;
   const status = STATUS_META[bill.computedStatus];
@@ -147,13 +147,16 @@ function BillRow({ bill, onPress, onDelete, onMarkPaid }: { bill: Bill; onPress:
             onMarkPaid();
           }}
           hitSlop={8}
-          style={({ pressed }) => [
-            styles.payBtn,
-            { backgroundColor: STATUS_META.pagata.color, opacity: pressed ? 0.7 : 1 },
-          ]}
+          style={({ pressed }) => [styles.payBtn, { opacity: pressed ? 0.6 : 1 }]}
           testID={`pay-bill-${bill.id}`}
         >
-          <Ionicons name="checkmark" size={20} color="#fff" />
+          {/* Quadratino vuoto: spuntandolo la bolletta viene segnata come pagata. */}
+          <Ionicons
+            name={markingPaid ? "checkbox" : "square-outline"}
+            size={26}
+            color={STATUS_META.pagata.color}
+          />
+          <Text style={[styles.payBtnLabel, { color: STATUS_META.pagata.color }]}>Pagata?</Text>
         </Pressable>
       )}
       {onDelete && (
@@ -443,6 +446,7 @@ export default function BillsScreen() {
                 onPress={() => router.push(`/bill/${item.id}`)}
                 onDelete={item.computedStatus === "pagata" ? () => handleDeleteBill(item) : undefined}
                 onMarkPaid={item.computedStatus === "scaduta" ? () => handleMarkPaid(item) : undefined}
+                markingPaid={payingIds.has(item.id)}
               />
             </View>
           )}
@@ -596,13 +600,11 @@ const styles = StyleSheet.create({
   deleteBtn: { marginLeft: 10, padding: 6, alignSelf: "center" },
   payBtn: {
     marginLeft: 10,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    justifyContent: "center",
     alignItems: "center",
     alignSelf: "center",
+    gap: 1,
   },
+  payBtnLabel: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center", padding: 24 },
   modalCard: { width: "100%", maxWidth: 380, borderRadius: 16, padding: 20 },
   modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
