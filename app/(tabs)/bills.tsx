@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { StyleSheet, Text, View, Pressable, SectionList, Platform, RefreshControl, ActivityIndicator } from "react-native";
+import { StyleSheet, Text, View, Pressable, SectionList, Platform, RefreshControl, ActivityIndicator, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -239,8 +239,21 @@ export default function BillsScreen() {
 
   const handleAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Dal filtro "Pagate" il modulo parte già impostato su "Già pagata".
-    router.push(filter === "pagata" ? "/add-bill?paid=1" : "/add-bill");
+    // Due moduli separati: dal filtro "Pagate" si apre "Registra Bolletta Pagata",
+    // dagli altri filtri "Nuova Bolletta"; su "Tutte" si sceglie quale.
+    if (filter === "pagata") {
+      router.push("/add-bill?paid=1");
+      return;
+    }
+    if (filter !== "all") {
+      router.push("/add-bill");
+      return;
+    }
+    Alert.alert("Aggiungi bolletta", "Quale tipo di bolletta vuoi aggiungere?", [
+      { text: "Da pagare", onPress: () => router.push("/add-bill") },
+      { text: "Già pagata", onPress: () => router.push("/add-bill?paid=1") },
+      { text: "Annulla", style: "cancel" },
+    ]);
   };
 
   return (

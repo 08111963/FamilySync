@@ -58,14 +58,11 @@ function BillForm({ editId, existing, startPaid }: { editId?: string; existing?:
   const { data, currentFamily } = useFamily();
   const familyId = currentFamily?.id;
 
-  // Stato del pagamento nel modulo:
-  // - Nuova bolletta: scelta "Da pagare" / "Già pagata" (preimpostata dal filtro Pagate)
-  // - Modifica: derivato dallo stato reale della bolletta
-  const [payStatus, setPayStatus] = useState<"da_pagare" | "pagata">(
-    existing ? (existing.status === "pagata" ? "pagata" : "da_pagare") : startPaid ? "pagata" : "da_pagare"
-  );
-  // Se pagata, il modulo chiede la data di pagamento al posto della scadenza.
-  const isPaid = editId ? !!existing && existing.status === "pagata" : payStatus === "pagata";
+  // Due moduli separati:
+  // - "Nuova Bolletta" (da pagare, con Scadenza) — /add-bill
+  // - "Registra Bolletta Pagata" (con Data di pagamento) — /add-bill?paid=1
+  // In modifica lo stato è derivato dalla bolletta esistente.
+  const isPaid = editId ? !!existing && existing.status === "pagata" : !!startPaid;
 
   const [title, setTitle] = useState(existing?.title ?? "");
   const [provider, setProvider] = useState(existing?.provider ?? "");
@@ -145,7 +142,13 @@ function BillForm({ editId, existing, startPaid }: { editId?: string; existing?:
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.title, { color: colors.text }]}>
-          {editId ? (isPaid ? "Modifica Bolletta Pagata" : "Modifica Bolletta") : "Nuova Bolletta"}
+          {editId
+            ? isPaid
+              ? "Modifica Bolletta Pagata"
+              : "Modifica Bolletta"
+            : isPaid
+              ? "Registra Bolletta Pagata"
+              : "Nuova Bolletta"}
         </Text>
         <View style={styles.placeholder} />
       </View>
@@ -191,40 +194,6 @@ function BillForm({ editId, existing, startPaid }: { editId?: string; existing?:
         <View style={styles.field}>
           <Input label="Importo (€)" placeholder="0,00" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
         </View>
-
-        {!editId && (
-          <View style={styles.field}>
-            <Text style={[styles.label, { color: colors.text }]}>Stato</Text>
-            <View style={styles.statusRow}>
-              {([
-                { value: "da_pagare", label: "Da pagare", icon: "time-outline", color: "#3B82F6" },
-                { value: "pagata", label: "Già pagata", icon: "checkmark-circle-outline", color: "#00B894" },
-              ] as const).map((opt) => {
-                const selected = payStatus === opt.value;
-                return (
-                  <Pressable
-                    key={opt.value}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setPayStatus(opt.value);
-                    }}
-                    testID={`bill-status-${opt.value}`}
-                    style={[
-                      styles.statusChip,
-                      {
-                        backgroundColor: selected ? opt.color + "22" : colors.surface,
-                        borderColor: selected ? opt.color : colors.border,
-                      },
-                    ]}
-                  >
-                    <Ionicons name={opt.icon} size={18} color={selected ? opt.color : colors.textSecondary} />
-                    <Text style={[styles.statusChipText, { color: selected ? opt.color : colors.text }]}>{opt.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        )}
 
         {isPaid ? (
           <>
@@ -326,7 +295,7 @@ function BillForm({ editId, existing, startPaid }: { editId?: string; existing?:
         )}
 
         <Button
-          title={editId ? "Salva modifiche" : "Aggiungi Bolletta"}
+          title={editId ? "Salva modifiche" : isPaid ? "Registra pagamento" : "Aggiungi Bolletta"}
           onPress={handleSave}
           loading={saving}
           disabled={!title.trim() || saving}
@@ -396,16 +365,4 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   paidBannerText: { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  statusRow: { flexDirection: "row", gap: 10 },
-  statusChip: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1.5,
-  },
-  statusChipText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
 });
