@@ -107,7 +107,7 @@ Per aggiungere i tuoi familiari:
 - Tocca **Invia Invito**
 - Il familiare riceverà un'email con un **link sicuro**: lo aprirà, sceglierà la sua password ed entrerà nella famiglia
 
-> Nota: per i dettagli completi su come funziona l'invito leggi la sezione "Sistema di Inviti".
+> per i dettagli completi su come funziona l'invito leggi la sezione "Sistema di Inviti".
 
 ---
 
@@ -125,7 +125,7 @@ In fondo alla Home trovi due card di accesso rapido:
 - **Ricette**: tocca per andare direttamente alla schermata Ricette, dove puoi generare, cercare e consultare le tue ricette
 - **Piano Pasti**: tocca per andare alla schermata Piano Pasti, dove puoi generare e gestire i piani settimanali
 
-La Home ti offre una panoramica rapida di tutto cio che serve per organizzare la giornata della tua famiglia.
+La Home ti offre una panoramica rapida di tutto ciò che serve per organizzare la giornata della tua famiglia.
 
 ---
 
@@ -269,7 +269,7 @@ La scheda **Bollette** ti aiuta a non dimenticare mai una scadenza e a tenere so
   - **Importo** in euro
   - **Data**: scadenza o data di pagamento, in base al tipo
   - **Fornitore**: il gestore (es. "Enel", "TIM") (opzionale)
-  - **Intestatario**: a chi e intestata la bolletta (opzionale)
+  - **Intestatario**: a chi è intestata la bolletta (opzionale)
   - **Responsabile**: il membro della famiglia che si occupa del pagamento (opzionale)
   - **Note**: annotazioni libere (opzionale)
   - **Promemoria**: attiva per ricevere una notifica prima della scadenza
@@ -283,7 +283,7 @@ Tocca una bolletta per aprirne il dettaglio. Da qui puoi:
 - Vedere **intestatario**, **responsabile** e **note**
 - Controllare i **promemoria** programmati prima della scadenza
 
-> Nota: "Salda ora" e "Segna come pagata" **non effettuano alcun pagamento reale**. Servono solo a registrare nell'app che la bolletta è stata pagata fuori da FamilySync (es. tramite banca, bollettino o domiciliazione).
+> "Salda ora" e "Segna come pagata" **non effettuano alcun pagamento reale**. Servono solo a registrare nell'app che la bolletta è stata pagata fuori da FamilySync (es. tramite banca, bollettino o domiciliazione).
 
 ### Promemoria delle Scadenze
 - Con i promemoria attivi ricevi una notifica sul telefono **alle 8:00 del mattino**
@@ -473,7 +473,7 @@ Quando il familiare apre il link:
 - Non c'è limite al numero di membri nella famiglia
 - Se la persona fa già parte della famiglia, l'app te lo segnala
 
-> Nota: l'invio dell'invito richiede il servizio email attivo. Se vedi un messaggio che indica un problema con l'email, riprova più tardi o contatta l'assistenza.
+> l'invio dell'invito richiede il servizio email attivo. Se vedi un messaggio che indica un problema con l'email, riprova più tardi o contatta l'assistenza.
 
 ---
 
@@ -512,7 +512,7 @@ Le funzionalità AI sono disponibili gratuitamente con un **limite di utilizzo**
 | Consigli AI famiglia | 1 a settimana | 5 al giorno |
 | Ottimizzazione faccende | 1 al giorno | 10 al giorno |
 
-> Nota: i limiti esatti possono essere aggiornati nel tempo. Le funzioni di base (calendario, spesa, faccende e chat) non hanno limiti di utilizzo, sia con Free sia con Premium. Le bollette invece hanno un limite con il piano Free (max 5 attive) e sono illimitate con Premium.
+> i limiti esatti possono essere aggiornati nel tempo. Le funzioni di base (calendario, spesa, faccende e chat) non hanno limiti di utilizzo, sia con Free sia con Premium. Le bollette invece hanno un limite con il piano Free (max 5 attive) e sono illimitate con Premium.
 
 ### Privacy e Dati AI
 - Quando l'AI è attiva, vengono inviati al servizio AI solo i dati strettamente necessari per generare i suggerimenti: titoli degli eventi, nomi degli articoli della spesa, titoli delle faccende e dati aggregati (es. numero di membri)

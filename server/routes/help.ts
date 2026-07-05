@@ -13,7 +13,7 @@ function markdownToHtml(md: string): string {
 
   html = html.replace(/^---$/gm, '');
 
-  html = html.replace(/^> (.+)$/gm, '<div class="tip"><strong>Nota:</strong> $1</div>');
+  html = html.replace(/^> (.+)$/gm, (_, text) => `<div class="tip"><strong>Nota:</strong> ${formatInline(text)}</div>`);
 
   html = html.replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^#{2}\s+(.+)$/gm, (_, title) => {
