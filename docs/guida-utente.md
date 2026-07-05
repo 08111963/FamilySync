@@ -103,7 +103,7 @@ Dopo il login, puoi creare il tuo gruppo familiare:
 Per aggiungere i tuoi familiari:
 - Vai alla scheda **Famiglia** e tocca **Aggiungi** nella sezione Membri
 - Inserisci il **nome** (facoltativo) e l'**email** del familiare
-- Scegli il **ruolo**: Admin, Adulto, Adolescente o Bambino/a
+- Scegli il **ruolo**: Admin, Adulto, Adolescente o Figlio/a
 - Tocca **Invia Invito**
 - Il familiare ricevera un'email con un **link sicuro**: lo aprira, sceglieta la sua password ed entrera nella famiglia
 
@@ -231,20 +231,27 @@ La scheda **Bollette** ti aiuta a non dimenticare mai una scadenza e a tenere so
 
 ### Visualizzare le Bollette
 - Apri la scheda **Bollette**
-- In alto vedi il **totale ancora da pagare**
-- Ogni bolletta mostra categoria, importo, fornitore e scadenza, con un'etichetta di stato colorata:
-  - **Da pagare**: ancora da saldare, scadenza futura
-  - **Scaduta**: la data di scadenza e gia passata
-  - **Pagata**: gia saldata
-- Usa i **filtri** in alto per vedere solo: Tutte, Da pagare, Scadute o Pagate
+- In alto vedi il **totale ancora da pagare** (comprende anche le bollette scadute)
+- La lista e organizzata in **sezioni**: **Scadute**, **Da pagare** e **Pagate**, ognuna con il conteggio e il totale in euro
+- Ogni bolletta mostra categoria, importo, fornitore e scadenza, con un'etichetta di stato colorata e diciture chiare come "Scade domani", "Scade tra 5 giorni", "Scaduta da 3 giorni" o "Pagata il 12/06"
+- Usa i **filtri** in alto (con i conteggi) per vedere solo: Tutte, Da pagare, Scadute o Pagate
+
+### Azioni Rapide dalla Lista
+- Sulle bollette **scadute** trovi il quadratino **"Pagata?"**: toccalo e conferma per segnarla subito come pagata, senza aprire il dettaglio
+- Sulle bollette **pagate** trovi l'icona **cestino** per eliminarle direttamente dalla lista (con conferma)
 
 ### Aggiungere una Bolletta
 - Tocca il pulsante **+** nella scheda Bollette
+- In base al filtro attivo si apre il form giusto:
+  - **Nuova Bolletta** (da pagare): campo "Da pagare entro il"
+  - **Registra Bolletta Scaduta**: campo "Scaduta il", per inserire bollette gia scadute
+  - **Registra Bolletta Pagata**: campo "Data di pagamento", per registrare bollette gia saldate (non consumano il limite del piano Free)
+  - Con il filtro "Tutte" ti viene chiesto quale tipo vuoi inserire
 - Compila i campi:
   - **Titolo**: nome della bolletta (es. "Bolletta luce gennaio")
   - **Categoria**: Luce, Gas, Acqua, Telefono, Scuola, Assicurazione, Tasse o Altro
   - **Importo** in euro
-  - **Scadenza**: la data entro cui pagare
+  - **Data**: scadenza o data di pagamento, in base al tipo
   - **Fornitore**: il gestore (es. "Enel", "TIM") (opzionale)
   - **Intestatario**: a chi e intestata la bolletta (opzionale)
   - **Responsabile**: il membro della famiglia che si occupa del pagamento (opzionale)
@@ -254,16 +261,18 @@ La scheda **Bollette** ti aiuta a non dimenticare mai una scadenza e a tenere so
 
 ### Dettaglio Bolletta
 Tocca una bolletta per aprirne il dettaglio. Da qui puoi:
-- **Segnare come pagata** (o di nuovo come da pagare) con un tocco
-- **Modificare** la bolletta (icona matita) o **eliminarla** (icona cestino)
+- Vedere subito lo stato con un **banner colorato**: rosso se scaduta ("da saldare al piu presto"), verde se pagata ("nessuna azione necessaria")
+- **Segnare come pagata** (o di nuovo come da pagare) con un tocco: se e scaduta il pulsante diventa "Salda ora"
+- **Modificare** la bolletta (icona matita) o **eliminarla** (icona cestino); se e gia pagata puoi correggere la **data di pagamento**
 - Vedere **intestatario**, **responsabile** e **note**
 - Controllare i **promemoria** programmati prima della scadenza
-- Su telefono, toccare **Prova notifica** per vedere come arrivera il promemoria
 
 ### Promemoria delle Scadenze
-- Con i promemoria attivi ricevi una notifica prima della scadenza, cosi non rischi more o sospensioni
-- Con **Premium** ricevi promemoria aggiuntivi a **7 giorni** e a **3 giorni** dalla scadenza
+- Con i promemoria attivi ricevi una notifica sul telefono **alle 8:00 del mattino**
+- Con il piano **Free** ricevi 2 notifiche: **il giorno prima** ("Bolletta in scadenza domani") e **il giorno della scadenza**
+- Con **Premium** ricevi anche promemoria aggiuntivi a **7 giorni** e a **3 giorni** dalla scadenza
 - Le notifiche locali sono disponibili nell'app sul telefono (non sul web)
+- Le scadenze compaiono anche nel **Calendario** della famiglia e, se attivi la sincronizzazione, nel tuo calendario Google/Apple
 
 ### Limiti Piano Free e Premium
 - Con il piano **Free** puoi gestire fino a **5 bollette attive** contemporaneamente
@@ -406,9 +415,9 @@ Nella tab **I Miei Piani** puoi:
 ### Ruoli
 Quando inviti un membro scegli uno di questi ruoli:
 - **Admin**: puo gestire i membri, modificare le impostazioni del gruppo, gestire le segnalazioni, invitare nuovi membri e gestire l'abbonamento Premium
-- **Adulto** (mostrato come "Genitore"): accesso completo a calendario, spesa, faccende, bollette, chat, ricette e piano pasti
+- **Adulto**: accesso completo a calendario, spesa, faccende, bollette, chat, ricette e piano pasti
 - **Adolescente**: accesso alle funzionalita con un ruolo dedicato
-- **Bambino/a** (mostrato come "Figlio/a"): accesso alle funzionalita base
+- **Figlio/a**: accesso alle funzionalita base
 
 ### Azioni sui Membri
 - Tocca l'icona con i tre puntini accanto a un membro per **Segnalare** o **Bloccare/Sbloccare** quella persona
@@ -423,7 +432,7 @@ FamilySync usa un sistema di inviti **sicuro via email**: ogni nuovo membro rice
 ### Come Invitare un Familiare
 1. Vai alla scheda **Famiglia** e tocca **Aggiungi** nella sezione Membri
 2. Inserisci il **nome** del familiare (facoltativo) e la sua **email** (obbligatoria)
-3. Scegli il **ruolo**: Admin, Adulto, Adolescente o Bambino/a
+3. Scegli il **ruolo**: Admin, Adulto, Adolescente o Figlio/a
 4. Tocca **Invia Invito**
 5. Vedrai la conferma "Invito Inviato": abbiamo spedito l'email con il link
 
