@@ -211,3 +211,9 @@ Lingua di comunicazione: Rispondere SEMPRE in italiano.
   - Anti-duplicati: check-and-set atomico su `calendar_event_id IS NULL` (richieste concorrenti non creano eventi doppi)
   - Bollette pre-esistenti senza evento: l'evento viene creato al primo aggiornamento (lazy, nessun backfill automatico)
   - Broadcast WebSocket coerenti: event_created/updated/deleted oltre a bill_created/updated/deleted
+- Schermata Bollette con distinzione chiara degli stati (app/(tabs)/bills.tsx):
+  - SectionList con sezioni "Scadute" / "Da pagare" / "Pagate" nella vista "Tutte" (intestazione con pallino colore stato, conteggio e totale €); filtro attivo mostra solo la sezione corrispondente
+  - Chip filtri con conteggi e pallino colorato per stato; empty state specifici per ogni filtro
+  - `billDueLabel`: diciture contestuali ("Scaduta da N giorni" in rosso, "Scade oggi/domani/tra N giorni", "Pagata il <data>") — usa il giorno UTC come `computeBillStatus` del backend e deriva l'urgenza SEMPRE da `computedStatus` per evitare divergenze badge/testo su fusi orari
+  - Righe con bordo sinistro colorato per stato (rosso soft se scaduta); sottotitolo header contestuale al filtro; il totale "da pagare" include anche le scadute
+  - Ordinamento: scadute e da pagare per scadenza crescente, pagate per pagamento più recente

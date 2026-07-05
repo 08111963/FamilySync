@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { StyleSheet, Text, View, Pressable, FlatList, Platform, RefreshControl, ActivityIndicator } from "react-native";
+import { StyleSheet, Text, View, Pressable, SectionList, Platform, RefreshControl, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -67,17 +67,49 @@ const STATUS_META: Record<BillComputedStatus, { label: string; color: string }> 
   pagata: { label: "Pagata", color: "#00B894" },
 };
 
+/**
+ * Dicitura contestuale sulla scadenza: "Scade oggi", "Scaduta da 3 giorni",
+ * "Pagata il ...". Usa il giorno UTC come il backend (computeBillStatus in
+ * server/lib/bills.ts) così testo e badge di stato non divergono mai; lo stato
+ * (urgente o no) deriva SEMPRE da computedStatus, mai dal calcolo locale.
+ */
+export function billDueLabel(bill: Bill, now: Date = new Date()): { text: string; urgent: boolean } {
+  if (bill.computedStatus === "pagata") {
+    const paidDate = bill.paidAt ? formatDueDate(bill.paidAt.slice(0, 10)) : null;
+    return { text: paidDate ? `Pagata il ${paidDate}` : "Pagata", urgent: false };
+  }
+  const today = now.toISOString().slice(0, 10);
+  const diff = Math.round(
+    (new Date(`${bill.dueDate}T00:00:00Z`).getTime() - new Date(`${today}T00:00:00Z`).getTime()) / 86400000
+  );
+  if (bill.computedStatus === "scaduta") {
+    const days = Math.max(1, -diff);
+    return { text: `Scaduta da ${days} ${days === 1 ? "giorno" : "giorni"}`, urgent: true };
+  }
+  if (diff <= 0) return { text: "Scade oggi", urgent: true };
+  if (diff === 1) return { text: "Scade domani", urgent: false };
+  if (diff <= 7) return { text: `Scade tra ${diff} giorni`, urgent: false };
+  return { text: `Scade il ${formatDueDate(bill.dueDate)}`, urgent: false };
+}
+
 function BillRow({ bill, onPress }: { bill: Bill; onPress: () => void }) {
   const { colors } = useTheme();
   const cat = CATEGORY_META[bill.category] ?? CATEGORY_META.altro;
   const status = STATUS_META[bill.computedStatus];
+  const due = billDueLabel(bill);
+  const isOverdue = bill.computedStatus === "scaduta";
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
-        { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
+        {
+          backgroundColor: colors.surface,
+          borderColor: isOverdue ? STATUS_META.scaduta.color + "66" : colors.border,
+          borderLeftColor: status.color,
+          opacity: pressed ? 0.85 : 1,
+        },
       ]}
     >
       <View style={[styles.catIcon, { backgroundColor: cat.color + "22" }]}>
@@ -85,8 +117,15 @@ function BillRow({ bill, onPress }: { bill: Bill; onPress: () => void }) {
       </View>
       <View style={styles.rowMain}>
         <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={1}>{bill.title}</Text>
-        <Text style={[styles.rowSub, { color: colors.textSecondary }]} numberOfLines={1}>
-          {bill.provider ? `${bill.provider} · ` : ""}Scad. {formatDueDate(bill.dueDate)}
+        <Text
+          style={[
+            styles.rowSub,
+            { color: due.urgent ? STATUS_META.scaduta.color : colors.textSecondary },
+            due.urgent && styles.rowSubUrgent,
+          ]}
+          numberOfLines={1}
+        >
+          {bill.provider ? `${bill.provider} · ` : ""}{due.text}
         </Text>
       </View>
       <View style={styles.rowRight}>
@@ -120,15 +159,78 @@ export default function BillsScreen() {
     [bills]
   );
 
-  const filtered = useMemo(() => {
-    if (filter === "all") return bills;
-    return bills.filter((b) => b.computedStatus === filter);
-  }, [bills, filter]);
+  // Raggruppa per stato: scadute (più urgenti prima), da pagare (scadenza più
+  // vicina prima), pagate (pagamento più recente prima).
+  const groups = useMemo(() => {
+    const byDueAsc = (a: Bill, b: Bill) => a.dueDate.localeCompare(b.dueDate);
+    const byPaidDesc = (a: Bill, b: Bill) => (b.paidAt ?? "").localeCompare(a.paidAt ?? "");
+    const sum = (list: Bill[]) => list.reduce((s, b) => s + parseFloat(b.amount), 0);
+    const scadute = bills.filter((b) => b.computedStatus === "scaduta").sort(byDueAsc);
+    const daPagare = bills.filter((b) => b.computedStatus === "da_pagare").sort(byDueAsc);
+    const pagate = bills.filter((b) => b.computedStatus === "pagata").sort(byPaidDesc);
+    return {
+      scaduta: { data: scadute, total: sum(scadute) },
+      da_pagare: { data: daPagare, total: sum(daPagare) },
+      pagata: { data: pagate, total: sum(pagate) },
+    };
+  }, [bills]);
 
-  const totalDue = useMemo(
-    () => bills.filter((b) => b.status === "da_pagare").reduce((sum, b) => sum + parseFloat(b.amount), 0),
-    [bills]
-  );
+  const sections = useMemo(() => {
+    const make = (key: BillComputedStatus) => ({
+      key,
+      title: key === "scaduta" ? "Scadute" : key === "da_pagare" ? "Da pagare" : "Pagate",
+      color: STATUS_META[key].color,
+      count: groups[key].data.length,
+      total: groups[key].total,
+      data: groups[key].data,
+    });
+    if (filter === "all") {
+      return (["scaduta", "da_pagare", "pagata"] as const).map(make).filter((s) => s.count > 0);
+    }
+    const s = make(filter);
+    return s.count > 0 ? [s] : [];
+  }, [groups, filter]);
+
+  const totalDue = groups.da_pagare.total + groups.scaduta.total;
+
+  // Sottotitolo header contestuale al filtro selezionato.
+  const headerSub = useMemo(() => {
+    switch (filter) {
+      case "scaduta":
+        return groups.scaduta.data.length > 0
+          ? `${groups.scaduta.data.length} scadute · ${formatEuro(groups.scaduta.total)} da saldare subito`
+          : "Nessuna bolletta scaduta";
+      case "da_pagare":
+        return groups.da_pagare.data.length > 0
+          ? `${groups.da_pagare.data.length} in scadenza · ${formatEuro(groups.da_pagare.total)}`
+          : "Nessuna bolletta in scadenza";
+      case "pagata":
+        return groups.pagata.data.length > 0
+          ? `${groups.pagata.data.length} pagate · ${formatEuro(groups.pagata.total)}`
+          : "Nessuna bolletta pagata";
+      default:
+        return `${formatEuro(totalDue)} da pagare`;
+    }
+  }, [filter, groups, totalDue]);
+
+  const EMPTY_STATES: Record<FilterKey, { title: string; subtitle: string }> = {
+    all: {
+      title: "Nessuna bolletta",
+      subtitle: "Aggiungi una bolletta per tenere traccia di scadenze e promemoria.",
+    },
+    da_pagare: {
+      title: "Nessuna bolletta in scadenza",
+      subtitle: "Tutto in regola: non ci sono bollette da pagare al momento.",
+    },
+    scaduta: {
+      title: "Nessuna bolletta scaduta",
+      subtitle: "Ottimo! Nessuna scadenza è stata superata.",
+    },
+    pagata: {
+      title: "Nessuna bolletta pagata",
+      subtitle: "Le bollette che segni come pagate compariranno qui.",
+    },
+  };
 
   const { permissionDenied } = useBillNotificationsStatus();
 
@@ -145,8 +247,8 @@ export default function BillsScreen() {
       <View style={[styles.header, { paddingTop: topInset + 12, backgroundColor: colors.background }]}>
         <View>
           <Text style={[styles.headerTitle, { color: colors.text }]}>Bollette</Text>
-          <Text style={[styles.headerSub, { color: colors.textSecondary }]}>
-            {formatEuro(totalDue)} da pagare
+          <Text style={[styles.headerSub, { color: filter === "scaduta" && groups.scaduta.data.length > 0 ? STATUS_META.scaduta.color : colors.textSecondary }]}>
+            {headerSub}
           </Text>
         </View>
         <Pressable onPress={handleAdd} style={[styles.addButton, { backgroundColor: colors.primary }]}>
@@ -176,24 +278,32 @@ export default function BillsScreen() {
       )}
 
       <View style={styles.filters}>
-        {FILTERS.map((f) => (
-          <Pressable
-            key={f.key}
-            onPress={() => {
-              Haptics.selectionAsync();
-              setFilter(f.key);
-            }}
-            style={[
-              styles.filterChip,
-              {
-                backgroundColor: filter === f.key ? colors.primary : colors.surface,
-                borderColor: filter === f.key ? colors.primary : colors.border,
-              },
-            ]}
-          >
-            <Text style={[styles.filterText, { color: filter === f.key ? "#fff" : colors.text }]}>{f.label}</Text>
-          </Pressable>
-        ))}
+        {FILTERS.map((f) => {
+          const count = f.key === "all" ? bills.length : groups[f.key].data.length;
+          const active = filter === f.key;
+          const dotColor = f.key === "all" ? null : STATUS_META[f.key].color;
+          return (
+            <Pressable
+              key={f.key}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setFilter(f.key);
+              }}
+              style={[
+                styles.filterChip,
+                {
+                  backgroundColor: active ? colors.primary : colors.surface,
+                  borderColor: active ? colors.primary : colors.border,
+                },
+              ]}
+            >
+              {dotColor && <View style={[styles.filterDot, { backgroundColor: dotColor }]} />}
+              <Text style={[styles.filterText, { color: active ? "#fff" : colors.text }]}>
+                {f.label}{count > 0 ? ` (${count})` : ""}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       {billsQuery.isLoading ? (
@@ -201,13 +311,27 @@ export default function BillsScreen() {
           <ActivityIndicator color={colors.primary} />
         </View>
       ) : (
-        <FlatList
-          data={filtered}
+        <SectionList
+          sections={sections}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: 16, paddingBottom: tabBarHeight + 24, gap: 12 }}
-          scrollEnabled={filtered.length > 0}
+          contentContainerStyle={{ padding: 16, paddingBottom: tabBarHeight + 24 }}
+          scrollEnabled={sections.length > 0}
+          stickySectionHeadersEnabled={false}
           renderItem={({ item }) => (
-            <BillRow bill={item} onPress={() => router.push(`/bill/${item.id}`)} />
+            <View style={{ marginBottom: 12 }}>
+              <BillRow bill={item} onPress={() => router.push(`/bill/${item.id}`)} />
+            </View>
+          )}
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <View style={[styles.sectionDot, { backgroundColor: section.color }]} />
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                {section.title} ({section.count})
+              </Text>
+              <Text style={[styles.sectionTotal, { color: colors.textSecondary }]}>
+                {formatEuro(section.total)}
+              </Text>
+            </View>
           )}
           refreshControl={
             <RefreshControl refreshing={billsQuery.isRefetching} onRefresh={() => billsQuery.refetch()} tintColor={colors.primary} />
@@ -216,8 +340,8 @@ export default function BillsScreen() {
             <View style={{ marginTop: 60 }}>
               <EmptyState
                 icon="receipt-outline"
-                title="Nessuna bolletta"
-                subtitle="Aggiungi una bolletta per tenere traccia di scadenze e promemoria."
+                title={EMPTY_STATES[filter].title}
+                subtitle={EMPTY_STATES[filter].subtitle}
               />
             </View>
           }
@@ -264,12 +388,26 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 20,
     borderWidth: 1,
   },
+  filterDot: { width: 8, height: 8, borderRadius: 4 },
   filterText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  sectionDot: { width: 10, height: 10, borderRadius: 5 },
+  sectionTitle: { fontSize: 15, fontFamily: "Inter_700Bold", flex: 1 },
+  sectionTotal: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   row: {
     flexDirection: "row",
@@ -278,6 +416,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     borderWidth: 1,
+    borderLeftWidth: 4,
   },
   catIcon: {
     width: 44,
@@ -289,6 +428,7 @@ const styles = StyleSheet.create({
   rowMain: { flex: 1 },
   rowTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   rowSub: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2 },
+  rowSubUrgent: { fontFamily: "Inter_600SemiBold" },
   rowRight: { alignItems: "flex-end", gap: 6 },
   rowAmount: { fontSize: 16, fontFamily: "Inter_700Bold" },
   statusBadge: { paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8 },
