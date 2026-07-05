@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
-import * as Notifications from "expo-notifications";
 import { useQuery } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
@@ -37,49 +36,6 @@ export default function FamilyScreen() {
   });
 
   const blockedUserIds = new Set((blocksData || []).map((b) => b.blockedUserId));
-
-  // TEMPORANEO: pulsante di prova notifiche, da rimuovere dopo i test.
-  const [testNotifBusy, setTestNotifBusy] = useState(false);
-  const handleTestNotification = async () => {
-    if (Platform.OS === "web") {
-      window.alert("Le notifiche non funzionano nell'anteprima web: prova dal telefono con Expo Go.");
-      return;
-    }
-    if (testNotifBusy) return;
-    setTestNotifBusy(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      let perm = await Notifications.getPermissionsAsync();
-      if (!perm.granted) {
-        perm = await Notifications.requestPermissionsAsync();
-      }
-      if (!perm.granted) {
-        Alert.alert(
-          "Permesso negato",
-          "Attiva le notifiche per questa app nelle impostazioni del telefono, poi riprova."
-        );
-        return;
-      }
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "Prova notifica FamilySync",
-          body: "Se leggi questo messaggio, le notifiche funzionano! I promemoria bollette arriveranno alle 8:00.",
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: 5,
-        },
-      });
-      Alert.alert(
-        "Notifica programmata",
-        "Arriverà tra 5 secondi. Metti l'app in background per vederla comparire."
-      );
-    } catch {
-      Alert.alert("Errore", "Impossibile programmare la notifica di prova.");
-    } finally {
-      setTestNotifBusy(false);
-    }
-  };
 
   const handleToggleAI = async (value: boolean) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -442,21 +398,6 @@ export default function FamilyScreen() {
                 <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Sincronizza calendario</Text>
                 <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
                   Collega Google/Apple Calendar e il telefono
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-            </View>
-          </Card>
-          {/* TEMPORANEO: card di prova notifiche, da rimuovere dopo i test. */}
-          <Card onPress={handleTestNotification}>
-            <View style={styles.featureLinkRow}>
-              <View style={[styles.featureLinkIcon, { backgroundColor: "#FF950020" }]}>
-                <Ionicons name="notifications-outline" size={24} color="#FF9500" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Prova notifica</Text>
-                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
-                  Invia una notifica di prova tra 5 secondi
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
