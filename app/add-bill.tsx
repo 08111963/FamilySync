@@ -27,9 +27,10 @@ export default function AddBillScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { currentFamily } = useFamily();
-  const params = useLocalSearchParams<{ id?: string; paid?: string }>();
+  const params = useLocalSearchParams<{ id?: string; paid?: string; overdue?: string }>();
   const editId = params.id;
   const startPaid = params.paid === "1";
+  const startOverdue = params.overdue === "1";
   const familyId = currentFamily?.id;
 
   const editQuery = useQuery<Bill & any>({
@@ -49,22 +50,34 @@ export default function AddBillScreen() {
     );
   }
 
-  return <BillForm key={editId ?? "new"} editId={editId} existing={editQuery.data} startPaid={startPaid} />;
+  return (
+    <BillForm key={editId ?? "new"} editId={editId} existing={editQuery.data} startPaid={startPaid} startOverdue={startOverdue} />
+  );
 }
 
-function BillForm({ editId, existing, startPaid }: { editId?: string; existing?: (Bill & any) | undefined; startPaid?: boolean }) {
+function BillForm({
+  editId,
+  existing,
+  startPaid,
+  startOverdue,
+}: {
+  editId?: string;
+  existing?: (Bill & any) | undefined;
+  startPaid?: boolean;
+  startOverdue?: boolean;
+}) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { data, currentFamily } = useFamily();
   const familyId = currentFamily?.id;
 
-  // Due moduli separati:
-  // - "Nuova Bolletta" (da pagare, con Scadenza) — /add-bill
-  // - "Registra Bolletta Pagata" (con Data di pagamento) — /add-bill?paid=1
-  // In modifica lo stato è derivato dalla bolletta esistente.
+  // Moduli separati:
+  // - "/add-bill" → bolletta da pagare, campo "Da pagare entro il"
+  // - "/add-bill?overdue=1" → bolletta scaduta, campo "Scaduta il"
+  // - "/add-bill?paid=1" → bolletta pagata, campo "Data di pagamento"
+  // In modifica lo stato è derivato SOLO dalla bolletta esistente.
   const isPaid = editId ? !!existing && existing.status === "pagata" : !!startPaid;
-  // In modifica di una bolletta SCADUTA il campo data dice "Scaduta il".
-  const isOverdue = !!editId && existing?.computedStatus === "scaduta";
+  const isOverdue = editId ? existing?.computedStatus === "scaduta" : !isPaid && !!startOverdue;
 
   const [title, setTitle] = useState(existing?.title ?? "");
   const [provider, setProvider] = useState(existing?.provider ?? "");
@@ -147,10 +160,14 @@ function BillForm({ editId, existing, startPaid }: { editId?: string; existing?:
           {editId
             ? isPaid
               ? "Modifica Bolletta Pagata"
-              : "Modifica Bolletta"
+              : isOverdue
+                ? "Modifica Bolletta Scaduta"
+                : "Modifica Bolletta"
             : isPaid
               ? "Registra Bolletta Pagata"
-              : "Nuova Bolletta"}
+              : isOverdue
+                ? "Registra Bolletta Scaduta"
+                : "Nuova Bolletta"}
         </Text>
         <View style={styles.placeholder} />
       </View>

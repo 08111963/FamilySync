@@ -244,10 +244,14 @@ export default function BillsScreen() {
 
   const handleAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Due moduli separati: dal filtro "Pagate" si apre "Registra Bolletta Pagata",
-    // dagli altri filtri "Nuova Bolletta"; su "Tutte" si sceglie quale.
+    // Moduli separati per stato: il "+" apre il form del filtro attivo;
+    // su "Tutte" si sceglie quale tipo aggiungere.
     if (filter === "pagata") {
       router.push("/add-bill?paid=1");
+      return;
+    }
+    if (filter === "scaduta") {
+      router.push("/add-bill?overdue=1");
       return;
     }
     if (filter !== "all") {
@@ -256,6 +260,7 @@ export default function BillsScreen() {
     }
     Alert.alert("Aggiungi bolletta", "Quale tipo di bolletta vuoi aggiungere?", [
       { text: "Da pagare", onPress: () => router.push("/add-bill") },
+      { text: "Scaduta", onPress: () => router.push("/add-bill?overdue=1") },
       { text: "Già pagata", onPress: () => router.push("/add-bill?paid=1") },
       { text: "Annulla", style: "cancel" },
     ]);
