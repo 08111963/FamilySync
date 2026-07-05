@@ -177,10 +177,10 @@ function BillForm({
                 ? "Modifica Bolletta Scaduta"
                 : "Modifica Bolletta"
             : isPaid
-              ? "Registra Bolletta Pagata"
+              ? "Bolletta Pagata"
               : isOverdue
-                ? "Registra Bolletta Scaduta"
-                : "Nuova Bolletta"}
+                ? "Bolletta Scaduta"
+                : "Bolletta da Pagare"}
         </Text>
         <View style={styles.placeholder} />
       </View>

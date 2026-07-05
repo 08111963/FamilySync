@@ -11,6 +11,7 @@ import { useSubscription } from "@/lib/revenuecat";
 import { useBillNotificationsStatus } from "@/context/BillNotificationsProvider";
 import { EmptyState } from "@/components/EmptyState";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/query-client";
 
 export type BillComputedStatus = "da_pagare" | "pagata" | "scaduta";
 
@@ -92,7 +93,7 @@ export function billDueLabel(bill: Bill, now: Date = new Date()): { text: string
   return { text: `Scade il ${formatDueDate(bill.dueDate)}`, urgent: false };
 }
 
-function BillRow({ bill, onPress }: { bill: Bill; onPress: () => void }) {
+function BillRow({ bill, onPress, onDelete }: { bill: Bill; onPress: () => void; onDelete?: () => void }) {
   const { colors } = useTheme();
   const cat = CATEGORY_META[bill.category] ?? CATEGORY_META.altro;
   const status = STATUS_META[bill.computedStatus];
@@ -139,6 +140,19 @@ function BillRow({ bill, onPress }: { bill: Bill; onPress: () => void }) {
           <Text style={[styles.statusText, { color: isOverdue ? "#fff" : status.color }]}>{status.label}</Text>
         </View>
       </View>
+      {onDelete && (
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          hitSlop={8}
+          style={({ pressed }) => [styles.deleteBtn, { opacity: pressed ? 0.6 : 1 }]}
+          testID={`delete-bill-${bill.id}`}
+        >
+          <Ionicons name="trash-outline" size={20} color={colors.textSecondary} />
+        </Pressable>
+      )}
     </Pressable>
   );
 }
@@ -242,6 +256,30 @@ export default function BillsScreen() {
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const tabBarHeight = Platform.OS === "web" ? 84 : 49 + insets.bottom;
 
+  const handleDeleteBill = (bill: Bill) => {
+    if (!familyId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert(
+      "Elimina bolletta",
+      `Vuoi eliminare definitivamente "${bill.title}"?`,
+      [
+        { text: "Annulla", style: "cancel" },
+        {
+          text: "Elimina",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await apiRequest("DELETE", `/api/bills/${familyId}/${bill.id}`);
+              queryClient.invalidateQueries({ queryKey: [`/api/bills/${familyId}`] });
+            } catch {
+              Alert.alert("Errore", "Impossibile eliminare la bolletta");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     // Moduli separati per stato: il "+" apre il form del filtro attivo;
@@ -343,7 +381,11 @@ export default function BillsScreen() {
           stickySectionHeadersEnabled={false}
           renderItem={({ item }) => (
             <View style={{ marginBottom: 12 }}>
-              <BillRow bill={item} onPress={() => router.push(`/bill/${item.id}`)} />
+              <BillRow
+                bill={item}
+                onPress={() => router.push(`/bill/${item.id}`)}
+                onDelete={item.computedStatus === "pagata" ? () => handleDeleteBill(item) : undefined}
+              />
             </View>
           )}
           renderSectionHeader={({ section }) => (
@@ -457,4 +499,5 @@ const styles = StyleSheet.create({
   rowAmount: { fontSize: 16, fontFamily: "Inter_700Bold" },
   statusBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8 },
   statusText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  deleteBtn: { marginLeft: 10, padding: 6, alignSelf: "center" },
 });
