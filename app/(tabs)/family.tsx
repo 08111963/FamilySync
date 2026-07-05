@@ -130,6 +130,7 @@ export default function FamilyScreen() {
       case "admin":
         return { label: "Admin", color: colors.primary };
       case "adult":
+        return { label: "Adulto", color: colors.primary };
       case "parent":
         return { label: "Genitore", color: colors.primary };
       case "teen":

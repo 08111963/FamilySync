@@ -15,7 +15,7 @@ const ROLES = [
   { value: "admin", label: "Admin", icon: "shield-checkmark" as const },
   { value: "adult", label: "Adulto", icon: "person" as const },
   { value: "teen", label: "Adolescente", icon: "school" as const },
-  { value: "child", label: "Bambino/a", icon: "happy" as const },
+  { value: "child", label: "Figlio/a", icon: "happy" as const },
 ];
 
 type Role = "admin" | "adult" | "teen" | "child";
