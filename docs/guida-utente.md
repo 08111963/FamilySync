@@ -1,6 +1,6 @@
 # FamilySync - Guida Utente Completa
 
-> Benvenuto in FamilySync! Questa guida ti aiutera a scoprire tutte le funzionalita dell'app per coordinare la tua famiglia in modo semplice e organizzato: calendario, spesa, faccende, bollette, chat, ricette, piano pasti e tanto altro.
+> Benvenuto in FamilySync! Questa guida ti aiuterà a scoprire tutte le funzionalità dell'app per coordinare la tua famiglia in modo semplice e organizzato: calendario, spesa, faccende, bollette, chat, ricette, piano pasti e tanto altro.
 
 ---
 
@@ -37,10 +37,10 @@ L'app ha 7 schede principali in fondo allo schermo:
 | Ricette | Card "Ricette" dalla Home | Generare ricette AI, cercare ricette, salvare e consultare ricette |
 | Piano Pasti | Card "Piano Pasti" dalla Home | Generare piani settimanali AI, salvare piani, convertire in lista spesa |
 | Invita Familiare | Pulsante "Aggiungi" nella scheda Famiglia | Invitare un familiare via email con un link sicuro |
-| Premium | Sezione Funzionalita nella scheda Famiglia | Attivare l'abbonamento Premium e sbloccare funzioni avanzate |
-| Consigli AI famiglia | Sezione Funzionalita nella scheda Famiglia | Vedere analisi e consigli settimanali generati dall'AI |
-| Utenti Bloccati | Sezione Funzionalita nella scheda Famiglia | Gestire gli utenti bloccati |
-| Segnalazioni | Sezione Funzionalita (solo Admin) | Gestire le segnalazioni della famiglia |
+| Premium | Sezione Funzionalità nella scheda Famiglia | Attivare l'abbonamento Premium e sbloccare funzioni avanzate |
+| Consigli AI famiglia | Sezione Funzionalità nella scheda Famiglia | Vedere analisi e consigli settimanali generati dall'AI |
+| Utenti Bloccati | Sezione Funzionalità nella scheda Famiglia | Gestire gli utenti bloccati |
+| Segnalazioni | Sezione Funzionalità (solo Admin) | Gestire le segnalazioni della famiglia |
 | Contatta assistenza | Sezione Legale nella scheda Famiglia | Scrivere al supporto per problemi o domande |
 | Guida Utente | Sezione Legale nella scheda Famiglia | Consultare questa guida |
 
@@ -55,7 +55,7 @@ L'app ha 7 schede principali in fondo allo schermo:
 - [ ] Assegnare le prime Faccende ai membri
 - [ ] Inserire le Bollette ricorrenti con le loro scadenze
 - [ ] Scrivere un primo messaggio nella Chat di famiglia
-- [ ] (Opzionale) Attivare le Funzionalita AI dal toggle nella scheda Famiglia
+- [ ] (Opzionale) Attivare le Funzionalità AI dal toggle nella scheda Famiglia
 - [ ] (Opzionale) Valutare l'abbonamento Premium per funzioni illimitate
 - [ ] Controllare periodicamente il pannello Segnalazioni (se presenti)
 
@@ -105,7 +105,7 @@ Per aggiungere i tuoi familiari:
 - Inserisci il **nome** (facoltativo) e l'**email** del familiare
 - Scegli il **ruolo**: Admin, Adulto, Adolescente o Figlio/a
 - Tocca **Invia Invito**
-- Il familiare ricevera un'email con un **link sicuro**: lo aprira, sceglieta la sua password ed entrera nella famiglia
+- Il familiare riceverà un'email con un **link sicuro**: lo aprirà, sceglierà la sua password ed entrerà nella famiglia
 
 > Nota: per i dettagli completi su come funziona l'invito leggi la sezione "Sistema di Inviti".
 
@@ -113,11 +113,11 @@ Per aggiungere i tuoi familiari:
 
 ## 2. Home
 
-La schermata Home e il centro di comando della tua famiglia. Qui trovi:
+La schermata Home è il centro di comando della tua famiglia. Qui trovi:
 
 ### Panoramica Rapida
 - **Prossimi Eventi**: i prossimi eventi in arrivo dal calendario condiviso, con data e luogo
-- **Faccende da Fare**: le faccende piu urgenti ancora da completare, con punti e assegnatario
+- **Faccende da Fare**: le faccende più urgenti ancora da completare, con punti e assegnatario
 - **Classifica Punti**: i primi membri della famiglia per punti accumulati completando le faccende
 
 ### Accesso Rapido
@@ -144,7 +144,7 @@ Il calendario condiviso permette a tutta la famiglia di vedere e gestire gli imp
   - **Titolo**: nome dell'evento (es. "Compleanno della nonna")
   - **Data**: seleziona il giorno
   - **Ora di inizio e fine**: imposta gli orari
-  - **Luogo**: dove si svolgera l'evento (opzionale)
+  - **Luogo**: dove si svolgerà l'evento (opzionale)
   - **Descrizione**: note aggiuntive (opzionale)
   - **Colore**: scegli un colore per identificare l'evento
   - **Tutto il giorno**: attiva se l'evento dura l'intera giornata
@@ -166,8 +166,8 @@ Tutti gli eventi del calendario di famiglia (compresi quelli creati automaticame
 - Copia il **link del feed** e aggiungilo al tuo calendario:
   - **Google Calendar**: Impostazioni → Aggiungi calendario → Da URL → incolla il link
   - **Apple Calendar**: File → Nuova sottoscrizione calendario (Mac) oppure Impostazioni → Calendario → Account → Aggiungi sottoscrizione (iPhone)
-- Da quel momento **tutti gli eventi della famiglia** (e le scadenze delle bollette) compaiono automaticamente anche li, e si aggiornano da soli
-- Il link e personale della tua famiglia: se vuoi revocarlo, tocca **Rigenera link** (quello vecchio smette di funzionare)
+- Da quel momento **tutti gli eventi della famiglia** (e le scadenze delle bollette) compaiono automaticamente anche lì, e si aggiornano da soli
+- Il link è personale della tua famiglia: se vuoi revocarlo, tocca **Rigenera link** (quello vecchio smette di funzionare)
 
 ---
 
@@ -183,12 +183,12 @@ Crea e condividi le liste della spesa con tutta la famiglia.
 ### Gestire gli Articoli
 - Tocca una lista per aprirla
 - Aggiungi articoli inserendo il nome nel campo in basso e confermando
-- Puoi specificare: **quantita**, **unita** (pz, kg, L, ecc.) e **categoria**
+- Puoi specificare: **quantità**, **unità** (pz, kg, L, ecc.) e **categoria**
 - Tocca un articolo per segnarlo come **completato** (acquistato)
 - Scorri su un articolo per **eliminarlo**
 
 ### Suggerimenti AI per la Spesa
-Se hai attivato le funzionalita AI, puoi ricevere suggerimenti intelligenti:
+Se hai attivato le funzionalità AI, puoi ricevere suggerimenti intelligenti:
 - Dalla scheda Famiglia, tocca **Consigli AI famiglia** per accedere alla schermata dedicata
 - L'AI analizza i dati della famiglia e suggerisce articoli utili in base a:
   - Quello che la tua famiglia compra di solito
@@ -203,14 +203,14 @@ Se hai attivato le funzionalita AI, puoi ricevere suggerimenti intelligenti:
 
 ## 5. Faccende Domestiche
 
-Organizza le faccende di casa con un sistema a punti che rende tutto piu divertente!
+Organizza le faccende di casa con un sistema a punti che rende tutto più divertente!
 
 ### Creare una Faccenda
 - Vai alla scheda **Faccende** e tocca il pulsante **+**
 - Compila i dettagli:
   - **Titolo**: nome della faccenda (es. "Lavare i piatti")
   - **Descrizione**: istruzioni o note aggiuntive (opzionale)
-  - **Difficolta**: Facile, Media o Difficile
+  - **Difficoltà**: Facile, Media o Difficile
   - **Punti**: scegli quanti punti vale (5, 10, 15, 20, 25, 50)
   - **Tempo stimato**: quanto tempo ci vuole (in minuti)
   - **Assegnata a**: scegli quale membro della famiglia deve farla (opzionale)
@@ -220,21 +220,21 @@ Organizza le faccende di casa con un sistema a punti che rende tutto piu diverte
 ### Completare una Faccenda
 - Nella lista delle faccende, tocca l'icona di completamento
 - I punti verranno automaticamente aggiunti al membro assegnato
-- La faccenda verra spostata nella sezione **Completate**
+- La faccenda verrà spostata nella sezione **Completate**
 
 ### Filtri
 Puoi filtrare le faccende per stato:
 - **Da fare**: faccende ancora in sospeso
-- **Completate**: faccende gia fatte
+- **Completate**: faccende già fatte
 - **Tutte**: mostra tutte le faccende
 
 ### Classifica e Punti
 - Ogni faccenda completata fa guadagnare punti al membro assegnato
-- La classifica e visibile nella Home e nella scheda Famiglia
-- Piu faccende completi, piu sali in classifica!
+- La classifica è visibile nella Home e nella scheda Famiglia
+- Più faccende completi, più sali in classifica!
 
 ### Ottimizzazione AI delle Faccende
-Se le funzionalita AI sono attive, puoi richiedere una distribuzione ottimizzata:
+Se le funzionalità AI sono attive, puoi richiedere una distribuzione ottimizzata:
 - L'AI analizza le faccende in sospeso e i punti di ciascun membro
 - Suggerisce come distribuire le faccende in modo equo
 - Tiene conto del tempo stimato e del carico di lavoro di ogni persona
@@ -248,7 +248,7 @@ La scheda **Bollette** ti aiuta a non dimenticare mai una scadenza e a tenere so
 ### Visualizzare le Bollette
 - Apri la scheda **Bollette**
 - In alto vedi il **totale ancora da pagare** (comprende anche le bollette scadute)
-- La lista e organizzata in **sezioni**: **Scadute**, **Da pagare** e **Pagate**, ognuna con il conteggio e il totale in euro
+- La lista è organizzata in **sezioni**: **Scadute**, **Da pagare** e **Pagate**, ognuna con il conteggio e il totale in euro
 - Ogni bolletta mostra categoria, importo, fornitore e scadenza, con un'etichetta di stato colorata e diciture chiare come "Scade domani", "Scade tra 5 giorni", "Scaduta da 3 giorni" o "Pagata il 12/06"
 - Usa i **filtri** in alto (con i conteggi) per vedere solo: Tutte, Da pagare, Scadute o Pagate
 
@@ -260,8 +260,8 @@ La scheda **Bollette** ti aiuta a non dimenticare mai una scadenza e a tenere so
 - Tocca il pulsante **+** nella scheda Bollette
 - In base al filtro attivo si apre il form giusto:
   - **Nuova Bolletta** (da pagare): campo "Da pagare entro il"
-  - **Registra Bolletta Scaduta**: campo "Scaduta il", per inserire bollette gia scadute
-  - **Registra Bolletta Pagata**: campo "Data di pagamento", per registrare bollette gia saldate (non consumano il limite del piano Free)
+  - **Registra Bolletta Scaduta**: campo "Scaduta il", per inserire bollette già scadute
+  - **Registra Bolletta Pagata**: campo "Data di pagamento", per registrare bollette già saldate (non consumano il limite del piano Free)
   - Con il filtro "Tutte" ti viene chiesto quale tipo vuoi inserire
 - Compila i campi:
   - **Titolo**: nome della bolletta (es. "Bolletta luce gennaio")
@@ -273,15 +273,17 @@ La scheda **Bollette** ti aiuta a non dimenticare mai una scadenza e a tenere so
   - **Responsabile**: il membro della famiglia che si occupa del pagamento (opzionale)
   - **Note**: annotazioni libere (opzionale)
   - **Promemoria**: attiva per ricevere una notifica prima della scadenza
-- Tocca per salvare: la bolletta comparira nella lista
+- Tocca per salvare: la bolletta comparirà nella lista
 
 ### Dettaglio Bolletta
 Tocca una bolletta per aprirne il dettaglio. Da qui puoi:
-- Vedere subito lo stato con un **banner colorato**: rosso se scaduta ("da saldare al piu presto"), verde se pagata ("nessuna azione necessaria")
-- **Segnare come pagata** (o di nuovo come da pagare) con un tocco: se e scaduta il pulsante diventa "Salda ora"
-- **Modificare** la bolletta (icona matita) o **eliminarla** (icona cestino); se e gia pagata puoi correggere la **data di pagamento**
+- Vedere subito lo stato con un **banner colorato**: rosso se scaduta ("da saldare al più presto"), verde se pagata ("nessuna azione necessaria")
+- **Segnare come pagata** (o di nuovo come da pagare) con un tocco: se è scaduta il pulsante diventa "Salda ora"
+- **Modificare** la bolletta (icona matita) o **eliminarla** (icona cestino); se è già pagata puoi correggere la **data di pagamento**
 - Vedere **intestatario**, **responsabile** e **note**
 - Controllare i **promemoria** programmati prima della scadenza
+
+> Nota: "Salda ora" e "Segna come pagata" **non effettuano alcun pagamento reale**. Servono solo a registrare nell'app che la bolletta è stata pagata fuori da FamilySync (es. tramite banca, bollettino o domiciliazione).
 
 ### Promemoria delle Scadenze
 - Con i promemoria attivi ricevi una notifica sul telefono **alle 8:00 del mattino**
@@ -311,7 +313,7 @@ Gli allegati restano collegati alla bolletta e puoi aprirli o eliminarli quando 
 
 ## 7. Chat di Famiglia
 
-La scheda **Chat** e lo spazio dove tutta la famiglia comunica in tempo reale, senza bisogno di app esterne.
+La scheda **Chat** è lo spazio dove tutta la famiglia comunica in tempo reale, senza bisogno di app esterne.
 
 ### Inviare Messaggi
 - Apri la scheda **Chat**
@@ -323,8 +325,8 @@ La scheda **Chat** e lo spazio dove tutta la famiglia comunica in tempo reale, s
 Tocca l'icona allegato accanto al campo di testo per inviare:
 - **Foto dalla galleria**
 - **Foto scattata sul momento** con la fotocamera (sul telefono; non disponibile sul web)
-- **Documenti**: file PDF e Word (doc, docx)
-- Il limite per ogni file e di **10 MB**
+- **Documenti**: file PDF
+- Il limite per ogni file è di **10 MB**
 
 ### Funzioni Utili
 - **"Sta scrivendo..."**: vedi quando un familiare sta scrivendo un messaggio
@@ -344,7 +346,7 @@ La sezione Ricette ti permette di scoprire, generare e salvare ricette per la tu
 ### Generare Ricette con l'AI
 FamilySync genera automaticamente **8 ricette diverse** per te con un solo tocco:
 - Nella schermata Ricette, tocca il pulsante **Genera Ricette AI** (con l'icona scintilla)
-- L'AI crea 8 ricette complete da **16 categorie diverse** (primi piatti, secondi, contorni, dolci, zuppe, insalate, piatti unici, street food, e altre ancora) selezionate in modo casuale per offrirti la massima varieta
+- L'AI crea 8 ricette complete da **16 categorie diverse** (primi piatti, secondi, contorni, dolci, zuppe, insalate, piatti unici, street food, e altre ancora) selezionate in modo casuale per offrirti la massima varietà
 - Le ricette generate vengono mostrate nella schermata di **anteprima**
 
 ### Cercare Ricette con l'AI
@@ -363,7 +365,7 @@ Dopo aver generato o cercato ricette, arrivi alla schermata di anteprima dove pu
 - **Sfogliare** tutte le ricette generate, ognuna con titolo, descrizione, tempo di preparazione, porzioni e tag
 - **Selezionare** le ricette che vuoi salvare toccando la casella di spunta accanto a ciascuna
 - **Selezionare tutte** le ricette con l'icona in alto a destra
-- **Vedere il dettaglio** di una ricetta toccandola: si apre una schermata con tutti gli ingredienti con quantita e unita, e le istruzioni passo per passo
+- **Vedere il dettaglio** di una ricetta toccandola: si apre una schermata con tutti gli ingredienti con quantità e unità, e le istruzioni passo per passo
 - **Salvare** le ricette selezionate toccando il pulsante in basso. Le ricette salvate appariranno nella tua lista personale
 - **Generare altre ricette** (pulsante "Altre Ricette") se quelle proposte non ti soddisfano
 
@@ -372,8 +374,8 @@ Ogni ricetta salvata include informazioni complete:
 - **Titolo** e **descrizione**
 - **Porzioni** (numero di persone)
 - **Tempo di preparazione** e **tempo di cottura** in minuti
-- **Tag**: tipo di cucina, difficolta, dieta (es. vegetariana, senza glutine)
-- **Lista ingredienti** completa con quantita e unita di misura italiane (g, kg, ml, L, cucchiai, ecc.)
+- **Tag**: tipo di cucina, difficoltà, dieta (es. vegetariana, senza glutine)
+- **Lista ingredienti** completa con quantità e unità di misura italiane (g, kg, ml, L, cucchiai, ecc.)
 - **Istruzioni** passo per passo, dettagliate e complete
 
 ### Eliminare una Ricetta
@@ -391,7 +393,7 @@ Il Piano Pasti ti aiuta a organizzare i pasti della settimana per tutta la famig
 
 ### La Schermata Piano Pasti
 La schermata ha due sezioni, accessibili tramite le tab in alto:
-- **I Miei Piani**: mostra i piani pasti gia salvati
+- **I Miei Piani**: mostra i piani pasti già salvati
 - **Genera con AI**: per creare un nuovo piano pasti settimanale
 
 ### Generare un Piano Pasti con l'AI
@@ -402,7 +404,7 @@ Per generare un nuovo piano settimanale:
    - **Dieta**: ad esempio "vegetariana", "mediterranea", "senza lattosio"
    - **Allergie/Intolleranze**: ad esempio "glutine", "frutta secca", "uova"
 4. Tocca il pulsante **Genera Piano Pasti** per avviare la generazione AI
-5. L'AI creera un piano completo per 7 giorni con colazione, pranzo, cena e spuntini
+5. L'AI creerà un piano completo per 7 giorni con colazione, pranzo, cena e spuntini
 
 ### Alternative
 - Se il piano generato non ti soddisfa, puoi toccare **Genera Alternative** per ricevere una seconda proposta
@@ -410,12 +412,12 @@ Per generare un nuovo piano settimanale:
 
 ### Salvare un Piano Pasti
 - Quando sei soddisfatto del piano, tocca **Salva Piano**
-- Il piano viene salvato e apparira nella tab **I Miei Piani**
+- Il piano viene salvato e apparirà nella tab **I Miei Piani**
 
 ### Gestire i Piani Salvati
 Nella tab **I Miei Piani** puoi:
 - Vedere tutti i tuoi piani salvati con titolo, data della settimana e numero di pasti
-- **Converti in Lista Spesa**: tocca l'icona del carrello per creare automaticamente una lista della spesa con tutti gli ingredienti necessari per il piano. La lista apparira nella scheda Spesa
+- **Converti in Lista Spesa**: tocca l'icona del carrello per creare automaticamente una lista della spesa con tutti gli ingredienti necessari per il piano. La lista apparirà nella scheda Spesa
 - **Eliminare** un piano toccando l'icona del cestino e confermando
 
 ---
@@ -424,16 +426,16 @@ Nella tab **I Miei Piani** puoi:
 
 ### Informazioni del Gruppo
 - Dalla scheda **Famiglia** puoi vedere tutti i membri del gruppo
-- L'amministratore puo modificare il **nome della famiglia** (icona matita accanto al nome)
+- L'amministratore può modificare il **nome della famiglia** (icona matita accanto al nome)
 - Ogni membro mostra il proprio nome, ruolo, colore e punti accumulati
 - La sezione **Statistiche** mostra a colpo d'occhio numero di eventi, liste e faccende completate
 
 ### Ruoli
 Quando inviti un membro scegli uno di questi ruoli:
-- **Admin**: puo gestire i membri, modificare le impostazioni del gruppo, gestire le segnalazioni, invitare nuovi membri e gestire l'abbonamento Premium
+- **Admin**: può gestire i membri, modificare le impostazioni del gruppo, gestire le segnalazioni, invitare nuovi membri e gestire l'abbonamento Premium
 - **Adulto**: accesso completo a calendario, spesa, faccende, bollette, chat, ricette e piano pasti
-- **Adolescente**: accesso alle funzionalita con un ruolo dedicato
-- **Figlio/a**: accesso alle funzionalita base
+- **Adolescente**: accesso alle funzionalità con un ruolo dedicato
+- **Figlio/a**: accesso alle funzionalità base
 
 ### Azioni sui Membri
 - Tocca l'icona con i tre puntini accanto a un membro per **Segnalare** o **Bloccare/Sbloccare** quella persona
@@ -454,24 +456,24 @@ FamilySync usa un sistema di inviti **sicuro via email**: ogni nuovo membro rice
 
 ### Cosa Riceve il Familiare
 - Una **email** con un pulsante/link sicuro per unirsi alla famiglia
-- Il link e **valido per 72 ore** e puo essere usato **una sola volta**
-- L'email **non contiene password**: sara il familiare a sceglierla
+- Il link è **valido per 72 ore** e può essere usato **una sola volta**
+- L'email **non contiene password**: sarà il familiare a sceglierla
 
 ### Come si Unisce alla Famiglia
 Quando il familiare apre il link:
 1. Se **non ha ancora un account**: sceglie la sua password (minimo 8 caratteri, con maiuscola, minuscola e numero) e completa l'accesso, entrando subito nella famiglia
-2. Se **ha gia un account**: effettua il login e viene aggiunto alla famiglia
+2. Se **ha già un account**: effettua il login e viene aggiunto alla famiglia
 3. L'email dell'invito deve corrispondere all'email con cui accede: questo garantisce che l'invito sia usato dalla persona giusta
-4. Da quel momento puo usare tutte le funzionalita condivise
+4. Da quel momento può usare tutte le funzionalità condivise
 
 ### Note Importanti sugli Inviti
-- Ogni link e **unico, personale e sicuro**
+- Ogni link è **unico, personale e sicuro**
 - Il link **scade dopo 72 ore**: se serve, basta inviare un nuovo invito
-- Il link puo essere usato **una sola volta**
-- Non c'e limite al numero di membri nella famiglia
-- Se la persona fa gia parte della famiglia, l'app te lo segnala
+- Il link può essere usato **una sola volta**
+- Non c'è limite al numero di membri nella famiglia
+- Se la persona fa già parte della famiglia, l'app te lo segnala
 
-> Nota: l'invio dell'invito richiede il servizio email attivo. Se vedi un messaggio che indica un problema con l'email, riprova piu tardi o contatta l'assistenza.
+> Nota: l'invio dell'invito richiede il servizio email attivo. Se vedi un messaggio che indica un problema con l'email, riprova più tardi o contatta l'assistenza.
 
 ---
 
@@ -481,15 +483,15 @@ FamilySync integra l'intelligenza artificiale per offrire suggerimenti utili all
 
 ### Come Attivare/Disattivare l'AI
 - Vai alla scheda **Famiglia**
-- Nella sezione **Funzionalita**, trovi il toggle per le **Funzionalita AI**
+- Nella sezione **Funzionalità**, trovi il toggle per le **Funzionalità AI**
 - Attiva o disattiva a tuo piacimento
-- Quando l'AI e attiva, alcune informazioni della famiglia (titoli degli eventi, nomi degli articoli della spesa, titoli delle faccende) vengono inviate al servizio AI per generare suggerimenti personalizzati
-- L'AI e completamente opzionale: se il toggle e disattivato, nessun dato viene inviato
+- Quando l'AI è attiva, alcune informazioni della famiglia (titoli degli eventi, nomi degli articoli della spesa, titoli delle faccende) vengono inviate al servizio AI per generare suggerimenti personalizzati
+- L'AI è completamente opzionale: se il toggle è disattivato, nessun dato viene inviato
 
-### Panoramica delle Funzionalita AI
-L'intelligenza artificiale in FamilySync offre 6 funzionalita principali:
+### Panoramica delle Funzionalità AI
+L'intelligenza artificiale in FamilySync offre 6 funzionalità principali:
 
-| Funzionalita | Dove si trova | Cosa fa |
+| Funzionalità | Dove si trova | Cosa fa |
 |--------------|---------------|---------|
 | Generazione Ricette | Schermata Ricette | Genera 8 ricette diverse da 16 categorie |
 | Ricerca Ricette | Barra di ricerca in Ricette | Cerca 3-5 ricette in base a quello che scrivi |
@@ -499,9 +501,9 @@ L'intelligenza artificiale in FamilySync offre 6 funzionalita principali:
 | Insights Familiari | Consigli AI famiglia (scheda Famiglia) | Analisi e consigli settimanali |
 
 ### Quante Volte Puoi Usare l'AI
-Le funzionalita AI sono disponibili gratuitamente con un **limite di utilizzo**; con **Premium** i limiti sono molto piu alti. Limiti indicativi:
+Le funzionalità AI sono disponibili gratuitamente con un **limite di utilizzo**; con **Premium** i limiti sono molto più alti. Limiti indicativi:
 
-| Funzionalita AI | Free | Premium |
+| Funzionalità AI | Free | Premium |
 |-----------------|------|---------|
 | Suggerimenti spesa | 2 al giorno | 10 al giorno |
 | Ricerca ricette | 2 al giorno | 20 al giorno |
@@ -513,7 +515,7 @@ Le funzionalita AI sono disponibili gratuitamente con un **limite di utilizzo**;
 > Nota: i limiti esatti possono essere aggiornati nel tempo. Le funzioni di base (calendario, spesa, faccende e chat) non hanno limiti di utilizzo, sia con Free sia con Premium. Le bollette invece hanno un limite con il piano Free (max 5 attive) e sono illimitate con Premium.
 
 ### Privacy e Dati AI
-- Quando l'AI e attiva, vengono inviate al servizio AI porzioni di contenuto della famiglia: titoli degli eventi, nomi degli articoli della spesa, titoli e descrizioni delle faccende, numero di membri
+- Quando l'AI è attiva, vengono inviati al servizio AI solo i dati strettamente necessari per generare i suggerimenti: titoli degli eventi, nomi degli articoli della spesa, titoli delle faccende e dati aggregati (es. numero di membri)
 - **Non vengono mai inviate** email, password, indirizzi personali o altri dati sensibili
 - I dati non vengono usati per addestrare modelli esterni
 - Puoi controllare l'invio dei dati in qualsiasi momento tramite il **toggle AI** nella scheda Famiglia: con il toggle spento, nessun dato viene inviato
@@ -523,20 +525,20 @@ Le funzionalita AI sono disponibili gratuitamente con un **limite di utilizzo**;
 
 ## 13. Abbonamento Premium
 
-FamilySync e gratuita per le funzioni principali. Con **Premium** sblocchi funzioni avanzate e limiti molto piu alti per tutta la famiglia.
+FamilySync è gratuita per le funzioni principali. Con **Premium** sblocchi funzioni avanzate e limiti molto più alti per tutta la famiglia.
 
 ### Come Attivare Premium
-- Vai alla scheda **Famiglia** e tocca **Premium** nella sezione Funzionalita
+- Vai alla scheda **Famiglia** e tocca **Premium** nella sezione Funzionalità
 - Scegli il piano (mensile o annuale) e completa l'acquisto
-- L'abbonamento e **valido per tutta la famiglia**: tutti i membri ottengono i vantaggi Premium
-- Solo l'**amministratore** (proprietario del gruppo) puo acquistare o gestire l'abbonamento
+- L'abbonamento è **valido per tutta la famiglia**: tutti i membri ottengono i vantaggi Premium
+- Solo l'**amministratore** (proprietario del gruppo) può acquistare o gestire l'abbonamento
 
 ### Cosa Include Premium
-- **Bollette illimitate** (con Free il limite e 5 bollette attive)
+- **Bollette illimitate** (con Free il limite è 5 bollette attive)
 - **Allegati alle bollette**: foto e documenti PDF
 - **Ripartizione delle bollette** tra i membri (equa o personalizzata)
 - **Promemoria bollette aggiuntivi** a 7 e 3 giorni dalla scadenza
-- **Limiti AI molto piu alti** per ricette, piano pasti, suggerimenti spesa, faccende e consigli famiglia
+- **Limiti AI molto più alti** per ricette, piano pasti, suggerimenti spesa, faccende e consigli famiglia
 - **Supporto prioritario**
 
 ### Prezzi
@@ -544,9 +546,8 @@ FamilySync e gratuita per le funzioni principali. Con **Premium** sblocchi funzi
 - A titolo indicativo: circa **3,99 € al mese** oppure **39,99 € all'anno** (con risparmio rispetto al mensile)
 
 ### Gestione dell'Abbonamento
-- **Rinnovo automatico**: l'abbonamento si rinnova tramite lo store (App Store / Google Play / web) finche non lo annulli
+- **Rinnovo automatico**: l'abbonamento si rinnova tramite lo store finché non lo annulli; la gestione e la cancellazione del rinnovo avvengono dalle impostazioni dello store utilizzato, Apple App Store o Google Play
 - **Ripristina acquisti**: se cambi dispositivo o reinstalli l'app, usa il pulsante **Ripristina acquisti** nella schermata Premium
-- La gestione e la cancellazione del rinnovo avvengono dalle impostazioni del tuo store
 
 ---
 
@@ -560,19 +561,19 @@ Se trovi un contenuto inappropriato o vuoi segnalare un comportamento:
 - Le segnalazioni vengono inviate all'amministratore della famiglia
 
 ### Bloccare un Utente
-- Se non vuoi piu vedere i contenuti di un membro della famiglia:
-  - Tocca i tre puntini accanto al membro e scegli **Blocca**, oppure gestisci tutto da **Utenti Bloccati** nella sezione Funzionalita
+- Se non vuoi più vedere i contenuti di un membro della famiglia:
+  - Tocca i tre puntini accanto al membro e scegli **Blocca**, oppure gestisci tutto da **Utenti Bloccati** nella sezione Funzionalità
 - Quando blocchi qualcuno:
-  - I suoi eventi, articoli spesa, faccende e messaggi in chat non saranno piu visibili per te
+  - I suoi eventi, articoli spesa, faccende e messaggi in chat non saranno più visibili per te
   - La persona bloccata non viene notificata
 - Puoi **sbloccare** un utente in qualsiasi momento dalla lista **Utenti Bloccati**
 
 ### Gestione Segnalazioni (Solo Amministratori)
-- Gli amministratori possono accedere al pannello **Segnalazioni** dalla sezione Funzionalita
+- Gli amministratori possono accedere al pannello **Segnalazioni** dalla sezione Funzionalità
 - Le segnalazioni possono essere filtrate per stato: Aperte, Gestite, Archiviate
-- Per ogni segnalazione, l'amministratore puo:
+- Per ogni segnalazione, l'amministratore può:
   - **Prendere provvedimenti**: contrassegnare come gestita
-  - **Archiviare**: se la segnalazione non e fondata
+  - **Archiviare**: se la segnalazione non è fondata
 
 ---
 
@@ -583,8 +584,8 @@ Se trovi un contenuto inappropriato o vuoi segnalare un comportamento:
 - L'email viene utilizzata per il login e le comunicazioni di servizio
 
 ### Sicurezza dell'Account
-- La password e protetta con crittografia avanzata
-- Le sessioni si rinnovano in automatico e scadono dopo un periodo di inattivita
+- La password è protetta con crittografia avanzata
+- Le sessioni si rinnovano in automatico e scadono dopo un periodo di inattività
 - Puoi **cambiare la password** dal pulsante **Cambia password** in fondo alla scheda Famiglia
 - Puoi richiedere un reset della password dalla schermata di login se l'hai dimenticata
 
@@ -597,6 +598,13 @@ Dalla scheda Famiglia, nella sezione **Legale**, puoi consultare:
 
 ### Logout
 - Tocca il pulsante **Esci** (in alto o in fondo alla scheda Famiglia) per disconnetterti
+
+### Eliminare l'Account
+- Puoi eliminare il tuo account in qualsiasi momento: vai alla scheda **Famiglia** e tocca **Elimina account** (in fondo alla schermata)
+- Per confermare ti viene chiesta la **password**
+- L'eliminazione è **definitiva**: il profilo viene anonimizzato e, se sei l'unico membro della famiglia, vengono cancellati anche la famiglia e i suoi contenuti (inclusi foto e documenti allegati)
+- L'eliminazione dell'account **non annulla** un eventuale abbonamento Premium: va disdetto separatamente dalle impostazioni dello store (Apple App Store o Google Play)
+- In alternativa puoi richiedere la cancellazione scrivendo a **assistenza@familysync.it**
 
 ---
 
@@ -615,7 +623,8 @@ Hai un problema, un dubbio o un suggerimento? Puoi scrivere direttamente al nost
 ### Cosa Succede Dopo
 - La tua richiesta viene inoltrata al team di assistenza
 - Ti risponderemo via **email all'indirizzo del tuo account**
-- Per questo e importante che la tua email sia corretta e accessibile
+- Per questo è importante che la tua email sia corretta e accessibile
+- Puoi anche scriverci direttamente a **assistenza@familysync.it**
 
 ---
 
@@ -626,7 +635,7 @@ FamilySync sincronizza automaticamente tutti i dati tra i dispositivi dei membri
 ### Come Funziona
 - Quando un membro aggiunge un evento, un articolo alla spesa, completa una faccenda, invia un messaggio in chat o salva una ricetta, **tutti i dispositivi** collegati vengono aggiornati istantaneamente
 - Non serve aggiornare manualmente: gli aggiornamenti arrivano in tempo reale
-- Se sei offline, i dati vengono salvati localmente e sincronizzati al ripristino della connessione
+- Per usare correttamente FamilySync è necessaria una connessione internet: in caso di assenza di rete, alcune funzioni potrebbero non aggiornarsi finché la connessione non viene ripristinata
 
 ### Cosa Viene Sincronizzato
 - Nuovi eventi calendario, modifiche e cancellazioni
@@ -642,49 +651,49 @@ FamilySync sincronizza automaticamente tutti i dati tra i dispositivi dei membri
 ## 18. Domande Frequenti (FAQ)
 
 **Quanti membri posso aggiungere alla mia famiglia?**
-Non c'e un limite al numero di membri che puoi invitare nella tua famiglia.
+Non c'è un limite al numero di membri che puoi invitare nella tua famiglia.
 
 **Come funziona ora l'invito di un familiare?**
-Inserisci la sua email e il ruolo, e tocca Invia Invito. La persona ricevera un'email con un link sicuro valido 72 ore, con cui sceglie la propria password ed entra nella famiglia.
+Inserisci la sua email e il ruolo, e tocca Invia Invito. La persona riceverà un'email con un link sicuro valido 72 ore, con cui sceglie la propria password ed entra nella famiglia.
 
-**Il link di invito e sicuro?**
-Si. Ogni link e personale, valido per 72 ore e utilizzabile una sola volta. L'email non contiene mai password.
+**Il link di invito è sicuro?**
+Sì. Ogni link è personale, valido per 72 ore e utilizzabile una sola volta. L'email non contiene mai password.
 
-**Posso far parte di piu famiglie contemporaneamente?**
-Si, il tuo account puo appartenere a piu di un gruppo familiare. L'app mostra la famiglia attiva e i suoi dati.
+**Posso far parte di più famiglie contemporaneamente?**
+Sì, il tuo account può appartenere a più di un gruppo familiare. L'app mostra la famiglia attiva e i suoi dati.
 
 **Quante bollette posso inserire?**
 Con il piano gratuito puoi avere fino a 5 bollette attive. Con Premium le bollette sono illimitate, con allegati e ripartizioni.
 
 **Posso dividere una bolletta tra i membri?**
-Si, con Premium: puoi dividerla in parti uguali o inserire una quota personalizzata per ciascun membro.
+Sì, con Premium: puoi dividerla in parti uguali o inserire una quota personalizzata per ciascun membro.
 
 **Cosa posso inviare nella chat?**
-Testo, foto (dalla galleria o scattate al momento sul telefono) e documenti PDF o Word, fino a 10 MB per file.
+Testo, foto (dalla galleria o scattate al momento sul telefono) e documenti PDF, fino a 10 MB per file.
 
 **I miei dati sono al sicuro?**
-Si. Utilizziamo crittografia avanzata, connessioni protette HTTPS e autenticazione con token. Consulta la Privacy Policy per tutti i dettagli.
+Sì. Utilizziamo crittografia avanzata, connessioni protette HTTPS e autenticazione con token. Consulta la Privacy Policy per tutti i dettagli.
 
-**L'AI e obbligatoria?**
-No. Le funzionalita AI sono completamente opzionali. Puoi attivarle o disattivarle in qualsiasi momento tramite il toggle nella scheda Famiglia. Quando il toggle e spento, nessun dato viene inviato al servizio AI.
+**L'AI è obbligatoria?**
+No. Le funzionalità AI sono completamente opzionali. Puoi attivarle o disattivarle in qualsiasi momento tramite il toggle nella scheda Famiglia. Quando il toggle è spento, nessun dato viene inviato al servizio AI.
 
 **Quali dati vengono inviati all'AI?**
 Solo porzioni di contenuto della famiglia: titoli degli eventi, nomi degli articoli, titoli delle faccende, numero di membri. Mai email, password o indirizzi personali.
 
 **Cosa cambia con Premium?**
-Bollette illimitate con allegati e ripartizioni, promemoria bollette aggiuntivi, limiti AI molto piu alti e supporto prioritario. L'abbonamento vale per tutta la famiglia.
+Bollette illimitate con allegati e ripartizioni, promemoria bollette aggiuntivi, limiti AI molto più alti e supporto prioritario. L'abbonamento vale per tutta la famiglia.
 
-**Chi puo acquistare Premium?**
+**Chi può acquistare Premium?**
 Solo l'amministratore (proprietario del gruppo). Il vantaggio si applica a tutti i membri.
 
 **Ho cambiato telefono: come recupero Premium?**
 Apri la schermata Premium e tocca "Ripristina acquisti".
 
 **Come funziona il sistema di punti?**
-Ogni faccenda ha un valore in punti (da 5 a 50). Quando completi una faccenda, i punti vengono aggiunti al tuo punteggio. La classifica mostra chi ha accumulato piu punti.
+Ogni faccenda ha un valore in punti (da 5 a 50). Quando completi una faccenda, i punti vengono aggiunti al tuo punteggio. La classifica mostra chi ha accumulato più punti.
 
-**Posso usare FamilySync su piu dispositivi?**
-Si! FamilySync funziona su iPhone, Android e web. I tuoi dati sono sincronizzati in tempo reale su tutti i dispositivi.
+**Posso usare FamilySync su più dispositivi?**
+Sì! FamilySync funziona su iPhone, Android e web. I tuoi dati sono sincronizzati in tempo reale su tutti i dispositivi.
 
 **Come contatto l'assistenza?**
 Dalla scheda Famiglia, sezione Legale, tocca "Contatta assistenza" e invia il modulo. Ti rispondiamo via email all'indirizzo del tuo account.

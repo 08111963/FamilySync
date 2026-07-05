@@ -1,0 +1,86 @@
+Controlla e correggi solo la Guida Utente di FamilySync.
+
+Non modificare Privacy Policy, Termini d’Uso o funzioni applicative.
+
+La guida è buona come struttura, ma prima dell’approvazione servono queste correzioni:
+
+1. Chat e allegati
+   Rimuovi ogni riferimento a Word, DOC e DOCX.
+
+La guida deve indicare solo:
+
+* messaggi di testo;
+* foto/immagini;
+* PDF;
+* tipi di file consentiti dall’app.
+
+Correggere sia la sezione “Chat di Famiglia” sia le FAQ dove ora compare “PDF o Word”.
+
+2. Dati inviati all’AI
+   Nella sezione “Privacy e Dati AI” non scrivere che vengono inviate “descrizioni delle faccende” se il codice non le invia davvero.
+
+Usa una formula prudente:
+“titoli delle faccende, dati aggregati e informazioni strettamente necessarie per generare i suggerimenti”.
+
+Non creare incoerenze con la Privacy Policy già approvata.
+
+3. Sincronizzazione offline
+   Verifica se il codice supporta davvero salvataggio offline e sincronizzazione automatica al ritorno della connessione.
+
+Se non esiste una vera modalità offline-first, sostituisci la frase:
+“Se sei offline, i dati vengono salvati localmente e sincronizzati al ripristino della connessione”
+
+con:
+“Per usare correttamente FamilySync è necessaria una connessione internet. In caso di assenza di rete, alcune funzioni potrebbero non aggiornarsi finché la connessione non viene ripristinata.”
+
+4. Sincronizzazione calendario Google/Apple
+   Verifica se esistono davvero:
+
+* feed calendario famiglia;
+* link personale;
+* funzione copia link;
+* funzione rigenera link;
+* compatibilità Google Calendar / Apple Calendar.
+
+Se la funzione non è realmente implementata, rimuovi o correggi quella sezione.
+
+5. Bollette
+   Chiarisci che “Salda ora” o “Segna come pagata” non effettua pagamenti reali, ma serve solo a registrare manualmente che la bolletta è stata pagata fuori dall’app.
+
+6. Premium
+   Nella sezione abbonamento, evita “App Store / Google Play / web” se il pagamento web non è attivo.
+
+Usa:
+“La gestione e la cancellazione del rinnovo avvengono dalle impostazioni dello store utilizzato, Apple App Store o Google Play.”
+
+7. Refusi e accenti
+   Sistema gli errori di lingua italiana:
+
+* è;
+* attività;
+* funzionalità;
+* possibilità;
+* più;
+* già;
+* può;
+* responsabilità;
+* proprietà;
+* sceglieta → sceglierà;
+* “Nota: Nota” → “Nota:”.
+
+8. Coerenza finale
+   Verifica che la guida finale sia coerente con:
+
+* upload approvato: immagini + PDF, non DOC/DOCX;
+* AI toggle realmente presente;
+* account demo e funzioni produzione;
+* Premium tramite RevenueCat / Apple / Google;
+* cancellazione account;
+* email [assistenza@familysync.it](mailto:assistenza@familysync.it).
+
+Dopo le correzioni, prepara una nuova versione PDF della Guida Utente e riepiloga:
+
+* file modificati;
+* correzioni fatte;
+* funzioni verificate nel codice;
+* eventuali sezioni rimosse perché non implementate.
