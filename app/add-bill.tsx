@@ -323,7 +323,7 @@ function BillForm({
           title={editId ? "Salva modifiche" : isPaid ? "Registra pagamento" : "Aggiungi Bolletta"}
           onPress={handleSave}
           loading={saving}
-          disabled={!title.trim() || saving}
+          disabled={saving}
           style={{ marginTop: 16 }}
         />
       </ScrollView>
