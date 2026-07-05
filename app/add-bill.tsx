@@ -173,8 +173,10 @@ function BillForm({
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
+        <Text style={[styles.requiredHint, { color: colors.textSecondary }]}>I campi con * sono obbligatori</Text>
+
         <View style={styles.field}>
-          <Input label="Titolo" placeholder="Es. Bolletta luce gennaio" value={title} onChangeText={setTitle} autoFocus={!editId} />
+          <Input label="Titolo *" placeholder="Es. Bolletta luce gennaio" value={title} onChangeText={setTitle} autoFocus={!editId} />
         </View>
 
         <View style={styles.field}>
@@ -211,7 +213,7 @@ function BillForm({
         </View>
 
         <View style={styles.field}>
-          <Input label="Importo (€)" placeholder="0,00" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
+          <Input label="Importo (€) *" placeholder="0,00" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
         </View>
 
         {isPaid ? (
@@ -225,13 +227,13 @@ function BillForm({
               </Text>
             </View>
             <View style={styles.field}>
-              <DateField label="Data di pagamento" placeholder="GG/MM/AAAA" value={paidDate} onChange={setPaidDate} testID="bill-paid-date" />
+              <DateField label="Data di pagamento *" placeholder="GG/MM/AAAA" value={paidDate} onChange={setPaidDate} testID="bill-paid-date" />
             </View>
           </>
         ) : (
           <View style={styles.field}>
             <DateField
-              label={isOverdue ? "Scaduta il" : "Da pagare entro il"}
+              label={isOverdue ? "Scaduta il *" : "Da pagare entro il *"}
               placeholder="GG/MM/AAAA"
               value={dueDate}
               onChange={setDueDate}
@@ -345,6 +347,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontFamily: "Inter_600SemiBold" },
   placeholder: { width: 40 },
   content: { flex: 1, paddingHorizontal: 20 },
+  requiredHint: { fontSize: 13, fontFamily: "Inter_400Regular", marginBottom: 12 },
   field: { marginBottom: 20 },
   label: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginBottom: 8 },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
