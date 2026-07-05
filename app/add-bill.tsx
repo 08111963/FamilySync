@@ -90,7 +90,7 @@ function BillForm({ editId, existing, startPaid }: { editId?: string; existing?:
     if (!title.trim()) return showError("Inserisci un titolo");
     const amountNum = parseFloat(amount.replace(",", "."));
     if (isNaN(amountNum) || amountNum < 0) return showError("Inserisci un importo valido");
-    if (!isPaid && !isValidDate(dueDate)) return showError("Seleziona una data di scadenza");
+    if (!isPaid && !isValidDate(dueDate)) return showError("Seleziona entro quando va pagata");
     if (isPaid && !isValidDate(paidDate)) return showError("Seleziona la data di pagamento");
 
     const payload: Record<string, any> = {
@@ -214,7 +214,7 @@ function BillForm({ editId, existing, startPaid }: { editId?: string; existing?:
         ) : (
           <View style={styles.field}>
             <DateField
-              label={isOverdue ? "Scaduta il" : "Scadenza"}
+              label={isOverdue ? "Scaduta il" : "Da pagare entro il"}
               placeholder="GG/MM/AAAA"
               value={dueDate}
               onChange={setDueDate}
