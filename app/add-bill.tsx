@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Switch, Alert, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -92,6 +92,9 @@ function BillForm({
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [remindersEnabled, setRemindersEnabled] = useState<boolean>(existing?.remindersEnabled ?? true);
   const [saving, setSaving] = useState(false);
+  const [titleError, setTitleError] = useState("");
+  const [amountError, setAmountError] = useState("");
+  const scrollRef = useRef<ScrollView>(null);
 
   const showError = (msg: string) => {
     if (Platform.OS === "web") alert(msg);
@@ -100,9 +103,19 @@ function BillForm({
 
   const handleSave = async () => {
     if (!familyId) return;
-    if (!title.trim()) return showError("Inserisci un titolo");
+    if (!title.trim()) {
+      setTitleError("Inserisci un titolo, es. \"Bolletta luce giugno\"");
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
     const amountNum = parseFloat(amount.replace(",", "."));
-    if (isNaN(amountNum) || amountNum < 0) return showError("Inserisci un importo valido");
+    if (isNaN(amountNum) || amountNum < 0) {
+      setAmountError("Inserisci un importo valido, es. 45,90");
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
     if (!isPaid && !isValidDate(dueDate)) return showError("Seleziona entro quando va pagata");
     if (isPaid && !isValidDate(paidDate)) return showError("Seleziona la data di pagamento");
 
@@ -172,11 +185,21 @@ function BillForm({
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} style={styles.content} contentContainerStyle={{ paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
         <Text style={[styles.requiredHint, { color: colors.textSecondary }]}>I campi con * sono obbligatori</Text>
 
         <View style={styles.field}>
-          <Input label="Titolo *" placeholder="Es. Bolletta luce gennaio" value={title} onChangeText={setTitle} autoFocus={!editId} />
+          <Input
+            label="Titolo *"
+            placeholder="Es. Bolletta luce gennaio"
+            value={title}
+            onChangeText={(t) => {
+              setTitle(t);
+              if (titleError) setTitleError("");
+            }}
+            error={titleError || undefined}
+            autoFocus={!editId}
+          />
         </View>
 
         <View style={styles.field}>
@@ -213,7 +236,17 @@ function BillForm({
         </View>
 
         <View style={styles.field}>
-          <Input label="Importo (€) *" placeholder="0,00" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
+          <Input
+            label="Importo (€) *"
+            placeholder="0,00"
+            value={amount}
+            onChangeText={(t) => {
+              setAmount(t);
+              if (amountError) setAmountError("");
+            }}
+            error={amountError || undefined}
+            keyboardType="decimal-pad"
+          />
         </View>
 
         {isPaid ? (
