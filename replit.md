@@ -205,3 +205,9 @@ Lingua di comunicazione: Rispondere SEMPRE in italiano.
   - Feed ICS pubblico per Google/Apple Calendar: colonna `families.ics_feed_token` (varchar 64 unique, migrazione `migrations/0002`), rotta autenticata `GET /api/calendar/:familyId/feed-url` (genera token randomBytes(24), `?regenerate=1` per revocare), rotta pubblica `GET /calendar-feed/:token(.ics)` in `server/routes/calendar-feed.ts` (formato RFC 5545: escaping, folding 75 ottetti, TZID Europe/Rome, VALUE=DATE per all-day, eventi da -90gg, Cache-Control 300s, 404 uniforme su token invalido)
   - Helper ICS esportati e testati (`server/__tests__/calendar-feed.test.ts`, node:test via `npx tsx`): `computeTimedEnd` garantisce DTEND mai prima di DTSTART (wrap notturno 23:30 → 00:30 giorno dopo)
   - Frontend: schermata `app/calendar-sync.tsx` (link feed con copia/condividi/rigenera + istruzioni Google/Apple in italiano), card "Sincronizza calendario" in `app/(tabs)/family.tsx`
+- Sincronizzazione bollette → calendario (le scadenze compaiono nel calendario e nel feed ICS):
+  - Colonna `bills.calendar_event_id` (FK calendar_events ON DELETE SET NULL, migrazione `migrations/0003`)
+  - Helper best-effort in `server/routes/bills.ts` (errori loggati, mai bloccanti): creazione evento all-day "Scadenza bolletta: X" (colore #F59E0B, descrizione con fornitore/importo), aggiornamento su modifica, rimozione su pagamento/eliminazione, ricreazione se riportata a "da pagare"
+  - Anti-duplicati: check-and-set atomico su `calendar_event_id IS NULL` (richieste concorrenti non creano eventi doppi)
+  - Bollette pre-esistenti senza evento: l'evento viene creato al primo aggiornamento (lazy, nessun backfill automatico)
+  - Broadcast WebSocket coerenti: event_created/updated/deleted oltre a bill_created/updated/deleted

@@ -425,6 +425,8 @@ export const bills = pgTable("bills", {
   status: billStatusEnum("status").notNull().default("da_pagare"),
   // Ripartizione: tipo scelto (null = nessuna ripartizione). Le quote in bill_splits.
   splitType: billSplitTypeEnum("split_type"),
+  // Evento calendario collegato (scadenza sincronizzata con calendario/feed ICS).
+  calendarEventId: uuid("calendar_event_id").references(() => calendarEvents.id, { onDelete: "set null" }),
   remindersEnabled: boolean("reminders_enabled").notNull().default(true),
   paidAt: timestamp("paid_at"),
   paidBy: uuid("paid_by").references(() => users.id, { onDelete: "set null" }),

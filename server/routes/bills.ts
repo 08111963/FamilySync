@@ -4,7 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
 import { z } from 'zod';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, isNull } from 'drizzle-orm';
 import { db } from '../db';
 import {
   bills,
@@ -13,6 +13,7 @@ import {
   billPaymentHistory,
   familyMembers,
   users,
+  calendarEvents,
 } from '../../shared/schema';
 import { getParam } from '../lib/http-params';
 import { requireFamilyMember } from '../middleware/family';
@@ -128,6 +129,100 @@ async function assignedToBelongsToFamily(assignedTo: string, familyId: string): 
     .where(and(eq(familyMembers.id, assignedTo), eq(familyMembers.familyId, familyId)))
     .limit(1);
   return !!row;
+}
+
+// --- Sincronizzazione con il calendario famiglia ---------------------------
+// Ogni bolletta "da pagare" ha un evento tutto-il-giorno alla data di scadenza,
+// cosi' compare nel calendario dell'app, nel feed ICS (Google/Apple Calendar)
+// e puo' essere salvata sul telefono. L'evento viene aggiornato se cambia la
+// bolletta e rimosso quando viene pagata o eliminata. Gli errori di sync non
+// bloccano mai l'operazione principale sulla bolletta (best-effort + log).
+
+const BILL_EVENT_COLOR = '#F59E0B';
+
+function billEventFields(bill: { title: string; provider?: string | null; amount: string; dueDate: string }) {
+  const parts: string[] = [];
+  if (bill.provider) parts.push(`Fornitore: ${bill.provider}`);
+  parts.push(`Importo: €${bill.amount}`);
+  parts.push('Creato automaticamente dalla sezione Bollette');
+  return {
+    title: `Scadenza bolletta: ${bill.title}`,
+    description: parts.join('\n'),
+    date: bill.dueDate,
+    time: null as string | null,
+    endTime: null as string | null,
+    allDay: true,
+    category: 'other' as const,
+    color: BILL_EVENT_COLOR,
+  };
+}
+
+/** Crea l'evento calendario per una bolletta e collega bills.calendarEventId. Ritorna la bolletta aggiornata. */
+async function createBillCalendarEvent(
+  bill: typeof bills.$inferSelect,
+  userId: string
+): Promise<typeof bills.$inferSelect> {
+  try {
+    const [event] = await db
+      .insert(calendarEvents)
+      .values({
+        familyId: bill.familyId,
+        ...billEventFields(bill),
+        createdBy: userId,
+      })
+      .returning();
+    // Check-and-set atomico: collega l'evento solo se la bolletta non ne ha
+    // gia' uno (richieste concorrenti non devono creare eventi duplicati).
+    const [updated] = await db
+      .update(bills)
+      .set({ calendarEventId: event.id })
+      .where(and(eq(bills.id, bill.id), isNull(bills.calendarEventId)))
+      .returning();
+    if (!updated) {
+      // Un'altra richiesta ha gia' collegato un evento: rimuovi il duplicato.
+      await db.delete(calendarEvents).where(eq(calendarEvents.id, event.id));
+      const [current] = await db.select().from(bills).where(eq(bills.id, bill.id)).limit(1);
+      return current ?? bill;
+    }
+    broadcastToFamily(bill.familyId, 'event_created', event);
+    return updated;
+  } catch (error) {
+    logger.warn('Bill calendar sync (create) failed', { billId: bill.id, error: String(error) });
+    return bill;
+  }
+}
+
+/** Aggiorna l'evento calendario collegato (titolo/data/descrizione). */
+async function updateBillCalendarEvent(bill: typeof bills.$inferSelect): Promise<void> {
+  if (!bill.calendarEventId) return;
+  try {
+    const [event] = await db
+      .update(calendarEvents)
+      .set({ ...billEventFields(bill), updatedAt: new Date() })
+      .where(and(eq(calendarEvents.id, bill.calendarEventId), eq(calendarEvents.familyId, bill.familyId)))
+      .returning();
+    if (event) broadcastToFamily(bill.familyId, 'event_updated', event);
+  } catch (error) {
+    logger.warn('Bill calendar sync (update) failed', { billId: bill.id, error: String(error) });
+  }
+}
+
+/** Elimina l'evento calendario collegato (bolletta pagata o eliminata). */
+async function deleteBillCalendarEvent(
+  familyId: string,
+  billId: string,
+  calendarEventId: string | null
+): Promise<void> {
+  if (!calendarEventId) return;
+  try {
+    await db
+      .delete(calendarEvents)
+      .where(and(eq(calendarEvents.id, calendarEventId), eq(calendarEvents.familyId, familyId)));
+    await db.update(bills).set({ calendarEventId: null }).where(eq(bills.id, billId));
+    broadcastToFamily(familyId, 'event_deleted', { eventId: calendarEventId });
+  } catch (error) {
+    logger.warn('Bill calendar sync (delete) failed', { billId, error: String(error) });
+  }
 }
 
 function serializeBill(bill: typeof bills.$inferSelect) {
@@ -293,7 +388,7 @@ router.post('/:familyId', requireFamilyMember(), async (req: Request, res: Respo
       });
     }
 
-    const [bill] = await db
+    const [created] = await db
       .insert(bills)
       .values({
         familyId,
@@ -309,6 +404,9 @@ router.post('/:familyId', requireFamilyMember(), async (req: Request, res: Respo
         createdBy: req.user!.userId,
       })
       .returning();
+
+    // Sincronizza col calendario: evento tutto-il-giorno alla scadenza.
+    const bill = await createBillCalendarEvent(created, req.user!.userId);
 
     broadcastToFamily(familyId, 'bill_created', serializeBill(bill));
     res.status(201).json(serializeBill(bill));
@@ -344,7 +442,7 @@ router.put('/:familyId/:billId', requireFamilyMember(), async (req: Request, res
       updateData.amount = parsed.data.amount.toFixed(2);
     }
 
-    const [bill] = await db
+    let [bill] = await db
       .update(bills)
       .set(updateData)
       .where(and(eq(bills.id, billId), eq(bills.familyId, familyId)))
@@ -352,6 +450,14 @@ router.put('/:familyId/:billId', requireFamilyMember(), async (req: Request, res
 
     if (!bill) {
       return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Bolletta non trovata' } });
+    }
+
+    // Sincronizza l'evento calendario: aggiorna se esiste, altrimenti
+    // crealo per le bollette "da pagare" (es. bollette create prima della sync).
+    if (bill.calendarEventId) {
+      await updateBillCalendarEvent(bill);
+    } else if (bill.status === 'da_pagare') {
+      bill = await createBillCalendarEvent(bill, req.user!.userId);
     }
 
     broadcastToFamily(familyId, 'bill_updated', serializeBill(bill));
@@ -411,7 +517,7 @@ router.patch('/:familyId/:billId/pay', requireFamilyMember(), async (req: Reques
       }
     }
 
-    const [bill] = await db
+    let [bill] = await db
       .update(bills)
       .set({
         status: markPaid ? 'pagata' : 'da_pagare',
@@ -421,6 +527,15 @@ router.patch('/:familyId/:billId/pay', requireFamilyMember(), async (req: Reques
       })
       .where(and(eq(bills.id, billId), eq(bills.familyId, familyId)))
       .returning();
+
+    // Sincronizza il calendario: pagata → rimuovi l'evento scadenza;
+    // riportata a "da pagare" → ricrea l'evento.
+    if (markPaid) {
+      await deleteBillCalendarEvent(familyId, billId, bill.calendarEventId);
+      bill = { ...bill, calendarEventId: null };
+    } else if (!bill.calendarEventId) {
+      bill = await createBillCalendarEvent(bill, req.user!.userId);
+    }
 
     if (markPaid) {
       await db.insert(billPaymentHistory).values({
@@ -447,7 +562,7 @@ router.delete('/:familyId/:billId', requireFamilyMember(), async (req: Request, 
     const billId = getParam(req, 'billId');
 
     const [bill] = await db
-      .select({ id: bills.id })
+      .select({ id: bills.id, calendarEventId: bills.calendarEventId })
       .from(bills)
       .where(and(eq(bills.id, billId), eq(bills.familyId, familyId)))
       .limit(1);
@@ -455,6 +570,9 @@ router.delete('/:familyId/:billId', requireFamilyMember(), async (req: Request, 
     if (!bill) {
       return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Bolletta non trovata' } });
     }
+
+    // Rimuovi l'evento calendario collegato prima di eliminare la bolletta.
+    await deleteBillCalendarEvent(familyId, billId, bill.calendarEventId);
 
     const attachments = await db
       .select({ fileUrl: billAttachments.fileUrl })
