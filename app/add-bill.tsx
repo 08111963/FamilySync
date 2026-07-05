@@ -63,6 +63,8 @@ function BillForm({ editId, existing, startPaid }: { editId?: string; existing?:
   // - "Registra Bolletta Pagata" (con Data di pagamento) — /add-bill?paid=1
   // In modifica lo stato è derivato dalla bolletta esistente.
   const isPaid = editId ? !!existing && existing.status === "pagata" : !!startPaid;
+  // In modifica di una bolletta SCADUTA il campo data dice "Scaduta il".
+  const isOverdue = !!editId && existing?.computedStatus === "scaduta";
 
   const [title, setTitle] = useState(existing?.title ?? "");
   const [provider, setProvider] = useState(existing?.provider ?? "");
@@ -211,7 +213,13 @@ function BillForm({ editId, existing, startPaid }: { editId?: string; existing?:
           </>
         ) : (
           <View style={styles.field}>
-            <DateField label="Scadenza" placeholder="GG/MM/AAAA" value={dueDate} onChange={setDueDate} testID="bill-due-date" />
+            <DateField
+              label={isOverdue ? "Scaduta il" : "Scadenza"}
+              placeholder="GG/MM/AAAA"
+              value={dueDate}
+              onChange={setDueDate}
+              testID="bill-due-date"
+            />
           </View>
         )}
 
