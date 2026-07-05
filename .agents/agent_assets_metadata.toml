@@ -84,3 +84,9 @@ id = "_OqDLjL_-ddj30NVw3hd_"
 uri = "file://dist/termini-uso-revisione.zip"
 type = "unspecified"
 title = "FamilySync — Termini d'Uso (revisione, solo 3 file)"
+
+[[outputs]]
+id = "GC8nk5xiK6U-bInmeEwDz"
+uri = "file://docs/guida-utente.md"
+type = "text"
+title = "Guida Utente FamilySync (aggiornata)"
