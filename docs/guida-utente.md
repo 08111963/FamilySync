@@ -153,6 +153,22 @@ Il calendario condiviso permette a tutta la famiglia di vedere e gestire gli imp
 ### Eliminare un Evento
 - Nella lista degli eventi del giorno, scorri sull'evento e tocca l'icona di eliminazione
 
+### Sincronizzare con il Calendario del Telefono e Google/Apple Calendar
+Tutti gli eventi del calendario di famiglia (compresi quelli creati automaticamente per le scadenze delle bollette) possono essere sincronizzati con i calendari esterni, in due modi:
+
+**1. Salvare un singolo evento nel calendario del telefono**
+- Accanto a ogni evento trovi l'icona di **download**: toccala per salvare quell'evento nel calendario del tuo telefono (iPhone o Android)
+- Alla prima volta l'app chiede il permesso di accedere al calendario
+- Disponibile solo nell'app sul telefono (non sul web)
+
+**2. Collegare l'intero calendario di famiglia a Google/Apple Calendar**
+- Vai alla scheda **Famiglia** e tocca la card **Sincronizza calendario**
+- Copia il **link del feed** e aggiungilo al tuo calendario:
+  - **Google Calendar**: Impostazioni → Aggiungi calendario → Da URL → incolla il link
+  - **Apple Calendar**: File → Nuova sottoscrizione calendario (Mac) oppure Impostazioni → Calendario → Account → Aggiungi sottoscrizione (iPhone)
+- Da quel momento **tutti gli eventi della famiglia** (e le scadenze delle bollette) compaiono automaticamente anche li, e si aggiornano da soli
+- Il link e personale della tua famiglia: se vuoi revocarlo, tocca **Rigenera link** (quello vecchio smette di funzionare)
+
 ---
 
 ## 4. Liste della Spesa
