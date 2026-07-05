@@ -2,7 +2,7 @@
   "expo": {
     "name": "Family Sync",
     "slug": "family-sync",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.familysyncapp.coordinator",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
