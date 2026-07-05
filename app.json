@@ -52,6 +52,12 @@
           "microphonePermission": "L'app usa il microfono per la dettatura vocale delle richieste AI (ricette e piano pasti)."
         }
       ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "L'app accede al calendario per salvare gli eventi della famiglia sul tuo telefono."
+        }
+      ],
       "expo-font",
       "expo-web-browser"
     ],

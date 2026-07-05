@@ -389,6 +389,20 @@ export default function FamilyScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
           </Card>
+          <Card onPress={() => router.push("/calendar-sync")}>
+            <View style={styles.featureLinkRow}>
+              <View style={[styles.featureLinkIcon, { backgroundColor: "#34C75920" }]}>
+                <Ionicons name="calendar-outline" size={24} color="#34C759" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Sincronizza calendario</Text>
+                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                  Collega Google/Apple Calendar e il telefono
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </Card>
           <Card onPress={() => router.push("/blocked-users")}>
             <View style={styles.featureLinkRow}>
               <View style={[styles.featureLinkIcon, { backgroundColor: colors.error + "20" }]}>

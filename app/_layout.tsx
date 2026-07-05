@@ -63,6 +63,7 @@ function RootLayoutNav() {
       <Stack.Screen name="shopping-list" options={{ headerShown: false }} />
       <Stack.Screen name="premium" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="ai-insights" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="calendar-sync" options={{ headerShown: false }} />
       <Stack.Screen name="recipes/index" options={{ headerShown: false }} />
       <Stack.Screen name="recipes/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="meal-plans/index" options={{ headerShown: false }} />

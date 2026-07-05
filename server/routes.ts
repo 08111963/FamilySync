@@ -9,6 +9,7 @@ import authRoutes from "./routes/auth";
 import familiesRoutes from "./routes/families";
 import invitesRoutes, { inviteLimiter } from "./routes/invites";
 import calendarRoutes from "./routes/calendar";
+import calendarFeedRoutes from "./routes/calendar-feed";
 import shoppingRoutes from "./routes/shopping";
 import choresRoutes from "./routes/chores";
 import aiRoutes from "./routes/ai";
@@ -65,6 +66,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/notifications', authenticate, requireEmailVerified, notificationsRoutes);
   app.use('/api/bills', authenticate, requireEmailVerified, billsRoutes);
   app.use('/api/support', authenticate, requireEmailVerified, supportRoutes);
+
+  // Feed ICS del calendario famiglia: PUBBLICO (nessun JWT), protetto da token
+  // segreto nell'URL. Permette l'iscrizione da Google/Apple Calendar.
+  app.use('/calendar-feed', calendarFeedRoutes);
 
   // Foto ricette generate dall'AI: immagini generiche di piatti (nessun dato
   // personale, cache condivisa per titolo tra famiglie), servite pubblicamente

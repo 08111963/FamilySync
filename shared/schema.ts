@@ -64,6 +64,7 @@ export const families = pgTable("families", {
   stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
   subscriptionCurrentPeriodEnd: timestamp("subscription_current_period_end"),
+  icsFeedToken: varchar("ics_feed_token", { length: 64 }).unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

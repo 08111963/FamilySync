@@ -1,9 +1,10 @@
 import { Router } from 'express';
+import { randomBytes } from 'crypto';
 import { getParam, getQuery } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { calendarEvents, familyMembers } from '../../shared/schema';
+import { calendarEvents, familyMembers, families } from '../../shared/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
@@ -75,6 +76,45 @@ const updateEventSchema = z.object({
   memberId: z.string().nullable().optional(),
   recurrenceRule: z.string().nullable().optional(),
 }).strict();
+
+/** Base URL pubblica del backend (dietro proxy: trust proxy e' attivo). */
+function feedBaseUrl(req: Request): string {
+  return `${req.protocol}://${req.get('host')}`;
+}
+
+/**
+ * Restituisce l'URL del feed ICS della famiglia (lo genera al primo accesso).
+ * Con ?regenerate=1 crea un nuovo token invalidando il link precedente.
+ */
+router.get('/:familyId/feed-url', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = getParam(req, 'familyId');
+    const regenerate = getQuery(req, 'regenerate') === '1';
+
+    const [family] = await db
+      .select({ icsFeedToken: families.icsFeedToken })
+      .from(families)
+      .where(eq(families.id, familyId))
+      .limit(1);
+
+    if (!family) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Famiglia non trovata' } });
+    }
+
+    let token = family.icsFeedToken;
+    if (!token || regenerate) {
+      token = randomBytes(24).toString('hex');
+      await db.update(families)
+        .set({ icsFeedToken: token, updatedAt: new Date() })
+        .where(eq(families.id, familyId));
+    }
+
+    res.json({ url: `${feedBaseUrl(req)}/calendar-feed/${token}.ics` });
+  } catch (error) {
+    logger.error('Feed URL error', { error: String(error) });
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Errore nel recupero del link calendario' } });
+  }
+});
 
 router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {

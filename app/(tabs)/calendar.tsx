@@ -10,6 +10,7 @@ import { useFamily } from "@/context/FamilyContext";
 import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
+import { addEventToDeviceCalendar } from "@/lib/device-calendar";
 
 const WEEKDAYS = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
 const MONTHS = [
@@ -29,6 +30,23 @@ export default function CalendarScreen() {
 
   const events = getEventsForDate(selectedDate);
   const familyId = currentFamily?.id || "";
+  const [savingToDeviceId, setSavingToDeviceId] = useState<string | null>(null);
+
+  const handleSaveToDevice = async (event: (typeof events)[number]) => {
+    if (savingToDeviceId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSavingToDeviceId(event.id);
+    try {
+      const result = await addEventToDeviceCalendar(event);
+      if (Platform.OS === "web") {
+        window.alert(result.message);
+      } else {
+        Alert.alert(result.ok ? "Fatto" : "Attenzione", result.message);
+      }
+    } finally {
+      setSavingToDeviceId(null);
+    }
+  };
 
   const getDaysInMonth = (month: number, year: number) => {
     return new Date(year, month + 1, 0).getDate();
@@ -229,6 +247,20 @@ export default function CalendarScreen() {
                     <View style={styles.eventHeader}>
                       <Text style={[styles.eventTitle, { color: colors.text }]}>{event.title}</Text>
                       <View style={styles.eventActions}>
+                        {Platform.OS !== "web" && (
+                          <Pressable
+                            onPress={() => handleSaveToDevice(event)}
+                            style={styles.actionBtn}
+                            disabled={savingToDeviceId !== null}
+                            testID={`save-to-device-${event.id}`}
+                          >
+                            <Ionicons
+                              name="download-outline"
+                              size={18}
+                              color={savingToDeviceId === event.id ? colors.primary : colors.textSecondary}
+                            />
+                          </Pressable>
+                        )}
                         <Pressable onPress={() => handleEventActions(event.id)} style={styles.actionBtn}>
                           <Ionicons name="flag-outline" size={18} color={colors.textSecondary} />
                         </Pressable>
