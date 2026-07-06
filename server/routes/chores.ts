@@ -45,6 +45,14 @@ const updateChoreSchema = z.object({
 
 const CHORE_EVENT_COLOR = '#8B5CF6';
 
+/** Verifica che l'assegnatario sia un membro della famiglia indicata. */
+async function isFamilyMemberId(familyId: string, memberId: string): Promise<boolean> {
+  const [member] = await db.select({ id: familyMembers.id }).from(familyMembers)
+    .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
+    .limit(1);
+  return !!member;
+}
+
 function choreEventFields(chore: typeof chores.$inferSelect) {
   const parts: string[] = [];
   if (chore.description) parts.push(chore.description);
@@ -79,11 +87,17 @@ async function createChoreCalendarEvent(
       })
       .returning();
     // Check-and-set atomico: collega l'evento solo se la faccenda non ne ha
-    // gia' uno (richieste concorrenti non devono creare eventi duplicati).
+    // gia' uno, non e' stata completata nel frattempo e ha ancora una scadenza
+    // (richieste concorrenti non devono creare eventi duplicati o "fantasma").
     const [updated] = await db
       .update(chores)
       .set({ calendarEventId: event.id })
-      .where(and(eq(chores.id, chore.id), isNull(chores.calendarEventId)))
+      .where(and(
+        eq(chores.id, chore.id),
+        isNull(chores.calendarEventId),
+        eq(chores.isCompleted, false),
+        sql`${chores.dueDate} IS NOT NULL`
+      ))
       .returning();
     if (!updated) {
       await db.delete(calendarEvents).where(eq(calendarEvents.id, event.id));
@@ -159,6 +173,12 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       });
     }
 
+    if (parsed.data.assignedTo && !(await isFamilyMemberId(familyId, parsed.data.assignedTo))) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "L'assegnatario non appartiene a questa famiglia" },
+      });
+    }
+
     let [chore] = await db.insert(chores).values({
       familyId,
       title: parsed.data.title,
@@ -192,6 +212,12 @@ router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (re
     if (!parsed.success) {
       return res.status(400).json({
         error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    if (parsed.data.assignedTo && !(await isFamilyMemberId(familyId, parsed.data.assignedTo))) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "L'assegnatario non appartiene a questa famiglia" },
       });
     }
 
@@ -265,7 +291,10 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
         .set({
           points: sql`COALESCE(${familyMembers.points}, 0) + ${pointsToAdd}`,
         })
-        .where(eq(familyMembers.id, currentChore.assignedTo));
+        .where(and(
+          eq(familyMembers.id, currentChore.assignedTo),
+          eq(familyMembers.familyId, familyId)
+        ));
     }
 
     broadcastToFamily(familyId, 'chore_completed', chore);
@@ -281,20 +310,20 @@ router.delete('/:familyId/:choreId', authenticate, requireFamilyMember(), async 
     const familyId = getParam(req, 'familyId');
     const choreId = getParam(req, 'choreId');
 
-    const [deleted] = await db.delete(chores)
+    const [existing] = await db.select().from(chores)
       .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
-      .returning();
+      .limit(1);
 
-    // Sync calendario: faccenda eliminata → evento rimosso (best-effort).
-    if (deleted?.calendarEventId) {
-      try {
-        await db.delete(calendarEvents)
-          .where(and(eq(calendarEvents.id, deleted.calendarEventId), eq(calendarEvents.familyId, familyId)));
-        broadcastToFamily(familyId, 'event_deleted', { eventId: deleted.calendarEventId });
-      } catch (error) {
-        logger.warn('Chore calendar sync (delete) failed', { choreId, error: String(error) });
-      }
+    if (!existing) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata" } });
     }
+
+    // Sync calendario: rimuovi PRIMA l'evento collegato (come per le bollette),
+    // cosi' un eventuale errore non lascia eventi orfani nel calendario.
+    await deleteChoreCalendarEvent(familyId, choreId, existing.calendarEventId);
+
+    await db.delete(chores)
+      .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)));
 
     broadcastToFamily(familyId, 'chore_deleted', { choreId });
     res.json({ message: 'Faccenda eliminata' });

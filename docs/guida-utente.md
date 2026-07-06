@@ -150,11 +150,13 @@ Il calendario condiviso permette a tutta la famiglia di vedere e gestire gli imp
   - **Tutto il giorno**: attiva se l'evento dura l'intera giornata
 - Tocca **Crea Evento** per salvare
 
+**Dettare il titolo a voce**: accanto al campo Titolo trovi l'icona del **microfono**. Tieni premuto il microfono, pronuncia il titolo dell'evento e rilascia: il testo dettato viene inserito automaticamente. Richiede le funzionalità AI attive.
+
 ### Eliminare un Evento
 - Nella lista degli eventi del giorno, scorri sull'evento e tocca l'icona di eliminazione
 
 ### Sincronizzare con il Calendario del Telefono e Google/Apple Calendar
-Tutti gli eventi del calendario di famiglia (compresi quelli creati automaticamente per le scadenze delle bollette) possono essere sincronizzati con i calendari esterni, in due modi:
+Tutti gli eventi del calendario di famiglia (compresi quelli creati automaticamente per le scadenze delle bollette e delle faccende) possono essere sincronizzati con i calendari esterni, in due modi:
 
 **1. Salvare un singolo evento nel calendario del telefono**
 - Accanto a ogni evento trovi l'icona di **download**: toccala per salvare quell'evento nel calendario del tuo telefono (iPhone o Android)
@@ -216,6 +218,15 @@ Organizza le faccende di casa con un sistema a punti che rende tutto più divert
   - **Assegnata a**: scegli quale membro della famiglia deve farla (opzionale)
   - **Scadenza**: entro quando va completata (opzionale)
   - **Ricorrenza**: Giornaliera, Settimanale o Mensile (opzionale)
+
+**Dettare il titolo a voce**: accanto al campo Titolo trovi l'icona del **microfono**. Tieni premuto, pronuncia il titolo della faccenda e rilascia: il testo viene inserito automaticamente. Richiede le funzionalità AI attive.
+
+### Faccende nel Calendario
+Se imposti una **scadenza**, la faccenda compare automaticamente anche nel **Calendario** di famiglia come evento (colore viola), così nessuno se ne dimentica:
+- Se modifichi titolo, scadenza o assegnatario, l'evento si aggiorna da solo
+- Se completi o elimini la faccenda, l'evento sparisce dal calendario
+- Se rimuovi la scadenza, l'evento viene rimosso
+- Le scadenze delle faccende compaiono anche nel **feed ICS** collegato a Google/Apple Calendar (vedi sezione Calendario)
 
 ### Completare una Faccenda
 - Nella lista delle faccende, tocca l'icona di completamento
@@ -321,6 +332,8 @@ La scheda **Chat** è lo spazio dove tutta la famiglia comunica in tempo reale, 
 - I messaggi arrivano **istantaneamente** a tutti i membri della famiglia collegati
 - I tuoi messaggi appaiono a destra, quelli degli altri a sinistra, con nome e colore di chi scrive
 
+**Dettare un messaggio a voce**: accanto al campo di testo trovi l'icona del **microfono**. Tieni premuto, parla e rilascia: il testo dettato compare nel campo, così puoi controllarlo prima di inviarlo. Richiede le funzionalità AI attive.
+
 ### Inviare Foto e Documenti
 Tocca l'icona allegato accanto al campo di testo per inviare:
 - **Foto dalla galleria**
@@ -359,6 +372,8 @@ Puoi anche cercare ricette specifiche scrivendo quello che desideri:
   - "piatto leggero estivo"
 - Tocca il pulsante di invio (icona freccia) o premi invio sulla tastiera
 - L'AI genera **3-5 ricette** che corrispondono alla tua ricerca
+
+**Ricerca a voce**: accanto alla barra di ricerca c'è l'icona del **microfono**. Tieni premuto, detta cosa vuoi cucinare e rilascia: la ricerca parte da sola e i risultati ti vengono anche **letti ad alta voce**. Nelle schermate delle ricette trovi inoltre l'icona **altoparlante** per farti leggere la ricetta ad alta voce.
 
 ### Schermata di Anteprima
 Dopo aver generato o cercato ricette, arrivi alla schermata di anteprima dove puoi:
@@ -405,6 +420,8 @@ Per generare un nuovo piano settimanale:
    - **Allergie/Intolleranze**: ad esempio "glutine", "frutta secca", "uova"
 4. Tocca il pulsante **Genera Piano Pasti** per avviare la generazione AI
 5. L'AI creerà un piano completo per 7 giorni con colazione, pranzo, cena e spuntini
+
+**Detta e genera (a voce)**: nella tab Genera trovi la card **"Detta e genera"** con un unico microfono. Tieni premuto e detta in una volta sola dieta, allergie e preferenze (es. "siamo vegetariani, niente frutta secca, piatti veloci la sera"): al rilascio la generazione parte da sola e il piano ti viene **letto ad alta voce**, giorno per giorno.
 
 ### Alternative
 - Se il piano generato non ti soddisfa, puoi toccare **Genera Alternative** per ricevere una seconda proposta
@@ -489,7 +506,7 @@ FamilySync integra l'intelligenza artificiale per offrire suggerimenti utili all
 - L'AI è completamente opzionale: se il toggle è disattivato, nessun dato viene inviato
 
 ### Panoramica delle Funzionalità AI
-L'intelligenza artificiale in FamilySync offre 6 funzionalità principali:
+L'intelligenza artificiale in FamilySync offre queste funzionalità principali:
 
 | Funzionalità | Dove si trova | Cosa fa |
 |--------------|---------------|---------|
@@ -499,6 +516,8 @@ L'intelligenza artificiale in FamilySync offre 6 funzionalità principali:
 | Suggerimenti Spesa | Consigli AI famiglia (scheda Famiglia) | Consiglia articoli per la spesa |
 | Ottimizzazione Faccende | Consigli AI famiglia (scheda Famiglia) | Distribuisce equamente le faccende |
 | Insights Familiari | Consigli AI famiglia (scheda Famiglia) | Analisi e consigli settimanali |
+| Dettatura Vocale | Microfoni in Ricette, Piano Pasti, Eventi, Faccende e Chat | Trasforma la tua voce in testo |
+| Foto delle Ricette | Ricette proposte dall'AI | Genera la foto del piatto |
 
 ### Quante Volte Puoi Usare l'AI
 Le funzionalità AI sono disponibili gratuitamente con un **limite di utilizzo**; con **Premium** i limiti sono molto più alti. Limiti indicativi:
@@ -511,6 +530,8 @@ Le funzionalità AI sono disponibili gratuitamente con un **limite di utilizzo**
 | Piano pasti settimanale | 1 a settimana | 3 al giorno |
 | Consigli AI famiglia | 1 a settimana | 5 al giorno |
 | Ottimizzazione faccende | 1 al giorno | 10 al giorno |
+| Dettatura vocale | 5 al giorno | 30 al giorno |
+| Foto delle ricette | 10 al giorno | 50 al giorno |
 
 > i limiti esatti possono essere aggiornati nel tempo. Le funzioni di base (calendario, spesa, faccende e chat) non hanno limiti di utilizzo, sia con Free sia con Premium. Le bollette invece hanno un limite con il piano Free (max 5 attive) e sono illimitate con Premium.
 
