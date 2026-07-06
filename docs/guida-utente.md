@@ -156,18 +156,25 @@ Il calendario condiviso permette a tutta la famiglia di vedere e gestire gli imp
 - Nella lista degli eventi del giorno, scorri sull'evento e tocca l'icona di eliminazione
 
 ### Sincronizzare con il Calendario del Telefono e Google/Apple Calendar
-Tutti gli eventi del calendario di famiglia (compresi quelli creati automaticamente per le scadenze delle bollette e delle faccende) possono essere sincronizzati con i calendari esterni, in due modi:
+Tutti gli eventi del calendario di famiglia (compresi quelli creati automaticamente per le scadenze delle bollette e delle faccende) possono essere sincronizzati con i calendari esterni. Vai alla scheda **Famiglia** → **Sincronizza calendario** e scegli il metodo che preferisci:
 
-**1. Salvare un singolo evento nel calendario del telefono**
-- Accanto a ogni evento trovi l'icona di **download**: toccala per salvare quell'evento nel calendario del tuo telefono (iPhone o Android)
+**1. Sincronizza sul telefono (il più semplice, 1 tocco)**
+- Tocca **Sincronizza ora**: tutti gli eventi futuri della famiglia vengono copiati in un calendario dedicato **"FamilySync"** sul tuo telefono (iPhone o Android)
+- Ripeti il tocco quando vuoi per aggiornare gli eventi: nessun duplicato
 - Alla prima volta l'app chiede il permesso di accedere al calendario
 - Disponibile solo nell'app sul telefono (non sul web)
 
-**2. Collegare l'intero calendario di famiglia a Google/Apple Calendar**
-- Vai alla scheda **Famiglia** e tocca la card **Sincronizza calendario**
+**2. Iscrizione automatica da iPhone (1 tocco)**
+- Su iPhone tocca **Aggiungi al Calendario iPhone**: si apre l'app Calendario e il calendario della famiglia viene aggiunto come sottoscrizione
+- Da quel momento i nuovi eventi compaiono **automaticamente**, senza fare più nulla
+
+**3. Salvare un singolo evento nel calendario del telefono**
+- Nella scheda Calendario, accanto a ogni evento trovi l'icona di **download**: toccala per salvare quell'evento nel calendario del tuo telefono
+
+**4. Collegare il calendario a Google/Apple Calendar con il link (dal computer)**
 - Copia il **link del feed** e aggiungilo al tuo calendario:
-  - **Google Calendar**: Impostazioni → Aggiungi calendario → Da URL → incolla il link
-  - **Apple Calendar**: File → Nuova sottoscrizione calendario (Mac) oppure Impostazioni → Calendario → Account → Aggiungi sottoscrizione (iPhone)
+  - **Google Calendar**: dal computer, calendar.google.com → Altri calendari → + → Da URL → incolla il link (gli eventi appariranno poi anche nell'app Google Calendar del telefono)
+  - **Apple Calendar**: File → Nuova sottoscrizione calendario (Mac)
 - Da quel momento **tutti gli eventi della famiglia** (e le scadenze delle bollette) compaiono automaticamente anche lì, e si aggiornano da soli
 - Il link è personale della tua famiglia: se vuoi revocarlo, tocca **Rigenera link** (quello vecchio smette di funzionare)
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert, Share } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert, Share, Linking } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -11,14 +11,16 @@ import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { Card } from "@/components/Card";
 import { apiFetch, queryClient } from "@/lib/query-client";
+import { syncEventsToDeviceCalendar } from "@/lib/device-calendar";
 
 export default function CalendarSyncScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { currentFamily } = useFamily();
+  const { currentFamily, data: familyData, isLoading: familyLoading } = useFamily();
   const familyId = currentFamily?.id;
   const [regenerating, setRegenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const feedQueryKey = ["/api/calendar", familyId, "feed-url"];
   const { data, isLoading, error } = useQuery<{ url: string }>({
@@ -34,6 +36,36 @@ export default function CalendarSyncScreen() {
       window.alert(message);
     } else {
       Alert.alert(title, message);
+    }
+  };
+
+  const handleSyncToPhone = async () => {
+    if (syncing || familyLoading) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSyncing(true);
+    try {
+      // Data locale (NON UTC): evita off-by-one vicino a mezzanotte
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const upcoming = (familyData?.events ?? []).filter((e) => e.date >= todayStr);
+      const result = await syncEventsToDeviceCalendar(upcoming);
+      showMessage(result.ok ? "Fatto" : "Attenzione", result.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSubscribeIos = async () => {
+    if (!feedUrl) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const webcalUrl = feedUrl.replace(/^https?:\/\//, "webcal://");
+    try {
+      await Linking.openURL(webcalUrl);
+    } catch {
+      showMessage(
+        "Attenzione",
+        "Non sono riuscito ad aprire l'app Calendario. Puoi copiare il link e aggiungerlo manualmente."
+      );
     }
   };
 
@@ -115,6 +147,61 @@ export default function CalendarSyncScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 34 + 24, gap: 16 }}
         showsVerticalScrollIndicator={false}
       >
+        {Platform.OS !== "web" && (
+          <Card>
+            <View style={styles.cardHeader}>
+              <View style={[styles.cardIcon, { backgroundColor: colors.primary + "20" }]}>
+                <Ionicons name="phone-portrait-outline" size={22} color={colors.primary} />
+              </View>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>
+                Sincronizza sul telefono (1 tocco)
+              </Text>
+            </View>
+            <Text style={[styles.cardText, { color: colors.textSecondary }]}>
+              Copia tutti gli eventi futuri della famiglia in un calendario "FamilySync" dedicato
+              sul tuo telefono. Ripeti quando vuoi per aggiornarli: niente duplicati.
+            </Text>
+            <Pressable
+              onPress={handleSyncToPhone}
+              disabled={syncing || familyLoading}
+              style={[styles.actionBtn, { backgroundColor: colors.primary, alignSelf: "flex-start", opacity: syncing || familyLoading ? 0.6 : 1 }]}
+              testID="sync-to-phone"
+            >
+              <Ionicons name="sync-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.actionBtnText}>
+                {familyLoading ? "Carico gli eventi..." : syncing ? "Sincronizzo..." : "Sincronizza ora"}
+              </Text>
+            </Pressable>
+          </Card>
+        )}
+
+        {Platform.OS === "ios" && !!feedUrl && (
+          <Card>
+            <View style={styles.cardHeader}>
+              <View style={[styles.cardIcon, { backgroundColor: "#8E8E9320" }]}>
+                <Ionicons name="logo-apple" size={20} color={colors.text} />
+              </View>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>
+                Iscriviti da iPhone (automatico)
+              </Text>
+            </View>
+            <Text style={[styles.cardText, { color: colors.textSecondary }]}>
+              Un tocco e il calendario della famiglia si aggiunge all'app Calendario del tuo
+              iPhone, con aggiornamento automatico dei nuovi eventi.
+            </Text>
+            <Pressable
+              onPress={handleSubscribeIos}
+              style={[styles.actionBtn, { backgroundColor: colors.text, alignSelf: "flex-start" }]}
+              testID="subscribe-ios"
+            >
+              <Ionicons name="calendar-outline" size={18} color={colors.background} />
+              <Text style={[styles.actionBtnText, { color: colors.background }]}>
+                Aggiungi al Calendario iPhone
+              </Text>
+            </Pressable>
+          </Card>
+        )}
+
         <Card>
           <View style={styles.cardHeader}>
             <View style={[styles.cardIcon, { backgroundColor: colors.primary + "20" }]}>
