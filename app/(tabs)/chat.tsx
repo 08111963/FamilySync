@@ -21,6 +21,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
+import { VoiceInput } from "@/components/VoiceInput";
 import { useAuth } from "@/context/AuthContext";
 import { useMediaToken } from "@/hooks/useMediaToken";
 import { useFamily } from "@/context/FamilyContext";
@@ -667,6 +668,18 @@ export default function ChatScreen() {
           />
         </View>
 
+        {familyId ? (
+          <View style={styles.micButton}>
+            <VoiceInput
+              familyId={familyId}
+              disabled={isSending}
+              onTranscribed={(text) =>
+                setInputText((prev) => (prev ? `${prev} ${text}` : text))
+              }
+            />
+          </View>
+        ) : null}
+
         <TouchableOpacity
           onPress={handleSend}
           style={[styles.sendButton, { backgroundColor: inputText.trim() ? colors.primary : isDark ? "#333" : "#DDD" }]}
@@ -917,6 +930,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingTop: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  micButton: {
+    marginLeft: 6,
+    marginBottom: 2,
   },
   attachButton: {
     width: 40,

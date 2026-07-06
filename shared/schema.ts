@@ -182,6 +182,9 @@ export const chores = pgTable("chores", {
   completedAt: timestamp("completed_at"),
   completedBy: uuid("completed_by").references(() => users.id, { onDelete: "set null" }),
   recurrenceRule: text("recurrence_rule"),
+  // Evento calendario collegato (per faccende con scadenza): la faccenda
+  // compare nel calendario dell'app e nel feed ICS come le bollette.
+  calendarEventId: uuid("calendar_event_id").references(() => calendarEvents.id, { onDelete: "set null" }),
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

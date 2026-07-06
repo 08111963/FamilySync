@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
+import { VoiceInput } from "@/components/VoiceInput";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
@@ -84,13 +85,27 @@ export default function AddChoreScreen() {
 
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.field}>
-          <Input
-            label="Titolo"
-            placeholder="Cosa c'è da fare?"
-            value={title}
-            onChangeText={setTitle}
-            autoFocus
-          />
+          <View style={styles.titleRow}>
+            <View style={styles.titleInput}>
+              <Input
+                label="Titolo"
+                placeholder="Cosa c'è da fare?"
+                value={title}
+                onChangeText={setTitle}
+                autoFocus
+              />
+            </View>
+            {familyId ? (
+              <View style={styles.micWrap}>
+                <VoiceInput
+                  familyId={familyId}
+                  onTranscribed={(text) =>
+                    setTitle((prev) => (prev ? `${prev} ${text}` : text))
+                  }
+                />
+              </View>
+            ) : null}
+          </View>
         </View>
 
         <View style={styles.field}>
@@ -306,6 +321,17 @@ const styles = StyleSheet.create({
   },
   field: {
     marginBottom: 20,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 10,
+  },
+  titleInput: {
+    flex: 1,
+  },
+  micWrap: {
+    marginBottom: 6,
   },
   label: {
     fontSize: 14,

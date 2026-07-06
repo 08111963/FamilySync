@@ -3,8 +3,8 @@ import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { chores, familyMembers } from '../../shared/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { chores, familyMembers, calendarEvents } from '../../shared/schema';
+import { eq, and, sql, isNull } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
@@ -36,6 +36,101 @@ const updateChoreSchema = z.object({
   isCompleted: z.boolean().optional(),
 }).strict();
 
+// --- Sincronizzazione con il calendario famiglia ---------------------------
+// Ogni faccenda con scadenza (e non completata) ha un evento tutto-il-giorno
+// alla data di scadenza, cosi' compare nel calendario dell'app, nel feed ICS
+// (Google/Apple Calendar) e puo' essere salvata sul telefono. L'evento viene
+// aggiornato se cambia la faccenda e rimosso al completamento/eliminazione.
+// Gli errori di sync non bloccano mai l'operazione principale (best-effort).
+
+const CHORE_EVENT_COLOR = '#8B5CF6';
+
+function choreEventFields(chore: typeof chores.$inferSelect) {
+  const parts: string[] = [];
+  if (chore.description) parts.push(chore.description);
+  if (chore.points) parts.push(`Punti: ${chore.points}`);
+  parts.push('Creato automaticamente dalla sezione Faccende');
+  return {
+    title: `Faccenda: ${chore.title}`,
+    description: parts.join('\n'),
+    date: chore.dueDate!.toISOString().split('T')[0]!,
+    time: null as string | null,
+    endTime: null as string | null,
+    allDay: true,
+    category: 'other' as const,
+    color: CHORE_EVENT_COLOR,
+    memberId: chore.assignedTo,
+  };
+}
+
+/** Crea l'evento calendario per una faccenda e collega chores.calendarEventId. */
+async function createChoreCalendarEvent(
+  chore: typeof chores.$inferSelect,
+  userId: string
+): Promise<typeof chores.$inferSelect> {
+  if (!chore.dueDate || chore.isCompleted) return chore;
+  try {
+    const [event] = await db
+      .insert(calendarEvents)
+      .values({
+        familyId: chore.familyId,
+        ...choreEventFields(chore),
+        createdBy: userId,
+      })
+      .returning();
+    // Check-and-set atomico: collega l'evento solo se la faccenda non ne ha
+    // gia' uno (richieste concorrenti non devono creare eventi duplicati).
+    const [updated] = await db
+      .update(chores)
+      .set({ calendarEventId: event.id })
+      .where(and(eq(chores.id, chore.id), isNull(chores.calendarEventId)))
+      .returning();
+    if (!updated) {
+      await db.delete(calendarEvents).where(eq(calendarEvents.id, event.id));
+      const [current] = await db.select().from(chores).where(eq(chores.id, chore.id)).limit(1);
+      return current ?? chore;
+    }
+    broadcastToFamily(chore.familyId, 'event_created', event);
+    return updated;
+  } catch (error) {
+    logger.warn('Chore calendar sync (create) failed', { choreId: chore.id, error: String(error) });
+    return chore;
+  }
+}
+
+/** Aggiorna l'evento calendario collegato (titolo/data/descrizione/assegnatario). */
+async function updateChoreCalendarEvent(chore: typeof chores.$inferSelect): Promise<void> {
+  if (!chore.calendarEventId || !chore.dueDate) return;
+  try {
+    const [event] = await db
+      .update(calendarEvents)
+      .set({ ...choreEventFields(chore), updatedAt: new Date() })
+      .where(and(eq(calendarEvents.id, chore.calendarEventId), eq(calendarEvents.familyId, chore.familyId)))
+      .returning();
+    if (event) broadcastToFamily(chore.familyId, 'event_updated', event);
+  } catch (error) {
+    logger.warn('Chore calendar sync (update) failed', { choreId: chore.id, error: String(error) });
+  }
+}
+
+/** Elimina l'evento calendario collegato (faccenda completata o eliminata). */
+async function deleteChoreCalendarEvent(
+  familyId: string,
+  choreId: string,
+  calendarEventId: string | null
+): Promise<void> {
+  if (!calendarEventId) return;
+  try {
+    await db
+      .delete(calendarEvents)
+      .where(and(eq(calendarEvents.id, calendarEventId), eq(calendarEvents.familyId, familyId)));
+    await db.update(chores).set({ calendarEventId: null }).where(eq(chores.id, choreId));
+    broadcastToFamily(familyId, 'event_deleted', { eventId: calendarEventId });
+  } catch (error) {
+    logger.warn('Chore calendar sync (delete) failed', { choreId, error: String(error) });
+  }
+}
+
 router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
@@ -64,7 +159,7 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       });
     }
 
-    const [chore] = await db.insert(chores).values({
+    let [chore] = await db.insert(chores).values({
       familyId,
       title: parsed.data.title,
       description: parsed.data.description,
@@ -76,6 +171,9 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       recurrenceRule: parsed.data.recurrenceRule,
       createdBy: req.user!.userId,
     }).returning();
+
+    // Sync calendario: la faccenda con scadenza compare anche nel calendario.
+    chore = await createChoreCalendarEvent(chore, req.user!.userId);
 
     broadcastToFamily(familyId, 'chore_created', chore);
     res.status(201).json(chore);
@@ -102,13 +200,23 @@ router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (re
       updateData.dueDate = new Date(updateData.dueDate);
     }
 
-    const [chore] = await db.update(chores)
+    let [chore] = await db.update(chores)
       .set(updateData)
       .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
       .returning();
 
     if (!chore) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata" } });
+    }
+
+    // Sync calendario: evento presente solo se c'e' scadenza e non completata.
+    if (chore.isCompleted || !chore.dueDate) {
+      await deleteChoreCalendarEvent(familyId, chore.id, chore.calendarEventId);
+      chore = { ...chore, calendarEventId: null };
+    } else if (chore.calendarEventId) {
+      await updateChoreCalendarEvent(chore);
+    } else {
+      chore = await createChoreCalendarEvent(chore, req.user!.userId);
     }
 
     broadcastToFamily(familyId, 'chore_updated', chore);
@@ -138,7 +246,7 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
 
     const pointsToAdd = currentChore.points || 10;
 
-    const [chore] = await db.update(chores)
+    let [chore] = await db.update(chores)
       .set({
         isCompleted: true,
         completedAt: new Date(),
@@ -147,6 +255,10 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
       })
       .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
       .returning();
+
+    // Sync calendario: faccenda completata → evento rimosso.
+    await deleteChoreCalendarEvent(familyId, choreId, chore.calendarEventId);
+    chore = { ...chore, calendarEventId: null };
 
     if (currentChore.assignedTo) {
       await db.update(familyMembers)
@@ -169,7 +281,20 @@ router.delete('/:familyId/:choreId', authenticate, requireFamilyMember(), async 
     const familyId = getParam(req, 'familyId');
     const choreId = getParam(req, 'choreId');
 
-    await db.delete(chores).where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)));
+    const [deleted] = await db.delete(chores)
+      .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
+      .returning();
+
+    // Sync calendario: faccenda eliminata → evento rimosso (best-effort).
+    if (deleted?.calendarEventId) {
+      try {
+        await db.delete(calendarEvents)
+          .where(and(eq(calendarEvents.id, deleted.calendarEventId), eq(calendarEvents.familyId, familyId)));
+        broadcastToFamily(familyId, 'event_deleted', { eventId: deleted.calendarEventId });
+      } catch (error) {
+        logger.warn('Chore calendar sync (delete) failed', { choreId, error: String(error) });
+      }
+    }
 
     broadcastToFamily(familyId, 'chore_deleted', { choreId });
     res.json({ message: 'Faccenda eliminata' });

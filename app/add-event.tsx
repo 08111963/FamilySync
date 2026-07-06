@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
+import { VoiceInput } from "@/components/VoiceInput";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
@@ -17,7 +18,7 @@ const EVENT_COLORS = Object.values(Colors.light.calendar);
 export default function AddEventScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { data, addEvent } = useFamily();
+  const { data, addEvent, currentFamily } = useFamily();
   const params = useLocalSearchParams<{ date?: string }>();
 
   const isRealIso = (iso: string) => {
@@ -94,13 +95,27 @@ export default function AddEventScreen() {
 
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.field}>
-          <Input
-            label="Titolo"
-            placeholder="Titolo dell'evento"
-            value={title}
-            onChangeText={setTitle}
-            autoFocus
-          />
+          <View style={styles.titleRow}>
+            <View style={styles.titleInput}>
+              <Input
+                label="Titolo"
+                placeholder="Titolo dell'evento"
+                value={title}
+                onChangeText={setTitle}
+                autoFocus
+              />
+            </View>
+            {currentFamily ? (
+              <View style={styles.micWrap}>
+                <VoiceInput
+                  familyId={currentFamily.id}
+                  onTranscribed={(text) =>
+                    setTitle((prev) => (prev ? `${prev} ${text}` : text))
+                  }
+                />
+              </View>
+            ) : null}
+          </View>
         </View>
 
         <View style={styles.field}>
@@ -242,6 +257,17 @@ const styles = StyleSheet.create({
   },
   field: {
     marginBottom: 20,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 10,
+  },
+  titleInput: {
+    flex: 1,
+  },
+  micWrap: {
+    marginBottom: 6,
   },
   label: {
     fontSize: 14,
