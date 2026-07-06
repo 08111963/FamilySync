@@ -160,7 +160,7 @@ export default function HomeScreen() {
           </Pressable>
         </View>
         {upcomingEvents.length === 0 ? (
-          <Card>
+          <Card onPress={() => router.push("/(tabs)/calendar")}>
             <EmptyState
               icon="calendar-outline"
               title="Nessun evento in programma"
@@ -170,7 +170,11 @@ export default function HomeScreen() {
         ) : (
           <View style={styles.eventsList}>
             {upcomingEvents.map((event) => (
-              <Card key={event.id} style={styles.eventCard}>
+              <Card
+                key={event.id}
+                style={styles.eventCard}
+                onPress={() => router.push("/(tabs)/calendar")}
+              >
                 <View style={[styles.eventColorBar, { backgroundColor: event.color }]} />
                 <View style={styles.eventContent}>
                   <Text style={[styles.eventTitle, { color: colors.text }]}>{event.title}</Text>
@@ -198,7 +202,7 @@ export default function HomeScreen() {
           </Pressable>
         </View>
         {pendingChores.length === 0 ? (
-          <Card>
+          <Card onPress={() => router.push("/(tabs)/chores")}>
             <EmptyState
               icon="checkmark-circle-outline"
               title="Tutto fatto!"
@@ -210,7 +214,11 @@ export default function HomeScreen() {
             {pendingChores.map((chore) => {
               const member = data.members.find((m) => m.id === chore.assignedTo);
               return (
-                <Card key={chore.id} style={styles.choreCard}>
+                <Card
+                  key={chore.id}
+                  style={styles.choreCard}
+                  onPress={() => router.push("/(tabs)/chores")}
+                >
                   <View style={styles.choreContent}>
                     <View style={styles.choreInfo}>
                       <Text style={[styles.choreTitle, { color: colors.text }]}>{chore.title}</Text>
