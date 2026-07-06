@@ -380,17 +380,29 @@ export default function RecipesScreen() {
         <Text style={[styles.headerTitle, { color: colors.text }]}>
           Le Mie Ricette
         </Text>
-        <Pressable
-          onPress={handleGenerateAi}
-          disabled={generatingAi}
-          style={styles.headerButton}
-        >
-          {generatingAi ? (
-            <ActivityIndicator size="small" color={colors.secondary} />
-          ) : (
-            <Ionicons name="sparkles" size={24} color={colors.secondary} />
-          )}
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/recipes/add" as any);
+            }}
+            style={styles.headerButton}
+            testID="button-add-recipe"
+          >
+            <Ionicons name="add-circle-outline" size={26} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={handleGenerateAi}
+            disabled={generatingAi}
+            style={styles.headerButton}
+          >
+            {generatingAi ? (
+              <ActivityIndicator size="small" color={colors.secondary} />
+            ) : (
+              <Ionicons name="sparkles" size={24} color={colors.secondary} />
+            )}
+          </Pressable>
+        </View>
       </View>
 
       {aiError ? (
@@ -507,6 +519,10 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     justifyContent: "center",
+    alignItems: "center",
+  },
+  headerActions: {
+    flexDirection: "row",
     alignItems: "center",
   },
   headerTitle: {

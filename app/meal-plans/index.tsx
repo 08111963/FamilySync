@@ -99,7 +99,7 @@ function getNextMonday(): string {
   const day = d.getDay();
   const diff = day === 0 ? 1 : 8 - day;
   d.setDate(d.getDate() + diff);
-  return d.toISOString().split("T")[0]!;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function isoToDisplay(iso: string): string {
@@ -248,10 +248,12 @@ function PlanCard({
   plan,
   onToShoppingList,
   onDelete,
+  onEdit,
 }: {
   plan: MealPlan;
   onToShoppingList: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (id: string) => void;
 }) {
   const { colors } = useTheme();
   return (
@@ -267,6 +269,14 @@ function PlanCard({
           </Text>
         </View>
         <View style={styles.planActions}>
+          <Pressable
+            onPress={() => onEdit(plan.id)}
+            hitSlop={8}
+            style={styles.actionButton}
+            testID={`button-edit-plan-${plan.id}`}
+          >
+            <Ionicons name="pencil" size={21} color={colors.primary} />
+          </Pressable>
           <Pressable onPress={() => onToShoppingList(plan.id)} hitSlop={8} style={styles.actionButton}>
             <Ionicons name="cart-outline" size={22} color={colors.secondary} />
           </Pressable>
@@ -692,10 +702,40 @@ export default function MealPlansScreen() {
           data={plans}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <PlanCard plan={item} onToShoppingList={handleToShoppingList} onDelete={handleDeletePlan} />
+            <PlanCard
+              plan={item}
+              onToShoppingList={handleToShoppingList}
+              onDelete={handleDeletePlan}
+              onEdit={(id) => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push({ pathname: "/meal-plans/edit" as any, params: { planId: id } });
+              }}
+            />
           )}
           contentContainerStyle={[styles.listContent, { paddingBottom: bottomInset + 20 }]}
-          scrollEnabled={plans.length > 0}
+          scrollEnabled={true}
+          ListHeaderComponent={
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push("/meal-plans/edit" as any);
+              }}
+              style={({ pressed }) => [
+                styles.manualCreateButton,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.primary,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+              testID="button-create-manual-plan"
+            >
+              <Ionicons name="create-outline" size={20} color={colors.primary} />
+              <Text style={[styles.manualCreateText, { color: colors.primary }]}>
+                Crea piano manualmente
+              </Text>
+            </Pressable>
+          }
           ListEmptyComponent={
             plansQuery.isLoading ? (
               <View style={styles.loadingContainer}>
@@ -1036,6 +1076,20 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 20,
     paddingTop: 8,
+  },
+  manualCreateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1.5,
+    borderRadius: 14,
+    paddingVertical: 13,
+    marginBottom: 14,
+  },
+  manualCreateText: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
   },
   planCard: {
     marginBottom: 12,

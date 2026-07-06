@@ -191,6 +191,204 @@ router.delete('/:familyId/meal-plans/:planId', authenticate, requireFamilyMember
   }
 });
 
+const mealPlanItemSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]),
+  recipeId: z.string().uuid().optional().nullable(),
+  titleOverride: z.string().max(200).optional().nullable(),
+  servings: z.number().int().positive().optional().nullable(),
+  notes: z.string().max(500).optional().nullable(),
+  ingredients: z.array(z.object({
+    name: z.string(),
+    quantity: z.string().optional(),
+    unit: z.string().optional(),
+  })).optional().nullable(),
+});
+
+async function findPlan(familyId: string, planId: string) {
+  const [plan] = await db.select()
+    .from(mealPlans)
+    .where(and(eq(mealPlans.id, planId), eq(mealPlans.familyId, familyId)))
+    .limit(1);
+  return plan;
+}
+
+// Verifica che, se indicata, la ricetta appartenga alla famiglia.
+async function recipeBelongsToFamily(familyId: string, recipeId: string): Promise<boolean> {
+  const [r] = await db.select({ id: recipes.id })
+    .from(recipes)
+    .where(and(eq(recipes.id, recipeId), eq(recipes.familyId, familyId)))
+    .limit(1);
+  return !!r;
+}
+
+router.put('/:familyId/meal-plans/:planId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = getParam(req, 'familyId');
+    const planId = getParam(req, 'planId');
+
+    const parsed = z.object({ title: z.string().min(1).max(200) }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dati non validi" } });
+    }
+
+    const plan = await findPlan(familyId, planId);
+    if (!plan) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Piano pasti non trovato" } });
+    }
+
+    const [updated] = await db.update(mealPlans)
+      .set({ title: parsed.data.title })
+      .where(and(eq(mealPlans.id, planId), eq(mealPlans.familyId, familyId)))
+      .returning();
+
+    broadcastToFamily(familyId, 'meal_plan_updated', { planId });
+    res.json(updated);
+  } catch (error) {
+    logger.error('Update meal plan error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'aggiornamento del piano pasti" } });
+  }
+});
+
+router.post('/:familyId/meal-plans/:planId/items', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = getParam(req, 'familyId');
+    const planId = getParam(req, 'planId');
+
+    const parsed = mealPlanItemSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    const plan = await findPlan(familyId, planId);
+    if (!plan) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Piano pasti non trovato" } });
+    }
+
+    if (!parsed.data.recipeId && !parsed.data.titleOverride?.trim()) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Indica una ricetta o il nome del pasto" } });
+    }
+
+    if (parsed.data.recipeId && !(await recipeBelongsToFamily(familyId, parsed.data.recipeId))) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Ricetta non trovata" } });
+    }
+
+    const [item] = await db.insert(mealPlanItems).values({
+      mealPlanId: planId,
+      date: parsed.data.date,
+      mealType: parsed.data.mealType,
+      recipeId: parsed.data.recipeId ?? null,
+      titleOverride: parsed.data.titleOverride?.trim() || null,
+      servings: parsed.data.servings ?? undefined,
+      notes: parsed.data.notes ?? undefined,
+      ingredients: parsed.data.ingredients ?? null,
+    }).returning();
+
+    broadcastToFamily(familyId, 'meal_plan_updated', { planId });
+    res.status(201).json(item);
+  } catch (error) {
+    logger.error('Add meal plan item error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'aggiunta del pasto" } });
+  }
+});
+
+router.put('/:familyId/meal-plans/:planId/items/:itemId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = getParam(req, 'familyId');
+    const planId = getParam(req, 'planId');
+    const itemId = getParam(req, 'itemId');
+
+    const parsed = mealPlanItemSchema.partial().safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    const plan = await findPlan(familyId, planId);
+    if (!plan) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Piano pasti non trovato" } });
+    }
+
+    const [existingItem] = await db.select()
+      .from(mealPlanItems)
+      .where(and(eq(mealPlanItems.id, itemId), eq(mealPlanItems.mealPlanId, planId)))
+      .limit(1);
+
+    if (!existingItem) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Pasto non trovato" } });
+    }
+
+    if (parsed.data.recipeId && !(await recipeBelongsToFamily(familyId, parsed.data.recipeId))) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Ricetta non trovata" } });
+    }
+
+    // Il pasto risultante deve avere una ricetta oppure un titolo.
+    const nextRecipeId = parsed.data.recipeId !== undefined ? parsed.data.recipeId : existingItem.recipeId;
+    const nextTitle = parsed.data.titleOverride !== undefined ? parsed.data.titleOverride : existingItem.titleOverride;
+    if (!nextRecipeId && !nextTitle?.trim()) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Indica una ricetta o il nome del pasto" } });
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (parsed.data.date !== undefined) updates.date = parsed.data.date;
+    if (parsed.data.mealType !== undefined) updates.mealType = parsed.data.mealType;
+    if (parsed.data.recipeId !== undefined) updates.recipeId = parsed.data.recipeId;
+    if (parsed.data.titleOverride !== undefined) updates.titleOverride = parsed.data.titleOverride?.trim() || null;
+    if (parsed.data.servings !== undefined) updates.servings = parsed.data.servings;
+    if (parsed.data.notes !== undefined) updates.notes = parsed.data.notes;
+    if (parsed.data.ingredients !== undefined) updates.ingredients = parsed.data.ingredients;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Nessuna modifica indicata" } });
+    }
+
+    const [updated] = await db.update(mealPlanItems)
+      .set(updates)
+      .where(and(eq(mealPlanItems.id, itemId), eq(mealPlanItems.mealPlanId, planId)))
+      .returning();
+
+    broadcastToFamily(familyId, 'meal_plan_updated', { planId });
+    res.json(updated);
+  } catch (error) {
+    logger.error('Update meal plan item error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella modifica del pasto" } });
+  }
+});
+
+router.delete('/:familyId/meal-plans/:planId/items/:itemId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = getParam(req, 'familyId');
+    const planId = getParam(req, 'planId');
+    const itemId = getParam(req, 'itemId');
+
+    const plan = await findPlan(familyId, planId);
+    if (!plan) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Piano pasti non trovato" } });
+    }
+
+    const [existingItem] = await db.select({ id: mealPlanItems.id })
+      .from(mealPlanItems)
+      .where(and(eq(mealPlanItems.id, itemId), eq(mealPlanItems.mealPlanId, planId)))
+      .limit(1);
+
+    if (!existingItem) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Pasto non trovato" } });
+    }
+
+    await db.delete(mealPlanItems)
+      .where(and(eq(mealPlanItems.id, itemId), eq(mealPlanItems.mealPlanId, planId)));
+
+    broadcastToFamily(familyId, 'meal_plan_updated', { planId });
+    res.json({ message: "Pasto rimosso" });
+  } catch (error) {
+    logger.error('Delete meal plan item error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella rimozione del pasto" } });
+  }
+});
+
 router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
