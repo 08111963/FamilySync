@@ -332,7 +332,7 @@ La scheda **Chat** è lo spazio dove tutta la famiglia comunica in tempo reale, 
 - I messaggi arrivano **istantaneamente** a tutti i membri della famiglia collegati
 - I tuoi messaggi appaiono a destra, quelli degli altri a sinistra, con nome e colore di chi scrive
 
-**Dettare un messaggio a voce**: accanto al campo di testo trovi l'icona del **microfono**. Tieni premuto, parla e rilascia: il testo dettato compare nel campo, così puoi controllarlo prima di inviarlo. Richiede le funzionalità AI attive.
+**Dettare un messaggio a voce**: accanto al campo di testo trovi l'icona del **microfono**. Tieni premuto, parla e rilascia: il messaggio dettato viene **inviato subito**, come i vocali di WhatsApp (se avevi già scritto del testo nel campo, viene incluso nel messaggio). Richiede le funzionalità AI attive.
 
 ### Inviare Foto e Documenti
 Tocca l'icona allegato accanto al campo di testo per inviare:

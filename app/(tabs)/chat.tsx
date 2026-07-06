@@ -273,10 +273,15 @@ export default function ChatScreen() {
   const inputTextRef = useRef(inputText);
   inputTextRef.current = inputText;
 
-  const handleSend = useCallback(async () => {
-    const currentText = inputTextRef.current;
-    if (!currentText.trim() || !familyId || isSending) return;
-    const text = currentText.trim();
+  const isSendingRef = useRef(isSending);
+  isSendingRef.current = isSending;
+
+  const sendText = useCallback(async (rawText: string) => {
+    const text = rawText.trim();
+    if (!text || !familyId || isSendingRef.current) return;
+    // Lock immediato (prima di qualsiasi await): due trigger quasi simultanei
+    // (es. tap su invio + rilascio microfono) non devono fare doppio POST.
+    isSendingRef.current = true;
     setInputText("");
     if (inputRef.current) {
       inputRef.current.clear();
@@ -300,9 +305,22 @@ export default function ChatScreen() {
       Alert.alert("Errore", "Impossibile inviare il messaggio");
       setInputText(text);
     } finally {
+      isSendingRef.current = false;
       setIsSending(false);
     }
-  }, [familyId, isSending]);
+  }, [familyId]);
+
+  const handleSend = useCallback(() => {
+    void sendText(inputTextRef.current);
+  }, [sendText]);
+
+  // Dettatura vocale stile WhatsApp: al rilascio del microfono il testo
+  // trascritto viene inviato subito (unito a eventuale testo gia' digitato).
+  const handleVoiceMessage = useCallback((text: string) => {
+    const typed = inputTextRef.current.trim();
+    const combined = typed ? `${typed} ${text.trim()}` : text.trim();
+    void sendText(combined);
+  }, [sendText]);
 
   const handleTyping = useCallback((text: string) => {
     setInputText(text);
@@ -673,9 +691,7 @@ export default function ChatScreen() {
             <VoiceInput
               familyId={familyId}
               disabled={isSending}
-              onTranscribed={(text) =>
-                setInputText((prev) => (prev ? `${prev} ${text}` : text))
-              }
+              onTranscribed={handleVoiceMessage}
             />
           </View>
         ) : null}
