@@ -531,18 +531,20 @@ L'intelligenza artificiale in FamilySync offre queste funzionalità principali:
 ### Quante Volte Puoi Usare l'AI
 Le funzionalità AI sono disponibili gratuitamente con un **limite di utilizzo**; con **Premium** i limiti sono molto più alti. Limiti indicativi:
 
-| Funzionalità AI | Free | Premium |
-|-----------------|------|---------|
-| Suggerimenti spesa | 2 al giorno | 10 al giorno |
-| Ricerca ricette | 2 al giorno | 20 al giorno |
-| Generazione ricette (8 ricette) | 1 al giorno | 10 al giorno |
-| Piano pasti settimanale | 1 a settimana | 3 al giorno |
-| Consigli AI famiglia | 1 a settimana | 5 al giorno |
-| Ottimizzazione faccende | 1 al giorno | 10 al giorno |
-| Dettatura vocale | 3 al giorno | 30 al giorno |
-| Foto delle ricette | 10 al giorno | 50 al giorno |
+> ⚠️ **Importante:** tutti i limiti indicati (giornalieri e settimanali) sono **condivisi da tutta la famiglia**, non per singola persona. Esempio: con il piano Free "2 suggerimenti spesa al giorno" significa 2 in totale tra tutti i membri, non 2 a testa.
 
-> La **dettatura vocale (microfono)** presente in Ricette, Piano Pasti, Eventi, Faccende e Chat usa un'unica quota condivisa: con il piano Free sono **3 dettature al giorno** in totale tra tutte queste funzioni.
+| Funzionalità AI | Free (per famiglia) | Premium (per famiglia) |
+|-----------------|------|---------|
+| Suggerimenti spesa | 2 al giorno | 15 al giorno |
+| Ricerca ricette | 2 al giorno | 25 al giorno |
+| Generazione ricette (8 ricette) | 1 al giorno | 15 al giorno |
+| Piano pasti settimanale | 1 a settimana | 8 al giorno |
+| Consigli AI famiglia | 1 a settimana | 10 al giorno |
+| Ottimizzazione faccende | 1 al giorno | 15 al giorno |
+| Dettatura vocale | 3 al giorno | 35 al giorno |
+| Foto delle ricette | 10 al giorno | 55 al giorno |
+
+> La **dettatura vocale (microfono)** presente in Ricette, Piano Pasti, Eventi, Faccende e Chat usa un'unica quota condivisa: con il piano Free sono **3 dettature al giorno** in totale tra tutte queste funzioni (e tra tutti i membri della famiglia).
 
 > i limiti esatti possono essere aggiornati nel tempo. Le funzioni di base (calendario, spesa, faccende e chat) non hanno limiti di utilizzo, sia con Free sia con Premium. Le bollette invece hanno un limite con il piano Free (max 5 attive) e sono illimitate con Premium. Anche il numero di **membri della famiglia** è limitato con il piano Free (max 5) e illimitato con Premium.
 

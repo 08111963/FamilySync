@@ -16,13 +16,14 @@ type PlanFeature = { label: string; free: string; premium: string };
 
 const PLAN_FEATURES: PlanFeature[] = [
   { label: "Membri della famiglia", free: "Fino a 5", premium: "Illimitati" },
-  { label: "Suggerimenti spesa AI", free: "2 / giorno", premium: "10 / giorno" },
-  { label: "Ricerca ricette AI", free: "2 / giorno", premium: "20 / giorno" },
-  { label: "Idee ricette AI", free: "1 / giorno", premium: "10 / giorno" },
-  { label: "Piano pasti AI", free: "1 / settimana", premium: "3 / giorno" },
-  { label: "Consigli AI famiglia", free: "1 / settimana", premium: "5 / giorno" },
-  { label: "Ottimizzazione faccende AI", free: "1 / giorno", premium: "10 / giorno" },
-  { label: "Dettatura vocale (microfono)", free: "3 / giorno", premium: "30 / giorno" },
+  { label: "Suggerimenti spesa AI", free: "2 / giorno", premium: "15 / giorno" },
+  { label: "Ricerca ricette AI", free: "2 / giorno", premium: "25 / giorno" },
+  { label: "Idee ricette AI", free: "1 / giorno", premium: "15 / giorno" },
+  { label: "Piano pasti AI", free: "1 / settimana", premium: "8 / giorno" },
+  { label: "Consigli AI famiglia", free: "1 / settimana", premium: "10 / giorno" },
+  { label: "Ottimizzazione faccende AI", free: "1 / giorno", premium: "15 / giorno" },
+  { label: "Foto ricette AI", free: "10 / giorno", premium: "55 / giorno" },
+  { label: "Dettatura vocale (microfono)", free: "3 / giorno", premium: "35 / giorno" },
   { label: "Calendario, spesa, faccende, chat", free: "Illimitato", premium: "Illimitato" },
   { label: "Supporto prioritario", free: "—", premium: "Incluso" },
 ];
@@ -152,22 +153,50 @@ export default function PremiumScreen() {
         </View>
 
         <View style={styles.comparison_wrap}>
+          <View style={[styles.familyNote, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="people" size={16} color={colors.primary} />
+            <Text style={[styles.familyNoteText, { color: colors.textSecondary }]}>
+              I limiti sono <Text style={{ color: colors.text, fontFamily: "Inter_600SemiBold" }}>condivisi da tutta la famiglia</Text>, non per singola persona.
+            </Text>
+          </View>
+
           <View style={[styles.comparison, { borderColor: colors.border }]}>
-            {PLAN_FEATURES.map((f, i) => (
-              <View
-                key={f.label}
-                style={[
-                  styles.compareRow,
-                  { borderTopColor: colors.border, borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth },
-                ]}
-              >
-                <Text style={[styles.compareLabel, { color: colors.text }]}>{f.label}</Text>
-                <View style={styles.compareValues}>
-                  <Text style={[styles.compareFree, { color: colors.textSecondary }]}>{f.free}</Text>
-                  <Text style={[styles.comparePremium, { color: colors.primary }]}>{f.premium}</Text>
-                </View>
+            {/* Intestazione colonne: rende chiaro Gratis vs Premium */}
+            <View style={[styles.headerRow, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.headerFunc, { color: colors.textSecondary }]}>Funzione</Text>
+              <View style={styles.valCol}>
+                <Text style={[styles.headerFree, { color: colors.textSecondary }]}>Gratis</Text>
               </View>
-            ))}
+              <View style={[styles.valCol, styles.premiumCol, { backgroundColor: colors.primary + "1A" }]}>
+                <Ionicons name="diamond" size={11} color={colors.primary} />
+                <Text style={[styles.headerPremium, { color: colors.primary }]}>Premium</Text>
+              </View>
+            </View>
+
+            {PLAN_FEATURES.map((f, i) => {
+              const isLast = i === PLAN_FEATURES.length - 1;
+              return (
+                <View
+                  key={f.label}
+                  style={[styles.compareRow, { borderTopColor: colors.border }]}
+                >
+                  <Text style={[styles.compareLabel, { color: colors.text }]}>{f.label}</Text>
+                  <View style={styles.valCol}>
+                    <Text style={[styles.compareFree, { color: colors.textSecondary }]}>{f.free}</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.valCol,
+                      styles.premiumCol,
+                      { backgroundColor: colors.primary + "1A" },
+                      isLast && styles.premiumColLast,
+                    ]}
+                  >
+                    <Text style={[styles.comparePremium, { color: colors.primary }]}>{f.premium}</Text>
+                  </View>
+                </View>
+              );
+            })}
           </View>
         </View>
 
@@ -315,17 +344,61 @@ const styles = StyleSheet.create({
   planColTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
   planColPrice: { fontSize: 20, fontFamily: "Inter_700Bold", marginTop: 4 },
   planColPeriod: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  familyNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  familyNoteText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 18 },
   comparison: {
     borderRadius: 16,
     borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
+    overflow: "hidden",
   },
-  compareRow: { paddingVertical: 12 },
-  compareLabel: { fontSize: 14, fontFamily: "Inter_500Medium", marginBottom: 6 },
-  compareValues: { flexDirection: "row", justifyContent: "space-between" },
-  compareFree: { fontSize: 13, fontFamily: "Inter_400Regular", flex: 1 },
-  comparePremium: { fontSize: 13, fontFamily: "Inter_600SemiBold", flex: 1, textAlign: "right" },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerFunc: {
+    flex: 1,
+    paddingLeft: 14,
+    paddingVertical: 10,
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    textAlignVertical: "center",
+  },
+  headerFree: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  headerPremium: { fontSize: 12, fontFamily: "Inter_700Bold" },
+  compareRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  compareLabel: {
+    flex: 1,
+    paddingLeft: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+    textAlignVertical: "center",
+  },
+  valCol: {
+    width: 82,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  premiumCol: { flexDirection: "row", gap: 3 },
+  premiumColLast: { borderBottomRightRadius: 15 },
+  compareFree: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  comparePremium: { fontSize: 13, fontFamily: "Inter_700Bold" },
   roleNote: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", marginBottom: 12, lineHeight: 18 },
   subscribeButton: {
     paddingVertical: 16,

@@ -21,6 +21,8 @@ description: How Premium status, AI quotas, and store purchases work in FamilySy
 
 # AI is freemium by QUOTA, not by paywall
 - AI is never sold separately. The free/premium difference is ONLY the per-plan quota in `PLAN_LIMITS` (`server/lib/ai-usage.ts`), resolved server-side in `reserveAiSlot` via `getPlanForFamily`. Quotas have a `window` of `day|week`; the 429 message reflects which.
+- **Quotas are PER FAMILY (shared pool), not per member** — enforced by `store.reserve` counting `ai_usage` rows by `familyId`. This is a stated user requirement; the Premium card (`app/premium.tsx`) and guide surface it explicitly ("condivisi da tutta la famiglia"). Do NOT switch to per-user counting without an explicit request.
+- **Premium quotas were raised +5 across every limited feature** (shopping-suggestions 15, recipe-search 25, recipe-suggestions 15, weekly-meal-plan 8/day, insights 10/day, chore-optimization 15, voice-transcription 35, recipe-image 55). Free plan intentionally left unchanged (the earlier idea of adding 5/day caps to calendar/shopping/chores/chat was ABANDONED — "il piano free va bene così").
 - **Why:** requirement was a real freemium model — AI stays demoable for free families but limited; premium unlocks higher quotas.
 - **Family admins bypass AI quotas entirely.** `reserveAiSlot` checks the requester's `family_members.role`; if `admin`, it sets `effectiveMax = Number.MAX_SAFE_INTEGER` so they are never rate-limited (usage is still tracked in `ai_usage`). The admin lookup fails closed to non-admin on DB error.
 - **Why:** explicit user requirement — the family admin/owner must never hit AI limits. Centralized in `reserveAiSlot` so every feature using `reserveAiSlot`/`withAiUsage` inherits it.
@@ -35,7 +37,7 @@ description: How Premium status, AI quotas, and store purchases work in FamilySy
 - **Free = max 5 family members; Premium = unlimited.** Gate = `isFamilyMemberLimitReached(familyId)` (fast pre-check) + `isFamilyMemberLimitReachedTx(tx, familyId)` (authoritative) in `server/lib/entitlements.ts`; error is `403 MEMBER_LIMIT_REACHED`. Premium → always false.
 - **The real enforcement is ATOMIC inside the member-insert transaction** (join + invite-accept): `isFamilyMemberLimitReachedTx` takes `pg_advisory_xact_lock(hashtext('family-members:'+familyId))` then counts, so concurrent joins can't both see count=4 and exceed 5. The pre-transaction check is only a fast-fail UX guard — do NOT rely on it alone.
 - **Why:** a count-then-insert check outside a lock is racy (review caught it); the advisory-lock-in-tx pattern mirrors the AI-quota one and is the project convention for count-based caps.
-- Voice dictation (`voice-transcription` in `PLAN_LIMITS`, `ai-usage.ts`) is a single shared daily quota across all mic features (events, chores, recipes, meal-plan, chat): Free = 3/day, Premium = 30/day.
+- Voice dictation (`voice-transcription` in `PLAN_LIMITS`, `ai-usage.ts`) is a single shared daily quota across all mic features (events, chores, recipes, meal-plan, chat): Free = 3/day, Premium = 35/day.
 
 # Owner premium permanente (account proprietario)
 - Account "proprietario" (env `PREMIUM_OWNER_EMAILS`, CSV → config) hanno Premium permanente gratuito realizzato come VERO record `entitlements` (active, expiresAt=null), NON come bypass in isPremium → l'invariante "entitlements = unica fonte di verità" resta intatta.

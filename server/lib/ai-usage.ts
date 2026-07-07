@@ -47,14 +47,14 @@ export const PLAN_LIMITS: Record<Plan, Record<AiFeature, FeatureLimit>> = {
     "recipe-image": { max: 10, window: "day" },
   },
   premium: {
-    "shopping-suggestions": { max: 10, window: "day" },
-    "recipe-search": { max: 20, window: "day" },
-    "recipe-suggestions": { max: 10, window: "day" },
-    "weekly-meal-plan": { max: 3, window: "day" },
-    insights: { max: 5, window: "day" },
-    "chore-optimization": { max: 10, window: "day" },
-    "voice-transcription": { max: 30, window: "day" },
-    "recipe-image": { max: 50, window: "day" },
+    "shopping-suggestions": { max: 15, window: "day" },
+    "recipe-search": { max: 25, window: "day" },
+    "recipe-suggestions": { max: 15, window: "day" },
+    "weekly-meal-plan": { max: 8, window: "day" },
+    insights: { max: 10, window: "day" },
+    "chore-optimization": { max: 15, window: "day" },
+    "voice-transcription": { max: 35, window: "day" },
+    "recipe-image": { max: 55, window: "day" },
   },
 };
 
