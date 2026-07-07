@@ -69,6 +69,32 @@ export default function CalendarSyncScreen() {
     }
   };
 
+  const handleDownloadIcs = async () => {
+    if (Platform.OS !== "web" || !feedUrl || syncing) return;
+    setSyncing(true);
+    try {
+      const res = await fetch(feedUrl);
+      if (!res.ok) throw new Error("fetch failed");
+      const text = await res.text();
+      const blob = new Blob([text], { type: "text/calendar;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "familysync.ics";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      showMessage(
+        "Attenzione",
+        "Non sono riuscito a scaricare il file. Riprova piu' tardi."
+      );
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleCopy = async () => {
     if (!feedUrl) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -170,6 +196,35 @@ export default function CalendarSyncScreen() {
               <Ionicons name="sync-outline" size={18} color="#FFFFFF" />
               <Text style={styles.actionBtnText}>
                 {familyLoading ? "Carico gli eventi..." : syncing ? "Sincronizzo..." : "Sincronizza ora"}
+              </Text>
+            </Pressable>
+          </Card>
+        )}
+
+        {Platform.OS === "web" && !!feedUrl && (
+          <Card>
+            <View style={styles.cardHeader}>
+              <View style={[styles.cardIcon, { backgroundColor: colors.primary + "20" }]}>
+                <Ionicons name="download-outline" size={22} color={colors.primary} />
+              </View>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>
+                Scarica e apri (modo piu' facile da PC)
+              </Text>
+            </View>
+            <Text style={[styles.cardText, { color: colors.textSecondary }]}>
+              Scarica il file con tutti gli eventi della famiglia e aprilo con un doppio clic: il
+              tuo calendario (Google, Apple o Outlook) ti chiedera' di aggiungerli. Nessun link da
+              copiare. Per gli aggiornamenti automatici usa invece il link qui sotto.
+            </Text>
+            <Pressable
+              onPress={handleDownloadIcs}
+              disabled={syncing}
+              style={[styles.actionBtn, { backgroundColor: colors.primary, alignSelf: "flex-start", opacity: syncing ? 0.6 : 1 }]}
+              testID="download-ics"
+            >
+              <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.actionBtnText}>
+                {syncing ? "Preparo il file..." : "Scarica calendario"}
               </Text>
             </Pressable>
           </Card>
