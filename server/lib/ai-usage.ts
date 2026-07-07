@@ -43,7 +43,7 @@ export const PLAN_LIMITS: Record<Plan, Record<AiFeature, FeatureLimit>> = {
     "weekly-meal-plan": { max: 1, window: "week" },
     insights: { max: 1, window: "week" },
     "chore-optimization": { max: 1, window: "day" },
-    "voice-transcription": { max: 5, window: "day" },
+    "voice-transcription": { max: 3, window: "day" },
     "recipe-image": { max: 10, window: "day" },
   },
   premium: {

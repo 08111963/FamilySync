@@ -9,6 +9,7 @@ import { families, familyMembers, familyInvites, users } from '../../shared/sche
 import { eq, and, isNull } from 'drizzle-orm';
 import { generateAccessToken, generateRefreshToken } from '../lib/jwt';
 import { hashInviteToken } from '../lib/invite-token';
+import { isFamilyMemberLimitReached, isFamilyMemberLimitReachedTx, FREE_MAX_FAMILY_MEMBERS } from '../lib/entitlements';
 import { broadcastToFamily } from '../lib/websocket';
 import { logger } from '../lib/logger';
 
@@ -121,6 +122,16 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
       });
     }
 
+    // Piano Free: limite di membri. Verifichiamo prima di creare account+membership.
+    if (await isFamilyMemberLimitReached(invite.familyId)) {
+      return res.status(403).json({
+        error: {
+          code: "MEMBER_LIMIT_REACHED",
+          message: `Questa famiglia ha raggiunto il limite di ${FREE_MAX_FAMILY_MEMBERS} membri del piano Free.`,
+        },
+      });
+    }
+
     const passwordHash = await bcrypt.hash(parsed.data.password, 12);
     const name = parsed.data.name || invite.invitedName || invite.email.split('@')[0];
 
@@ -128,6 +139,12 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
     let createdMember;
     try {
       const result = await db.transaction(async (tx) => {
+        // Guardia ATOMICA del limite Free: advisory lock per-famiglia + conteggio
+        // dentro la transazione, così accettazioni concorrenti non superano 5.
+        if (await isFamilyMemberLimitReachedTx(tx, invite.familyId)) {
+          throw new Error('MEMBER_LIMIT_REACHED');
+        }
+
         // Consumo atomico monouso dell'invito.
         const claimed = await tx.update(familyInvites)
           .set({ acceptedAt: new Date() })
@@ -164,6 +181,14 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
       createdUser = result.user;
       createdMember = result.member;
     } catch (txError: any) {
+      if (txError?.message === 'MEMBER_LIMIT_REACHED') {
+        return res.status(403).json({
+          error: {
+            code: "MEMBER_LIMIT_REACHED",
+            message: `Questa famiglia ha raggiunto il limite di ${FREE_MAX_FAMILY_MEMBERS} membri del piano Free.`,
+          },
+        });
+      }
       if (txError?.message === 'INVITE_RACE') {
         return res.status(409).json({ error: { code: "ALREADY_ACCEPTED", message: "Invito già accettato" } });
       }

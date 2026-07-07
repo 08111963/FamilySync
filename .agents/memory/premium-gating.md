@@ -31,6 +31,12 @@ description: How Premium status, AI quotas, and store purchases work in FamilySy
 - **`lib/iap.ts` (client) is intentionally a STUB**: `isIapAvailable()` returns false; purchase/restore throw `IAP_NOT_AVAILABLE`. Real native IAP (StoreKit / Play Billing) needs a production native build + store credentials — not possible in Expo Go. The backend + verification are fully real and unit-tested with a fake verifier.
 - Stripe remains dormant (`PREMIUM_PAYMENTS_ENABLED=false`) and must NOT unlock mobile premium. `premium-disabled.test.ts` guards the no-Stripe invariant.
 
+# Free-plan hard limits: family members + voice dictation
+- **Free = max 5 family members; Premium = unlimited.** Gate = `isFamilyMemberLimitReached(familyId)` (fast pre-check) + `isFamilyMemberLimitReachedTx(tx, familyId)` (authoritative) in `server/lib/entitlements.ts`; error is `403 MEMBER_LIMIT_REACHED`. Premium → always false.
+- **The real enforcement is ATOMIC inside the member-insert transaction** (join + invite-accept): `isFamilyMemberLimitReachedTx` takes `pg_advisory_xact_lock(hashtext('family-members:'+familyId))` then counts, so concurrent joins can't both see count=4 and exceed 5. The pre-transaction check is only a fast-fail UX guard — do NOT rely on it alone.
+- **Why:** a count-then-insert check outside a lock is racy (review caught it); the advisory-lock-in-tx pattern mirrors the AI-quota one and is the project convention for count-based caps.
+- Voice dictation (`voice-transcription` in `PLAN_LIMITS`, `ai-usage.ts`) is a single shared daily quota across all mic features (events, chores, recipes, meal-plan, chat): Free = 3/day, Premium = 30/day.
+
 # Owner premium permanente (account proprietario)
 - Account "proprietario" (env `PREMIUM_OWNER_EMAILS`, CSV → config) hanno Premium permanente gratuito realizzato come VERO record `entitlements` (active, expiresAt=null), NON come bypass in isPremium → l'invariante "entitlements = unica fonte di verità" resta intatta.
 - **Meccanismo**: seed idempotente all'avvio crea/aggiorna l'entitlement per le famiglie con un membro owner; un guard nella sync RevenueCat forza active per l'owner così la sync senza acquisto reale (active=false) non lo declassa mai.

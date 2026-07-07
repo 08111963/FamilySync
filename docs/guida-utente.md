@@ -107,6 +107,8 @@ Per aggiungere i tuoi familiari:
 - Tocca **Invia Invito**
 - Il familiare riceverà un'email con un **link sicuro**: lo aprirà, sceglierà la sua password ed entrerà nella famiglia
 
+> Il piano **Free** consente fino a **5 membri** per famiglia. Per aggiungere altri familiari serve l'abbonamento **Premium** (membri illimitati).
+
 > per i dettagli completi su come funziona l'invito leggi la sezione "Sistema di Inviti".
 
 ---
@@ -537,10 +539,12 @@ Le funzionalità AI sono disponibili gratuitamente con un **limite di utilizzo**
 | Piano pasti settimanale | 1 a settimana | 3 al giorno |
 | Consigli AI famiglia | 1 a settimana | 5 al giorno |
 | Ottimizzazione faccende | 1 al giorno | 10 al giorno |
-| Dettatura vocale | 5 al giorno | 30 al giorno |
+| Dettatura vocale | 3 al giorno | 30 al giorno |
 | Foto delle ricette | 10 al giorno | 50 al giorno |
 
-> i limiti esatti possono essere aggiornati nel tempo. Le funzioni di base (calendario, spesa, faccende e chat) non hanno limiti di utilizzo, sia con Free sia con Premium. Le bollette invece hanno un limite con il piano Free (max 5 attive) e sono illimitate con Premium.
+> La **dettatura vocale (microfono)** presente in Ricette, Piano Pasti, Eventi, Faccende e Chat usa un'unica quota condivisa: con il piano Free sono **3 dettature al giorno** in totale tra tutte queste funzioni.
+
+> i limiti esatti possono essere aggiornati nel tempo. Le funzioni di base (calendario, spesa, faccende e chat) non hanno limiti di utilizzo, sia con Free sia con Premium. Le bollette invece hanno un limite con il piano Free (max 5 attive) e sono illimitate con Premium. Anche il numero di **membri della famiglia** è limitato con il piano Free (max 5) e illimitato con Premium.
 
 ### Privacy e Dati AI
 - Quando l'AI è attiva, vengono inviati al servizio AI solo i dati strettamente necessari per generare i suggerimenti: titoli degli eventi, nomi degli articoli della spesa, titoli delle faccende e dati aggregati (es. numero di membri)
@@ -562,6 +566,7 @@ FamilySync è gratuita per le funzioni principali. Con **Premium** sblocchi funz
 - Solo l'**amministratore** (proprietario del gruppo) può acquistare o gestire l'abbonamento
 
 ### Cosa Include Premium
+- **Membri della famiglia illimitati** (con Free il limite è 5 membri)
 - **Bollette illimitate** (con Free il limite è 5 bollette attive)
 - **Allegati alle bollette**: foto e documenti PDF
 - **Ripartizione delle bollette** tra i membri (equa o personalizzata)

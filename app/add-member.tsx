@@ -55,7 +55,9 @@ export default function AddMemberScreen() {
     } catch (err: any) {
       const msg = typeof err?.message === "string" ? err.message : "";
       let friendly = "Errore nell'invio dell'invito. Riprova.";
-      if (msg.includes("409") || msg.includes("ALREADY_MEMBER")) {
+      if (msg.includes("MEMBER_LIMIT_REACHED")) {
+        friendly = "Il piano Free consente al massimo 5 membri. Passa a Premium per aggiungere altri familiari.";
+      } else if (msg.includes("409") || msg.includes("ALREADY_MEMBER")) {
         friendly = "Questa persona fa già parte della famiglia.";
       } else if (msg.includes("EMAIL_NOT_CONFIGURED") || msg.includes("503")) {
         friendly = "Il servizio email non è configurato. Contatta l'assistenza.";

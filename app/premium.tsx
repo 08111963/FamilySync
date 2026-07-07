@@ -15,12 +15,14 @@ import { useSubscription, isRevenueCatTestMode } from "@/lib/revenuecat";
 type PlanFeature = { label: string; free: string; premium: string };
 
 const PLAN_FEATURES: PlanFeature[] = [
+  { label: "Membri della famiglia", free: "Fino a 5", premium: "Illimitati" },
   { label: "Suggerimenti spesa AI", free: "2 / giorno", premium: "10 / giorno" },
   { label: "Ricerca ricette AI", free: "2 / giorno", premium: "20 / giorno" },
   { label: "Idee ricette AI", free: "1 / giorno", premium: "10 / giorno" },
   { label: "Piano pasti AI", free: "1 / settimana", premium: "3 / giorno" },
   { label: "Consigli AI famiglia", free: "1 / settimana", premium: "5 / giorno" },
   { label: "Ottimizzazione faccende AI", free: "1 / giorno", premium: "10 / giorno" },
+  { label: "Dettatura vocale (microfono)", free: "3 / giorno", premium: "30 / giorno" },
   { label: "Calendario, spesa, faccende, chat", free: "Illimitato", premium: "Illimitato" },
   { label: "Supporto prioritario", free: "—", premium: "Incluso" },
 ];

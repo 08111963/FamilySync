@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import express from "express";
 import type { Server } from "node:http";
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { users, families, familyMembers, familyInvites } from "../../shared/schema";
+import { users, families, familyMembers, familyInvites, entitlements } from "../../shared/schema";
 import { registerRoutes } from "../routes";
 import { generateAccessToken } from "../lib/jwt";
 
@@ -81,6 +81,17 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     created.families.push(fam.id);
     await addMembership(familyId, adminId, "admin");
 
+    // La famiglia del flusso invito è Premium: questi test verificano la
+    // sicurezza del flusso (email-mismatch, token scaduto, ecc.), NON il limite
+    // membri del piano Free. Premium => membri illimitati.
+    await db.insert(entitlements).values({
+      familyId,
+      userId: adminId,
+      platform: "revenuecat",
+      productId: "familysync_premium_yearly",
+      status: "active",
+    });
+
     const member = await seedUser(`member-${uniq()}@example.com`, true);
     memberId = member.id;
     memberToken = generateAccessToken(member);
@@ -92,6 +103,7 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     // pulizia: gli inviti e i membri vengono rimossi a cascata con le famiglie
     for (const fid of created.families) {
       await db.delete(familyInvites).where(eq(familyInvites.familyId, fid));
+      await db.delete(entitlements).where(eq(entitlements.familyId, fid));
       await db.delete(familyMembers).where(eq(familyMembers.familyId, fid));
       await db.delete(families).where(eq(families.id, fid));
     }
@@ -289,6 +301,78 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     const acc = await request("POST", `/api/invites/${token}/accept`, { password: "Abcdef12", acceptedTerms: true });
     assert.equal(acc.status, 400);
     assert.equal((await acc.json()).error.code, "INVITE_EXPIRED");
+  });
+
+  test("piano Free: invito bloccato al 6° membro (MEMBER_LIMIT_REACHED)", async () => {
+    // Famiglia FREE dedicata (nessun entitlement) con 5 membri già presenti.
+    const freeAdmin = await seedUser(`free-admin-${uniq()}@example.com`, true);
+    const freeAdminToken = generateAccessToken(freeAdmin);
+    const [freeFam] = await db.insert(families).values({ name: "Famiglia Free", colorTheme: "#6366F1" }).returning();
+    created.families.push(freeFam.id);
+    await addMembership(freeFam.id, freeAdmin.id, "admin");
+    // aggiungo altri 4 membri => 5 in totale (limite Free)
+    for (let i = 0; i < 4; i++) {
+      const m = await seedUser(`free-m${i}-${uniq()}@example.com`, true);
+      await addMembership(freeFam.id, m.id, "adult");
+    }
+
+    const res = await request(
+      "POST",
+      `/api/families/${freeFam.id}/invite`,
+      { email: `sesto-${uniq()}@example.com` },
+      freeAdminToken,
+    );
+    assert.equal(res.status, 403);
+    assert.equal((await res.json()).error.code, "MEMBER_LIMIT_REACHED");
+  });
+
+  test("piano Free: due join concorrenti sull'ultimo posto -> solo uno passa (guardia atomica)", async () => {
+    const cAdmin = await seedUser(`conc-admin-${uniq()}@example.com`, true);
+    const [cFam] = await db.insert(families).values({ name: "Famiglia Conc", colorTheme: "#6366F1" }).returning();
+    created.families.push(cFam.id);
+    await addMembership(cFam.id, cAdmin.id, "admin");
+    // 3 membri extra => 4 totali, resta UN solo posto libero (limite 5)
+    for (let i = 0; i < 3; i++) {
+      const m = await seedUser(`conc-m${i}-${uniq()}@example.com`, true);
+      await addMembership(cFam.id, m.id, "adult");
+    }
+
+    const makeInviteFor = async (email: string) => {
+      const raw = `${uniq()}${Math.random().toString(36).slice(2)}`;
+      const tokenHash = createHash("sha256").update(raw).digest("hex");
+      await db.insert(familyInvites).values({
+        familyId: cFam.id,
+        email: email.toLowerCase(),
+        role: "adult",
+        tokenHash,
+        invitedBy: cAdmin.id,
+        expiresAt: new Date(Date.now() + 3_600_000),
+      });
+      return raw;
+    };
+
+    const uA = await seedUser(`conc-joinA-${uniq()}@example.com`, true);
+    const uB = await seedUser(`conc-joinB-${uniq()}@example.com`, true);
+    const tokenA = await makeInviteFor(uA.email);
+    const tokenB = await makeInviteFor(uB.email);
+
+    // Due join in PARALLELO: solo uno può occupare l'ultimo posto.
+    const [rA, rB] = await Promise.all([
+      request("POST", `/api/families/join/${tokenA}`, {}, generateAccessToken(uA)),
+      request("POST", `/api/families/join/${tokenB}`, {}, generateAccessToken(uB)),
+    ]);
+
+    const statuses = [rA.status, rB.status].sort();
+    assert.deepEqual(statuses, [200, 403], "esattamente un join deve passare, l'altro bloccato");
+    const failed = rA.status === 403 ? rA : rB;
+    assert.equal((await failed.json()).error.code, "MEMBER_LIMIT_REACHED");
+
+    // La famiglia deve avere ESATTAMENTE 5 membri (limite non superato).
+    const [cnt] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(familyMembers)
+      .where(eq(familyMembers.familyId, cFam.id));
+    assert.equal(cnt.n, 5, "il limite di 5 membri non deve essere superato");
   });
 
   test("in PRODUZIONE senza email configurata: 503 EMAIL_NOT_CONFIGURED e nessun invito creato", async () => {

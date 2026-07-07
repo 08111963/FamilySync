@@ -13,6 +13,7 @@ import { broadcastToFamily } from '../lib/websocket';
 import { config } from '../lib/config';
 import { logger } from '../lib/logger';
 import { generateInviteToken, hashInviteToken } from '../lib/invite-token';
+import { isFamilyMemberLimitReached, isFamilyMemberLimitReachedTx, FREE_MAX_FAMILY_MEMBERS } from '../lib/entitlements';
 
 const router = Router();
 
@@ -206,6 +207,17 @@ router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamil
       }
     }
 
+    // Piano Free: massimo FREE_MAX_FAMILY_MEMBERS membri. Blocchiamo già l'invito
+    // per non creare token che non potrebbero comunque essere accettati.
+    if (await isFamilyMemberLimitReached(familyId)) {
+      return res.status(403).json({
+        error: {
+          code: "MEMBER_LIMIT_REACHED",
+          message: `Il piano Free consente al massimo ${FREE_MAX_FAMILY_MEMBERS} membri. Passa a Premium per aggiungere altri familiari.`,
+        },
+      });
+    }
+
     const token = generateInviteToken();
     const tokenHash = hashInviteToken(token);
     const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
@@ -292,9 +304,26 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
       return res.status(409).json({ error: { code: "ALREADY_MEMBER", message: "Fai già parte di questa famiglia" } });
     }
 
+    // Ricontrolliamo il limite del piano Free anche in accettazione: l'invito
+    // potrebbe essere stato creato quando c'era ancora posto.
+    if (await isFamilyMemberLimitReached(invite.familyId)) {
+      return res.status(403).json({
+        error: {
+          code: "MEMBER_LIMIT_REACHED",
+          message: `Questa famiglia ha raggiunto il limite di ${FREE_MAX_FAMILY_MEMBERS} membri del piano Free.`,
+        },
+      });
+    }
+
     // Consumo monouso + creazione membership nella STESSA transazione: se l'insert
     // del membro fallisce, il claim del token viene annullato (rollback atomico).
     const txResult = await db.transaction(async (tx) => {
+      // Guardia ATOMICA del limite Free: advisory lock per-famiglia + conteggio
+      // dentro la transazione, così accettazioni concorrenti non superano 5.
+      if (await isFamilyMemberLimitReachedTx(tx, invite.familyId)) {
+        return { limitReached: true as const };
+      }
+
       const claimed = await tx.update(familyInvites)
         .set({ acceptedAt: new Date(), acceptedByUserId: req.user!.userId })
         .where(and(eq(familyInvites.id, invite.id), isNull(familyInvites.acceptedAt)))
@@ -315,6 +344,15 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
 
       return { conflict: false as const, member };
     });
+
+    if (txResult.limitReached) {
+      return res.status(403).json({
+        error: {
+          code: "MEMBER_LIMIT_REACHED",
+          message: `Questa famiglia ha raggiunto il limite di ${FREE_MAX_FAMILY_MEMBERS} membri del piano Free.`,
+        },
+      });
+    }
 
     if (txResult.conflict) {
       return res.status(409).json({ error: { code: "ALREADY_ACCEPTED", message: "Invito già accettato" } });

@@ -263,6 +263,48 @@ export async function getPlanForFamily(familyId: string): Promise<Plan> {
 }
 
 /**
+ * Numero massimo di membri per una famiglia con piano FREE. Le famiglie Premium
+ * non hanno limite. Vedi isFamilyMemberLimitReached.
+ */
+export const FREE_MAX_FAMILY_MEMBERS = 5;
+
+/**
+ * Ritorna true se la famiglia ha raggiunto (o superato) il limite di membri del
+ * piano free. Le famiglie Premium ritornano sempre false (nessun limite).
+ * Fail-open in caso di errore di conteggio non è accettabile per un limite di
+ * business: qui l'errore risale al chiamante (le rotte lo gestiscono con 500).
+ */
+export async function isFamilyMemberLimitReached(familyId: string): Promise<boolean> {
+  if (await isPremium(familyId)) return false;
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(familyMembers)
+    .where(eq(familyMembers.familyId, familyId));
+  return (row?.count ?? 0) >= FREE_MAX_FAMILY_MEMBERS;
+}
+
+/**
+ * Versione ATOMICA del controllo limite membri, da usare DENTRO la transazione
+ * che inserisce il nuovo membro. Prende un advisory lock per-famiglia (rilasciato
+ * al commit/rollback): serializza le accettazioni/join concorrenti così due
+ * richieste non possono entrambe leggere count=4 e superare il limite (race).
+ * Le famiglie Premium ritornano sempre false (nessun limite).
+ * Ritorna true se il limite è raggiunto (il chiamante deve annullare).
+ */
+export async function isFamilyMemberLimitReachedTx(
+  tx: Pick<typeof db, "execute" | "select">,
+  familyId: string,
+): Promise<boolean> {
+  if (await isPremium(familyId)) return false;
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`family-members:${familyId}`}))`);
+  const [row] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(familyMembers)
+    .where(eq(familyMembers.familyId, familyId));
+  return (row?.count ?? 0) >= FREE_MAX_FAMILY_MEMBERS;
+}
+
+/**
  * Attiva le prove gratuite "pending" delle famiglie a cui l'utente appartiene.
  * Chiamata al login: se un entitlement è una prova (trialDays valorizzato) ed è
  * ancora "pending", parte il conteggio dei giorni DAL PRIMO ACCESSO impostando
