@@ -183,9 +183,14 @@ export default function CalendarSyncScreen() {
                 Sincronizza sul telefono (1 tocco)
               </Text>
             </View>
+            <Text style={[styles.cardText, { color: colors.text }]}>
+              Copia subito gli eventi della famiglia nel calendario del tuo telefono (in un
+              calendario dedicato "FamilySync").
+            </Text>
             <Text style={[styles.cardText, { color: colors.textSecondary }]}>
-              Copia tutti gli eventi futuri della famiglia in un calendario "FamilySync" dedicato
-              sul tuo telefono. Ripeti quando vuoi per aggiornarli: niente duplicati.
+              Attenzione: è una copia del momento e NON si aggiorna da sola. Quando aggiungi o
+              cambi un evento, ritocca "Sincronizza ora" per allineare la copia (niente doppioni).
+              Vuoi che si aggiorni da solo? Usa invece il link qui sotto.
             </Text>
             <Pressable
               onPress={handleSyncToPhone}
