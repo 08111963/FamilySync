@@ -263,12 +263,17 @@ export default function CalendarSyncScreen() {
               <Ionicons name="link-outline" size={22} color={colors.primary} />
             </View>
             <Text style={[styles.cardTitle, { color: colors.text }]}>
-              Link per Google e Apple Calendar
+              Link per aggiornamento automatico (Google e Apple)
             </Text>
           </View>
+          <Text style={[styles.cardText, { color: colors.text }]}>
+            A cosa serve: colleghi questo link al tuo calendario una volta sola e da quel momento
+            gli eventi della famiglia si aggiornano da soli.
+          </Text>
           <Text style={[styles.cardText, { color: colors.textSecondary }]}>
-            Aggiungi questo link una sola volta al tuo calendario: vedrai sempre tutti gli eventi
-            della famiglia, aggiornati automaticamente.
+            Ogni nuovo evento compare automaticamente in Google o Apple Calendar, su tutti i tuoi
+            dispositivi. È la differenza con gli altri metodi qui sopra, che invece salvano gli
+            eventi una volta sola e vanno ripetuti a ogni aggiornamento.
           </Text>
 
           {isLoading ? (
