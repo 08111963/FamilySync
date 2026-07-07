@@ -109,3 +109,7 @@ ENABLE_TESTER_ACCOUNTS = "true"
 
 [userenv.production]
 EXPO_PUBLIC_DOMAIN = "familysync.eu"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 180000
