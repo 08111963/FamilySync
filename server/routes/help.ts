@@ -143,13 +143,65 @@ function formatInline(text: string): string {
   return text;
 }
 
-function htmlWrapper(title: string, body: string): string {
+function extractFaqJsonLd(md: string): string | null {
+  const faqStart = md.indexOf('## 18. Domande Frequenti (FAQ)');
+  if (faqStart === -1) return null;
+
+  const faqSection = md.slice(faqStart);
+  const pairs: Array<{ question: string; answer: string }> = [];
+
+  const lines = faqSection.split('\n');
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    const questionMatch = line.match(/^\*\*(.+\?)\*\*$/);
+    if (questionMatch) {
+      const question = questionMatch[1].trim();
+      const answerLines: string[] = [];
+      i++;
+      while (i < lines.length) {
+        const next = lines[i].trim();
+        if (next === '' || next === '---' || next.match(/^\*\*(.+)\*\*$/)) break;
+        if (next !== '') answerLines.push(next);
+        i++;
+      }
+      const answer = answerLines.join(' ').trim();
+      if (question && answer) {
+        pairs.push({ question, answer });
+      }
+      continue;
+    }
+    i++;
+  }
+
+  if (pairs.length === 0) return null;
+
+  const schema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": pairs.map(p => ({
+      "@type": "Question",
+      "name": p.question,
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": p.answer
+      }
+    }))
+  };
+
+  return JSON.stringify(schema, null, 2);
+}
+
+function htmlWrapper(title: string, body: string, faqJsonLd?: string | null): string {
+  const ldScript = faqJsonLd
+    ? `\n  <script type="application/ld+json">\n${faqJsonLd}\n  </script>`
+    : '';
   return `<!DOCTYPE html>
 <html lang="it">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} - ${APP_NAME}</title>
+  <title>${title} - ${APP_NAME}</title>${ldScript}
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -304,10 +356,11 @@ router.get('/user-guide', (_req: Request, res: Response) => {
     const mdPath = path.resolve(process.cwd(), 'docs', 'guida-utente.md');
     const mdContent = fs.readFileSync(mdPath, 'utf-8');
     const bodyHtml = markdownToHtml(mdContent);
+    const faqJsonLd = extractFaqJsonLd(mdContent);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.removeHeader('X-Frame-Options');
     res.setHeader('Content-Security-Policy', "frame-ancestors *");
-    res.send(htmlWrapper('Guida Utente', bodyHtml));
+    res.send(htmlWrapper('Guida Utente', bodyHtml, faqJsonLd));
   } catch (err) {
     res.status(500).send('Errore nel caricamento della guida utente.');
   }
