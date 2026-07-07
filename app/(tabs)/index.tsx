@@ -160,7 +160,7 @@ export default function HomeScreen() {
           </Pressable>
         </View>
         {upcomingEvents.length === 0 ? (
-          <Card onPress={() => router.push("/(tabs)/calendar")}>
+          <Card onPress={() => router.push("/add-event")}>
             <EmptyState
               icon="calendar-outline"
               title="Nessun evento in programma"
@@ -173,7 +173,7 @@ export default function HomeScreen() {
               <Card
                 key={event.id}
                 style={styles.eventCard}
-                onPress={() => router.push("/(tabs)/calendar")}
+                onPress={() => router.push("/add-event")}
               >
                 <View style={[styles.eventColorBar, { backgroundColor: event.color }]} />
                 <View style={styles.eventContent}>

@@ -11,6 +11,7 @@ import { VoiceInput } from "@/components/VoiceInput";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
+import { CalendarPicker } from "@/components/CalendarPicker";
 import Colors from "@/constants/colors";
 
 const EVENT_COLORS = Object.values(Colors.light.calendar);
@@ -31,47 +32,26 @@ export default function AddEventScreen() {
     return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d;
   };
 
-  const todayIso = new Date().toISOString().split("T")[0];
+  const now = new Date();
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const initialIso =
     typeof params.date === "string" && isRealIso(params.date) ? params.date : todayIso;
 
-  const isoToEuro = (iso: string) => {
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-    return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
-  };
-  const euroToIso = (euro: string) => {
-    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(euro.trim());
-    if (!m) return null;
-    const iso = `${m[3]}-${m[2]}-${m[1]}`;
-    return isRealIso(iso) ? iso : null;
-  };
-  const handleDateChange = (text: string) => {
-    const digits = text.replace(/\D/g, "").slice(0, 8);
-    if (digits.length > 4) {
-      setDate(`${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`);
-    } else if (digits.length > 2) {
-      setDate(`${digits.slice(0, 2)}/${digits.slice(2)}`);
-    } else {
-      setDate(digits);
-    }
-  };
-
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [date, setDate] = useState(isoToEuro(initialIso));
+  const [date, setDate] = useState(initialIso);
   const [time, setTime] = useState("");
   const [isAllDay, setIsAllDay] = useState(true);
   const [selectedMember, setSelectedMember] = useState(data.members[0]?.id || "");
   const [selectedColor, setSelectedColor] = useState(EVENT_COLORS[0]);
 
   const handleSave = () => {
-    const isoDate = euroToIso(date);
-    if (title.trim() && isoDate) {
+    if (title.trim() && isRealIso(date)) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       addEvent({
         title: title.trim(),
         description: description.trim() || undefined,
-        date: isoDate,
+        date,
         time: isAllDay ? undefined : time || undefined,
         memberId: selectedMember || undefined,
         color: selectedColor,
@@ -130,13 +110,7 @@ export default function AddEventScreen() {
         </View>
 
         <View style={styles.field}>
-          <Input
-            label="Data"
-            placeholder="GG/MM/AAAA"
-            value={date}
-            onChangeText={handleDateChange}
-            keyboardType="number-pad"
-          />
+          <CalendarPicker label="Data" value={date} onChange={setDate} testID="event-date" />
         </View>
 
         <View style={[styles.row, { borderColor: colors.border }]}>
@@ -219,7 +193,7 @@ export default function AddEventScreen() {
         <Button
           title="Aggiungi Evento"
           onPress={handleSave}
-          disabled={!title.trim() || !euroToIso(date)}
+          disabled={!title.trim() || !isRealIso(date)}
           style={{ marginTop: 24 }}
         />
       </ScrollView>
