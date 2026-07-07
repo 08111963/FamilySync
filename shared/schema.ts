@@ -394,6 +394,11 @@ export const entitlements = pgTable("entitlements", {
   productId: varchar("product_id", { length: 255 }).notNull(),
   status: entitlementStatusEnum("status").notNull().default("pending"),
   expiresAt: timestamp("expires_at"),
+  // Prova gratuita (account tester): numero di giorni di accesso Premium a
+  // partire dal PRIMO login. Se valorizzato, l'entitlement è una prova: nasce
+  // "pending" e viene attivata al primo accesso (status=active, expiresAt=now+N).
+  // NULL per gli entitlement normali (acquisti reali via store).
+  trialDays: integer("trial_days"),
   // Google Play: token di acquisto restituito dal client.
   purchaseToken: text("purchase_token"),
   // Apple: id transazione originale (stabile per l'abbonamento) e ultima transazione.

@@ -42,3 +42,6 @@ yarn-error.*
 # uploaded files (user content, not source)
 uploads/*
 !uploads/.gitkeep
+
+# credenziali tester (password in chiaro): non versionare, rigenerare on-demand
+docs/tester-accounts.pdf

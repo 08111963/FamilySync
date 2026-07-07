@@ -7,6 +7,7 @@ import { config } from './lib/config';
 import { logger, generateRequestId } from './lib/logger';
 import { seedOwnerEntitlements } from './lib/entitlements';
 import { ensureDemoAccount } from './lib/demo-account';
+import { ensureTesterAccounts } from './lib/tester-accounts';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -396,6 +397,15 @@ function setupErrorHandler(app: express.Application) {
             log(`demo account skipped: set DEMO_ACCOUNT_PASSWORD to enable`);
         })
         .catch((err) => log(`demo account seed failed: ${String(err)}`));
+      // Garantisce i 15 account tester (prova 15 giorni). Crea solo i mancanti.
+      // Funziona anche nel DB di produzione dopo il deploy.
+      void ensureTesterAccounts()
+        .then((r) => {
+          if (r.created > 0) log(`tester accounts created: ${r.created}`);
+          else if (r.skipped && r.reason === "missing_secret")
+            log(`tester accounts skipped: SESSION_SECRET non impostato`);
+        })
+        .catch((err) => log(`tester accounts seed failed: ${String(err)}`));
     },
   );
 })();

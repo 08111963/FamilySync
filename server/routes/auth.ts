@@ -15,6 +15,7 @@ import rateLimit from 'express-rate-limit';
 import { config } from '../lib/config';
 import { generateResetToken, hashResetToken } from '../lib/reset-token';
 import { deleteUserAccount } from '../lib/account-deletion';
+import { activatePendingTrialsForUser } from '../lib/entitlements';
 
 const router = Router();
 
@@ -164,7 +165,11 @@ router.post('/login', async (req: Request, res: Response) => {
     if (!validPassword) {
       return res.status(401).json({ error: { code: "INVALID_CREDENTIALS", message: "Credenziali non valide" } });
     }
-    
+
+    // Prova gratuita a tempo (account tester): al PRIMO login parte il conteggio
+    // dei 15 giorni di accesso Premium. Idempotente e fail-safe (non blocca il login).
+    await activatePendingTrialsForUser(user.id);
+
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
     

@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { entitlements, families, familyMembers, users } from "../../shared/schema";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { config } from "./config";
 
 /**
@@ -22,6 +22,9 @@ export type EntitlementPlatform = "google" | "apple" | "revenuecat";
 export interface EntitlementRecord {
   status: EntitlementStatus;
   expiresAt: Date | null;
+  // Prova gratuita a tempo (account tester): giorni di Premium dal primo login.
+  // NULL per gli entitlement normali. Vedi activatePendingTrialsForUser.
+  trialDays?: number | null;
 }
 
 export interface ApplyPurchaseInput {
@@ -46,7 +49,7 @@ export interface EntitlementStore {
 const dbEntitlementStore: EntitlementStore = {
   async get(familyId) {
     const [row] = await db
-      .select({ status: entitlements.status, expiresAt: entitlements.expiresAt })
+      .select({ status: entitlements.status, expiresAt: entitlements.expiresAt, trialDays: entitlements.trialDays })
       .from(entitlements)
       .where(eq(entitlements.familyId, familyId))
       .limit(1);
@@ -148,6 +151,18 @@ export async function syncEntitlementFromRevenueCat(params: {
     expiresAt = null;
   }
 
+  // Prova gratuita a tempo (account tester): RevenueCat non conosce alcun
+  // acquisto reale, quindi risponderebbe active=false. NON dobbiamo declassare
+  // una prova ancora valida (attiva) o non ancora iniziata (pending): la
+  // preserviamo così com'è. Solo se la prova è già scaduta lasciamo procedere il
+  // normale declassamento a "expired".
+  if (!active) {
+    const current = await store.get(params.familyId);
+    if (current && current.trialDays != null && (isEntitlementActive(current) || current.status === "pending")) {
+      return { premium: isEntitlementActive(current), status: current.status, expiresAt: current.expiresAt };
+    }
+  }
+
   const status = deriveStatus({ active, expiresAt });
   const premium = status === "active";
 
@@ -245,4 +260,53 @@ export async function getEntitlement(familyId: string): Promise<EntitlementRecor
 
 export async function getPlanForFamily(familyId: string): Promise<Plan> {
   return (await isPremium(familyId)) ? "premium" : "free";
+}
+
+/**
+ * Attiva le prove gratuite "pending" delle famiglie a cui l'utente appartiene.
+ * Chiamata al login: se un entitlement è una prova (trialDays valorizzato) ed è
+ * ancora "pending", parte il conteggio dei giorni DAL PRIMO ACCESSO impostando
+ * status=active ed expiresAt = adesso + trialDays giorni. Idempotente: le prove
+ * già attive/scadute non vengono toccate. Fail-safe: gli errori sono ingoiati
+ * (il login non deve mai fallire per questo). Ritorna il numero di prove attivate.
+ */
+export async function activatePendingTrialsForUser(userId: string, now: Date = new Date()): Promise<number> {
+  try {
+    const rows = await db
+      .select({ id: entitlements.id, familyId: entitlements.familyId, trialDays: entitlements.trialDays })
+      .from(entitlements)
+      .innerJoin(familyMembers, eq(familyMembers.familyId, entitlements.familyId))
+      .where(
+        and(
+          eq(familyMembers.userId, userId),
+          eq(entitlements.status, "pending"),
+          isNotNull(entitlements.trialDays),
+        ),
+      );
+
+    let activated = 0;
+    for (const r of rows) {
+      const days = r.trialDays ?? 0;
+      if (days <= 0) continue;
+      const expiresAt = new Date(now);
+      expiresAt.setDate(expiresAt.getDate() + days);
+      // Attivazione ATOMICA: il flip pending->active è condizionato a status
+      // ancora "pending". Con login concorrenti, solo la prima richiesta ottiene
+      // la riga (RETURNING non vuoto) e fa partire i giorni; le altre sono no-op.
+      const flipped = await db
+        .update(entitlements)
+        .set({ status: "active", expiresAt, updatedAt: new Date() })
+        .where(and(eq(entitlements.id, r.id), eq(entitlements.status, "pending")))
+        .returning({ id: entitlements.id });
+      if (flipped.length === 0) continue; // un'altra richiesta ha già attivato
+      await db
+        .update(families)
+        .set({ subscriptionStatus: "premium" })
+        .where(eq(families.id, r.familyId));
+      activated += 1;
+    }
+    return activated;
+  } catch {
+    return 0;
+  }
 }

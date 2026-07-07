@@ -96,3 +96,9 @@ id = "s0WtDUDWG1Y0Bknzf181d"
 uri = "file://exports/guida-utente-familysync.pdf"
 type = "pdf"
 title = "Guida Utente FamilySync (PDF corretto)"
+
+[[outputs]]
+id = "2y96uhtXfSxdiKA7gc1lZ"
+uri = "file://docs/tester-accounts.pdf"
+type = "pdf"
+title = "Account tester FamilySync (Google Play) — 15 account + password"
