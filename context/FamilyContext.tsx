@@ -1,13 +1,30 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode, useMemo, useCallback } from "react";
+import { Platform, Alert } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
+import { freeLimitMessage } from "@/lib/plan-limit";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { loginRevenueCat } from "@/lib/revenuecat";
 
 const ACTIVE_FAMILY_KEY = "@family_sync_active_family";
+
+/**
+ * Mostra un avviso se l'errore è il limite giornaliero del piano Free, altrimenti
+ * logga soltanto (le mutation di base qui non hanno feedback dedicato per gli
+ * altri errori). Così l'utente capisce perché l'azione non è andata a buon fine.
+ */
+function notifyIfFreeLimit(err: unknown): void {
+  const msg = freeLimitMessage(err);
+  if (msg) {
+    if (Platform.OS === "web") window.alert(msg);
+    else Alert.alert("Limite raggiunto", msg);
+  } else {
+    console.error(err);
+  }
+}
 
 interface FamilyMember {
   id: string;
@@ -296,7 +313,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     if (!currentFamilyId) return;
     apiRequest("POST", `/api/calendar/${currentFamilyId}`, event)
       .then(() => qc.invalidateQueries({ queryKey: ["/api/calendar", currentFamilyId] }))
-      .catch(console.error);
+      .catch(notifyIfFreeLimit);
   }, [currentFamilyId, qc]);
 
   const updateEvent = useCallback((id: string, updates: Partial<CalendarEvent>) => {
@@ -331,7 +348,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     if (!currentFamilyId) return;
     apiRequest("POST", `/api/shopping/${currentFamilyId}/lists/${listId}/items`, { name: item.name, quantity: item.quantity, unit: item.unit, category: item.category })
       .then(() => qc.invalidateQueries({ queryKey: ["/api/shopping", currentFamilyId, "lists"] }))
-      .catch(console.error);
+      .catch(notifyIfFreeLimit);
   }, [currentFamilyId, qc]);
 
   const toggleShoppingItem = useCallback((listId: string, itemId: string) => {

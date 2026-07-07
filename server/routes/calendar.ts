@@ -12,6 +12,7 @@ import { broadcastToFamily, notifyUserInFamily } from '../lib/websocket';
 import { sendPushToUser } from '../lib/push';
 import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
+import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 
 async function notifyAssignedMember(
   familyId: string,
@@ -149,6 +150,11 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       return res.status(400).json({
         error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
       });
+    }
+
+    const gate = await reserveBaseSlot(req.user!.userId, familyId, "calendar-event");
+    if (gate.status === "limited") {
+      return res.status(429).json(baseLimitBody(gate));
     }
 
     const [event] = await db.insert(calendarEvents).values({

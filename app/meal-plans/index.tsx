@@ -22,6 +22,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { VoiceInput, SpeakButton, speakText } from "@/components/VoiceInput";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiStream } from "@/lib/query-client";
+import { freeLimitMessage } from "@/lib/plan-limit";
 import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
 
 interface MealPlanIngredient {
@@ -385,11 +386,14 @@ export default function MealPlansScreen() {
         Alert.alert("Lista creata", "La lista della spesa e stata creata dal piano pasti.");
       }
       qc.invalidateQueries({ queryKey: ["/api/shopping", currentFamily.id, "lists"] });
-    } catch {
+    } catch (e) {
+      const limitMsg = freeLimitMessage(e);
+      const title = limitMsg ? "Limite raggiunto" : "Errore";
+      const body = limitMsg ?? "Impossibile creare la lista della spesa.";
       if (Platform.OS === "web") {
-        window.alert("Impossibile creare la lista della spesa.");
+        window.alert(body);
       } else {
-        Alert.alert("Errore", "Impossibile creare la lista della spesa.");
+        Alert.alert(title, body);
       }
     }
   };

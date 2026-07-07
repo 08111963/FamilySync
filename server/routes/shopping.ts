@@ -11,6 +11,7 @@ import { broadcastToFamily } from '../lib/websocket';
 import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { parseQuantityString } from '../lib/normalize';
 import { logger } from '../lib/logger';
+import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 
 const router = Router();
 
@@ -173,6 +174,11 @@ router.post('/:familyId/lists/:listId/items', authenticate, requireFamilyMember(
         finalQuantity = legacyParsed.quantity;
         finalUnit = legacyParsed.unit;
       }
+    }
+
+    const gate = await reserveBaseSlot(req.user!.userId, familyId, "shopping-item");
+    if (gate.status === "limited") {
+      return res.status(429).json(baseLimitBody(gate));
     }
 
     const [item] = await db.insert(shoppingItems).values({

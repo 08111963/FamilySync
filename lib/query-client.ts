@@ -56,8 +56,20 @@ async function tryRefreshToken(): Promise<string | null> {
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    let text = "";
+    try { text = await res.text(); } catch {}
+    let body: any = null;
+    if (text) { try { body = JSON.parse(text); } catch {} }
+    // Manteniamo il formato messaggio storico ("<status>: <testo>") per
+    // retrocompatibilità, ma alleghiamo status/body strutturati così i chiamanti
+    // possono riconoscere codici come FREE_DAILY_LIMIT_REACHED.
+    const err = new Error(`${res.status}: ${text || res.statusText}`) as Error & {
+      status?: number;
+      body?: unknown;
+    };
+    err.status = res.status;
+    err.body = body;
+    throw err;
   }
 }
 

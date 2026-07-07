@@ -11,6 +11,7 @@ import { logger } from '../lib/logger';
 import { broadcastToFamily } from '../lib/websocket';
 import { normalizeItemName } from '../lib/normalize';
 import { isUniqueViolation } from '../lib/db-errors';
+import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 
 const router = Router();
 
@@ -452,6 +453,11 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
 
     if (uniqueIngredients.size === 0) {
       return res.status(400).json({ error: { code: "NO_INGREDIENTS", message: "Nessun ingrediente trovato nel piano pasti" } });
+    }
+
+    const slot = await reserveBaseSlot(req.user!.userId, familyId, "shopping-item");
+    if (slot.status === "limited") {
+      return res.status(429).json(baseLimitBody(slot));
     }
 
     const listName = `Spesa per ${plan.title || 'Piano ' + plan.weekStartDate}`;

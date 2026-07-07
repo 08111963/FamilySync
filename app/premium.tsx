@@ -24,7 +24,7 @@ const PLAN_FEATURES: PlanFeature[] = [
   { label: "Ottimizzazione faccende AI", free: "1 / giorno", premium: "15 / giorno" },
   { label: "Foto ricette AI", free: "10 / giorno", premium: "55 / giorno" },
   { label: "Dettatura vocale (microfono)", free: "3 / giorno", premium: "35 / giorno" },
-  { label: "Calendario, spesa, faccende, chat", free: "Illimitato", premium: "Illimitato" },
+  { label: "Calendario, spesa, faccende, chat", free: "5 / giorno", premium: "Illimitato" },
   { label: "Supporto prioritario", free: "—", premium: "Incluso" },
 ];
 

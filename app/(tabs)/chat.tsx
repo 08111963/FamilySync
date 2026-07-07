@@ -26,6 +26,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useMediaToken } from "@/hooks/useMediaToken";
 import { useFamily } from "@/context/FamilyContext";
 import { getApiUrl, apiFetch, apiRequest } from "@/lib/query-client";
+import { freeLimitMessage } from "@/lib/plan-limit";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { io as socketIO, Socket } from "socket.io-client";
 
@@ -302,7 +303,8 @@ export default function ChatScreen() {
       });
     } catch (error) {
       console.error("Errore invio messaggio:", error);
-      Alert.alert("Errore", "Impossibile inviare il messaggio");
+      const limitMsg = freeLimitMessage(error);
+      Alert.alert(limitMsg ? "Limite raggiunto" : "Errore", limitMsg ?? "Impossibile inviare il messaggio");
       setInputText(text);
     } finally {
       isSendingRef.current = false;
@@ -383,7 +385,14 @@ export default function ChatScreen() {
         body: formData,
       } as any);
 
-      if (!res.ok) throw new Error("Errore upload");
+      if (!res.ok) {
+        let body: any = null;
+        try { body = await res.json(); } catch {}
+        const e = new Error("Errore upload") as Error & { status?: number; body?: unknown };
+        e.status = res.status;
+        e.body = body;
+        throw e;
+      }
       const sentMsg = await res.json() as ChatMsg;
       setMessages(prev => {
         if (prev.some(m => m.id === sentMsg.id)) return prev;
@@ -391,7 +400,8 @@ export default function ChatScreen() {
       });
     } catch (error) {
       console.error("Errore upload immagine:", error);
-      Alert.alert("Errore", "Impossibile caricare l'immagine");
+      const limitMsg = freeLimitMessage(error);
+      Alert.alert(limitMsg ? "Limite raggiunto" : "Errore", limitMsg ?? "Impossibile caricare l'immagine");
     } finally {
       setIsUploading(false);
     }
@@ -444,7 +454,14 @@ export default function ChatScreen() {
         body: formData,
       } as any);
 
-      if (!res.ok) throw new Error("Errore upload");
+      if (!res.ok) {
+        let body: any = null;
+        try { body = await res.json(); } catch {}
+        const e = new Error("Errore upload") as Error & { status?: number; body?: unknown };
+        e.status = res.status;
+        e.body = body;
+        throw e;
+      }
       const sentMsg = await res.json() as ChatMsg;
       setMessages(prev => {
         if (prev.some(m => m.id === sentMsg.id)) return prev;
@@ -452,7 +469,8 @@ export default function ChatScreen() {
       });
     } catch (error) {
       console.error("Errore upload foto:", error);
-      Alert.alert("Errore", "Impossibile caricare la foto");
+      const limitMsg = freeLimitMessage(error);
+      Alert.alert(limitMsg ? "Limite raggiunto" : "Errore", limitMsg ?? "Impossibile caricare la foto");
     } finally {
       setIsUploading(false);
     }
@@ -497,7 +515,14 @@ export default function ChatScreen() {
         body: formData,
       } as any);
 
-      if (!res.ok) throw new Error("Errore upload");
+      if (!res.ok) {
+        let body: any = null;
+        try { body = await res.json(); } catch {}
+        const e = new Error("Errore upload") as Error & { status?: number; body?: unknown };
+        e.status = res.status;
+        e.body = body;
+        throw e;
+      }
       const sentMsg = await res.json() as ChatMsg;
       setMessages(prev => {
         if (prev.some(m => m.id === sentMsg.id)) return prev;
@@ -505,7 +530,8 @@ export default function ChatScreen() {
       });
     } catch (error) {
       console.error("Errore upload documento:", error);
-      Alert.alert("Errore", "Impossibile caricare il documento");
+      const limitMsg = freeLimitMessage(error);
+      Alert.alert(limitMsg ? "Limite raggiunto" : "Errore", limitMsg ?? "Impossibile caricare il documento");
     } finally {
       setIsUploading(false);
     }

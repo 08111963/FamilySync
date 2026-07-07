@@ -12,6 +12,7 @@ import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
 import { apiRequest, queryClient } from "@/lib/query-client";
+import { freeLimitMessage } from "@/lib/plan-limit";
 
 const POINTS_OPTIONS = [5, 10, 15, 20, 25, 50];
 const FREQUENCY_OPTIONS = [
@@ -62,11 +63,14 @@ export default function AddChoreScreen() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/chores", familyId] });
       router.back();
-    } catch {
+    } catch (e) {
+      const limitMsg = freeLimitMessage(e);
+      const title = limitMsg ? "Limite raggiunto" : "Errore";
+      const body = limitMsg ?? "Errore nella creazione della faccenda";
       if (Platform.OS === "web") {
-        alert("Errore nella creazione della faccenda");
+        alert(body);
       } else {
-        Alert.alert("Errore", "Errore nella creazione della faccenda");
+        Alert.alert(title, body);
       }
     }
   };

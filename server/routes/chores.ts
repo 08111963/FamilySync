@@ -10,6 +10,7 @@ import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
 import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
+import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 
 const router = Router();
 
@@ -177,6 +178,11 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       return res.status(400).json({
         error: { code: "VALIDATION_ERROR", message: "L'assegnatario non appartiene a questa famiglia" },
       });
+    }
+
+    const gate = await reserveBaseSlot(req.user!.userId, familyId, "chore");
+    if (gate.status === "limited") {
+      return res.status(429).json(baseLimitBody(gate));
     }
 
     let [chore] = await db.insert(chores).values({
