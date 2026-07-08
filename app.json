@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.familysyncapp.coordinator"
+      "bundleIdentifier": "com.familysyncapp.coordinator",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.familysyncapp.coordinator",
