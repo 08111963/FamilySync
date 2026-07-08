@@ -18,3 +18,5 @@ sed -i 's|http://package-firewall.replit.local/npm/|https://registry.npmjs.org/|
 Then validate JSON, confirm 0 remaining `package-firewall.replit.local`, and confirm no `.npmrc` forces `registry=...replit.local`. Commit + push to GitHub before re-running the EAS build.
 
 **How to detect fast:** `rg -c 'package-firewall\.replit\.local' package-lock.json`. Any count > 0 will break external CI.
+
+**Recurring cause:** every `npm install` inside Replit can re-inject these proxy URLs, so the lockfile re-breaks after routine installs. `scripts/post-merge.sh` (the configured post-merge hook) now runs the sed normalization right after `npm install` so merges don't re-break external AAB/IPA builds. Still re-check + commit before any manual EAS build, since local installs outside that hook can reintroduce them.
