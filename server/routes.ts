@@ -25,6 +25,7 @@ import chatRoutes from "./routes/chat";
 import notificationsRoutes from "./routes/notifications";
 import billsRoutes from "./routes/bills";
 import supportRoutes from "./routes/support";
+import profileRoutes from "./routes/profile";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(helmet({
@@ -70,6 +71,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/notifications', authenticate, requireEmailVerified, notificationsRoutes);
   app.use('/api/bills', authenticate, requireEmailVerified, billsRoutes);
   app.use('/api/support', authenticate, requireEmailVerified, supportRoutes);
+  app.use('/api/profile', authenticate, requireEmailVerified, profileRoutes);
 
   // Feed ICS del calendario famiglia: PUBBLICO (nessun JWT), protetto da token
   // segreto nell'URL. Permette l'iscrizione da Google/Apple Calendar.
@@ -79,6 +81,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // personale, cache condivisa per titolo tra famiglie), servite pubblicamente
   // con cache lunga. Montate PRIMA di /uploads autenticato.
   app.use('/uploads/recipe-images', express.static('uploads/recipe-images', { maxAge: '30d', immutable: true }));
+
+  // Foto profilo (avatar): immagini di profilo mostrate ovunque nell'app, senza
+  // dati sensibili. Servite pubblicamente (come le foto ricette) per non dover
+  // propagare il media-token in ogni Avatar. Montate PRIMA di /uploads autenticato.
+  app.use('/uploads/avatars', express.static('uploads/avatars', { maxAge: '7d' }));
 
   app.use('/uploads', authenticateMedia, requireEmailVerified, express.static('uploads'));
 

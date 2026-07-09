@@ -500,10 +500,28 @@ router.put('/:familyId/members/:memberId', authenticate, requireFamilyMember(), 
     const { nickname, color, role } = req.body;
     const membership = (req as any).membership;
 
+    // Ognuno può personalizzare SOLO il proprio profilo (nickname/colore); un
+    // admin può invece modificare qualsiasi membro. Impedisce a un membro di
+    // cambiare nome/colore altrui.
+    const [target] = await db.select()
+      .from(familyMembers)
+      .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
+      .limit(1);
+
+    if (!target) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Membro non trovato" } });
+    }
+
+    const isSelf = target.userId === req.user!.userId;
+    if (!isSelf && membership.role !== 'admin') {
+      return res.status(403).json({ error: { code: "FORBIDDEN", message: "Puoi modificare solo il tuo profilo" } });
+    }
+
     const updateData: any = {};
-    if (nickname) updateData.nickname = nickname;
+    if (nickname !== undefined) updateData.nickname = nickname || null;
     if (color) updateData.color = color;
 
+    // Il ruolo lo può cambiare SOLO un admin (mai su se stesso via questa rotta).
     if (role && membership.role === 'admin') {
       updateData.role = role;
     }

@@ -231,9 +231,12 @@ export default function FamilyScreen() {
               return (
                 <Card key={member.id}>
                   <View style={styles.memberRow}>
-                    <Avatar name={member.name} color={member.color} size={48} />
+                    <Avatar name={member.name} color={member.color} size={48} avatarUrl={member.avatarUrl} />
                     <View style={styles.memberInfo}>
-                      <Text style={[styles.memberName, { color: colors.text }]}>{member.name}</Text>
+                      <Text style={[styles.memberName, { color: colors.text }]}>
+                        {member.name}
+                        {isSelf ? " (tu)" : ""}
+                      </Text>
                       <View style={styles.memberMeta}>
                         <View style={[styles.roleBadge, { backgroundColor: badge.color + "20" }]}>
                           <Text style={[styles.roleBadgeText, { color: badge.color }]}>{badge.label}</Text>
@@ -243,7 +246,15 @@ export default function FamilyScreen() {
                         </Text>
                       </View>
                     </View>
-                    {!isSelf && (
+                    {isSelf ? (
+                      <Pressable
+                        onPress={() => router.push("/edit-profile")}
+                        style={styles.actionButton}
+                        testID="edit-profile-button"
+                      >
+                        <Ionicons name="pencil" size={20} color={colors.primary} />
+                      </Pressable>
+                    ) : (
                       <Pressable
                         onPress={() => handleMemberAction(member)}
                         style={styles.actionButton}
@@ -251,12 +262,14 @@ export default function FamilyScreen() {
                         <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
                       </Pressable>
                     )}
-                    <Pressable
-                      onPress={() => handleDeleteMember(member.id, member.name)}
-                      style={styles.deleteButton}
-                    >
-                      <Ionicons name="trash-outline" size={20} color={colors.error} />
-                    </Pressable>
+                    {!isSelf && (
+                      <Pressable
+                        onPress={() => handleDeleteMember(member.id, member.name)}
+                        style={styles.deleteButton}
+                      >
+                        <Ionicons name="trash-outline" size={20} color={colors.error} />
+                      </Pressable>
+                    )}
                   </View>
                 </Card>
               );
@@ -294,7 +307,7 @@ export default function FamilyScreen() {
                     >
                       <Text style={styles.rankText}>{index + 1}</Text>
                     </View>
-                    <Avatar name={member.name} color={member.color} size={40} />
+                    <Avatar name={member.name} color={member.color} size={40} avatarUrl={member.avatarUrl} />
                     <Text style={[styles.leaderboardName, { color: colors.text }]}>{member.name}</Text>
                   </View>
                   <Text style={[styles.leaderboardPoints, { color: colors.primary }]}>

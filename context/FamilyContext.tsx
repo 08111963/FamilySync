@@ -119,7 +119,7 @@ interface FamilyContextType {
   createFamily: (name: string) => Promise<void>;
   switchFamily: (familyId: string) => void;
   addMember: (member: { name: string; role: string; avatar: string; color: string }) => void;
-  updateMember: (id: string, updates: Partial<FamilyMember>) => void;
+  updateMember: (id: string, updates: Partial<FamilyMember>) => Promise<void>;
   deleteMember: (id: string) => void;
   addEvent: (event: Omit<CalendarEvent, "id" | "familyId" | "createdBy">) => void;
   updateEvent: (id: string, updates: Partial<CalendarEvent>) => void;
@@ -295,11 +295,10 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     // Members are added via invite flow in the backend
   }, []);
 
-  const updateMember = useCallback((id: string, updates: Partial<FamilyMember>) => {
+  const updateMember = useCallback(async (id: string, updates: Partial<FamilyMember>) => {
     if (!currentFamilyId) return;
-    apiRequest("PUT", `/api/families/${currentFamilyId}/members/${id}`, updates)
-      .then(() => qc.invalidateQueries({ queryKey: ["/api/families", currentFamilyId] }))
-      .catch(console.error);
+    await apiRequest("PUT", `/api/families/${currentFamilyId}/members/${id}`, updates);
+    qc.invalidateQueries({ queryKey: ["/api/families", currentFamilyId] });
   }, [currentFamilyId, qc]);
 
   const deleteMember = useCallback((id: string) => {

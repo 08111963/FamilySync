@@ -146,6 +146,7 @@ export default function HomeScreen() {
       contentInsetAdjustmentBehavior="automatic"
     >
       <View style={styles.header}>
+        <Text style={[styles.greeting, { color: colors.textSecondary }]}>Bentornata famiglia</Text>
         <Text style={[styles.title, { color: colors.text }]}>{data.familyName}</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           {data.members.length} membr{data.members.length !== 1 ? "i" : "o"}
@@ -259,7 +260,7 @@ export default function HomeScreen() {
                     <Text style={[styles.leaderboardRank, { color: colors.textSecondary }]}>
                       {index + 1}
                     </Text>
-                    <Avatar name={member.name} color={member.color} size={36} />
+                    <Avatar name={member.name} color={member.color} size={36} avatarUrl={member.avatarUrl} />
                     <Text style={[styles.leaderboardName, { color: colors.text }]}>{member.name}</Text>
                   </View>
                   <Text style={[styles.leaderboardPoints, { color: colors.primary }]}>
@@ -333,6 +334,11 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     marginBottom: 24,
+  },
+  greeting: {
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+    marginBottom: 2,
   },
   title: {
     fontSize: 32,

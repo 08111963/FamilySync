@@ -51,6 +51,7 @@ function RootLayoutNav() {
       <Stack.Screen name="verify-email" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="add-member" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="edit-profile" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="contact-support" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="change-password" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="delete-account" options={{ presentation: "modal", headerShown: false }} />
