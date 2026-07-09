@@ -171,7 +171,7 @@ router.put('/:familyId', authenticate, requireFamilyAdmin(), async (req: Request
   }
 });
 
-router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
+router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const parsed = inviteSchema.safeParse(req.body);
@@ -183,6 +183,12 @@ router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamil
     }
 
     const { email, invitedName, role } = parsed.data;
+
+    // Chi può invitare = qualsiasi membro. Ma SOLO un admin può assegnare il
+    // ruolo "admin": un membro non-admin che prova a invitare qualcuno come
+    // admin lo crea come "adult" (niente escalation di privilegi).
+    const inviterRole = (req as any).membership?.role;
+    const effectiveRole = role === "admin" && inviterRole !== "admin" ? "adult" : role;
 
     // In produzione l'invio email è obbligatorio: senza Resend non possiamo
     // recapitare il link, quindi non creiamo nemmeno l'invito.
@@ -228,7 +234,7 @@ router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamil
       email,
       invitedName: invitedName || null,
       invitedBy: req.user!.userId,
-      role,
+      role: effectiveRole,
       expiresAt,
     }).returning();
 
@@ -262,10 +268,10 @@ router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamil
   }
 });
 
-// Link/QR RIUTILIZZABILE della famiglia: l'admin ottiene (o crea) un codice
-// invito persistente da condividere via WhatsApp o QR. Chi lo apre entra
+// Link/QR RIUTILIZZABILE della famiglia: qualsiasi membro ottiene (o crea) un
+// codice invito persistente da condividere via WhatsApp o QR. Chi lo apre entra
 // registrando la PROPRIA email (vedi /api/join-link), fino al limite del piano.
-router.post('/:familyId/invite-link', authenticate, requireFamilyAdmin(), createInviteLimiter, async (req: Request, res: Response) => {
+router.post('/:familyId/invite-link', authenticate, requireFamilyMember(), createInviteLimiter, async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
 

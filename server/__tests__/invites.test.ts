@@ -123,9 +123,9 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     return link.split("/join/")[1];
   }
 
-  test("solo un admin può invitare (membro non-admin -> 403)", async () => {
+  test("qualsiasi membro può invitare (membro non-admin -> 200)", async () => {
     const res = await request("POST", `/api/families/${familyId}/invite`, { email: `x-${uniq()}@example.com` }, memberToken);
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 200);
   });
 
   test("invite-link (WhatsApp/QR): admin ottiene link + code e risponde subito", async () => {
@@ -144,9 +144,30 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     );
   });
 
-  test("invite-link: membro non-admin -> 403 (non resta appeso)", async () => {
+  test("invite-link: anche un membro non-admin ottiene il link (200)", async () => {
     const res = await request("POST", `/api/families/${familyId}/invite-link`, {}, memberToken);
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.ok, true);
+    assert.ok(typeof data.code === "string" && data.code.length > 0);
+  });
+
+  test("no escalation: un non-admin che invita role=admin crea un invito 'adult'", async () => {
+    const email = `esc-${uniq()}@example.com`;
+    const res = await request("POST", `/api/families/${familyId}/invite`, { email, role: "admin" }, memberToken);
+    assert.equal(res.status, 200);
+    const [invite] = await db.select().from(familyInvites).where(eq(familyInvites.email, email.toLowerCase())).limit(1);
+    assert.ok(invite, "invito creato");
+    assert.equal(invite.role, "adult");
+  });
+
+  test("un admin può ancora invitare con role=admin", async () => {
+    const email = `adm-${uniq()}@example.com`;
+    const res = await request("POST", `/api/families/${familyId}/invite`, { email, role: "admin" }, adminToken);
+    assert.equal(res.status, 200);
+    const [invite] = await db.select().from(familyInvites).where(eq(familyInvites.email, email.toLowerCase())).limit(1);
+    assert.ok(invite, "invito creato");
+    assert.equal(invite.role, "admin");
   });
 
   test("invito creato: nessuna password nella risposta e token salvato come hash", async () => {

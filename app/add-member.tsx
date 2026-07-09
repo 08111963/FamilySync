@@ -34,6 +34,10 @@ export default function AddMemberScreen() {
   const { colors } = useTheme();
   const { currentFamily } = useFamily();
 
+  // Solo un admin può assegnare il ruolo "admin": gli altri membri non lo vedono.
+  const isAdmin = currentFamily?.myRole === "admin";
+  const availableRoles = isAdmin ? ROLES : ROLES.filter((r) => r.value !== "admin");
+
   const [channel, setChannel] = useState<Channel>("email");
 
   // --- Flusso Email (invito legato a un indirizzo specifico) ---
@@ -69,7 +73,7 @@ export default function AddMemberScreen() {
     } catch (err: any) {
       const msg = typeof err?.message === "string" ? err.message : "";
       if (msg.includes("403") || msg.includes("FORBIDDEN")) {
-        setLinkError("Solo un admin della famiglia può creare il link di invito.");
+        setLinkError("Devi far parte della famiglia per creare il link di invito.");
       } else {
         setLinkError("Impossibile generare il link. Riprova.");
       }
@@ -273,7 +277,7 @@ export default function AddMemberScreen() {
               <View style={styles.field}>
                 <Text style={[styles.label, { color: colors.text }]}>Ruolo</Text>
                 <View style={styles.roleOptions}>
-                  {ROLES.map((r) => (
+                  {availableRoles.map((r) => (
                     <Pressable
                       key={r.value}
                       testID={`role-${r.value}`}
