@@ -526,6 +526,10 @@ router.put('/:familyId/members/:memberId', authenticate, requireFamilyMember(), 
       updateData.role = role;
     }
 
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: { code: "NO_CHANGES", message: "Nessuna modifica fornita" } });
+    }
+
     const [updated] = await db.update(familyMembers)
       .set(updateData)
       .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
