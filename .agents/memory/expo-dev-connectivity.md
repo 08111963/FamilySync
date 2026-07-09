@@ -3,6 +3,30 @@ name: Expo dev connectivity (exps:// scheme)
 description: Why Replit "Simulate on Android/iOS" + Expo Go QR fail with "Packager is not running", and the patch-package fix.
 ---
 
+## ✅ ANDROID SOLVED: modern ngrok v3 tunnel — the working fix
+
+Real Android Expo Go over the Replit https-only edge is fixed by tunneling Metro through **ngrok v3** (NOT expo's built-in `--tunnel`).
+
+**Why expo's `--tunnel` fails and v3 standalone works:**
+- `expo start --tunnel` uses `@expo/ngrok` → `@expo/ngrok-bin@2.3.42` (ancient ngrok **v2** client) + requests an `exp.direct` hostname that only expo's shared ngrok account can create. With a user's free token it throws the vague `Cannot read properties of undefined (reading 'body')` (wrapper choking on the failed connect). Do NOT chase this path.
+- The DNS "can't resolve external" note below is STALE — `dns.lookup('tunnel.ngrok.com')` resolves fine; external connectivity works.
+
+**The working setup (in repo):**
+- `scripts/expo-tunnel.sh` (workflow `Start Frontend` runs `bash scripts/expo-tunnel.sh` — set via `configureWorkflow`, NOT by editing `.replit`/package.json which are both blocked).
+- Downloads the official **ngrok v3** binary to `node_modules/.cache/ngrok/ngrok` (git-ignored, Metro-ignored, persists across restarts, re-downloads only after npm install). ngrok v3 auto-reads `NGROK_AUTHTOKEN` from env (a user-supplied secret; free account is enough).
+- Starts `ngrok http 8081`, reads the assigned `https://<random>.ngrok-free.dev` from the local API `http://127.0.0.1:4040/api/tunnels`, then exports `EXPO_PACKAGER_PROXY_URL=<url>` + `REACT_NATIVE_PACKAGER_HOSTNAME=<host>` and `exec npx expo start --localhost`.
+- Result: Metro QR becomes `exps://<host>.ngrok-free.dev` (via the exp→exps patch). Manifest + ~15.8MB JS bundle pass through the tunnel for android okhttp requests (HTTP 200); ngrok serves the http status probe too (http→307→https, okhttp follows).
+
+**Why web preview stays unaffected:** the Replit preview/Canvas iframe loads via the Replit domain (8081→externalPort 80), NOT through ngrok, so the ngrok-free browser interstitial (which only triggers on browser User-Agents) never touches it. Native Expo Go requests (okhttp UA) bypass the interstitial → 200.
+
+**Caveats:** the ngrok-free URL is RANDOM and changes every restart — the user must re-scan the QR from the Replit preview panel after each frontend restart. Free tier has bandwidth/rate limits (fine for occasional testing). Scan the QR from the Replit PREVIEW PANEL, be on updated Expo Go.
+
+**Do NOT revert to the old conclusion that "Android is a platform issue / needs expo --tunnel".** ngrok v3 standalone is the fix.
+
+---
+
+## (Historical / superseded background below)
+
 On Replit, dev domains are HTTPS-only (external port 80/http is refused; only 443 works). Expo Go connects via a deep link: `exp://` = insecure http, `exps://` = secure https. If the QR/preview advertises `exp://`, the phone gets "Packager is not running at http://…janeway.replit.dev".
 
 **Root cause (Expo SDK 54 bug):** `@expo/cli` `getUrlComponentsFromProxyUrl` (in `.../start/server/UrlCreator.js`) upgrades the scheme `http`→`https` when `EXPO_PACKAGER_PROXY_URL` is https, but does NOT upgrade `exp`→`exps`. So the Expo Go deep link stays insecure `exp://` even behind the https proxy. This makes Replit's native device preview + QR fail.
