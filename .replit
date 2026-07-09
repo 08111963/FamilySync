@@ -111,7 +111,6 @@ ENABLE_TESTER_ACCOUNTS = "true"
 EXPO_PUBLIC_DOMAIN = "familysync.eu"
 
 [userenv.development]
-EXPO_NO_REDIRECT_PAGE = "1"
 
 [postMerge]
 path = "scripts/post-merge.sh"
