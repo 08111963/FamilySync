@@ -102,3 +102,9 @@ id = "2y96uhtXfSxdiKA7gc1lZ"
 uri = "file://docs/tester-accounts.pdf"
 type = "pdf"
 title = "Account tester FamilySync (Google Play) — 15 account + password"
+
+[[outputs]]
+id = "lZiyQufgNN6y4e_-TgYSR"
+uri = "file://.local/state/qr/expo-go-secure.png"
+type = "image"
+title = "QR code sicuro per Expo Go (exps://)"
