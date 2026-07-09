@@ -8,6 +8,7 @@ import { authenticate, authenticateMedia, requireEmailVerified } from "./middlew
 import authRoutes from "./routes/auth";
 import familiesRoutes from "./routes/families";
 import invitesRoutes, { inviteLimiter } from "./routes/invites";
+import joinLinkRoutes, { joinLinkLimiter } from "./routes/join-link";
 import calendarRoutes from "./routes/calendar";
 import calendarFeedRoutes from "./routes/calendar-feed";
 import shoppingRoutes from "./routes/shopping";
@@ -49,6 +50,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Inviti: router PUBBLICO (lookup stato + accept nuovo utente) montato senza
   // authenticate, con rate limiter dedicato.
   app.use('/api/invites', inviteLimiter, invitesRoutes);
+  // Link/QR RIUTILIZZABILE: router PUBBLICO (lookup stato + accept nuovo utente
+  // con la PROPRIA email), montato senza authenticate, con rate limiter dedicato.
+  app.use('/api/join-link', joinLinkLimiter, joinLinkRoutes);
   app.use('/api/families', authenticate, requireEmailVerified, familiesRoutes);
   app.use('/api/calendar', authenticate, requireEmailVerified, calendarRoutes);
   app.use('/api/shopping', authenticate, requireEmailVerified, shoppingRoutes);

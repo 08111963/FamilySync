@@ -65,6 +65,7 @@ export const families = pgTable("families", {
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
   subscriptionCurrentPeriodEnd: timestamp("subscription_current_period_end"),
   icsFeedToken: varchar("ics_feed_token", { length: 64 }).unique(),
+  inviteCode: varchar("invite_code", { length: 64 }).unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -81,7 +82,9 @@ export const familyMembers = pgTable("family_members", {
   color: varchar("color", { length: 7 }).notNull(),
   points: integer("points").default(0),
   joinedAt: timestamp("joined_at").defaultNow().notNull(),
-});
+}, (table) => [
+  unique("family_members_family_user_unique").on(table.familyId, table.userId),
+]);
 
 export type FamilyMember = typeof familyMembers.$inferSelect;
 

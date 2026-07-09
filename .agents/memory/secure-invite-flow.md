@@ -18,5 +18,13 @@ Sostituisce il vecchio "Aggiungi membro" (utente auto-creato + password temporan
 - **EMAIL_MISMATCH 403**: utente loggato che accetta via `/api/families/join/:token` deve avere email == invito.
 - `/api/families` è dietro `authenticate + requireEmailVerified` (verifica letta dal DB). Quindi un utente registrato ma NON verificato non può usare `join`. Il path pubblico `/api/invites/:token/accept` è per chi NON ha ancora un account (crea utente `emailVerified=true` + auto-login); se l'email esiste già → 409 `USER_EXISTS`.
 
+## Link RIUTILIZZABILE (opzione 1: unico link/QR per famiglia)
+Coesiste col flusso email-bound sopra. `families.inviteCode` (plaintext, unique) = codice riutilizzabile multi-uso fino al limite piano.
+- **Ruolo joiner SEMPRE `adult`** (anti-escalation): sia nuovo utente (`server/routes/join-link.ts`) sia loggato (`/api/families/join-link/:code`). Mai fidarsi di role dal client.
+- **Route pubbliche montate PRIMA di /api/families autenticate** in `server/routes.ts` (`GET /api/join-link/:code` stato valid|full|not_found; `POST /api/join-link/:code/accept` crea utente+membership); rate limiter dedicato `joinLinkLimiter`.
+- **Limite membri atomico** via `isFamilyMemberLimitReachedTx` DENTRO la transaction, in entrambi i path.
+- **Dedup membership è garantito dal DB**: vincolo `unique(family_id, user_id)` su `family_members` (`family_members_family_user_unique`). Il check pre-tx è best-effort; sotto race intercettare Postgres `23505` e restituire `ALREADY_MEMBER`. **Why:** richieste concorrenti dello stesso utente superano il check applicativo → serve il vincolo DB come garanzia finale.
+- **Tradeoff noto accettato dall'utente**: il path pubblico nuovo-utente crea account con `emailVerified=true` su email AUTO-INSERITA (nessuna prova di possesso), necessario per la bassa frizione (le /api richiedono email verificata). Rischio squatting/impersonazione email (peggiore dell'email-bound perché l'email la sceglie l'invitato). Se in futuro si vuole chiudere: OTP/magic-link prima di attivare la membership.
+
 ## How to apply
-Qualsiasi modifica al flusso deve preservare: hash-only, transazionalità del consumo, rate limiter dedicato sull'invito, e i comportamenti prod email (503/502+rollback). Test: `npx tsx server/__tests__/invites.test.ts` (integration HTTP+DB, 9 casi).
+Qualsiasi modifica al flusso deve preservare: hash-only, transazionalità del consumo, rate limiter dedicato sull'invito, e i comportamenti prod email (503/502+rollback). Per il link riutilizzabile: ruolo forzato adult, limite atomico in tx, dedup via vincolo DB + gestione 23505. Test: `npx tsx server/__tests__/invites.test.ts` (integration HTTP+DB, 9 casi).

@@ -24,7 +24,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (isLoading) return;
 
     const root = segments[0];
-    const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "legal" || root === "help" || root === "forgot-password" || root === "reset-password";
+    const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "join-link" || root === "legal" || root === "help" || root === "forgot-password" || root === "reset-password";
     const needsVerification = isAuthenticated && !!user && user.emailVerified === false;
     const inVerifyScreen = root === "verify-email";
     // L'eliminazione account e un diritto fondamentale: deve restare accessibile
@@ -35,7 +35,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       router.replace("/welcome");
     } else if (needsVerification && !verificationAllowed) {
       router.replace("/verify-email");
-    } else if (isAuthenticated && !needsVerification && (inVerifyScreen || (inPublicGroup && root !== "join" && root !== "legal" && root !== "help" && root !== "forgot-password" && root !== "reset-password"))) {
+    } else if (isAuthenticated && !needsVerification && (inVerifyScreen || (inPublicGroup && root !== "join" && root !== "join-link" && root !== "legal" && root !== "help" && root !== "forgot-password" && root !== "reset-password"))) {
       router.replace("/");
     }
   }, [isAuthenticated, isLoading, user, segments]);
@@ -70,6 +70,7 @@ function RootLayoutNav() {
       <Stack.Screen name="meal-plans/index" options={{ headerShown: false }} />
       <Stack.Screen name="meal-plans/edit" options={{ headerShown: false }} />
       <Stack.Screen name="join/[token]" options={{ headerShown: false }} />
+      <Stack.Screen name="join-link/[code]" options={{ headerShown: false }} />
       <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
       <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
       <Stack.Screen name="help/user-guide" options={{ headerShown: false }} />

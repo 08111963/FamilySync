@@ -17,3 +17,13 @@ export function generateInviteToken(): string {
 export function hashInviteToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
+
+/**
+ * Genera un codice di invito RIUTILIZZABILE per la famiglia (link/QR unico).
+ * A differenza del token email-bound, questo viene salvato in chiaro su
+ * families.inviteCode: deve poter essere rimostrato (QR/link) più volte e
+ * l'admin può rigenerarlo per invalidarlo. URL-safe, ~22 caratteri.
+ */
+export function generateJoinCode(): string {
+  return randomBytes(16).toString('base64url');
+}

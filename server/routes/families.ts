@@ -12,7 +12,7 @@ import { sendFamilyInviteEmail, isEmailConfigured } from '../lib/email';
 import { broadcastToFamily } from '../lib/websocket';
 import { config } from '../lib/config';
 import { logger } from '../lib/logger';
-import { generateInviteToken, hashInviteToken } from '../lib/invite-token';
+import { generateInviteToken, hashInviteToken, generateJoinCode } from '../lib/invite-token';
 import { isFamilyMemberLimitReached, isFamilyMemberLimitReachedTx, FREE_MAX_FAMILY_MEMBERS } from '../lib/entitlements';
 
 const router = Router();
@@ -259,6 +259,125 @@ router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamil
   } catch (error) {
     logger.error('Create invite error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione dell'invito" } });
+  }
+});
+
+// Link/QR RIUTILIZZABILE della famiglia: l'admin ottiene (o crea) un codice
+// invito persistente da condividere via WhatsApp o QR. Chi lo apre entra
+// registrando la PROPRIA email (vedi /api/join-link), fino al limite del piano.
+router.post('/:familyId/invite-link', requireFamilyAdmin, createInviteLimiter, async (req: Request, res: Response) => {
+  try {
+    const familyId = getParam(req, 'familyId');
+
+    const [family] = await db.select().from(families).where(eq(families.id, familyId)).limit(1);
+    if (!family) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Famiglia non trovata" } });
+    }
+
+    let code = family.inviteCode;
+    if (!code) {
+      // Get-or-create: generiamo un codice unico e lo persistiamo. In caso di
+      // improbabile collisione sul vincolo unique riproviamo poche volte.
+      for (let attempt = 0; attempt < 5 && !code; attempt++) {
+        const candidate = generateJoinCode();
+        try {
+          const [updated] = await db.update(families)
+            .set({ inviteCode: candidate })
+            .where(and(eq(families.id, familyId), isNull(families.inviteCode)))
+            .returning();
+          if (updated?.inviteCode) {
+            code = updated.inviteCode;
+          } else {
+            // Un'altra richiesta concorrente ha già impostato il codice: rileggiamo.
+            const [refreshed] = await db.select().from(families).where(eq(families.id, familyId)).limit(1);
+            code = refreshed?.inviteCode ?? null;
+          }
+        } catch {
+          // Collisione sul vincolo unique: riprova con un nuovo candidato.
+        }
+      }
+    }
+
+    if (!code) {
+      return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Impossibile generare il link di invito" } });
+    }
+
+    const baseUrl = process.env.CLIENT_URL || config.getBaseUrl(req);
+    const inviteLink = `${baseUrl}/join-link/${code}`;
+
+    logger.info('Family invite-link retrieved', { familyId });
+    res.json({ ok: true, inviteLink, code, familyName: family.name });
+  } catch (error) {
+    logger.error('Get invite-link error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero del link di invito" } });
+  }
+});
+
+// Accettazione del link RIUTILIZZABILE da parte di un utente GIÀ loggato.
+// A differenza dell'invito email-bound, qui non c'è vincolo sull'email: chiunque
+// abbia il codice può entrare (fino al limite piano). Ruolo sempre "adult".
+router.post('/join-link/:code', authenticate, async (req: Request, res: Response) => {
+  try {
+    const code = getParam(req, 'code');
+    const { nickname, color } = req.body;
+
+    const [family] = await db.select().from(families).where(eq(families.inviteCode, code)).limit(1);
+    if (!family) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Link di invito non valido" } });
+    }
+
+    const [currentUser] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
+    if (!currentUser) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Utente non trovato" } });
+    }
+
+    const existing = await db.select()
+      .from(familyMembers)
+      .where(and(eq(familyMembers.familyId, family.id), eq(familyMembers.userId, req.user!.userId)))
+      .limit(1);
+    if (existing.length > 0) {
+      return res.status(409).json({ error: { code: "ALREADY_MEMBER", message: "Fai già parte di questa famiglia" } });
+    }
+
+    let txResult: { limitReached: true } | { limitReached: false; member: typeof familyMembers.$inferSelect };
+    try {
+      txResult = await db.transaction(async (tx) => {
+        if (await isFamilyMemberLimitReachedTx(tx, family.id)) {
+          return { limitReached: true as const };
+        }
+        const [member] = await tx.insert(familyMembers).values({
+          familyId: family.id,
+          userId: req.user!.userId,
+          role: 'adult',
+          nickname: nickname || currentUser.name || 'Membro',
+          color: color || '#6366F1',
+          points: 0,
+        }).returning();
+        return { limitReached: false as const, member };
+      });
+    } catch (err: unknown) {
+      // Vincolo unico (family_id, user_id): richieste concorrenti dello stesso
+      // utente possono superare il check pre-transazione; il DB è la garanzia finale.
+      if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === '23505') {
+        return res.status(409).json({ error: { code: "ALREADY_MEMBER", message: "Fai già parte di questa famiglia" } });
+      }
+      throw err;
+    }
+
+    if (txResult.limitReached) {
+      return res.status(403).json({
+        error: {
+          code: "MEMBER_LIMIT_REACHED",
+          message: `Questa famiglia ha raggiunto il limite di ${FREE_MAX_FAMILY_MEMBERS} membri del piano Free.`,
+        },
+      });
+    }
+
+    broadcastToFamily(family.id, 'member_joined', txResult.member);
+    res.json({ message: 'Sei entrato nella famiglia!', family });
+  } catch (error) {
+    logger.error('Join via invite-link error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'accettazione dell'invito" } });
   }
 });
 
