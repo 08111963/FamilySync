@@ -131,6 +131,14 @@ export default function AddMemberScreen() {
               per entrare nella famiglia.
             </Text>
 
+            <View style={[styles.shareHint, { backgroundColor: colors.primary + "12" }]}>
+              <Ionicons name="share-social-outline" size={18} color={colors.primary} />
+              <Text style={[styles.shareHintText, { color: colors.text }]}>
+                Dopo aver premuto "Invia Invito" potrai condividere il link anche con
+                WhatsApp o tramite QR code.
+              </Text>
+            </View>
+
             <View style={styles.field}>
               <Input
                 label="Nome (facoltativo)"
@@ -301,7 +309,16 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontFamily: "Inter_600SemiBold" },
   placeholder: { width: 40 },
   content: { flex: 1, paddingHorizontal: 20 },
-  intro: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20, marginBottom: 20 },
+  intro: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20, marginBottom: 16 },
+  shareHint: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  shareHintText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 18 },
   field: { marginBottom: 20 },
   label: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginBottom: 8 },
   hint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 6 },
