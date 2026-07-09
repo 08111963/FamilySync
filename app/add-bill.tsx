@@ -23,6 +23,11 @@ function isValidDate(s: string): boolean {
   return !isNaN(d.getTime());
 }
 
+function formatIsoLabel(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
 export default function AddBillScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -91,6 +96,9 @@ function BillForm({
   const [assignedTo, setAssignedTo] = useState<string>(existing?.assignedTo ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [remindersEnabled, setRemindersEnabled] = useState<boolean>(existing?.remindersEnabled ?? true);
+  const [customReminderDates, setCustomReminderDates] = useState<string[]>(
+    Array.isArray(existing?.customReminderDates) ? existing!.customReminderDates : []
+  );
   const [saving, setSaving] = useState(false);
   const [titleError, setTitleError] = useState("");
   const [amountError, setAmountError] = useState("");
@@ -130,6 +138,7 @@ function BillForm({
       assignedTo: assignedTo || null,
       notes: notes.trim() || undefined,
       remindersEnabled,
+      customReminderDates: remindersEnabled ? customReminderDates : [],
     };
     if (isPaid && editId) payload.paidAt = paidDate;
     if (isPaid && !editId) {
@@ -354,6 +363,47 @@ function BillForm({
           </View>
         )}
 
+        {!isPaid && remindersEnabled && (
+          <View style={styles.field}>
+            <Text style={[styles.label, { color: colors.text }]}>Date promemoria personalizzate</Text>
+            <Text style={[styles.rowHint, { color: colors.textSecondary, marginBottom: 10 }]}>
+              Oltre agli avvisi automatici, scegli altri giorni in cui vuoi essere avvisato (alle 08:00).
+            </Text>
+
+            {customReminderDates.length > 0 && (
+              <View style={styles.chips}>
+                {customReminderDates.map((iso) => (
+                  <View key={iso} style={[styles.chip, { backgroundColor: colors.primary + "14", borderColor: colors.primary + "44" }]}>
+                    <Ionicons name="notifications-outline" size={14} color={colors.primary} />
+                    <Text style={[styles.chipText, { color: colors.text }]}>{formatIsoLabel(iso)}</Text>
+                    <Pressable
+                      hitSlop={8}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setCustomReminderDates((prev) => prev.filter((d) => d !== iso));
+                      }}
+                      testID={`remove-reminder-${iso}`}
+                    >
+                      <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <DateField
+              label=""
+              placeholder="+ Aggiungi una data"
+              value=""
+              onChange={(iso) => {
+                if (!iso) return;
+                setCustomReminderDates((prev) => (prev.includes(iso) ? prev : [...prev, iso].sort()));
+              }}
+              testID="add-reminder-date"
+            />
+          </View>
+        )}
+
         <Button
           title={editId ? "Salva modifiche" : isPaid ? "Registra pagamento" : "Aggiungi Bolletta"}
           onPress={handleSave}
@@ -416,6 +466,17 @@ const styles = StyleSheet.create({
   rowContent: { flex: 1 },
   rowLabel: { fontSize: 16, fontFamily: "Inter_500Medium" },
   rowHint: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  chipText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   paidBanner: {
     flexDirection: "row",
     alignItems: "center",

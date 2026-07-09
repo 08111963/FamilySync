@@ -15,6 +15,8 @@ export interface NotifiableBill {
   dueDate: string; // "AAAA-MM-GG"
   status: "da_pagare" | "pagata";
   remindersEnabled: boolean;
+  /** Date promemoria personalizzate scelte dall'utente (ISO "AAAA-MM-GG"). */
+  customReminderDates?: string[];
 }
 
 export interface BillNotificationTrigger {
@@ -37,8 +39,35 @@ const NOTIFY_HOUR = 8; // 08:00 ora locale.
  * volta che cambiano NOTIFY_HOUR o gli offset: entra nella firma, così le
  * notifiche già programmate con la vecchia politica vengono riprogrammate.
  * v2: orario 09:00 -> 08:00, offset free [0,-1] -> [1,0], premium [7,3,0,-1] -> [7,3,1,0].
+ * v3: aggiunte le date promemoria personalizzate scelte dall'utente.
  */
-const SCHEDULE_POLICY_VERSION = 2;
+const SCHEDULE_POLICY_VERSION = 3;
+
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** True solo se la stringa è una data ISO reale del calendario (no rollover). */
+function isRealIsoDate(s: string): boolean {
+  const m = ISO_DATE.exec(s);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const d = new Date(year, month - 1, day);
+  return (
+    d.getFullYear() === year &&
+    d.getMonth() === month - 1 &&
+    d.getDate() === day
+  );
+}
+
+/** Normalizza le date custom: solo ISO reali, deduplicate e ordinate. */
+export function normalizeCustomReminderDates(dates: unknown): string[] {
+  if (!Array.isArray(dates)) return [];
+  const valid = dates.filter(
+    (d): d is string => typeof d === "string" && isRealIsoDate(d)
+  );
+  return Array.from(new Set(valid)).sort();
+}
 
 export function formatEuro(amount: string | number): string {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -90,7 +119,10 @@ export function computeBillNotificationTriggers(
   const base = localDueDateAt9(bill.dueDate);
   if (!base) return [];
 
+  const body = `${bill.title} · ${formatEuro(bill.amount)} · scade il ${formatDueLabel(bill.dueDate)}`;
+
   const triggers: BillNotificationTrigger[] = [];
+  const usedDays = new Set<string>();
   for (const offset of offsetsForPlan(plan)) {
     const date = addDays(base, -offset);
     if (date.getTime() <= now.getTime()) continue;
@@ -98,10 +130,36 @@ export function computeBillNotificationTriggers(
       key: String(offset),
       date,
       title: titleForOffset(offset),
-      body: `${bill.title} · ${formatEuro(bill.amount)} · scade il ${formatDueLabel(bill.dueDate)}`,
+      body,
+    });
+    usedDays.add(dayKey(date));
+  }
+
+  // Date promemoria personalizzate scelte dall'utente: notifica alle 08:00,
+  // solo future e senza duplicare un giorno già coperto dagli offset automatici.
+  for (const iso of normalizeCustomReminderDates(bill.customReminderDates)) {
+    const date = localDueDateAt9(iso);
+    if (!date) continue;
+    if (date.getTime() <= now.getTime()) continue;
+    if (usedDays.has(dayKey(date))) continue;
+    usedDays.add(dayKey(date));
+    triggers.push({
+      key: `custom:${iso}`,
+      date,
+      title: "Promemoria bolletta",
+      body,
     });
   }
+
   return triggers;
+}
+
+/** Chiave stabile del giorno locale (YYYY-MM-DD) per deduplicare i trigger. */
+function dayKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function formatDueLabel(dueDate: string): string {
@@ -125,6 +183,7 @@ export function billNotificationSignature(bill: NotifiableBill, plan: BillPlan):
     bill.remindersEnabled ? 1 : 0,
     bill.status,
     plan,
+    normalizeCustomReminderDates(bill.customReminderDates).join(","),
   ].join("|");
 }
 

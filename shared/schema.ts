@@ -439,6 +439,9 @@ export const bills = pgTable("bills", {
   // Evento calendario collegato (scadenza sincronizzata con calendario/feed ICS).
   calendarEventId: uuid("calendar_event_id").references(() => calendarEvents.id, { onDelete: "set null" }),
   remindersEnabled: boolean("reminders_enabled").notNull().default(true),
+  // Date promemoria PERSONALIZZATE scelte dall'utente (ISO "AAAA-MM-GG"), oltre
+  // agli offset automatici. La notifica locale viene programmata alle 08:00.
+  customReminderDates: jsonb("custom_reminder_dates").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   paidAt: timestamp("paid_at"),
   paidBy: uuid("paid_by").references(() => users.id, { onDelete: "set null" }),
   createdBy: uuid("created_by").references(() => users.id),

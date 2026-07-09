@@ -91,6 +91,59 @@ describe("computeBillNotificationTriggers", () => {
     const triggers = computeBillNotificationTriggers(bill({ dueDate: "boh" }), "premium", now);
     assert.equal(triggers.length, 0);
   });
+
+  test("date personalizzate: aggiungono trigger futuri alle 08:00", () => {
+    const triggers = computeBillNotificationTriggers(
+      bill({ customReminderDates: ["2026-12-05", "2026-12-10"] }),
+      "free",
+      now
+    );
+    const custom = triggers.filter((t) => t.key.startsWith("custom:"));
+    assert.equal(custom.length, 2);
+    for (const t of custom) {
+      assert.ok(t.date.getTime() > now.getTime());
+      assert.equal(t.date.getHours(), 8);
+      assert.equal(t.title, "Promemoria bolletta");
+    }
+  });
+
+  test("date personalizzate passate: ignorate", () => {
+    const triggers = computeBillNotificationTriggers(
+      bill({ customReminderDates: ["2026-11-01"] }),
+      "free",
+      now
+    );
+    assert.equal(triggers.filter((t) => t.key.startsWith("custom:")).length, 0);
+  });
+
+  test("date personalizzate: nessun duplicato se coincide con un offset automatico", () => {
+    // 2026-12-19 = 1 giorno prima della scadenza 2026-12-20 (offset free)
+    const triggers = computeBillNotificationTriggers(
+      bill({ customReminderDates: ["2026-12-19"] }),
+      "free",
+      now
+    );
+    assert.equal(triggers.filter((t) => t.key.startsWith("custom:")).length, 0);
+    assert.equal(triggers.length, 2);
+  });
+
+  test("date personalizzate: ignorate se promemoria disattivati", () => {
+    const triggers = computeBillNotificationTriggers(
+      bill({ remindersEnabled: false, customReminderDates: ["2026-12-05"] }),
+      "premium",
+      now
+    );
+    assert.equal(triggers.length, 0);
+  });
+
+  test("date personalizzate non valide: ignorate (no crash)", () => {
+    const triggers = computeBillNotificationTriggers(
+      bill({ customReminderDates: ["boh", "2026-13-40", "2026-12-05"] as string[] }),
+      "free",
+      now
+    );
+    assert.equal(triggers.filter((t) => t.key.startsWith("custom:")).length, 1);
+  });
 });
 
 describe("billNotificationSignature", () => {
@@ -118,6 +171,16 @@ describe("billNotificationSignature", () => {
     const a = billNotificationSignature(bill(), "premium");
     const b = billNotificationSignature(bill(), "free");
     assert.notEqual(a, b);
+  });
+  test("cambia se cambiano le date personalizzate", () => {
+    const a = billNotificationSignature(bill({ customReminderDates: ["2026-12-05"] }), "premium");
+    const b = billNotificationSignature(bill({ customReminderDates: ["2026-12-06"] }), "premium");
+    assert.notEqual(a, b);
+  });
+  test("stessa firma con date personalizzate in ordine diverso (normalizzate)", () => {
+    const a = billNotificationSignature(bill({ customReminderDates: ["2026-12-06", "2026-12-05"] }), "premium");
+    const b = billNotificationSignature(bill({ customReminderDates: ["2026-12-05", "2026-12-06"] }), "premium");
+    assert.equal(a, b);
   });
 });
 

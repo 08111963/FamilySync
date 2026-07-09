@@ -97,6 +97,23 @@ function requirePremium() {
   };
 }
 
+// True solo se la stringa è una data ISO reale del calendario (no rollover, es. 2026-13-40).
+function isRealIsoDate(s: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const d = new Date(year, month - 1, day);
+  return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
+}
+
+const customReminderDatesSchema = z
+  .array(z.string().refine(isRealIsoDate, 'Data promemoria non valida (AAAA-MM-GG)'))
+  .max(20, 'Massimo 20 date promemoria')
+  .optional()
+  .transform((v) => (v ? Array.from(new Set(v)).sort() : v));
+
 const createBillSchema = z.object({
   title: z.string().min(1, 'Il titolo è obbligatorio'),
   provider: z.string().optional(),
@@ -107,6 +124,8 @@ const createBillSchema = z.object({
   assignedTo: z.string().uuid().optional().nullable(),
   notes: z.string().optional(),
   remindersEnabled: z.boolean().optional().default(true),
+  // Date promemoria personalizzate (ISO AAAA-MM-GG): deduplicate e ordinate.
+  customReminderDates: customReminderDatesSchema,
   // Bolletta registrata come GIÀ pagata: paid=true + data di pagamento.
   // In questo caso la scadenza è facoltativa (default: la data di pagamento).
   paid: z.boolean().optional().default(false),
@@ -130,6 +149,7 @@ const updateBillSchema = z.object({
   assignedTo: z.string().uuid().nullable().optional(),
   notes: z.string().nullable().optional(),
   remindersEnabled: z.boolean().optional(),
+  customReminderDates: customReminderDatesSchema,
   // Data di pagamento (AAAA-MM-GG): modificabile solo per bollette già pagate.
   paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 }).strict();
@@ -425,6 +445,7 @@ router.post('/:familyId', requireFamilyMember(), async (req: Request, res: Respo
         assignedTo: parsed.data.assignedTo ?? null,
         notes: parsed.data.notes,
         remindersEnabled: parsed.data.remindersEnabled,
+        customReminderDates: parsed.data.customReminderDates ?? [],
         createdBy: req.user!.userId,
         ...(createAsPaid
           ? {

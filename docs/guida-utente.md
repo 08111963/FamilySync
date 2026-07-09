@@ -293,6 +293,7 @@ La scheda **Bollette** ti aiuta a non dimenticare mai una scadenza e a tenere so
   - **Responsabile**: il membro della famiglia che si occupa del pagamento (opzionale)
   - **Note**: annotazioni libere (opzionale)
   - **Promemoria**: attiva per ricevere una notifica prima della scadenza
+  - **Date promemoria personalizzate**: oltre agli avvisi automatici, puoi aggiungere altri giorni specifici in cui vuoi essere avvisato (utile per anticipi o secondi solleciti). Le trovi sotto l'interruttore Promemoria: scegli una data dal calendario e comparirà come etichetta; toccala con la "x" per rimuoverla
 - Tocca per salvare: la bolletta comparirà nella lista
 
 ### Dettaglio Bolletta
@@ -309,6 +310,7 @@ Tocca una bolletta per aprirne il dettaglio. Da qui puoi:
 - Con i promemoria attivi ricevi una notifica sul telefono **alle 8:00 del mattino**
 - Con il piano **Free** ricevi 2 notifiche: **il giorno prima** ("Bolletta in scadenza domani") e **il giorno della scadenza**
 - Con **Premium** ricevi anche promemoria aggiuntivi a **7 giorni** e a **3 giorni** dalla scadenza
+- Puoi aggiungere **date promemoria personalizzate**: in quei giorni ricevi una notifica alle **8:00** (se una data coincide con un avviso automatico non viene duplicata). Servono i promemoria attivi; le date già passate vengono ignorate
 - Le notifiche locali sono disponibili nell'app sul telefono (non sul web)
 - Le scadenze compaiono anche nel **Calendario** della famiglia e, se attivi la sincronizzazione, nel tuo calendario Google/Apple
 
