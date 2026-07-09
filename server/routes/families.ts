@@ -265,7 +265,7 @@ router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamil
 // Link/QR RIUTILIZZABILE della famiglia: l'admin ottiene (o crea) un codice
 // invito persistente da condividere via WhatsApp o QR. Chi lo apre entra
 // registrando la PROPRIA email (vedi /api/join-link), fino al limite del piano.
-router.post('/:familyId/invite-link', requireFamilyAdmin, createInviteLimiter, async (req: Request, res: Response) => {
+router.post('/:familyId/invite-link', authenticate, requireFamilyAdmin(), createInviteLimiter, async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
 

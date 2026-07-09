@@ -128,6 +128,27 @@ describe("flusso invito sicuro (DB + HTTP)", { skip: hasDb ? false : "DATABASE_U
     assert.equal(res.status, 403);
   });
 
+  test("invite-link (WhatsApp/QR): admin ottiene link + code e risponde subito", async () => {
+    // Regressione: la rotta registrava `requireFamilyAdmin` senza invocarlo,
+    // così Express eseguiva la factory come middleware vuoto e la richiesta
+    // restava appesa per sempre (niente link, niente QR sul client). Se il bug
+    // tornasse, questa fetch non si risolverebbe e il test andrebbe in timeout.
+    const res = await request("POST", `/api/families/${familyId}/invite-link`, {}, adminToken);
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.ok, true);
+    assert.ok(typeof data.code === "string" && data.code.length > 0, "code presente (serve al QR)");
+    assert.ok(
+      typeof data.inviteLink === "string" && data.inviteLink.includes(data.code),
+      "inviteLink contiene il code (serve a WhatsApp)"
+    );
+  });
+
+  test("invite-link: membro non-admin -> 403 (non resta appeso)", async () => {
+    const res = await request("POST", `/api/families/${familyId}/invite-link`, {}, memberToken);
+    assert.equal(res.status, 403);
+  });
+
   test("invito creato: nessuna password nella risposta e token salvato come hash", async () => {
     const email = `new-${uniq()}@example.com`;
     const { res, data } = await createInvite(email, "adult", "Marco");
