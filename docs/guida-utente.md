@@ -8,7 +8,7 @@
 
 1. **Registrati** con nome, email e password
 2. **Crea una famiglia** dalla schermata Home
-3. **Invita i familiari** dalla scheda Famiglia: ricevono un'email con un link sicuro e scelgono la loro password
+3. **Invita i familiari** dalla scheda Famiglia: via **email** (link sicuro personale) oppure con un **link unico via WhatsApp o QR code**
 4. **Usa le 7 schede** per organizzare la vita quotidiana: Home, Calendario, Spesa, Faccende, Bollette, Chat, Famiglia
 5. **Comunica** con la famiglia tramite la Chat in tempo reale
 6. **Tieni d'occhio le scadenze** delle bollette con i promemoria automatici
@@ -36,7 +36,7 @@ L'app ha 7 schede principali in fondo allo schermo:
 |-----------|---------------|----------------|
 | Ricette | Card "Ricette" dalla Home | Generare ricette AI, cercare ricette, salvare e consultare ricette |
 | Piano Pasti | Card "Piano Pasti" dalla Home | Generare piani settimanali AI, salvare piani, convertire in lista spesa |
-| Invita Familiare | Pulsante "Aggiungi" nella scheda Famiglia | Invitare un familiare via email con un link sicuro |
+| Invita Familiare | Pulsante "Aggiungi" nella scheda Famiglia | Invitare un familiare via email, WhatsApp o QR code |
 | Premium | Sezione Funzionalità nella scheda Famiglia | Attivare l'abbonamento Premium e sbloccare funzioni avanzate |
 | Consigli AI famiglia | Sezione Funzionalità nella scheda Famiglia | Vedere analisi e consigli settimanali generati dall'AI |
 | Utenti Bloccati | Sezione Funzionalità nella scheda Famiglia | Gestire gli utenti bloccati |
@@ -49,7 +49,7 @@ L'app ha 7 schede principali in fondo allo schermo:
 ## Checklist per Admin Famiglia
 
 - [ ] Creare la famiglia e darle un nome
-- [ ] Invitare tutti i membri della famiglia via email
+- [ ] Invitare tutti i membri della famiglia (via email, WhatsApp o QR code)
 - [ ] Creare i primi eventi nel Calendario condiviso
 - [ ] Creare la prima lista della Spesa
 - [ ] Assegnare le prime Faccende ai membri
@@ -100,12 +100,12 @@ Dopo il login, puoi creare il tuo gruppo familiare:
 - Diventerai automaticamente l'**amministratore** del gruppo
 
 ### Invitare Membri
-Per aggiungere i tuoi familiari:
-- Vai alla scheda **Famiglia** e tocca **Aggiungi** nella sezione Membri
-- Inserisci il **nome** (facoltativo) e l'**email** del familiare
-- Scegli il **ruolo**: Admin, Adulto, Adolescente o Figlio/a
-- Tocca **Invia Invito**
-- Il familiare riceverà un'email con un **link sicuro**: lo aprirà, sceglierà la sua password ed entrerà nella famiglia
+Per aggiungere i tuoi familiari hai **tre modi**, tutti dalla scheda **Famiglia** → **Aggiungi**:
+- **Email**: inserisci il **nome** (facoltativo) e l'**email** del familiare, scegli il **ruolo** (Admin, Adulto, Adolescente o Figlio/a) e tocca **Invia Invito**. Riceverà un'email con un **link sicuro** personale: lo aprirà, sceglierà la password ed entrerà nella famiglia.
+- **WhatsApp**: FamilySync crea un **unico link riutilizzabile** e lo invia direttamente su WhatsApp con un messaggio già pronto.
+- **QR code**: mostra il **codice QR** dello stesso link: chi lo inquadra con il telefono entra nella famiglia.
+
+> Con WhatsApp e QR il link è **unico e riutilizzabile**: puoi condividerlo con più persone. Chi entra da questo link avrà il ruolo **"Adulto"** (puoi cambiarlo dopo dalla schermata Famiglia).
 
 > Il piano **Free** consente fino a **5 membri** per famiglia. Per aggiungere altri familiari serve l'abbonamento **Premium** (membri illimitati).
 
@@ -384,6 +384,8 @@ Puoi anche cercare ricette specifiche scrivendo quello che desideri:
 
 **Ricerca a voce**: accanto alla barra di ricerca c'è l'icona del **microfono**. Tieni premuto, detta cosa vuoi cucinare e rilascia: la ricerca parte da sola e i risultati ti vengono anche **letti ad alta voce**. Nelle schermate delle ricette trovi inoltre l'icona **altoparlante** per farti leggere la ricetta ad alta voce.
 
+**Lettura vocale automatica (attiva/disattiva)**: sotto la barra di ricerca trovi l'interruttore **"L'AI legge le ricette ad alta voce"**. Quando è attivo, dopo la ricerca a voce l'AI legge automaticamente i risultati; quando è spento, la ricerca resta in silenzio. La scelta viene ricordata sul tuo dispositivo. L'icona **altoparlante** per ascoltare a richiesta resta sempre disponibile.
+
 ### Schermata di Anteprima
 Dopo aver generato o cercato ricette, arrivi alla schermata di anteprima dove puoi:
 - **Sfogliare** tutte le ricette generate, ognuna con titolo, descrizione, tempo di preparazione, porzioni e tag
@@ -432,6 +434,8 @@ Per generare un nuovo piano settimanale:
 
 **Detta e genera (a voce)**: nella tab Genera trovi la card **"Detta e genera"** con un unico microfono. Tieni premuto e detta in una volta sola dieta, allergie e preferenze (es. "siamo vegetariani, niente frutta secca, piatti veloci la sera"): al rilascio la generazione parte da sola e il piano ti viene **letto ad alta voce**, giorno per giorno.
 
+**Lettura vocale automatica (attiva/disattiva)**: nella stessa card trovi l'interruttore **"L'AI legge il piano ad alta voce"**. Quando è attivo, dopo aver dettato l'AI legge automaticamente il piano; quando è spento, il piano viene generato in silenzio. La scelta viene ricordata sul tuo dispositivo. Il pulsante **altoparlante** per ascoltare a richiesta resta sempre disponibile.
+
 ### Alternative
 - Se il piano generato non ti soddisfa, puoi toccare **Genera Alternative** per ricevere una seconda proposta
 - Puoi passare tra il piano originale e l'alternativa usando i pulsanti **Piano 1** e **Piano 2**
@@ -471,35 +475,42 @@ Quando inviti un membro scegli uno di questi ruoli:
 
 ## 11. Sistema di Inviti
 
-FamilySync usa un sistema di inviti **sicuro via email**: ogni nuovo membro riceve un link personale e sceglie la propria password.
+FamilySync offre **tre modi** per invitare un familiare: **Email** (link personale), **WhatsApp** e **QR code** (un unico link riutilizzabile). Scegli quello più comodo dalla scheda **Famiglia** → **Aggiungi**.
 
-### Come Invitare un Familiare
+### A. Invito via Email (link personale)
 1. Vai alla scheda **Famiglia** e tocca **Aggiungi** nella sezione Membri
-2. Inserisci il **nome** del familiare (facoltativo) e la sua **email** (obbligatoria)
+2. Scegli **Email**, inserisci il **nome** del familiare (facoltativo) e la sua **email** (obbligatoria)
 3. Scegli il **ruolo**: Admin, Adulto, Adolescente o Figlio/a
 4. Tocca **Invia Invito**
 5. Vedrai la conferma "Invito Inviato": abbiamo spedito l'email con il link
 
-### Cosa Riceve il Familiare
+**Cosa riceve il familiare**
 - Una **email** con un pulsante/link sicuro per unirsi alla famiglia
 - Il link è **valido per 72 ore** e può essere usato **una sola volta**
 - L'email **non contiene password**: sarà il familiare a sceglierla
+- L'email dell'invito deve corrispondere all'email con cui accede: così l'invito viene usato dalla persona giusta
+
+### B. Invito via WhatsApp o QR code (link unico riutilizzabile)
+1. Vai alla scheda **Famiglia** e tocca **Aggiungi**
+2. Scegli **WhatsApp** oppure **QR code**
+3. FamilySync prepara un **unico link riutilizzabile** per la tua famiglia:
+   - **WhatsApp**: si apre WhatsApp con un messaggio già pronto contenente il link, da inviare al familiare
+   - **QR code**: mostra il codice da far inquadrare con la fotocamera del telefono
+4. Puoi anche toccare **Copia link** per condividerlo dove preferisci
+
+**Come funziona questo link**
+- È **unico e riutilizzabile**: puoi condividerlo con più familiari
+- Chi entra da questo link avrà il ruolo **"Adulto"** (puoi cambiarlo dopo dalla schermata Famiglia)
+- Possono entrare fino al **limite del piano**: 5 membri col Free, illimitati col Premium
 
 ### Come si Unisce alla Famiglia
-Quando il familiare apre il link:
-1. Se **non ha ancora un account**: sceglie la sua password (minimo 8 caratteri, con maiuscola, minuscola e numero) e completa l'accesso, entrando subito nella famiglia
+Quando il familiare apre il link (email, WhatsApp o QR):
+1. Se **non ha ancora un account**: inserisce la sua email, sceglie la password (minimo 8 caratteri, con maiuscola, minuscola e numero) e completa l'accesso, entrando subito nella famiglia
 2. Se **ha già un account**: effettua il login e viene aggiunto alla famiglia
-3. L'email dell'invito deve corrispondere all'email con cui accede: questo garantisce che l'invito sia usato dalla persona giusta
-4. Da quel momento può usare tutte le funzionalità condivise
+3. Da quel momento può usare tutte le funzionalità condivise
+4. Se la persona fa già parte della famiglia, l'app te lo segnala
 
-### Note Importanti sugli Inviti
-- Ogni link è **unico, personale e sicuro**
-- Il link **scade dopo 72 ore**: se serve, basta inviare un nuovo invito
-- Il link può essere usato **una sola volta**
-- Non c'è limite al numero di membri nella famiglia
-- Se la persona fa già parte della famiglia, l'app te lo segnala
-
-> l'invio dell'invito richiede il servizio email attivo. Se vedi un messaggio che indica un problema con l'email, riprova più tardi o contatta l'assistenza.
+> L'invio dell'invito via **Email** richiede il servizio email attivo. Se vedi un messaggio che indica un problema con l'email, riprova più tardi, usa WhatsApp/QR oppure contatta l'assistenza.
 
 ---
 
@@ -689,10 +700,13 @@ FamilySync sincronizza automaticamente tutti i dati tra i dispositivi dei membri
 Non c'è un limite al numero di membri che puoi invitare nella tua famiglia.
 
 **Come funziona ora l'invito di un familiare?**
-Inserisci la sua email e il ruolo, e tocca Invia Invito. La persona riceverà un'email con un link sicuro valido 72 ore, con cui sceglie la propria password ed entra nella famiglia.
+Hai tre modi. Con l'**email**: inserisci email e ruolo, tocca Invia Invito e la persona riceve un link sicuro valido 72 ore per scegliere la password ed entrare. Con **WhatsApp** o **QR code**: FamilySync crea un unico link riutilizzabile da condividere; chi lo apre entra nella famiglia con il ruolo "Adulto".
 
-**Il link di invito è sicuro?**
-Sì. Ogni link è personale, valido per 72 ore e utilizzabile una sola volta. L'email non contiene mai password.
+**Che differenza c'è tra il link email e quello WhatsApp/QR?**
+Il link **email** è personale, valido 72 ore e usabile una sola volta. Il link **WhatsApp/QR** è unico e riutilizzabile: puoi condividerlo con più familiari, fino al limite del piano (5 col Free, illimitati col Premium).
+
+**Posso leggere e ascoltare ricette e piani pasto ad alta voce?**
+Sì. In Ricette e Piano Pasti c'è un interruttore per far leggere automaticamente all'AI i risultati; puoi attivarlo o disattivarlo quando vuoi. Il pulsante altoparlante per ascoltare a richiesta è sempre disponibile.
 
 **Posso far parte di più famiglie contemporaneamente?**
 Sì, il tuo account può appartenere a più di un gruppo familiare. L'app mostra la famiglia attiva e i suoi dati.
