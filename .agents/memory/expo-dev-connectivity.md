@@ -30,3 +30,17 @@ Symptom: after the exps:// fix, iOS "Simulate"/Camera QR work but **Android Expo
 **Fix:** set env `EXPO_NO_REDIRECT_PAGE=1` (development scope) so `getRedirectUrl()` returns null and the QR encodes the direct `exps://HOST` deep link again ("classic" behaviour). iOS Camera also opens `exps://` fine, so both platforms work. Confirm: Metro log no longer prints the "Choose an app to open your project at …" line.
 
 **Why env var, not package.json:** the expo skill forbids editing package.json; reconfiguring the workflow risks the 8081→80 port mapping. A dev-scoped env var is picked up by `npm run expo:dev` and survives restarts.
+
+## HARD LIMIT: Android Expo Go can NOT connect to a physical device over the Replit https dev URL
+
+Symptom persists even after exps:// + EXPO_NO_REDIRECT_PAGE: the Android bundle DOWNLOADS (splash + "downloading" shown) but then dies with fatal red "Packager is not running at http://HOST" (note: **http, no port**). iOS works, web works.
+
+**Definitive root cause (verified):**
+- React Native's Android native `PackagerStatusCheck.kt` hardcodes `PACKAGER_STATUS_URL_TEMPLATE = "http://%s/status"`. This runs INSIDE the Expo Go app on the phone — unpatchable from our repo. The `%s` is the manifest's `extra.expoGo.debuggerHost` = bare `HOST` (no scheme/port), so it always hits `http://HOST:80/status`.
+- Replit dev domains: **port 80 (http) is CLOSED** — `nc`/curl to `HOST:80` = "Connection refused"; only 443 (https) is open. Verified from inside the container (172.24.0.5:80 refused).
+- So Android's http-only status probe can never reach Replit's https-only server. iOS works because iOS native derives the packager scheme from the (https) bundle/manifest URL. The bundle itself downloads on Android because `bundleUrl` is explicit `https://…` — only the separate status probe is http-hardcoded.
+- Setting `debuggerHost=HOST:443` would only make it `http://HOST:443` (plain http to a TLS port) → still fails. There is no manifest field that flips the native probe to https.
+
+**The only real fix is a tunnel (ngrok) that serves plain http.** `@expo/ngrok` IS in package.json (so the original working setup almost certainly used `--tunnel`), BUT ngrok now fails with `ERR_NGROK_4018 "session is not authenticated"` — anonymous tunnels are dead. `--tunnel` cannot work until the user creates a free ngrok account and supplies an authtoken (then configure ngrok + switch the Start Frontend workflow command to run expo with `--tunnel`, NOT by editing package.json). The earlier vague "ngrok Cannot read properties of undefined (reading 'body')" was @expo/cli choking on this auth failure.
+
+**Bottom line for the user:** on the Replit dev URL, physical-device Android Expo Go (and Replit "Simulate on Android", which uses the same probe) is fundamentally blocked without an authenticated tunnel. iPhone (Camera QR) and the browser work today. Do NOT keep tweaking Metro/QR/env — the blocker is native http vs Replit https, not the QR contents.
