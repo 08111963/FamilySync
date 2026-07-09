@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, Pressable, ScrollView, Platform } from "react-native";
+import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Linking } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
+import QRCode from "react-native-qrcode-svg";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { Input } from "@/components/Input";
@@ -29,6 +31,8 @@ export default function AddMemberScreen() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("adult");
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,11 +49,13 @@ export default function AddMemberScreen() {
     setError(null);
 
     try {
-      await apiRequest("POST", `/api/families/${currentFamily.id}/invite`, {
+      const res = await apiRequest("POST", `/api/families/${currentFamily.id}/invite`, {
         email: trimmedEmail,
         invitedName: name.trim() || undefined,
         role,
       });
+      const data = await res.json().catch(() => ({}));
+      setInviteLink(typeof data?.inviteLink === "string" ? data.inviteLink : null);
       setSentTo(trimmedEmail);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
@@ -73,10 +79,32 @@ export default function AddMemberScreen() {
 
   const handleNewInvite = () => {
     setSentTo(null);
+    setInviteLink(null);
+    setCopied(false);
     setName("");
     setEmail("");
     setRole("adult");
     setError(null);
+  };
+
+  const handleShareWhatsApp = async () => {
+    if (!inviteLink) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const text = `Ciao! Ti invito a entrare nella nostra famiglia su FamilySync. Tocca il link per unirti (valido 72 ore):\n${inviteLink}`;
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setError("Impossibile aprire WhatsApp. Copia il link e incollalo manualmente.");
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (!inviteLink) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await Clipboard.setStringAsync(inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
@@ -187,6 +215,56 @@ export default function AddMemberScreen() {
               </View>
             </Card>
 
+            {inviteLink && (
+              <Card style={{ marginTop: 16 }}>
+                <View style={{ alignItems: "center", gap: 16 }}>
+                  <Text style={[styles.shareTitle, { color: colors.text }]}>
+                    Condividi anche così
+                  </Text>
+                  <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
+                    Fai scansionare il codice QR oppure invia il link con WhatsApp.
+                    La persona dovrà registrarsi con l'email {sentTo}.
+                  </Text>
+
+                  <View style={styles.qrWrapper}>
+                    <QRCode value={inviteLink} size={190} backgroundColor="#FFFFFF" color="#000000" />
+                  </View>
+
+                  <Pressable
+                    onPress={handleShareWhatsApp}
+                    style={({ pressed }) => [styles.whatsappButton, pressed && { opacity: 0.85 }]}
+                    testID="share-whatsapp-button"
+                  >
+                    <Ionicons name="logo-whatsapp" size={22} color="#FFFFFF" />
+                    <Text style={styles.whatsappLabel}>Invita con WhatsApp</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={handleCopyLink}
+                    style={({ pressed }) => [
+                      styles.copyButton,
+                      { borderColor: colors.border },
+                      pressed && { opacity: 0.6 },
+                    ]}
+                    testID="copy-link-button"
+                  >
+                    <Ionicons
+                      name={copied ? "checkmark-circle" : "copy-outline"}
+                      size={18}
+                      color={copied ? colors.success : colors.text}
+                    />
+                    <Text style={[styles.copyLabel, { color: copied ? colors.success : colors.text }]}>
+                      {copied ? "Link copiato!" : "Copia link"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </Card>
+            )}
+
+            {error && (
+              <Text style={[styles.errorText, { color: colors.error, marginTop: 12 }]}>{error}</Text>
+            )}
+
             <View style={styles.bottomButtons}>
               <Pressable
                 onPress={handleNewInvite}
@@ -244,6 +322,36 @@ const styles = StyleSheet.create({
   successIcon: { width: 72, height: 72, borderRadius: 36, justifyContent: "center", alignItems: "center" },
   successTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
   successSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20 },
+  shareTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
+  qrWrapper: {
+    padding: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+  },
+  whatsappButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "#25D366",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    width: "100%",
+  },
+  whatsappLabel: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: "#FFFFFF" },
+  copyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    width: "100%",
+  },
+  copyLabel: { fontSize: 15, fontFamily: "Inter_500Medium" },
   bottomButtons: {
     flexDirection: "row",
     justifyContent: "space-between",

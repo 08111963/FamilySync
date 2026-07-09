@@ -13,7 +13,8 @@ Sostituisce il vecchio "Aggiungi membro" (utente auto-creato + password temporan
   - **Why:** senza transazione un fallimento post-claim lascia l'invitato senza via di rientro.
 - **Invite endpoint ha un rate limiter DEDICATO** (`createInviteLimiter`, 20/15min in `families.ts`), oltre al limiter globale `/api` (100/15min) e a `inviteLimiter` (30/15min su `/api/invites`). Il globale è troppo largo per frenare spam/enumerazione email.
 - **Produzione + SendGrid assente** → 503 `EMAIL_NOT_CONFIGURED` PRIMA di scrivere l'invito.
-- **Produzione + invio email fallito** → rollback (delete) dell'invito + 502 `EMAIL_SEND_FAILED`. In dev l'invito resta e il link è incluso nella response per test manuale.
+- **Produzione + invio email fallito** → rollback (delete) dell'invito + 502 `EMAIL_SEND_FAILED`. In dev l'invito resta.
+- **`inviteLink` restituito SEMPRE all'admin** nella response di `POST /:familyId/invite` (non più solo dev): serve alla UI per condivisione multi-canale (QR code + deep link WhatsApp `wa.me` + copia via expo-clipboard) OLTRE all'email. Accettabile perché l'endpoint è `authenticate + requireFamilyAdmin()` e il token vive solo in memoria/response (DB ha solo l'hash). Nota: il path pubblico nuovo-utente `/api/invites/:token/accept` si fida della sola segretezza del token (nessun email-match), rischio residuo più rilevante ora che il link gira anche su WhatsApp/QR.
 - **EMAIL_MISMATCH 403**: utente loggato che accetta via `/api/families/join/:token` deve avere email == invito.
 - `/api/families` è dietro `authenticate + requireEmailVerified` (verifica letta dal DB). Quindi un utente registrato ma NON verificato non può usare `join`. Il path pubblico `/api/invites/:token/accept` è per chi NON ha ancora un account (crea utente `emailVerified=true` + auto-login); se l'email esiste già → 409 `USER_EXISTS`.
 

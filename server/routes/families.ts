@@ -252,11 +252,9 @@ router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamil
     // Non logghiamo mai token o link completi.
     logger.info('Family invite created', { familyId, role });
 
-    const response: Record<string, unknown> = { ok: true, email, expiresAt };
-    // Solo in sviluppo restituiamo il link per comodità di test manuale.
-    if (!config.isProduction) {
-      response.inviteLink = inviteLink;
-    }
+    // Restituiamo il link all'admin autenticato che ha creato l'invito, così può
+    // condividerlo anche via WhatsApp o QR code oltre all'email già inviata.
+    const response: Record<string, unknown> = { ok: true, email, expiresAt, inviteLink };
     res.json(response);
   } catch (error) {
     logger.error('Create invite error', { error: String(error) });
