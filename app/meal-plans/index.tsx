@@ -11,6 +11,7 @@ import {
   Alert,
   ScrollView,
   Modal,
+  Switch,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +21,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
 import { VoiceInput, SpeakButton, speakText } from "@/components/VoiceInput";
+import { useAutoSpeak } from "@/hooks/useAutoSpeak";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiStream } from "@/lib/query-client";
 import { freeLimitMessage } from "@/lib/plan-limit";
@@ -346,6 +348,7 @@ export default function MealPlansScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { currentFamily } = useFamily();
+  const { autoSpeak, toggleAutoSpeak } = useAutoSpeak();
   const qc = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<TabKey>("plans");
@@ -605,7 +608,7 @@ export default function MealPlansScreen() {
     const spoken = text.trim();
     if (!spoken) return;
     setVoicePrefs(spoken);
-    fetchMealPlanStream({ voiceNotes: spoken, speak: true });
+    fetchMealPlanStream({ voiceNotes: spoken, speak: autoSpeak });
   };
 
   const handleSavePlan = async () => {
@@ -816,7 +819,7 @@ export default function MealPlansScreen() {
                     Detta e genera
                   </Text>
                   <Text style={[styles.voiceCardHint, { color: colors.textSecondary }]}>
-                    Tieni premuto il microfono e detta dieta, allergie e preferenze. Al rilascio genero il piano e te lo leggo.
+                    Tieni premuto il microfono e detta dieta, allergie e preferenze. Al rilascio genero il piano{autoSpeak ? " e te lo leggo" : ""}.
                   </Text>
                 </View>
                 <VoiceInput
@@ -836,6 +839,29 @@ export default function MealPlansScreen() {
                   </Pressable>
                 </View>
               ) : null}
+
+              <Pressable
+                onPress={toggleAutoSpeak}
+                style={[styles.autoSpeakRow, { borderTopColor: colors.border }]}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: autoSpeak }}
+                testID="mealplans-autospeak-toggle"
+              >
+                <Ionicons
+                  name={autoSpeak ? "volume-high" : "volume-mute"}
+                  size={18}
+                  color={autoSpeak ? colors.primary : colors.textSecondary}
+                />
+                <Text style={[styles.autoSpeakLabel, { color: colors.textSecondary }]}>
+                  L'AI legge il piano ad alta voce
+                </Text>
+                <Switch
+                  value={autoSpeak}
+                  onValueChange={toggleAutoSpeak}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#FFFFFF"
+                />
+              </Pressable>
             </View>
           ) : null}
 
@@ -1299,6 +1325,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_400Regular",
     fontStyle: "italic",
+  },
+  autoSpeakRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+  },
+  autoSpeakLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
   },
   generateButton: {
     flexDirection: "row",

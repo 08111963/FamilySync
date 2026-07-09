@@ -11,6 +11,7 @@ import {
   RefreshControl,
   TextInput,
   Keyboard,
+  Switch,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,6 +22,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useTheme } from "@/hooks/useTheme";
 import { VoiceInput, speakText } from "@/components/VoiceInput";
+import { useAutoSpeak } from "@/hooks/useAutoSpeak";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiFetch, getApiUrl } from "@/lib/query-client";
 import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
@@ -69,6 +71,7 @@ export default function RecipesScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { currentFamily } = useFamily();
+  const { autoSpeak, toggleAutoSpeak } = useAutoSpeak();
   const qc = useQueryClient();
 
   const [generatingAi, setGeneratingAi] = useState(false);
@@ -188,7 +191,7 @@ export default function RecipesScreen() {
   // e legge ad alta voce le ricette trovate.
   const handleVoiceSearch = (text: string) => {
     setSearchQuery(text);
-    runAiSearch(text, { speakResults: true });
+    runAiSearch(text, { speakResults: autoSpeak });
   };
 
   const handleDeleteRecipe = async (recipeId: string, title: string) => {
@@ -470,6 +473,31 @@ export default function RecipesScreen() {
         ) : null}
       </View>
 
+      {currentFamily ? (
+        <Pressable
+          onPress={toggleAutoSpeak}
+          style={styles.autoSpeakRow}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: autoSpeak }}
+          testID="recipes-autospeak-toggle"
+        >
+          <Ionicons
+            name={autoSpeak ? "volume-high" : "volume-mute"}
+            size={18}
+            color={autoSpeak ? colors.primary : colors.textSecondary}
+          />
+          <Text style={[styles.autoSpeakLabel, { color: colors.textSecondary }]}>
+            L'AI legge le ricette ad alta voce
+          </Text>
+          <Switch
+            value={autoSpeak}
+            onValueChange={toggleAutoSpeak}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor="#FFFFFF"
+          />
+        </Pressable>
+      ) : null}
+
       <FlatList
         data={recipes}
         keyExtractor={(item) => item.id}
@@ -569,6 +597,18 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     gap: 10,
+  },
+  autoSpeakRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginHorizontal: 20,
+    marginBottom: 12,
+  },
+  autoSpeakLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
   },
   searchInput: {
     flex: 1,
