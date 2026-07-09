@@ -1,0 +1,13 @@
+diff --git a/node_modules/expo/node_modules/@expo/cli/build/src/start/server/UrlCreator.js b/node_modules/expo/node_modules/@expo/cli/build/src/start/server/UrlCreator.js
+--- a/node_modules/expo/node_modules/@expo/cli/build/src/start/server/UrlCreator.js
++++ b/node_modules/expo/node_modules/@expo/cli/build/src/start/server/UrlCreator.js
+@@ -170,6 +170,9 @@ function getUrlComponentsFromProxyUrl(options, url) {
+         if (protocol === 'http') {
+             protocol = 'https';
+         }
++        if (protocol === 'exp') {
++            protocol = 'exps';
++        }
+         if (!parsedProxyUrl.port) {
+             parsedProxyUrl.port = '443';
+         }
