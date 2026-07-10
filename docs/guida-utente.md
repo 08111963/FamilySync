@@ -717,7 +717,11 @@ FamilySync sincronizza automaticamente tutti i dati tra i dispositivi dei membri
 ## 18. Domande Frequenti (FAQ)
 
 **Quanti membri posso aggiungere alla mia famiglia?**
-Non c'è un limite al numero di membri che puoi invitare nella tua famiglia.
+Dipende dal tuo piano:
+- **Free**: fino a **5 membri** per famiglia (incluso te).
+- **Premium**: **membri illimitati**.
+
+Se raggiungi il limite del piano Free e provi ad aggiungere un altro familiare, l'app ti invita ad attivare il Premium per continuare.
 
 **Come funziona ora l'invito di un familiare?**
 Hai tre modi. Con l'**email**: inserisci email e ruolo, tocca Invia Invito e la persona riceve un link sicuro valido 72 ore per scegliere la password ed entrare. Con **WhatsApp** o **QR code**: FamilySync crea un unico link riutilizzabile da condividere; chi lo apre entra nella famiglia con il ruolo "Adulto".
