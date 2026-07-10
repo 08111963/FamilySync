@@ -37,10 +37,11 @@ interface CalendarPickerProps {
   label?: string;
   value: string | null;
   onChange: (iso: string) => void;
+  onClear?: () => void;
   testID?: string;
 }
 
-export function CalendarPicker({ label, value, onChange, testID }: CalendarPickerProps) {
+export function CalendarPicker({ label, value, onChange, onClear, testID }: CalendarPickerProps) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
 
@@ -177,16 +178,31 @@ export function CalendarPicker({ label, value, onChange, testID }: CalendarPicke
               })}
             </View>
 
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                onChange(toIso(today.getFullYear(), today.getMonth(), today.getDate()));
-                setOpen(false);
-              }}
-              style={styles.todayBtn}
-            >
-              <Text style={[styles.todayText, { color: colors.primary }]}>Oggi</Text>
-            </Pressable>
+            <View style={styles.actionsRow}>
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  onChange(toIso(today.getFullYear(), today.getMonth(), today.getDate()));
+                  setOpen(false);
+                }}
+                style={styles.todayBtn}
+              >
+                <Text style={[styles.todayText, { color: colors.primary }]}>Oggi</Text>
+              </Pressable>
+              {onClear && value ? (
+                <Pressable
+                  testID={testID ? `${testID}-clear` : undefined}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onClear();
+                    setOpen(false);
+                  }}
+                  style={styles.todayBtn}
+                >
+                  <Text style={[styles.todayText, { color: colors.textSecondary }]}>Rimuovi data</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -283,9 +299,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Inter_500Medium",
   },
-  todayBtn: {
+  actionsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 8,
-    alignSelf: "center",
+  },
+  todayBtn: {
     paddingVertical: 10,
     paddingHorizontal: 20,
   },

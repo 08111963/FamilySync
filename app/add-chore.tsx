@@ -11,6 +11,7 @@ import { VoiceInput } from "@/components/VoiceInput";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
+import { CalendarPicker } from "@/components/CalendarPicker";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { freeLimitMessage } from "@/lib/plan-limit";
 
@@ -165,11 +166,12 @@ export default function AddChoreScreen() {
         </View>
 
         <View style={styles.field}>
-          <Input
+          <CalendarPicker
             label="Scadenza (opzionale)"
-            placeholder="AAAA-MM-GG"
-            value={dueDate}
-            onChangeText={setDueDate}
+            value={dueDate || null}
+            onChange={setDueDate}
+            onClear={() => setDueDate("")}
+            testID="chore-due-date"
           />
         </View>
 
