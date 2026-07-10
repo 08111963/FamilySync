@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Response } from "express";
 import { createServer, type Server } from "node:http";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -77,15 +77,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // segreto nell'URL. Permette l'iscrizione da Google/Apple Calendar.
   app.use('/calendar-feed', calendarFeedRoutes);
 
+  // Asset pubblici (avatar, foto ricette) mostrati ovunque nell'app, anche
+  // quando la pagina è servita da un'origine diversa dal backend (es. web
+  // tunnel ngrok in dev, o dominio prod diverso). Devono dichiarare
+  // Cross-Origin-Resource-Policy: cross-origin, altrimenti il browser blocca
+  // l'immagine (helmet imposta same-origin di default) e si vede solo il colore.
+  const publicAssetHeaders = (res: Response) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  };
+
   // Foto ricette generate dall'AI: immagini generiche di piatti (nessun dato
   // personale, cache condivisa per titolo tra famiglie), servite pubblicamente
   // con cache lunga. Montate PRIMA di /uploads autenticato.
-  app.use('/uploads/recipe-images', express.static('uploads/recipe-images', { maxAge: '30d', immutable: true }));
+  app.use('/uploads/recipe-images', express.static('uploads/recipe-images', { maxAge: '30d', immutable: true, setHeaders: publicAssetHeaders }));
 
   // Foto profilo (avatar): immagini di profilo mostrate ovunque nell'app, senza
   // dati sensibili. Servite pubblicamente (come le foto ricette) per non dover
   // propagare il media-token in ogni Avatar. Montate PRIMA di /uploads autenticato.
-  app.use('/uploads/avatars', express.static('uploads/avatars', { maxAge: '7d' }));
+  app.use('/uploads/avatars', express.static('uploads/avatars', { maxAge: '7d', setHeaders: publicAssetHeaders }));
 
   app.use('/uploads', authenticateMedia, requireEmailVerified, express.static('uploads'));
 
