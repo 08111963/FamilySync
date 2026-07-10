@@ -144,6 +144,48 @@ describe("computeBillNotificationTriggers", () => {
     );
     assert.equal(triggers.filter((t) => t.key.startsWith("custom:")).length, 1);
   });
+
+  test("promemoria con orario: scatta all'ora scelta (non alle 08:00)", () => {
+    const triggers = computeBillNotificationTriggers(
+      bill({ customReminderDates: ["2026-12-05T15:30"] }),
+      "free",
+      now
+    );
+    const custom = triggers.filter((t) => t.key.startsWith("custom:"));
+    assert.equal(custom.length, 1);
+    assert.equal(custom[0].date.getHours(), 15);
+    assert.equal(custom[0].date.getMinutes(), 30);
+  });
+
+  test("promemoria stesso giorno più tardi: scatta (non saltato come le 08:00)", () => {
+    // now = 1 dic 08:00; un promemoria oggi alle 20:00 è futuro e deve scattare
+    const triggers = computeBillNotificationTriggers(
+      bill({ customReminderDates: ["2026-12-01T20:00"] }),
+      "free",
+      now
+    );
+    const custom = triggers.filter((t) => t.key.startsWith("custom:"));
+    assert.equal(custom.length, 1);
+    assert.equal(custom[0].date.getHours(), 20);
+  });
+
+  test("promemoria con orario nel passato: ignorato", () => {
+    const triggers = computeBillNotificationTriggers(
+      bill({ customReminderDates: ["2026-12-01T07:00"] }),
+      "free",
+      now
+    );
+    assert.equal(triggers.filter((t) => t.key.startsWith("custom:")).length, 0);
+  });
+
+  test("orario non valido (25:00): ignorato", () => {
+    const triggers = computeBillNotificationTriggers(
+      bill({ customReminderDates: ["2026-12-05T25:00", "2026-12-05T10:61"] as string[] }),
+      "free",
+      now
+    );
+    assert.equal(triggers.filter((t) => t.key.startsWith("custom:")).length, 0);
+  });
 });
 
 describe("billNotificationSignature", () => {

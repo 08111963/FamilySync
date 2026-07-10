@@ -40,10 +40,13 @@ const NOTIFY_HOUR = 8; // 08:00 ora locale.
  * notifiche già programmate con la vecchia politica vengono riprogrammate.
  * v2: orario 09:00 -> 08:00, offset free [0,-1] -> [1,0], premium [7,3,0,-1] -> [7,3,1,0].
  * v3: aggiunte le date promemoria personalizzate scelte dall'utente.
+ * v4: i promemoria personalizzati includono un orario a scelta (AAAA-MM-GGTHH:MM);
+ *     le vecchie voci solo-data restano valide e scattano alle 08:00.
  */
-const SCHEDULE_POLICY_VERSION = 3;
+const SCHEDULE_POLICY_VERSION = 4;
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const ISO_DATETIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
 
 /** True solo se la stringa è una data ISO reale del calendario (no rollover). */
 function isRealIsoDate(s: string): boolean {
@@ -60,13 +63,50 @@ function isRealIsoDate(s: string): boolean {
   );
 }
 
-/** Normalizza le date custom: solo ISO reali, deduplicate e ordinate. */
+/**
+ * True se il valore è un promemoria valido: data reale con orario a scelta
+ * (AAAA-MM-GGTHH:MM) oppure solo data (AAAA-MM-GG, retro-compatibile).
+ */
+export function isRealReminderValue(s: string): boolean {
+  const dt = ISO_DATETIME.exec(s);
+  if (dt) {
+    const hour = Number(dt[4]);
+    const minute = Number(dt[5]);
+    if (hour > 23 || minute > 59) return false;
+    return isRealIsoDate(`${dt[1]}-${dt[2]}-${dt[3]}`);
+  }
+  return isRealIsoDate(s);
+}
+
+/** Normalizza i promemoria custom: solo valori reali, deduplicati e ordinati. */
 export function normalizeCustomReminderDates(dates: unknown): string[] {
   if (!Array.isArray(dates)) return [];
   const valid = dates.filter(
-    (d): d is string => typeof d === "string" && isRealIsoDate(d)
+    (d): d is string => typeof d === "string" && isRealReminderValue(d)
   );
   return Array.from(new Set(valid)).sort();
+}
+
+/**
+ * Converte un promemoria custom in Date locale.
+ * - Con orario (AAAA-MM-GGTHH:MM): quell'ora esatta.
+ * - Solo data (AAAA-MM-GG): alle 08:00 (retro-compatibilità).
+ */
+function reminderValueToLocalDate(value: string): Date | null {
+  const dt = ISO_DATETIME.exec(value);
+  if (dt) {
+    const d = new Date(
+      Number(dt[1]),
+      Number(dt[2]) - 1,
+      Number(dt[3]),
+      Number(dt[4]),
+      Number(dt[5]),
+      0,
+      0
+    );
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return localDueDateAt9(value);
 }
 
 export function formatEuro(amount: string | number): string {
@@ -122,29 +162,31 @@ export function computeBillNotificationTriggers(
   const body = `${bill.title} · ${formatEuro(bill.amount)} · scade il ${formatDueLabel(bill.dueDate)}`;
 
   const triggers: BillNotificationTrigger[] = [];
-  const usedDays = new Set<string>();
+  const usedTimes = new Set<number>();
   for (const offset of offsetsForPlan(plan)) {
     const date = addDays(base, -offset);
     if (date.getTime() <= now.getTime()) continue;
+    if (usedTimes.has(date.getTime())) continue;
+    usedTimes.add(date.getTime());
     triggers.push({
       key: String(offset),
       date,
       title: titleForOffset(offset),
       body,
     });
-    usedDays.add(dayKey(date));
   }
 
-  // Date promemoria personalizzate scelte dall'utente: notifica alle 08:00,
-  // solo future e senza duplicare un giorno già coperto dagli offset automatici.
-  for (const iso of normalizeCustomReminderDates(bill.customReminderDates)) {
-    const date = localDueDateAt9(iso);
+  // Promemoria personalizzati scelti dall'utente: scattano all'ora scelta (le
+  // vecchie voci solo-data alle 08:00), solo se futuri e non già coperti da un
+  // altro promemoria nello stesso identico istante.
+  for (const value of normalizeCustomReminderDates(bill.customReminderDates)) {
+    const date = reminderValueToLocalDate(value);
     if (!date) continue;
     if (date.getTime() <= now.getTime()) continue;
-    if (usedDays.has(dayKey(date))) continue;
-    usedDays.add(dayKey(date));
+    if (usedTimes.has(date.getTime())) continue;
+    usedTimes.add(date.getTime());
     triggers.push({
-      key: `custom:${iso}`,
+      key: `custom:${value}`,
       date,
       title: "Promemoria bolletta",
       body,
@@ -152,14 +194,6 @@ export function computeBillNotificationTriggers(
   }
 
   return triggers;
-}
-
-/** Chiave stabile del giorno locale (YYYY-MM-DD) per deduplicare i trigger. */
-function dayKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
 }
 
 function formatDueLabel(dueDate: string): string {
