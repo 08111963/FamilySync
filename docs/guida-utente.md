@@ -9,10 +9,11 @@
 1. **Registrati** con nome, email e password
 2. **Crea una famiglia** dalla schermata Home
 3. **Invita i familiari** dalla scheda Famiglia: via **email** (link sicuro personale) oppure con un **link unico via WhatsApp o QR code**
-4. **Usa le 7 schede** per organizzare la vita quotidiana: Home, Calendario, Spesa, Faccende, Bollette, Chat, Famiglia
-5. **Comunica** con la famiglia tramite la Chat in tempo reale
-6. **Tieni d'occhio le scadenze** delle bollette con i promemoria automatici
-7. **(Opzionale)** Attiva i Suggerimenti AI per ricevere consigli intelligenti su spesa, faccende, ricette e piano pasti
+4. **Personalizza il tuo profilo** (foto e colore) toccando la matita sulla tua riga nella scheda Famiglia
+5. **Usa le 7 schede** per organizzare la vita quotidiana: Home, Calendario, Spesa, Faccende, Bollette, Chat, Famiglia
+6. **Comunica** con la famiglia tramite la Chat in tempo reale
+7. **Tieni d'occhio le scadenze** delle bollette con i **promemoria** (notifiche sul telefono)
+8. **(Opzionale)** Attiva i Suggerimenti AI per ricevere consigli intelligenti su spesa, faccende, ricette e piano pasti
 
 ---
 
@@ -37,6 +38,7 @@ L'app ha 7 schede principali in fondo allo schermo:
 | Ricette | Card "Ricette" dalla Home | Generare ricette AI, cercare ricette, salvare e consultare ricette |
 | Piano Pasti | Card "Piano Pasti" dalla Home | Generare piani settimanali AI, salvare piani, convertire in lista spesa |
 | Invita Familiare | Pulsante "Aggiungi" nella scheda Famiglia | Invitare un familiare via email, WhatsApp o QR code |
+| Il mio profilo | Icona matita sulla propria riga nella scheda Famiglia | Personalizzare la foto e il colore del proprio profilo |
 | Premium | Sezione Funzionalità nella scheda Famiglia | Attivare l'abbonamento Premium e sbloccare funzioni avanzate |
 | Consigli AI famiglia | Sezione Funzionalità nella scheda Famiglia | Vedere analisi e consigli settimanali generati dall'AI |
 | Utenti Bloccati | Sezione Funzionalità nella scheda Famiglia | Gestire gli utenti bloccati |
@@ -462,6 +464,14 @@ Nella tab **I Miei Piani** puoi:
 - Ogni membro mostra il proprio nome, ruolo, colore e punti accumulati
 - La sezione **Statistiche** mostra a colpo d'occhio numero di eventi, liste e faccende completate
 
+### Personalizzare il Proprio Profilo
+Ogni membro può personalizzare il **proprio** profilo (foto e colore), senza bisogno di essere amministratore:
+- Nella scheda **Famiglia**, tocca l'icona a forma di **matita** sulla **tua** riga (quella contrassegnata con "(tu)"): si apre la schermata **"Il mio profilo"**
+- **Foto profilo**: tocca **Scatta una foto** oppure **Scegli dalla galleria**. Se hai già una foto, puoi toccare **Rimuovi foto** per tornare alle iniziali colorate
+- **Colore**: scegli il colore che ti rappresenta tra quelli disponibili. È il colore con cui appari in tutta l'app (eventi, faccende, chat, classifica)
+- Le modifiche sono **immediate** e vengono viste subito da tutta la famiglia
+- Puoi modificare **solo il tuo** profilo: ogni familiare personalizza il proprio. Sulle righe degli altri membri, al posto della matita, trovi le azioni di segnalazione/blocco (e il cestino se sei amministratore)
+
 ### Ruoli
 Quando inviti un membro scegli uno di questi ruoli:
 - **Admin**: può gestire i membri, modificare le impostazioni del gruppo, gestire le segnalazioni, invitare nuovi membri e gestire l'abbonamento Premium
@@ -630,6 +640,14 @@ Se trovi un contenuto inappropriato o vuoi segnalare un comportamento:
 ### Profilo
 - Il tuo nome e email sono visibili nella scheda Famiglia
 - L'email viene utilizzata per il login e le comunicazioni di servizio
+- Puoi **personalizzare foto e colore** del tuo profilo toccando la **matita** sulla tua riga nella scheda Famiglia (schermata "Il mio profilo"). I dettagli sono nella sezione **Gestione Famiglia → Personalizzare il Proprio Profilo**
+
+### Notifiche
+FamilySync ti avvisa direttamente sul telefono per non farti dimenticare le scadenze:
+- **Promemoria bollette**: ricevi una notifica prima della scadenza delle bollette (con il piano Free arrivano **il giorno prima** e **il giorno della scadenza**, alle **8:00 del mattino**). Puoi anche aggiungere **date promemoria personalizzate**. Trovi tutti i dettagli nella sezione **Bollette → Promemoria delle Scadenze**
+- **Attivazione**: alla prima notifica l'app ti chiede il **permesso di inviare notifiche**. Concedilo per ricevere i promemoria. Se lo neghi, l'app continua a funzionare ma non ricevi gli avvisi: puoi riattivarlo in qualsiasi momento dalle **impostazioni del telefono** (sezione Notifiche → FamilySync)
+- **Per ogni bolletta** puoi decidere se attivare o disattivare il promemoria con l'apposito interruttore
+- Le notifiche sono disponibili **solo nell'app sul telefono** (iPhone e Android), non sulla versione web
 
 ### Sicurezza dell'Account
 - La password è protetta con crittografia avanzata
