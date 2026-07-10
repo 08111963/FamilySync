@@ -238,7 +238,7 @@ router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamil
       expiresAt,
     }).returning();
 
-    const baseUrl = process.env.CLIENT_URL || config.getBaseUrl(req);
+    const baseUrl = config.getInviteBaseUrl(req);
     const inviteLink = `${baseUrl}/join/${token}`;
 
     try {
@@ -308,7 +308,7 @@ router.post('/:familyId/invite-link', authenticate, requireFamilyMember(), creat
       return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Impossibile generare il link di invito" } });
     }
 
-    const baseUrl = process.env.CLIENT_URL || config.getBaseUrl(req);
+    const baseUrl = config.getInviteBaseUrl(req);
     const inviteLink = `${baseUrl}/join-link/${code}`;
 
     logger.info('Family invite-link retrieved', { familyId });
