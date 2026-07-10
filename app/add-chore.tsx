@@ -240,7 +240,7 @@ export default function AddChoreScreen() {
           <View style={styles.rowContent}>
             <Text style={[styles.rowLabel, { color: colors.text }]}>Ricorrente</Text>
             <Text style={[styles.rowHint, { color: colors.textSecondary }]}>
-              Si ripete automaticamente
+              Quando la completi, ricompare per il periodo successivo. Con una scadenza ti avvisiamo il giorno prima.
             </Text>
           </View>
           <Switch

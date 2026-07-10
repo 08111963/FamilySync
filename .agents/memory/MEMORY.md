@@ -21,3 +21,4 @@
 - [Dev->Prod data migration](db-dev-prod-migration.md) — dev & prod DBs are SEPARATE; publish copies schema not data; only write path to prod is a token-gated app endpoint.
 - [Email sender config](email-sender-config.md) — EMAIL_FROM stays noreply@familysync.eu (verified Resend domain); assistenza@familysync.it is Reply-To/contact only until familysync.it is verified.
 - [Tester trial accounts](tester-trial-accounts.md) — 15 Google Play tester accounts; entitlement trial_days flips pending→active atomically on first login then falls to free; passwords HMAC-derived; PDF gitignored.
+- [Chore completion atomicity](chore-completion-atomicity.md) — /complete must flip isCompleted inside the UPDATE WHERE (guard=false) + use RETURNING row; SELECT-then-UPDATE double-awards points & double-recreates recurring chores.

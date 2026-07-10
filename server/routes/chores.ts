@@ -259,6 +259,68 @@ router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (re
   }
 });
 
+const VALID_RECURRENCE = new Set(['daily', 'weekly', 'monthly']);
+
+/** Somma un intervallo (giorno/settimana/mese) a una data. */
+function addRecurrenceInterval(base: Date, rule: string): Date {
+  const d = new Date(base.getTime());
+  if (rule === 'daily') d.setDate(d.getDate() + 1);
+  else if (rule === 'weekly') d.setDate(d.getDate() + 7);
+  else if (rule === 'monthly') d.setMonth(d.getMonth() + 1);
+  return d;
+}
+
+/**
+ * Prossima scadenza di una faccenda ricorrente a partire da quella precedente,
+ * avanzando finché non cade da oggi in poi (evita di ricreare una faccenda già
+ * scaduta se quella completata era in ritardo).
+ */
+function nextRecurrenceDueDate(prevDue: Date, rule: string): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let next = addRecurrenceInterval(prevDue, rule);
+  let guard = 0;
+  while (next.getTime() < today.getTime() && guard < 1000) {
+    next = addRecurrenceInterval(next, rule);
+    guard++;
+  }
+  return next;
+}
+
+/**
+ * Se la faccenda completata è ricorrente, ne crea una nuova (non completata) per
+ * il periodo successivo, copiando i dati e ricreando l'evento calendario.
+ * Best-effort: gli errori non bloccano mai il completamento.
+ */
+async function recreateRecurringChore(
+  completed: typeof chores.$inferSelect,
+  userId: string
+): Promise<void> {
+  const rule = completed.recurrenceRule;
+  if (!rule || !VALID_RECURRENCE.has(rule)) return;
+  try {
+    const newDueDate = completed.dueDate
+      ? nextRecurrenceDueDate(new Date(completed.dueDate), rule)
+      : null;
+    let [next] = await db.insert(chores).values({
+      familyId: completed.familyId,
+      title: completed.title,
+      description: completed.description,
+      difficulty: completed.difficulty,
+      points: completed.points,
+      estimatedMinutes: completed.estimatedMinutes,
+      assignedTo: completed.assignedTo,
+      dueDate: newDueDate,
+      recurrenceRule: rule,
+      createdBy: userId,
+    }).returning();
+    next = await createChoreCalendarEvent(next, userId);
+    broadcastToFamily(completed.familyId, 'chore_created', next);
+  } catch (error) {
+    logger.warn('Recurring chore recreation failed', { choreId: completed.id, error: String(error) });
+  }
+}
+
 router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
@@ -276,8 +338,10 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
       return res.status(400).json({ error: { code: "ALREADY_COMPLETED", message: "Faccenda già completata" } });
     }
 
-    const pointsToAdd = currentChore.points || 10;
-
+    // Completamento ATOMICO: la guardia `isCompleted=false` nell'UPDATE evita
+    // che due richieste simultanee accreditino i punti o ricreino la faccenda
+    // ricorrente due volte. Se non aggiorna alcuna riga, un'altra richiesta ha
+    // già completato la faccenda nel frattempo.
     let [chore] = await db.update(chores)
       .set({
         isCompleted: true,
@@ -285,23 +349,38 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
         completedBy: req.user!.userId,
         updatedAt: new Date(),
       })
-      .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
+      .where(and(
+        eq(chores.id, choreId),
+        eq(chores.familyId, familyId),
+        eq(chores.isCompleted, false)
+      ))
       .returning();
+
+    if (!chore) {
+      return res.status(400).json({ error: { code: "ALREADY_COMPLETED", message: "Faccenda già completata" } });
+    }
+
+    const pointsToAdd = chore.points || 10;
 
     // Sync calendario: faccenda completata → evento rimosso.
     await deleteChoreCalendarEvent(familyId, choreId, chore.calendarEventId);
     chore = { ...chore, calendarEventId: null };
 
-    if (currentChore.assignedTo) {
+    if (chore.assignedTo) {
       await db.update(familyMembers)
         .set({
           points: sql`COALESCE(${familyMembers.points}, 0) + ${pointsToAdd}`,
         })
         .where(and(
-          eq(familyMembers.id, currentChore.assignedTo),
+          eq(familyMembers.id, chore.assignedTo),
           eq(familyMembers.familyId, familyId)
         ));
     }
+
+    // Faccenda ricorrente: alla chiusura ne viene creata automaticamente una
+    // nuova per il periodo successivo (best-effort, non blocca il completamento).
+    // Eseguito solo dopo l'UPDATE atomico riuscito → nessuna occorrenza doppia.
+    await recreateRecurringChore(chore, req.user!.userId);
 
     broadcastToFamily(familyId, 'chore_completed', chore);
     res.json(chore);

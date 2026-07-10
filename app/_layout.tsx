@@ -11,6 +11,7 @@ import { queryClient } from "@/lib/query-client";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { FamilyProvider } from "@/context/FamilyContext";
 import { BillNotificationsSyncProvider } from "@/context/BillNotificationsProvider";
+import { ChoreNotificationsSyncProvider } from "@/context/ChoreNotificationsProvider";
 import { SubscriptionProvider, initializeRevenueCat } from "@/lib/revenuecat";
 
 SplashScreen.preventAutoHideAsync();
@@ -112,13 +113,15 @@ export default function RootLayout() {
           <FamilyProvider>
             <SubscriptionProvider>
               <BillNotificationsSyncProvider>
-                <GestureHandlerRootView>
-                  <KeyboardProvider>
-                    <AuthGate>
-                      <RootLayoutNav />
-                    </AuthGate>
-                  </KeyboardProvider>
-                </GestureHandlerRootView>
+                <ChoreNotificationsSyncProvider>
+                  <GestureHandlerRootView>
+                    <KeyboardProvider>
+                      <AuthGate>
+                        <RootLayoutNav />
+                      </AuthGate>
+                    </KeyboardProvider>
+                  </GestureHandlerRootView>
+                </ChoreNotificationsSyncProvider>
               </BillNotificationsSyncProvider>
             </SubscriptionProvider>
           </FamilyProvider>
