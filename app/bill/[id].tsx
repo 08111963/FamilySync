@@ -397,7 +397,7 @@ export default function BillDetailScreen() {
               <View style={styles.infoRow}>
                 <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Responsabile</Text>
                 <View style={styles.memberInline}>
-                  <Avatar name={assignedMember.name} color={assignedMember.color} size={24} />
+                  <Avatar name={assignedMember.name} color={assignedMember.color} size={24} avatarUrl={assignedMember.avatarUrl} />
                   <Text style={[styles.infoValue, { color: colors.text }]}>{assignedMember.name}</Text>
                 </View>
               </View>
@@ -459,7 +459,7 @@ export default function BillDetailScreen() {
                   {bill.splits.map((s) => (
                     <View key={s.id} style={styles.splitRow}>
                       <View style={styles.memberInline}>
-                        <Avatar name={s.memberName ?? "?"} color={s.memberColor ?? colors.primary} size={24} />
+                        <Avatar name={s.memberName ?? "?"} color={s.memberColor ?? colors.primary} size={24} avatarUrl={data.members.find((m) => m.id === s.memberId)?.avatarUrl} />
                         <Text style={[styles.infoValue, { color: colors.text }]}>{s.memberName ?? "Membro"}</Text>
                       </View>
                       <Text style={[styles.splitAmount, { color: colors.text }]}>{formatEuro(s.amount)}</Text>
@@ -508,7 +508,7 @@ export default function BillDetailScreen() {
                   {data.members.map((m) => (
                     <View key={m.id} style={styles.customRow}>
                       <View style={styles.memberInline}>
-                        <Avatar name={m.name} color={m.color} size={24} />
+                        <Avatar name={m.name} color={m.color} size={24} avatarUrl={m.avatarUrl} />
                         <Text style={[styles.infoValue, { color: colors.text }]}>{m.name}</Text>
                       </View>
                       <Input

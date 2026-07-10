@@ -326,7 +326,7 @@ function BillForm({
                       },
                     ]}
                   >
-                    <Avatar name={member.name} color={member.color} size={28} />
+                    <Avatar name={member.name} color={member.color} size={28} avatarUrl={member.avatarUrl} />
                     <Text style={[styles.memberName, { color: colors.text }]}>{member.name}</Text>
                   </Pressable>
                 ))}

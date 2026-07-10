@@ -194,7 +194,7 @@ export default function AddChoreScreen() {
                       },
                     ]}
                   >
-                    <Avatar name={member.name} color={member.color} size={32} />
+                    <Avatar name={member.name} color={member.color} size={32} avatarUrl={member.avatarUrl} />
                     <Text style={[styles.memberName, { color: colors.text }]}>{member.name}</Text>
                   </Pressable>
                 ))}
