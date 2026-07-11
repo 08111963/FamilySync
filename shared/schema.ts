@@ -400,6 +400,20 @@ export const billPushLog = pgTable("bill_push_log", {
 
 export type BillPushLog = typeof billPushLog.$inferSelect;
 
+// EVENT PUSH LOG — registro dei promemoria eventi già inviati via push dal
+// server (stessa logica anti-doppione di bill_push_log).
+export const eventPushLog = pgTable("event_push_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventId: uuid("event_id").notNull().references(() => calendarEvents.id, { onDelete: "cascade" }),
+  reminderKey: varchar("reminder_key", { length: 120 }).notNull(),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+}, (table) => [
+  unique("event_push_log_event_key_unique").on(table.eventId, table.reminderKey),
+  index("event_push_log_event_idx").on(table.eventId),
+]);
+
+export type EventPushLog = typeof eventPushLog.$inferSelect;
+
 // ENTITLEMENTS — Premium acquistato tramite store nativi (Google Play / Apple).
 // Premium è UNICO per famiglia: una sola riga per familyId (unique).
 // La verifica server-side aggiorna status/expiresAt; isPremium(familyId) legge qui.

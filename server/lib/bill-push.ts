@@ -31,13 +31,11 @@ import {
  * il promemoria parte solo se la prenotazione riesce, quindi mai due volte.
  */
 
-const PUSH_TZ = process.env.PUSH_TZ || 'Europe/Rome';
+export const PUSH_TZ = process.env.PUSH_TZ || 'Europe/Rome';
 
 /** Quanto tempo dopo l'orario previsto un promemoria può ancora partire
  *  (recupero dopo riavvii o server temporaneamente non attivo). */
-const CATCH_UP_WINDOW_MS = 30 * 60 * 1000;
-
-const TICK_INTERVAL_MS = 60 * 1000;
+export const CATCH_UP_WINDOW_MS = 30 * 60 * 1000;
 
 /** Offset (ms) del fuso orario `timeZone` rispetto a UTC nell'istante dato. */
 function tzOffsetMs(utcInstant: Date, timeZone: string): number {
@@ -282,31 +280,3 @@ export async function runBillPushTick(now: Date = new Date()): Promise<number> {
   return sentCount;
 }
 
-let tickRunning = false;
-let schedulerStarted = false;
-
-/** Avvia lo scheduler (un controllo al minuto). Idempotente. */
-export function startBillPushScheduler(intervalMs: number = TICK_INTERVAL_MS): void {
-  if (schedulerStarted) return;
-  schedulerStarted = true;
-
-  const tick = async () => {
-    if (tickRunning) return;
-    tickRunning = true;
-    try {
-      const sent = await runBillPushTick();
-      if (sent > 0) {
-        logger.info('Bill push: promemoria inviati', { count: sent });
-      }
-    } catch (error) {
-      logger.error('Bill push tick fallito', { error: String(error) });
-    } finally {
-      tickRunning = false;
-    }
-  };
-
-  // Non tenere vivo il processo solo per lo scheduler (unref esiste in Node).
-  const timer = setInterval(tick, intervalMs) as unknown as { unref?: () => void };
-  timer.unref?.();
-  void tick();
-}

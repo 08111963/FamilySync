@@ -7,7 +7,7 @@ import { config } from './lib/config';
 import { logger, generateRequestId } from './lib/logger';
 import { seedOwnerEntitlements } from './lib/entitlements';
 import { ensureDemoAccount } from './lib/demo-account';
-import { startBillPushScheduler } from './lib/bill-push';
+import { startPushScheduler } from './lib/push-scheduler';
 import { ensureTesterAccounts } from './lib/tester-accounts';
 
 const app = express();
@@ -407,10 +407,10 @@ function setupErrorHandler(app: express.Application) {
             log(`tester accounts skipped: SESSION_SECRET non impostato`);
         })
         .catch((err) => log(`tester accounts seed failed: ${String(err)}`));
-      // Promemoria bollette via push: un controllo al minuto, invia ai membri
-      // della famiglia all'orario previsto (anti-doppione via bill_push_log).
-      startBillPushScheduler();
-      log('bill push scheduler started');
+      // Promemoria bollette+eventi via push: un controllo al minuto, invia ai
+      // membri della famiglia all'orario previsto (anti-doppione via *_push_log).
+      startPushScheduler();
+      log('push scheduler started (bills + events)');
     },
   );
 })();

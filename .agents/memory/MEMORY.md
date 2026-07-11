@@ -22,5 +22,5 @@
 - [Email sender config](email-sender-config.md) — EMAIL_FROM stays noreply@familysync.eu (verified Resend domain); assistenza@familysync.it is Reply-To/contact only until familysync.it is verified.
 - [Bill custom reminders (date+time)](bill-custom-reminders.md) — custom reminders stored as local `YYYY-MM-DDTHH:MM` (date-only→08:00); dedupe by exact timestamp not day; bump SCHEDULE_POLICY_VERSION on any policy/format change.
 - [Tester trial accounts](tester-trial-accounts.md) — 15 Google Play tester accounts; entitlement trial_days flips pending→active atomically on first login then falls to free; passwords HMAC-derived; PDF gitignored.
-- [Promemoria bollette push server](bill-server-push.md) — scheduler tz-aware (Europe/Rome), claim atomico anti-doppione con retry se nessuno riceve; locali disattivate se token push; autoscale ⇒ serve Reserved VM.
+- [Promemoria push server (bollette+eventi)](bill-server-push.md) — scheduler unico tz-aware (Europe/Rome), claim atomico anti-doppione con retry se nessuno riceve; locali disattivate se token push; autoscale ⇒ serve Reserved VM.
 - [Chore completion atomicity](chore-completion-atomicity.md) — /complete must flip isCompleted inside the UPDATE WHERE (guard=false) + use RETURNING row; SELECT-then-UPDATE double-awards points & double-recreates recurring chores.
