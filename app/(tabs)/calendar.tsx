@@ -285,7 +285,7 @@ export default function CalendarScreen() {
                       )}
                       {member && (
                         <View style={styles.eventMemberRow}>
-                          <Avatar name={member.name} color={member.color} size={20} avatarUrl={member.avatarUrl} />
+                          <Avatar name={member.name} color={member.color} size={20} />
                           <Text style={[styles.eventMemberName, { color: colors.textSecondary }]}>
                             {member.name}
                           </Text>

@@ -385,35 +385,6 @@ export const pushTokens = pgTable("push_tokens", {
 
 export type PushToken = typeof pushTokens.$inferSelect;
 
-// BILL PUSH LOG — registro dei promemoria bollette già inviati via push dal
-// server. La chiave (billId, reminderKey) garantisce che lo stesso promemoria
-// non venga mai inviato due volte (anche dopo riavvii del server).
-export const billPushLog = pgTable("bill_push_log", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  billId: uuid("bill_id").notNull().references(() => bills.id, { onDelete: "cascade" }),
-  reminderKey: varchar("reminder_key", { length: 120 }).notNull(),
-  sentAt: timestamp("sent_at").defaultNow().notNull(),
-}, (table) => [
-  unique("bill_push_log_bill_key_unique").on(table.billId, table.reminderKey),
-  index("bill_push_log_bill_idx").on(table.billId),
-]);
-
-export type BillPushLog = typeof billPushLog.$inferSelect;
-
-// EVENT PUSH LOG — registro dei promemoria eventi già inviati via push dal
-// server (stessa logica anti-doppione di bill_push_log).
-export const eventPushLog = pgTable("event_push_log", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  eventId: uuid("event_id").notNull().references(() => calendarEvents.id, { onDelete: "cascade" }),
-  reminderKey: varchar("reminder_key", { length: 120 }).notNull(),
-  sentAt: timestamp("sent_at").defaultNow().notNull(),
-}, (table) => [
-  unique("event_push_log_event_key_unique").on(table.eventId, table.reminderKey),
-  index("event_push_log_event_idx").on(table.eventId),
-]);
-
-export type EventPushLog = typeof eventPushLog.$inferSelect;
-
 // ENTITLEMENTS — Premium acquistato tramite store nativi (Google Play / Apple).
 // Premium è UNICO per famiglia: una sola riga per familyId (unique).
 // La verifica server-side aggiorna status/expiresAt; isPremium(familyId) legge qui.

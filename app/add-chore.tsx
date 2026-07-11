@@ -11,7 +11,6 @@ import { VoiceInput } from "@/components/VoiceInput";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
-import { CalendarPicker } from "@/components/CalendarPicker";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { freeLimitMessage } from "@/lib/plan-limit";
 
@@ -166,12 +165,11 @@ export default function AddChoreScreen() {
         </View>
 
         <View style={styles.field}>
-          <CalendarPicker
+          <Input
             label="Scadenza (opzionale)"
-            value={dueDate || null}
-            onChange={setDueDate}
-            onClear={() => setDueDate("")}
-            testID="chore-due-date"
+            placeholder="AAAA-MM-GG"
+            value={dueDate}
+            onChangeText={setDueDate}
           />
         </View>
 
@@ -196,7 +194,7 @@ export default function AddChoreScreen() {
                       },
                     ]}
                   >
-                    <Avatar name={member.name} color={member.color} size={32} avatarUrl={member.avatarUrl} />
+                    <Avatar name={member.name} color={member.color} size={32} />
                     <Text style={[styles.memberName, { color: colors.text }]}>{member.name}</Text>
                   </Pressable>
                 ))}
@@ -240,7 +238,7 @@ export default function AddChoreScreen() {
           <View style={styles.rowContent}>
             <Text style={[styles.rowLabel, { color: colors.text }]}>Ricorrente</Text>
             <Text style={[styles.rowHint, { color: colors.textSecondary }]}>
-              Quando la completi, ricompare per il periodo successivo. Con una scadenza ti avvisiamo il giorno prima.
+              Si ripete automaticamente
             </Text>
           </View>
           <Switch

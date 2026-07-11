@@ -12,7 +12,6 @@ import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
 import { DateField } from "@/components/DateField";
-import { ReminderPicker } from "@/components/ReminderPicker";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { CATEGORY_META, type Bill } from "@/app/(tabs)/bills";
 
@@ -25,8 +24,6 @@ function isValidDate(s: string): boolean {
 }
 
 function formatIsoLabel(iso: string): string {
-  const dt = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(iso);
-  if (dt) return `${dt[3]}/${dt[2]}/${dt[1]} · ${dt[4]}:${dt[5]}`;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
@@ -329,7 +326,7 @@ function BillForm({
                       },
                     ]}
                   >
-                    <Avatar name={member.name} color={member.color} size={28} avatarUrl={member.avatarUrl} />
+                    <Avatar name={member.name} color={member.color} size={28} />
                     <Text style={[styles.memberName, { color: colors.text }]}>{member.name}</Text>
                   </Pressable>
                 ))}
@@ -370,7 +367,7 @@ function BillForm({
           <View style={styles.field}>
             <Text style={[styles.label, { color: colors.text }]}>Date promemoria personalizzate</Text>
             <Text style={[styles.rowHint, { color: colors.textSecondary, marginBottom: 10 }]}>
-              Oltre agli avvisi automatici, scegli giorno e ora in cui vuoi essere avvisato.
+              Oltre agli avvisi automatici, scegli altri giorni in cui vuoi essere avvisato (alle 08:00).
             </Text>
 
             {customReminderDates.length > 0 && (
@@ -394,9 +391,13 @@ function BillForm({
               </View>
             )}
 
-            <ReminderPicker
-              onAdd={(value) => {
-                setCustomReminderDates((prev) => (prev.includes(value) ? prev : [...prev, value].sort()));
+            <DateField
+              label=""
+              placeholder="+ Aggiungi una data"
+              value=""
+              onChange={(iso) => {
+                if (!iso) return;
+                setCustomReminderDates((prev) => (prev.includes(iso) ? prev : [...prev, iso].sort()));
               }}
               testID="add-reminder-date"
             />

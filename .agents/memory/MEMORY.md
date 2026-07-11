@@ -9,7 +9,6 @@
 - [Stripe payments conventions](stripe-payments-conventions.md) — subscriptions are family-scoped; never trust client priceId (resolve server-side); webhooks must reconcile the families table; Stripe stays dormant and must NOT unlock mobile premium (entitlements do).
 - [RevenueCat Premium (FamilySync)](revenuecat-premium.md) — Premium store-native via RevenueCat: client non decide, backend sync /api/purchases/sync -> tabella entitlements; ruolo admin; webhook fail-closed in prod.
 - [Foto ricette AI](recipe-images.md) — foto AI = asset pubblici cache cross-family per titolo; cache-hit senza quota; sharp 512px WebP; rotte con familyId nel body richiedono requireFamilyMember().
-- [Public asset CORP](public-asset-corp.md) — public /uploads/avatars & /uploads/recipe-images must set Cross-Origin-Resource-Policy: cross-origin (helmet default same-origin), else different-origin WEB clients show placeholder while native/admin see the image.
 - [Demo account seed](demo-account-seed.md) — scripts/seed-demo-account.ts per revisori store: demo DEVE avere emailVerified=true (tutte le /api lo richiedono) + entitlements active per Premium; cleanup solo famiglia marker, in transazione.
 - [Resend email (FamilySync)](resend-email.md) — email via Resend (RESEND_API_KEY); from noreply@familysync.eu, reply-to assistenza@familysync.it; dominio .eu verificato; redeploy prod per caricare nuove env/secret.
 - [Expo Go push crash (SDK 53+)](expo-go-push-notifications.md) — getExpoPushTokenAsync crasha SOLO in Expo Go/"Simulate on Android"; guardare con Constants.executionEnvironment===StoreClient; web :5000 sano (non confondere ambienti).
@@ -20,7 +19,4 @@
 - [Bills split validation parity](bills-split-validation.md) — la validazione numerica FE deve usare la stessa formula grezza del BE (no arrotondamento prima del confronto) e intercettare i codici errore reali del BE.
 - [Dev->Prod data migration](db-dev-prod-migration.md) — dev & prod DBs are SEPARATE; publish copies schema not data; only write path to prod is a token-gated app endpoint.
 - [Email sender config](email-sender-config.md) — EMAIL_FROM stays noreply@familysync.eu (verified Resend domain); assistenza@familysync.it is Reply-To/contact only until familysync.it is verified.
-- [Bill custom reminders (date+time)](bill-custom-reminders.md) — custom reminders stored as local `YYYY-MM-DDTHH:MM` (date-only→08:00); dedupe by exact timestamp not day; bump SCHEDULE_POLICY_VERSION on any policy/format change.
 - [Tester trial accounts](tester-trial-accounts.md) — 15 Google Play tester accounts; entitlement trial_days flips pending→active atomically on first login then falls to free; passwords HMAC-derived; PDF gitignored.
-- [Promemoria push server (bollette+eventi)](bill-server-push.md) — scheduler unico tz-aware (Europe/Rome), claim atomico anti-doppione con retry se nessuno riceve; locali disattivate se token push; autoscale ⇒ serve Reserved VM.
-- [Chore completion atomicity](chore-completion-atomicity.md) — /complete must flip isCompleted inside the UPDATE WHERE (guard=false) + use RETURNING row; SELECT-then-UPDATE double-awards points & double-recreates recurring chores.

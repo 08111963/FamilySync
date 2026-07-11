@@ -30,8 +30,3 @@ Coesiste col flusso email-bound sopra. `families.inviteCode` (plaintext, unique)
 
 ## How to apply
 Qualsiasi modifica al flusso deve preservare: hash-only, transazionalità del consumo, rate limiter dedicato sull'invito, e i comportamenti prod email (503/502+rollback). Per il link riutilizzabile: ruolo forzato adult, limite atomico in tx, dedup via vincolo DB + gestione 23505. Test: `npx tsx server/__tests__/invites.test.ts` (integration HTTP+DB, 9 casi).
-
-## Link di invito consapevoli dell'ambiente (dev vs prod)
-I link di invito (email `/join/:token` E riutilizzabile `/join-link/:code`) NON devono cablare `CLIENT_URL`: causa "link non valido" quando l'invito è generato da Expo Go (backend/DB dev) ma il link apre familysync.eu (prod), che non ha quel codice.
-Usa `config.getInviteBaseUrl(req)`: in prod -> `CLIENT_URL` (dominio stabile); in dev -> host dev attendibile (`REPLIT_DEV_DOMAIN`, con porta, altrimenti fallback `https://$REPLIT_DEV_DOMAIN:5000` che serve la web-build). In dev il frontend parla col backend via `EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN:5000`.
-**Why:** dev e prod hanno DB separati; il codice invito vive solo dove è stato creato. **How to apply:** ogni nuovo generatore di link invito passa da getInviteBaseUrl(req), mai da process.env.CLIENT_URL diretto.

@@ -108,23 +108,9 @@ function isRealIsoDate(s: string): boolean {
   return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
 }
 
-const ISO_DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
-
-/** True se è un promemoria valido: data reale con orario (AAAA-MM-GGTHH:MM) o solo data. */
-function isRealReminderValue(s: string): boolean {
-  const dt = ISO_DATETIME_RE.exec(s);
-  if (dt) {
-    const hour = Number(dt[4]);
-    const minute = Number(dt[5]);
-    if (hour > 23 || minute > 59) return false;
-    return isRealIsoDate(`${dt[1]}-${dt[2]}-${dt[3]}`);
-  }
-  return isRealIsoDate(s);
-}
-
 const customReminderDatesSchema = z
-  .array(z.string().refine(isRealReminderValue, 'Promemoria non valido (data o data+ora)'))
-  .max(20, 'Massimo 20 promemoria')
+  .array(z.string().refine(isRealIsoDate, 'Data promemoria non valida (AAAA-MM-GG)'))
+  .max(20, 'Massimo 20 date promemoria')
   .optional()
   .transform((v) => (v ? Array.from(new Set(v)).sort() : v));
 

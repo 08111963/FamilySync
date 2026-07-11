@@ -11,7 +11,6 @@ import {
   computeBillNotificationTriggers,
   reconcileBillNotifications,
 } from "@/lib/bill-notifications";
-import { PUSH_TOKEN_STORAGE_KEY } from "@/hooks/usePushNotifications";
 
 type StoredMap = Record<string, StoredBillNotification>;
 
@@ -112,27 +111,6 @@ export function useBillLocalNotifications({
     const perm = await ensurePermission();
     setPermission(perm);
     if (perm !== "granted") return;
-
-    // Se il dispositivo riceve i promemoria via push dal server (build di
-    // produzione con token registrato), niente notifiche locali per le
-    // bollette: arriverebbero doppie. In Expo Go / sviluppo il token non
-    // viene mai registrato, quindi restano le notifiche locali.
-    try {
-      const pushToken = await AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
-      if (pushToken) {
-        const storedForCleanup = await loadStored(fam);
-        const ids = Object.values(storedForCleanup).flatMap((e) => e.notifIds);
-        for (const id of ids) {
-          try {
-            await Notifications.cancelScheduledNotificationAsync(id);
-          } catch {}
-        }
-        if (ids.length > 0 || Object.keys(storedForCleanup).length > 0) {
-          await saveStored(fam, {});
-        }
-        return;
-      }
-    } catch {}
 
     const stored = await loadStored(fam);
     const desired = currentBills.map((b) => ({

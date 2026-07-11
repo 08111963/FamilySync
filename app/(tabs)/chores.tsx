@@ -214,7 +214,7 @@ export default function ChoresScreen() {
                         ) : null}
                         {member && (
                           <View style={styles.choreAssignee}>
-                            <Avatar name={member.name} color={member.color} size={20} avatarUrl={member.avatarUrl} />
+                            <Avatar name={member.name} color={member.color} size={20} />
                             <Text style={[styles.choreAssigneeName, { color: colors.textSecondary }]}>
                               {member.name}
                             </Text>

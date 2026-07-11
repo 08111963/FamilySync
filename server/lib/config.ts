@@ -58,29 +58,4 @@ export const config = {
 
     return `http://localhost:${config.port}`;
   },
-
-  // Base URL per i LINK di invito (email + link riutilizzabile WhatsApp/QR).
-  // In PRODUZIONE usa CLIENT_URL (dominio stabile familysync.eu). In SVILUPPO
-  // usa il dominio dell'ambiente corrente (derivato dalla richiesta), così un
-  // invito generato da Expo Go punta al backend/DB di sviluppo dove il codice
-  // invito è stato salvato: il link resta testabile end-to-end dal telefono
-  // senza il mismatch dev/prod ("link non valido").
-  getInviteBaseUrl(req?: { header: (name: string) => string | undefined; protocol: string; get: (name: string) => string | undefined }): string {
-    if (config.isProduction && process.env.CLIENT_URL) {
-      return process.env.CLIENT_URL.replace(/\/+$/, "");
-    }
-    // Sviluppo: costruisci il link SOLO verso host attendibili (il dominio dev di
-    // questo Repl), così un Host header malevolo non può avvelenare il link.
-    const devDomain = process.env.REPLIT_DEV_DOMAIN;
-    if (req && devDomain) {
-      const host = (req.header("x-forwarded-host") || req.get("host") || "").trim();
-      if (host === devDomain || host.startsWith(`${devDomain}:`)) {
-        const proto = req.header("x-forwarded-proto") || req.protocol || "https";
-        return `${proto}://${host}`;
-      }
-    }
-    // Fallback attendibile: backend dev (porta 5000) che serve la web-build.
-    if (devDomain) return `https://${devDomain}:5000`;
-    return config.getBaseUrl(req);
-  },
 };
