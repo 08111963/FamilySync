@@ -32,7 +32,7 @@ export interface BillNotificationTrigger {
 const PREMIUM_OFFSETS = [7, 3, 1, 0];
 const FREE_OFFSETS = [1, 0];
 
-const NOTIFY_HOUR = 8; // 08:00 ora locale.
+export const NOTIFY_HOUR = 8; // 08:00 ora locale.
 
 /**
  * Versione della politica di notifica (orario + offset). Va incrementata ogni
@@ -119,7 +119,7 @@ export function offsetsForPlan(plan: BillPlan): number[] {
   return plan === "premium" ? PREMIUM_OFFSETS : FREE_OFFSETS;
 }
 
-/** Costruisce una Date locale alle 09:00 a partire da "AAAA-MM-GG". */
+/** Costruisce una Date locale all'ora NOTIFY_HOUR a partire da "AAAA-MM-GG". */
 function localDueDateAt9(dueDate: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dueDate);
   if (!m) return null;
@@ -137,7 +137,7 @@ function addDays(date: Date, days: number): Date {
   return d;
 }
 
-function titleForOffset(offset: number): string {
+export function titleForOffset(offset: number): string {
   if (offset >= 7) return "Bolletta tra una settimana";
   if (offset === 3) return "Bolletta tra 3 giorni";
   if (offset === 1) return "Bolletta in scadenza domani";
@@ -196,7 +196,7 @@ export function computeBillNotificationTriggers(
   return triggers;
 }
 
-function formatDueLabel(dueDate: string): string {
+export function formatDueLabel(dueDate: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dueDate);
   if (!m) return dueDate;
   return `${m[3]}/${m[2]}/${m[1]}`;

@@ -20,14 +20,25 @@ function isExpoPushToken(token: string): boolean {
   );
 }
 
+export interface PushSendResult {
+  /** false solo se un invio è FALLITO (rete/API); true se ok o niente da inviare. */
+  ok: boolean;
+  /** Quanti dispositivi hanno accettato la notifica (ticket ok). */
+  delivered: number;
+  /** Quanti token validi erano registrati per l'utente. */
+  tokens: number;
+}
+
 /**
  * Invia una notifica push a tutti i dispositivi registrati di un utente.
- * Fire-and-forget: non blocca la richiesta chiamante.
+ * Non lancia mai eccezioni: restituisce un esito strutturato, così chi chiama
+ * può decidere se ritentare (es. lo scheduler bollette) o ignorare l'esito
+ * (fire-and-forget, es. eventi calendario).
  */
 export async function sendPushToUser(
   userId: string,
   payload: { title: string; body: string; data?: Record<string, any> }
-): Promise<void> {
+): Promise<PushSendResult> {
   try {
     const tokens = await db
       .select({ token: pushTokens.token })
@@ -38,7 +49,7 @@ export async function sendPushToUser(
       .map((t) => t.token)
       .filter((t) => isExpoPushToken(t));
 
-    if (validTokens.length === 0) return;
+    if (validTokens.length === 0) return { ok: true, delivered: 0, tokens: 0 };
 
     const messages: PushMessage[] = validTokens.map((to) => ({
       to,
@@ -59,15 +70,18 @@ export async function sendPushToUser(
 
     if (!res.ok) {
       logger.error('Expo push send failed', { status: res.status });
-      return;
+      return { ok: false, delivered: 0, tokens: validTokens.length };
     }
 
     const result: any = await res.json();
     const tickets = Array.isArray(result?.data) ? result.data : [];
 
+    let delivered = 0;
     const invalidTokens: string[] = [];
     tickets.forEach((ticket: any, i: number) => {
-      if (
+      if (ticket?.status === 'ok') {
+        delivered++;
+      } else if (
         ticket?.status === 'error' &&
         ticket?.details?.error === 'DeviceNotRegistered'
       ) {
@@ -78,7 +92,10 @@ export async function sendPushToUser(
     if (invalidTokens.length > 0) {
       await db.delete(pushTokens).where(inArray(pushTokens.token, invalidTokens));
     }
+
+    return { ok: true, delivered, tokens: validTokens.length };
   } catch (error) {
     logger.error('sendPushToUser error', { error: String(error) });
+    return { ok: false, delivered: 0, tokens: 0 };
   }
 }
