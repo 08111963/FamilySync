@@ -175,12 +175,29 @@ Tutti gli eventi del calendario di famiglia (compresi quelli creati automaticame
 **3. Salvare un singolo evento nel calendario del telefono**
 - Nella scheda Calendario, accanto a ogni evento trovi l'icona di **download**: toccala per salvare quell'evento nel calendario del tuo telefono
 
-**4. Collegare il calendario a Google/Apple Calendar con il link (dal computer)**
-- Copia il **link del feed** e aggiungilo al tuo calendario:
-  - **Google Calendar**: dal computer, calendar.google.com → Altri calendari → + → Da URL → incolla il link (gli eventi appariranno poi anche nell'app Google Calendar del telefono)
-  - **Apple Calendar**: File → Nuova sottoscrizione calendario (Mac)
-- Da quel momento **tutti gli eventi della famiglia** (e le scadenze delle bollette) compaiono automaticamente anche lì, e si aggiornano da soli
-- Il link è personale della tua famiglia: se vuoi revocarlo, tocca **Rigenera link** (quello vecchio smette di funzionare)
+**4. Scarica e apri (il più facile dal computer)**
+- Tocca **Scarica calendario**: si scarica un file con tutti gli eventi della famiglia
+- Aprilo con un doppio clic: il tuo calendario (Google, Apple o Outlook) ti chiederà di aggiungere gli eventi
+- Attenzione: è una **fotografia di quel momento**. Se poi aggiungi o modifichi eventi in FamilySync, nel tuo calendario non si aggiornano: dovresti riscaricare il file. Per gli aggiornamenti automatici usa il metodo 5
+
+**5. Link per aggiornamento automatico (Google e Apple, consigliato)**
+Colleghi il link **una volta sola** e da quel momento ogni nuovo evento della famiglia compare da solo nel tuo calendario, su tutti i tuoi dispositivi.
+
+Con **Google Calendar** (serve il computer, non si può fare dall'app):
+1. Nella pagina Sincronizza calendario tocca **Copia link**
+2. Dal computer apri **calendar.google.com**
+3. Nella colonna a sinistra, accanto ad **"Altri calendari"**, clicca il **+**
+4. Scegli **"Da URL"**
+5. Incolla il link e clicca **"Aggiungi calendario"**
+6. Comparirà un calendario "FamilySync" con tutti gli eventi della famiglia — e da quel momento lo vedrai anche nell'app Google Calendar del telefono
+
+Con **Apple Calendar** (Mac): menu **File → Nuova sottoscrizione calendario**, incolla il link e conferma. Su iPhone è ancora più semplice: usa il metodo 2 qui sopra.
+
+Cose utili da sapere:
+- Google e Apple ricontrollano il link **ogni qualche ora**: un nuovo evento può metterci un po' a comparire. È normale, non è un errore
+- La sincronizzazione è **in una direzione sola**: da FamilySync verso il tuo calendario. Gli eventi creati direttamente in Google/Apple Calendar non entrano in FamilySync
+- Il link è **personale della tua famiglia**: chiunque lo abbia può vedere gli eventi, quindi condividilo solo con i familiari (c'è il pulsante **Condividi** apposta)
+- Se vuoi revocarlo, tocca **Rigenera link**: quello vecchio smette subito di funzionare e va ricollegato quello nuovo
 
 ---
 
