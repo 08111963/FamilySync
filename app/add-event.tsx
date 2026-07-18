@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Switch } from "react-native";
+import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Switch, ActivityIndicator, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
@@ -13,6 +13,8 @@ import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
 import { CalendarPicker } from "@/components/CalendarPicker";
 import Colors from "@/constants/colors";
+import { apiRequest } from "@/lib/query-client";
+import { aiErrorMessage } from "@/lib/ai-error-message";
 
 const EVENT_COLORS = Object.values(Colors.light.calendar);
 
@@ -37,13 +39,54 @@ export default function AddEventScreen() {
   const initialIso =
     typeof params.date === "string" && isRealIso(params.date) ? params.date : todayIso;
 
+  const [aiText, setAiText] = useState("");
+  const [isCompiling, setIsCompiling] = useState(false);
   const [title, setTitle] = useState("");
+  const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(initialIso);
   const [time, setTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [isAllDay, setIsAllDay] = useState(true);
   const [selectedMember, setSelectedMember] = useState(data.members[0]?.id || "");
   const [selectedColor, setSelectedColor] = useState(EVENT_COLORS[0]);
+
+  const showError = (msg: string) => {
+    if (Platform.OS === "web") alert(msg);
+    else Alert.alert("Errore", msg);
+  };
+
+  const handleCompile = async () => {
+    if (!aiText.trim() || !currentFamily || isCompiling) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsCompiling(true);
+    try {
+      const res = await apiRequest("POST", `/api/ai/${currentFamily.id}/parse-event`, {
+        text: aiText.trim(),
+      });
+      const parsed = await res.json();
+      let filled = false;
+      if (parsed.title) { setTitle(parsed.title); filled = true; }
+      if (parsed.location) { setLocation(parsed.location); filled = true; }
+      if (parsed.description) { setDescription(parsed.description); filled = true; }
+      if (parsed.date && isRealIso(parsed.date)) { setDate(parsed.date); filled = true; }
+      if (parsed.time) {
+        setTime(parsed.time);
+        setIsAllDay(false);
+        filled = true;
+      }
+      if (parsed.endTime) { setEndTime(parsed.endTime); filled = true; }
+      if (filled) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        showError("Non ho capito l'evento: prova a descriverlo in modo più specifico.");
+      }
+    } catch (e) {
+      showError(aiErrorMessage(e, "Non sono riuscito a compilare i campi. Riprova."));
+    } finally {
+      setIsCompiling(false);
+    }
+  };
 
   const handleSave = () => {
     if (title.trim() && isRealIso(date)) {
@@ -51,8 +94,10 @@ export default function AddEventScreen() {
       addEvent({
         title: title.trim(),
         description: description.trim() || undefined,
+        location: location.trim() || undefined,
         date,
         time: isAllDay ? undefined : time || undefined,
+        endTime: isAllDay ? undefined : endTime || undefined,
         memberId: selectedMember || undefined,
         color: selectedColor,
         allDay: isAllDay,
@@ -78,11 +123,12 @@ export default function AddEventScreen() {
           <View style={styles.titleRow}>
             <View style={styles.titleInput}>
               <Input
-                label="Titolo"
-                placeholder="Titolo dell'evento"
-                value={title}
-                onChangeText={setTitle}
-                autoFocus
+                label="Descrivi l'evento"
+                placeholder={'Es. "Cena con Marco venerdì alle 20 da Luigi, fino alle 22"'}
+                value={aiText}
+                onChangeText={setAiText}
+                multiline
+                style={{ height: 80, textAlignVertical: "top", paddingTop: 12 }}
               />
             </View>
             {currentFamily ? (
@@ -90,12 +136,65 @@ export default function AddEventScreen() {
                 <VoiceInput
                   familyId={currentFamily.id}
                   onTranscribed={(text) =>
-                    setTitle((prev) => (prev ? `${prev} ${text}` : text))
+                    setAiText((prev) => (prev ? `${prev} ${text}` : text))
                   }
                 />
               </View>
             ) : null}
           </View>
+          <View style={styles.compileRow}>
+            <Text style={[styles.compileHint, { color: colors.textSecondary }]}>
+              Detta o scrivi tutto in una frase: titolo, luogo e orari verranno compilati qui sotto.
+            </Text>
+            <Pressable
+              onPress={handleCompile}
+              disabled={!aiText.trim() || isCompiling}
+              style={[
+                styles.compileButton,
+                {
+                  backgroundColor: aiText.trim() && !isCompiling ? colors.primary : colors.surface,
+                  borderColor: aiText.trim() && !isCompiling ? colors.primary : colors.border,
+                },
+              ]}
+              testID="compile-event"
+            >
+              {isCompiling ? (
+                <ActivityIndicator size="small" color={colors.text} />
+              ) : (
+                <Ionicons
+                  name="sparkles"
+                  size={16}
+                  color={aiText.trim() ? "#FFFFFF" : colors.textSecondary}
+                />
+              )}
+              <Text
+                style={[
+                  styles.compileText,
+                  { color: aiText.trim() && !isCompiling ? "#FFFFFF" : colors.textSecondary },
+                ]}
+              >
+                Compila
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.field}>
+          <Input
+            label="Titolo"
+            placeholder="Titolo dell'evento"
+            value={title}
+            onChangeText={setTitle}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Input
+            label="Luogo (opzionale)"
+            placeholder="Dove si svolge?"
+            value={location}
+            onChangeText={setLocation}
+          />
         </View>
 
         <View style={styles.field}>
@@ -126,13 +225,23 @@ export default function AddEventScreen() {
         </View>
 
         {!isAllDay && (
-          <View style={styles.field}>
-            <Input
-              label="Orario"
-              placeholder="HH:MM (es. 14:30)"
-              value={time}
-              onChangeText={setTime}
-            />
+          <View style={styles.timeRow}>
+            <View style={styles.timeField}>
+              <Input
+                label="Inizio"
+                placeholder="HH:MM (es. 14:30)"
+                value={time}
+                onChangeText={setTime}
+              />
+            </View>
+            <View style={styles.timeField}>
+              <Input
+                label="Fine (opzionale)"
+                placeholder="HH:MM (es. 16:00)"
+                value={endTime}
+                onChangeText={setEndTime}
+              />
+            </View>
           </View>
         )}
 
@@ -242,6 +351,38 @@ const styles = StyleSheet.create({
   },
   micWrap: {
     marginBottom: 6,
+  },
+  compileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 8,
+  },
+  compileHint: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+  },
+  compileButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  compileText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  timeRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 20,
+  },
+  timeField: {
+    flex: 1,
   },
   label: {
     fontSize: 14,

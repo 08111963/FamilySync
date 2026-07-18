@@ -1,7 +1,7 @@
 import OpenAI, { toFile } from 'openai';
 import { z } from 'zod';
 import { normalizeItemName } from './normalize';
-import { assertAiConfigured, mapOpenAiError } from './ai-errors';
+import { AiError, assertAiConfigured, mapOpenAiError } from './ai-errors';
 
 // Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
 // SDK lancia se la chiave manca, e ciò impedirebbe l'avvio del server.
@@ -710,6 +710,71 @@ export async function generateRecipeImage(input: {
     }
     return Buffer.from(b64, 'base64');
   } catch (error) {
+    throw mapOpenAiError(error);
+  }
+}
+
+/**
+ * Estrae i campi di un evento calendario da una descrizione in linguaggio
+ * naturale (es. "Cena con Marco venerdì alle 20 da Luigi, fino alle 22").
+ * Ritorna solo i campi effettivamente presenti nel testo; la quota è gestita
+ * dalla rotta con withAiUsage.
+ */
+const parsedEventSchema = z.object({
+  title: z.string().catch(''),
+  location: z.string().nullable().catch(null),
+  description: z.string().nullable().catch(null),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+  time: z.string().regex(/^\d{2}:\d{2}$/).nullable().catch(null),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().catch(null),
+});
+
+export type ParsedEvent = z.infer<typeof parsedEventSchema>;
+
+export async function parseEventFromText(input: {
+  text: string;
+  todayIso: string;
+  weekdayName: string;
+}): Promise<ParsedEvent> {
+  assertAiConfigured();
+  try {
+    const response = await getOpenAiClient().chat.completions.create({
+      model: 'gpt-5-mini',
+      reasoning_effort: 'minimal',
+      messages: [{
+        role: 'system',
+        content: `Estrai i dati di un evento calendario da una frase in italiano.
+
+REGOLE:
+- Oggi è ${input.todayIso} (${input.weekdayName}), fuso orario Europe/Rome. Risolvi date relative ("domani", "venerdì", "il 15") in date assolute FUTURE (mai nel passato).
+- "title": titolo breve e naturale dell'evento (es. "Cena con Marco"), senza data/ora/luogo.
+- "location": il luogo se indicato (es. "da Luigi", "in piscina" → "Luigi", "Piscina"), altrimenti null.
+- "description": eventuali dettagli extra non coperti dagli altri campi, altrimenti null.
+- "date": data in formato YYYY-MM-DD, null se non deducibile.
+- "time": ora di inizio HH:MM (24h), null se non indicata.
+- "endTime": ora di fine HH:MM (24h), null se non indicata.
+- Rispondi SOLO con JSON: {"title": "...", "location": ..., "description": ..., "date": ..., "time": ..., "endTime": ...}`,
+      }, {
+        role: 'user',
+        content: input.text,
+      }],
+      response_format: { type: 'json_object' },
+    });
+
+    const content = response.choices[0].message.content || '{}';
+    const parsed = parsedEventSchema.parse(JSON.parse(content));
+
+    // Risposta inutilizzabile (nessun campo compilabile): errore tipizzato,
+    // così il client non mostra un falso successo senza compilare nulla.
+    const hasUsefulField = parsed.title.trim().length > 0
+      || parsed.location || parsed.description || parsed.date || parsed.time || parsed.endTime;
+    if (!hasUsefulField) {
+      throw new AiError('AI_BAD_RESPONSE', 'parse-event: nessun campo estratto dal testo');
+    }
+
+    return parsed;
+  } catch (error) {
+    if (error instanceof AiError) throw error;
     throw mapOpenAiError(error);
   }
 }
