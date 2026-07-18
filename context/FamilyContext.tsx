@@ -50,6 +50,7 @@ interface CalendarEvent {
   location?: string;
   color: string;
   memberId?: string;
+  recurrenceRule?: string;
   createdBy: string;
 }
 

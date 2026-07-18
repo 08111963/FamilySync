@@ -5,17 +5,21 @@
 //   daily            → ogni giorno
 //   daily:1,3,5      → solo nei giorni indicati (ISO: 1=lun ... 7=dom)
 //   weekly:6         → ogni settimana nel giorno indicato
+//   weekly:2,5       → ogni settimana nei giorni indicati (più giorni)
 //   monthly:15       → ogni mese nel giorno indicato (oltre fine mese → ultimo giorno)
+//   monthly:1,15     → ogni mese nei giorni indicati (più giorni)
 
 export type RecurrenceFrequency = "daily" | "weekly" | "monthly";
 
 export interface ParsedRecurrence {
   frequency: RecurrenceFrequency;
-  /** daily: giorni della settimana selezionati (ISO 1-7); vuoto = tutti */
+  /** daily/weekly: giorni della settimana selezionati (ISO 1-7); vuoto = tutti (daily) o non specificato (weekly) */
   weekdays: number[];
-  /** weekly: giorno della settimana (ISO 1-7), null = non specificato */
+  /** weekly: primo giorno selezionato (retro-compatibilità), null = non specificato */
   weekday: number | null;
-  /** monthly: giorno del mese (1-31), null = non specificato */
+  /** monthly: giorni del mese selezionati (1-31); vuoto = non specificato */
+  monthDays: number[];
+  /** monthly: primo giorno selezionato (retro-compatibilità), null = non specificato */
   monthDay: number | null;
 }
 
@@ -40,6 +44,7 @@ export function parseRecurrenceRule(rule: string | null | undefined): ParsedRecu
     frequency: freq,
     weekdays: [],
     weekday: null,
+    monthDays: [],
     monthDay: null,
   };
 
@@ -52,32 +57,42 @@ export function parseRecurrenceRule(rule: string | null | undefined): ParsedRecu
   if (tokens.length === 0 || tokens.some((t) => !/^\d+$/.test(t))) return null;
   const nums = tokens.map((t) => parseInt(t, 10));
 
-  if (freq === "daily") {
+  if (freq === "daily" || freq === "weekly") {
     if (nums.some((n) => n < 1 || n > 7)) return null;
-    parsed.weekdays = Array.from(new Set(nums)).sort((a, b) => a - b);
-  } else if (freq === "weekly") {
-    if (nums.length !== 1 || nums[0]! < 1 || nums[0]! > 7) return null;
-    parsed.weekday = nums[0]!;
+    const days = Array.from(new Set(nums)).sort((a, b) => a - b);
+    parsed.weekdays = days;
+    if (freq === "weekly") parsed.weekday = days[0] ?? null;
   } else {
-    if (nums.length !== 1 || nums[0]! < 1 || nums[0]! > 31) return null;
-    parsed.monthDay = nums[0]!;
+    if (nums.some((n) => n < 1 || n > 31)) return null;
+    const days = Array.from(new Set(nums)).sort((a, b) => a - b);
+    parsed.monthDays = days;
+    parsed.monthDay = days[0] ?? null;
   }
   return parsed;
 }
 
 export function buildRecurrenceRule(
   frequency: RecurrenceFrequency,
-  opts: { weekdays?: number[]; weekday?: number | null; monthDay?: number | null } = {}
+  opts: {
+    weekdays?: number[];
+    weekday?: number | null;
+    monthDays?: number[];
+    monthDay?: number | null;
+  } = {}
 ): string {
+  const weekdaySet = Array.from(new Set(opts.weekdays ?? [])).sort((a, b) => a - b);
+
   if (frequency === "daily") {
-    const days = Array.from(new Set(opts.weekdays ?? [])).sort((a, b) => a - b);
-    if (days.length === 0 || days.length === 7) return "daily";
-    return `daily:${days.join(",")}`;
+    if (weekdaySet.length === 0 || weekdaySet.length === 7) return "daily";
+    return `daily:${weekdaySet.join(",")}`;
   }
   if (frequency === "weekly") {
-    return opts.weekday ? `weekly:${opts.weekday}` : "weekly";
+    const days = weekdaySet.length > 0 ? weekdaySet : opts.weekday ? [opts.weekday] : [];
+    return days.length > 0 ? `weekly:${days.join(",")}` : "weekly";
   }
-  return opts.monthDay ? `monthly:${opts.monthDay}` : "monthly";
+  const monthDaySet = Array.from(new Set(opts.monthDays ?? [])).sort((a, b) => a - b);
+  const days = monthDaySet.length > 0 ? monthDaySet : opts.monthDay ? [opts.monthDay] : [];
+  return days.length > 0 ? `monthly:${days.join(",")}` : "monthly";
 }
 
 /** Etichetta leggibile in italiano, es. "settimanale (sabato)". */
@@ -92,12 +107,19 @@ export function recurrenceLabel(rule: string | null | undefined): string | null 
     return `giornaliera (${names.join(", ")})`;
   }
   if (parsed.frequency === "weekly") {
-    const name = parsed.weekday
-      ? WEEKDAY_LABELS.find((w) => w.value === parsed.weekday)?.long
-      : null;
-    return name ? `settimanale (${name})` : "settimanale";
+    if (parsed.weekdays.length === 0) return "settimanale";
+    if (parsed.weekdays.length === 1) {
+      const name = WEEKDAY_LABELS.find((w) => w.value === parsed.weekdays[0])?.long;
+      return name ? `settimanale (${name})` : "settimanale";
+    }
+    const names = parsed.weekdays
+      .map((d) => WEEKDAY_LABELS.find((w) => w.value === d)?.short.toLowerCase())
+      .filter(Boolean);
+    return `settimanale (${names.join(", ")})`;
   }
-  return parsed.monthDay ? `mensile (il ${parsed.monthDay})` : "mensile";
+  if (parsed.monthDays.length === 0) return "mensile";
+  if (parsed.monthDays.length === 1) return `mensile (il ${parsed.monthDays[0]})`;
+  return `mensile (il ${parsed.monthDays.join(", ")})`;
 }
 
 // --- Calcolo prossima occorrenza (solo date, nessun fuso orario) -----------
@@ -146,23 +168,25 @@ export function nextDueDate(
   }
 
   if (parsed.frequency === "weekly") {
-    const target = parsed.weekday ?? isoWeekday(base);
+    const targets = parsed.weekdays.length > 0 ? parsed.weekdays : [isoWeekday(base)];
     const next = new Date(base);
-    do {
+    for (let i = 0; i < 7; i++) {
       next.setUTCDate(next.getUTCDate() + 1);
-    } while (isoWeekday(next) !== target);
-    return toIso(next);
+      if (targets.includes(isoWeekday(next))) return toIso(next);
+    }
+    return null;
   }
 
-  // monthly
-  const target = parsed.monthDay ?? base.getUTCDate();
+  // monthly: più giorni del mese → la prima candidata futura tra tutte.
+  const targets = parsed.monthDays.length > 0 ? parsed.monthDays : [base.getUTCDate()];
   let year = base.getUTCFullYear();
   let month = base.getUTCMonth();
-  // Candidata nel mese corrente (se ancora futura), altrimenti mese successivo.
   for (let i = 0; i < 2; i++) {
-    const day = Math.min(target, lastDayOfMonth(year, month));
-    const candidate = new Date(Date.UTC(year, month, day));
-    if (candidate.getTime() > base.getTime()) return toIso(candidate);
+    const candidates = targets
+      .map((t) => new Date(Date.UTC(year, month, Math.min(t, lastDayOfMonth(year, month)))))
+      .filter((c) => c.getTime() > base.getTime())
+      .sort((a, b) => a.getTime() - b.getTime());
+    if (candidates.length > 0) return toIso(candidates[0]!);
     month += 1;
     if (month > 11) {
       month = 0;
@@ -170,4 +194,52 @@ export function nextDueDate(
     }
   }
   return null;
+}
+
+/**
+ * Espande una regola in un elenco di date (YYYY-MM-DD) a partire da
+ * `startIsoDate` (inclusa se coerente con la regola) fino a `untilIsoDate`,
+ * con un tetto massimo di occorrenze. Usata per gli eventi calendario.
+ */
+export function expandOccurrences(
+  rule: string | null | undefined,
+  startIsoDate: string,
+  untilIsoDate: string,
+  maxOccurrences: number = 100
+): string[] {
+  const parsed = parseRecurrenceRule(rule);
+  const start = toUtcDate(startIsoDate);
+  const until = toUtcDate(untilIsoDate);
+  if (!parsed || !start || !until) return [];
+
+  const out: string[] = [];
+  const startIso = toIso(start);
+
+  // La data di partenza conta se coerente con la regola.
+  const matchesRule = (d: Date): boolean => {
+    if (parsed.frequency === "daily") {
+      const days = parsed.weekdays.length > 0 ? parsed.weekdays : [1, 2, 3, 4, 5, 6, 7];
+      return days.includes(isoWeekday(d));
+    }
+    if (parsed.frequency === "weekly") {
+      const targets = parsed.weekdays.length > 0 ? parsed.weekdays : [isoWeekday(start)];
+      return targets.includes(isoWeekday(d));
+    }
+    const targets = parsed.monthDays.length > 0 ? parsed.monthDays : [start.getUTCDate()];
+    const last = lastDayOfMonth(d.getUTCFullYear(), d.getUTCMonth());
+    return targets.some((t) => Math.min(t, last) === d.getUTCDate());
+  };
+
+  if (matchesRule(start)) out.push(startIso);
+
+  let cursor = startIso;
+  while (out.length < maxOccurrences) {
+    const next = nextDueDate(rule, cursor);
+    if (!next) break;
+    const nextDate = toUtcDate(next);
+    if (!nextDate || nextDate.getTime() > until.getTime()) break;
+    out.push(next);
+    cursor = next;
+  }
+  return out;
 }

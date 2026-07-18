@@ -19,6 +19,6 @@
 - [Bills split validation parity](bills-split-validation.md) — la validazione numerica FE deve usare la stessa formula grezza del BE (no arrotondamento prima del confronto) e intercettare i codici errore reali del BE.
 - [Dev->Prod data migration](db-dev-prod-migration.md) — dev & prod DBs are SEPARATE; publish copies schema not data; only write path to prod is a token-gated app endpoint.
 - [Email sender config](email-sender-config.md) — EMAIL_FROM stays noreply@familysync.eu (verified Resend domain); assistenza@familysync.it is Reply-To/contact only until familysync.it is verified.
-- [Ricorrenza faccende](chore-recurrence.md) — recurrenceRule esteso (daily:1,3,5 / weekly:d / monthly:n), completamento con guardia atomica + ricreazione prossima occorrenza.
+- [Ricorrenza faccende/eventi](chore-recurrence.md) — recurrenceRule multi-giorno (weekly:1,3 / monthly:1,15); eventi calendario materializzati (6 mesi, max 60 righe); guardia atomica al completamento.
 - [Event auto-fill AI](event-autofill.md) — parse-event: zod `.catch()` accetta `{}` → server deve lanciare AI_BAD_RESPONSE se nessun campo utile, client mostra successo solo se compila qualcosa.
 - [Tester trial accounts](tester-trial-accounts.md) — 15 Google Play tester accounts; entitlement trial_days flips pending→active atomically on first login then falls to free; passwords HMAC-derived; PDF gitignored.

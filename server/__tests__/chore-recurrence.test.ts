@@ -5,13 +5,14 @@ import {
   buildRecurrenceRule,
   recurrenceLabel,
   nextDueDate,
+  expandOccurrences,
 } from "../../shared/chore-recurrence";
 
 // 2026-07-18 è un sabato (ISO 6).
 
 test("parse: valori storici semplici", () => {
   assert.deepEqual(parseRecurrenceRule("daily"), {
-    frequency: "daily", weekdays: [], weekday: null, monthDay: null,
+    frequency: "daily", weekdays: [], weekday: null, monthDays: [], monthDay: null,
   });
   assert.equal(parseRecurrenceRule("weekly")!.weekday, null);
   assert.equal(parseRecurrenceRule("monthly")!.monthDay, null);
@@ -23,13 +24,20 @@ test("parse: valori con parametri, dedup e sort", () => {
   assert.equal(parseRecurrenceRule("monthly:31")!.monthDay, 31);
 });
 
+test("parse: più giorni per weekly e monthly", () => {
+  assert.deepEqual(parseRecurrenceRule("weekly:5,2,2")!.weekdays, [2, 5]);
+  assert.equal(parseRecurrenceRule("weekly:5,2")!.weekday, 2);
+  assert.deepEqual(parseRecurrenceRule("monthly:15,1,31")!.monthDays, [1, 15, 31]);
+  assert.equal(parseRecurrenceRule("monthly:15,1")!.monthDay, 1);
+});
+
 test("parse: regole non valide", () => {
   assert.equal(parseRecurrenceRule("yearly"), null);
   assert.equal(parseRecurrenceRule(""), null);
   assert.equal(parseRecurrenceRule(null), null);
   assert.equal(parseRecurrenceRule("weekly:9"), null);
   assert.equal(parseRecurrenceRule("weekly:foo"), null);
-  assert.equal(parseRecurrenceRule("weekly:1,2"), null);
+  assert.equal(parseRecurrenceRule("weekly:1,9"), null);
   assert.equal(parseRecurrenceRule("daily:0,8"), null);
   assert.equal(parseRecurrenceRule("daily:"), null);
   assert.equal(parseRecurrenceRule("monthly:32"), null);
@@ -41,6 +49,8 @@ test("build: normalizzazione", () => {
   assert.equal(buildRecurrenceRule("daily", { weekdays: [5, 1, 3] }), "daily:1,3,5");
   assert.equal(buildRecurrenceRule("weekly", { weekday: 6 }), "weekly:6");
   assert.equal(buildRecurrenceRule("monthly", { monthDay: 15 }), "monthly:15");
+  assert.equal(buildRecurrenceRule("weekly", { weekdays: [5, 2] }), "weekly:2,5");
+  assert.equal(buildRecurrenceRule("monthly", { monthDays: [15, 1] }), "monthly:1,15");
 });
 
 test("label italiano", () => {
@@ -49,6 +59,8 @@ test("label italiano", () => {
   assert.equal(recurrenceLabel("weekly:6"), "settimanale (sabato)");
   assert.equal(recurrenceLabel("weekly"), "settimanale");
   assert.equal(recurrenceLabel("monthly:15"), "mensile (il 15)");
+  assert.equal(recurrenceLabel("weekly:2,5"), "settimanale (mar, ven)");
+  assert.equal(recurrenceLabel("monthly:1,15"), "mensile (il 1, 15)");
 });
 
 test("nextDueDate: daily semplice", () => {
@@ -82,7 +94,44 @@ test("nextDueDate: monthly con clamp fine mese", () => {
   assert.equal(nextDueDate("monthly", "2026-07-18"), "2026-08-18");
 });
 
+test("nextDueDate: weekly con più giorni", () => {
+  // Mar+ven, da sabato 18/7 → martedì 21/7 → venerdì 24/7
+  assert.equal(nextDueDate("weekly:2,5", "2026-07-18"), "2026-07-21");
+  assert.equal(nextDueDate("weekly:2,5", "2026-07-21"), "2026-07-24");
+});
+
+test("nextDueDate: monthly con più giorni", () => {
+  // 1 e 15, da 18/7 → 1/8 → 15/8
+  assert.equal(nextDueDate("monthly:1,15", "2026-07-18"), "2026-08-01");
+  assert.equal(nextDueDate("monthly:1,15", "2026-08-01"), "2026-08-15");
+  assert.equal(nextDueDate("monthly:1,15", "2026-07-10"), "2026-07-15");
+});
+
 test("nextDueDate: regola o data non valida", () => {
   assert.equal(nextDueDate("yearly", "2026-07-18"), null);
   assert.equal(nextDueDate("daily", "not-a-date"), null);
+});
+
+test("expandOccurrences: weekly più giorni", () => {
+  // Mar+ven dal 18/7 (sabato) al 31/7
+  assert.deepEqual(expandOccurrences("weekly:2,5", "2026-07-18", "2026-07-31"), [
+    "2026-07-21", "2026-07-24", "2026-07-28", "2026-07-31",
+  ]);
+});
+
+test("expandOccurrences: include la data di partenza se coerente", () => {
+  // 18/7 è sabato (6)
+  assert.deepEqual(expandOccurrences("weekly:6", "2026-07-18", "2026-08-01"), [
+    "2026-07-18", "2026-07-25", "2026-08-01",
+  ]);
+});
+
+test("expandOccurrences: monthly più giorni con clamp", () => {
+  assert.deepEqual(expandOccurrences("monthly:1,31", "2026-08-15", "2026-10-05"), [
+    "2026-08-31", "2026-09-01", "2026-09-30", "2026-10-01",
+  ]);
+});
+
+test("expandOccurrences: rispetta il tetto massimo", () => {
+  assert.equal(expandOccurrences("daily", "2026-07-01", "2027-07-01", 10).length, 10);
 });

@@ -45,11 +45,11 @@ export default function AddChoreScreen() {
   const [isRecurring, setIsRecurring] = useState(false);
   const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [dailyWeekdays, setDailyWeekdays] = useState<number[]>([]);
-  const [weeklyDay, setWeeklyDay] = useState<number>(() => {
+  const [weeklyDays, setWeeklyDays] = useState<number[]>(() => {
     const d = new Date().getDay();
-    return d === 0 ? 7 : d;
+    return [d === 0 ? 7 : d];
   });
-  const [monthDay, setMonthDay] = useState<number>(() => new Date().getDate());
+  const [monthDays, setMonthDays] = useState<number[]>(() => [new Date().getDate()]);
   const [selectedMember, setSelectedMember] = useState(data.members[0]?.id || "");
 
   const familyId = currentFamily?.id;
@@ -69,9 +69,8 @@ export default function AddChoreScreen() {
         estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : undefined,
         recurrenceRule: isRecurring
           ? buildRecurrenceRule(frequency, {
-              weekdays: dailyWeekdays,
-              weekday: weeklyDay,
-              monthDay,
+              weekdays: frequency === "weekly" ? weeklyDays : dailyWeekdays,
+              monthDays,
             })
           : undefined,
       });
@@ -341,17 +340,23 @@ export default function AddChoreScreen() {
             {frequency === "weekly" && (
               <View style={styles.subField}>
                 <Text style={[styles.subLabel, { color: colors.textSecondary }]}>
-                  In quale giorno della settimana?
+                  In quali giorni della settimana? (anche più di uno)
                 </Text>
                 <View style={styles.weekdayOptions}>
                   {WEEKDAY_LABELS.map((w) => {
-                    const selected = weeklyDay === w.value;
+                    const selected = weeklyDays.includes(w.value);
                     return (
                       <Pressable
                         key={w.value}
                         onPress={() => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setWeeklyDay(w.value);
+                          setWeeklyDays((prev) =>
+                            prev.includes(w.value)
+                              ? prev.length > 1
+                                ? prev.filter((d) => d !== w.value)
+                                : prev
+                              : [...prev, w.value]
+                          );
                         }}
                         style={[
                           styles.weekdayOption,
@@ -379,17 +384,23 @@ export default function AddChoreScreen() {
             {frequency === "monthly" && (
               <View style={styles.subField}>
                 <Text style={[styles.subLabel, { color: colors.textSecondary }]}>
-                  In quale giorno del mese?
+                  In quali giorni del mese? (anche più di uno)
                 </Text>
                 <View style={styles.monthDayOptions}>
                   {MONTH_DAYS.map((d) => {
-                    const selected = monthDay === d;
+                    const selected = monthDays.includes(d);
                     return (
                       <Pressable
                         key={d}
                         onPress={() => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setMonthDay(d);
+                          setMonthDays((prev) =>
+                            prev.includes(d)
+                              ? prev.length > 1
+                                ? prev.filter((x) => x !== d)
+                                : prev
+                              : [...prev, d]
+                          );
                         }}
                         style={[
                           styles.monthDayOption,

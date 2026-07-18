@@ -13,6 +13,12 @@ import { sendPushToUser } from '../lib/push';
 import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
+import { parseRecurrenceRule, expandOccurrences } from '../../shared/chore-recurrence';
+
+/** Numero massimo di occorrenze materializzate per un evento ricorrente. */
+const MAX_RECURRENCE_OCCURRENCES = 60;
+/** Orizzonte massimo (in mesi) per la materializzazione delle occorrenze. */
+const RECURRENCE_HORIZON_MONTHS = 6;
 
 async function notifyAssignedMember(
   familyId: string,
@@ -152,18 +158,46 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       });
     }
 
+    // Se c'è una regola di ricorrenza deve essere valida.
+    if (parsed.data.recurrenceRule && !parseRecurrenceRule(parsed.data.recurrenceRule)) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Regola di ricorrenza non valida" },
+      });
+    }
+
     const gate = await reserveBaseSlot(req.user!.userId, familyId, "calendar-event");
     if (gate.status === "limited") {
       return res.status(429).json(baseLimitBody(gate));
     }
 
-    const [event] = await db.insert(calendarEvents).values({
-      familyId,
-      ...parsed.data,
-      createdBy: req.user!.userId,
-    }).returning();
+    // Eventi ricorrenti: materializziamo le occorrenze nei prossimi mesi
+    // (una riga per data), così calendario, feed ICS e sync le vedono tutte.
+    let dates: string[] = [parsed.data.date];
+    if (parsed.data.recurrenceRule) {
+      const until = new Date(`${parsed.data.date.slice(0, 10)}T00:00:00Z`);
+      until.setUTCMonth(until.getUTCMonth() + RECURRENCE_HORIZON_MONTHS);
+      const expanded = expandOccurrences(
+        parsed.data.recurrenceRule,
+        parsed.data.date.slice(0, 10),
+        until.toISOString().slice(0, 10),
+        MAX_RECURRENCE_OCCURRENCES
+      );
+      if (expanded.length > 0) dates = expanded;
+    }
 
-    broadcastToFamily(familyId, 'event_created', event);
+    const inserted = await db.insert(calendarEvents).values(
+      dates.map((date) => ({
+        familyId,
+        ...parsed.data,
+        date,
+        createdBy: req.user!.userId,
+      }))
+    ).returning();
+
+    const event = inserted[0]!;
+    for (const ev of inserted) {
+      broadcastToFamily(familyId, 'event_created', ev);
+    }
     void notifyAssignedMember(familyId, event, req.user!.userId);
     res.status(201).json(event);
   } catch (error) {
@@ -181,6 +215,12 @@ router.put('/:familyId/:eventId', authenticate, requireFamilyMember(), async (re
     if (!parsed.success) {
       return res.status(400).json({
         error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    if (parsed.data.recurrenceRule && !parseRecurrenceRule(parsed.data.recurrenceRule)) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Regola di ricorrenza non valida" },
       });
     }
 
