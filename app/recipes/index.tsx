@@ -489,12 +489,13 @@ export default function RecipesScreen() {
           <Text style={[styles.autoSpeakLabel, { color: colors.textSecondary }]}>
             L'AI legge le ricette ad alta voce
           </Text>
-          <Switch
-            value={autoSpeak}
-            onValueChange={toggleAutoSpeak}
-            trackColor={{ false: colors.border, true: colors.primary }}
-            thumbColor="#FFFFFF"
-          />
+          <View pointerEvents="none">
+            <Switch
+              value={autoSpeak}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
         </Pressable>
       ) : null}
 

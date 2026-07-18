@@ -855,12 +855,13 @@ export default function MealPlansScreen() {
                 <Text style={[styles.autoSpeakLabel, { color: colors.textSecondary }]}>
                   L'AI legge il piano ad alta voce
                 </Text>
-                <Switch
-                  value={autoSpeak}
-                  onValueChange={toggleAutoSpeak}
-                  trackColor={{ false: colors.border, true: colors.primary }}
-                  thumbColor="#FFFFFF"
-                />
+                <View pointerEvents="none">
+                  <Switch
+                    value={autoSpeak}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
               </Pressable>
             </View>
           ) : null}
