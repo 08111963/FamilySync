@@ -115,6 +115,7 @@ ENABLE_TESTER_ACCOUNTS = "true"
 
 [userenv.production]
 EXPO_PUBLIC_DOMAIN = "familysync.eu"
+VIP_ACCOUNT_EMAIL = "fra.pizzuti02@gmail.com"
 
 [userenv.development]
 

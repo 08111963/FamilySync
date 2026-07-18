@@ -8,6 +8,7 @@ import { logger, generateRequestId } from './lib/logger';
 import { seedOwnerEntitlements } from './lib/entitlements';
 import { ensureDemoAccount } from './lib/demo-account';
 import { ensureTesterAccounts } from './lib/tester-accounts';
+import { ensureVipAccount } from './lib/vip-account';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -406,6 +407,16 @@ function setupErrorHandler(app: express.Application) {
             log(`tester accounts skipped: SESSION_SECRET non impostato`);
         })
         .catch((err) => log(`tester accounts seed failed: ${String(err)}`));
+      // Garantisce l'account VIP (accesso completo permanente). Attivo solo
+      // dove VIP_ACCOUNT_EMAIL è impostata (es. produzione).
+      void ensureVipAccount()
+        .then((r) => {
+          if (r.created) log(`vip account created (${r.email})`);
+          else if (r.upgraded) log(`vip account upgraded to permanent premium (${r.email})`);
+          else if (r.skipped && r.reason === "missing_password")
+            log(`vip account skipped: set VIP_ACCOUNT_PASSWORD to enable`);
+        })
+        .catch((err) => log(`vip account seed failed: ${String(err)}`));
     },
   );
 })();
