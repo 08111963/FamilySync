@@ -10,6 +10,7 @@ import { useFamily } from "@/context/FamilyContext";
 import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
+import { recurrenceLabel } from "@/shared/chore-recurrence";
 
 type FilterType = "all" | "pending" | "completed";
 
@@ -93,14 +94,7 @@ export default function ChoresScreen() {
     return dateStr < new Date().toISOString().split("T")[0];
   };
 
-  const getFrequencyLabel = (frequency?: string) => {
-    switch (frequency) {
-      case "daily": return "giornaliera";
-      case "weekly": return "settimanale";
-      case "monthly": return "mensile";
-      default: return frequency;
-    }
-  };
+  const getFrequencyLabel = (frequency?: string) => recurrenceLabel(frequency);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
 

@@ -13,8 +13,10 @@ import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { freeLimitMessage } from "@/lib/plan-limit";
+import { buildRecurrenceRule, WEEKDAY_LABELS } from "@/shared/chore-recurrence";
 
 const POINTS_OPTIONS = [5, 10, 15, 20, 25, 50];
+const MONTH_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 const FREQUENCY_OPTIONS = [
   { value: "daily", label: "Giornaliera" },
   { value: "weekly", label: "Settimanale" },
@@ -42,6 +44,12 @@ export default function AddChoreScreen() {
   const [estimatedMinutes, setEstimatedMinutes] = useState("");
   const [isRecurring, setIsRecurring] = useState(false);
   const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
+  const [dailyWeekdays, setDailyWeekdays] = useState<number[]>([]);
+  const [weeklyDay, setWeeklyDay] = useState<number>(() => {
+    const d = new Date().getDay();
+    return d === 0 ? 7 : d;
+  });
+  const [monthDay, setMonthDay] = useState<number>(() => new Date().getDate());
   const [selectedMember, setSelectedMember] = useState(data.members[0]?.id || "");
 
   const familyId = currentFamily?.id;
@@ -59,7 +67,13 @@ export default function AddChoreScreen() {
         points,
         difficulty,
         estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : undefined,
-        recurrenceRule: isRecurring ? frequency : undefined,
+        recurrenceRule: isRecurring
+          ? buildRecurrenceRule(frequency, {
+              weekdays: dailyWeekdays,
+              weekday: weeklyDay,
+              monthDay,
+            })
+          : undefined,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/chores", familyId] });
       router.back();
@@ -281,6 +295,127 @@ export default function AddChoreScreen() {
                 </Pressable>
               ))}
             </View>
+
+            {frequency === "daily" && (
+              <View style={styles.subField}>
+                <Text style={[styles.subLabel, { color: colors.textSecondary }]}>
+                  In quali giorni? (nessuno = tutti i giorni)
+                </Text>
+                <View style={styles.weekdayOptions}>
+                  {WEEKDAY_LABELS.map((w) => {
+                    const selected = dailyWeekdays.includes(w.value);
+                    return (
+                      <Pressable
+                        key={w.value}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setDailyWeekdays((prev) =>
+                            prev.includes(w.value)
+                              ? prev.filter((d) => d !== w.value)
+                              : [...prev, w.value]
+                          );
+                        }}
+                        style={[
+                          styles.weekdayOption,
+                          {
+                            backgroundColor: selected ? colors.secondary : colors.surface,
+                            borderColor: selected ? colors.secondary : colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.weekdayText,
+                            { color: selected ? "#FFFFFF" : colors.text },
+                          ]}
+                        >
+                          {w.short}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {frequency === "weekly" && (
+              <View style={styles.subField}>
+                <Text style={[styles.subLabel, { color: colors.textSecondary }]}>
+                  In quale giorno della settimana?
+                </Text>
+                <View style={styles.weekdayOptions}>
+                  {WEEKDAY_LABELS.map((w) => {
+                    const selected = weeklyDay === w.value;
+                    return (
+                      <Pressable
+                        key={w.value}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setWeeklyDay(w.value);
+                        }}
+                        style={[
+                          styles.weekdayOption,
+                          {
+                            backgroundColor: selected ? colors.secondary : colors.surface,
+                            borderColor: selected ? colors.secondary : colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.weekdayText,
+                            { color: selected ? "#FFFFFF" : colors.text },
+                          ]}
+                        >
+                          {w.short}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {frequency === "monthly" && (
+              <View style={styles.subField}>
+                <Text style={[styles.subLabel, { color: colors.textSecondary }]}>
+                  In quale giorno del mese?
+                </Text>
+                <View style={styles.monthDayOptions}>
+                  {MONTH_DAYS.map((d) => {
+                    const selected = monthDay === d;
+                    return (
+                      <Pressable
+                        key={d}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setMonthDay(d);
+                        }}
+                        style={[
+                          styles.monthDayOption,
+                          {
+                            backgroundColor: selected ? colors.secondary : colors.surface,
+                            borderColor: selected ? colors.secondary : colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.weekdayText,
+                            { color: selected ? "#FFFFFF" : colors.text },
+                          ]}
+                        >
+                          {d}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Text style={[styles.subHint, { color: colors.textSecondary }]}>
+                  Nei mesi più corti vale l'ultimo giorno disponibile
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -429,5 +564,48 @@ const styles = StyleSheet.create({
   frequencyText: {
     fontSize: 14,
     fontFamily: "Inter_500Medium",
+  },
+  subField: {
+    marginTop: 16,
+  },
+  subLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    marginBottom: 8,
+  },
+  subHint: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 8,
+  },
+  weekdayOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  weekdayOption: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  weekdayText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  monthDayOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  monthDayOption: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
   },
 });

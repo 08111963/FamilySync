@@ -11,6 +11,7 @@ import { broadcastToFamily } from '../lib/websocket';
 import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
+import { nextDueDate, parseRecurrenceRule } from '../../shared/chore-recurrence';
 
 const router = Router();
 
@@ -22,7 +23,9 @@ const createChoreSchema = z.object({
   estimatedMinutes: z.number().int().min(0).optional(),
   assignedTo: z.string().optional(),
   dueDate: z.string().optional(),
-  recurrenceRule: z.string().optional(),
+  recurrenceRule: z.string()
+    .refine((v) => parseRecurrenceRule(v) !== null, "Regola di ricorrenza non valida")
+    .optional(),
 });
 
 const updateChoreSchema = z.object({
@@ -33,7 +36,9 @@ const updateChoreSchema = z.object({
   estimatedMinutes: z.number().int().min(0).nullable().optional(),
   assignedTo: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
-  recurrenceRule: z.string().nullable().optional(),
+  recurrenceRule: z.string()
+    .refine((v) => parseRecurrenceRule(v) !== null, "Regola di ricorrenza non valida")
+    .nullable().optional(),
   isCompleted: z.boolean().optional(),
 }).strict();
 
@@ -264,20 +269,9 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
     const familyId = getParam(req, 'familyId');
     const choreId = getParam(req, 'choreId');
 
-    const [currentChore] = await db.select().from(chores)
-      .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
-      .limit(1);
-
-    if (!currentChore) {
-      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata" } });
-    }
-
-    if (currentChore.isCompleted) {
-      return res.status(400).json({ error: { code: "ALREADY_COMPLETED", message: "Faccenda già completata" } });
-    }
-
-    const pointsToAdd = currentChore.points || 10;
-
+    // Aggiornamento atomico: la guardia isCompleted=false nella WHERE evita
+    // che due richieste concorrenti assegnino i punti (o ricreino la
+    // ricorrenza) due volte.
     let [chore] = await db.update(chores)
       .set({
         isCompleted: true,
@@ -285,26 +279,75 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
         completedBy: req.user!.userId,
         updatedAt: new Date(),
       })
-      .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
+      .where(and(
+        eq(chores.id, choreId),
+        eq(chores.familyId, familyId),
+        eq(chores.isCompleted, false)
+      ))
       .returning();
+
+    if (!chore) {
+      const [existing] = await db.select({ id: chores.id }).from(chores)
+        .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
+        .limit(1);
+      if (!existing) {
+        return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata" } });
+      }
+      return res.status(400).json({ error: { code: "ALREADY_COMPLETED", message: "Faccenda già completata" } });
+    }
+
+    const pointsToAdd = chore.points || 10;
 
     // Sync calendario: faccenda completata → evento rimosso.
     await deleteChoreCalendarEvent(familyId, choreId, chore.calendarEventId);
     chore = { ...chore, calendarEventId: null };
 
-    if (currentChore.assignedTo) {
+    if (chore.assignedTo) {
       await db.update(familyMembers)
         .set({
           points: sql`COALESCE(${familyMembers.points}, 0) + ${pointsToAdd}`,
         })
         .where(and(
-          eq(familyMembers.id, currentChore.assignedTo),
+          eq(familyMembers.id, chore.assignedTo),
           eq(familyMembers.familyId, familyId)
         ));
     }
 
+    // Ricorrenza: la faccenda si ricrea per la prossima occorrenza.
+    // Base: la scadenza attuale se presente e nel futuro-non-passato, altrimenti oggi
+    // (evita di generare occorrenze arretrate se la faccenda era in ritardo).
+    let nextChore: typeof chores.$inferSelect | null = null;
+    if (chore.recurrenceRule) {
+      // "Oggi" nel fuso orario degli utenti (Italia), non in UTC: vicino alla
+      // mezzanotte l'UTC slitterebbe di un giorno.
+      const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+      const dueIso = chore.dueDate ? chore.dueDate.toISOString().slice(0, 10) : null;
+      const baseIso = dueIso && dueIso > todayIso ? dueIso : todayIso;
+      const nextIso = nextDueDate(chore.recurrenceRule, baseIso);
+      if (nextIso) {
+        try {
+          const [created] = await db.insert(chores).values({
+            familyId,
+            title: chore.title,
+            description: chore.description,
+            difficulty: chore.difficulty,
+            points: chore.points,
+            estimatedMinutes: chore.estimatedMinutes,
+            assignedTo: chore.assignedTo,
+            dueDate: new Date(nextIso),
+            recurrenceRule: chore.recurrenceRule,
+            createdBy: chore.createdBy,
+          }).returning();
+          nextChore = await createChoreCalendarEvent(created, req.user!.userId);
+          broadcastToFamily(familyId, 'chore_created', nextChore);
+        } catch (error) {
+          logger.error('Recurring chore recreation failed', { choreId, error: String(error) });
+        }
+      }
+    }
+
     broadcastToFamily(familyId, 'chore_completed', chore);
-    res.json(chore);
+    res.json({ ...chore, nextChore });
   } catch (error) {
     logger.error('Complete chore error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel completamento" } });
