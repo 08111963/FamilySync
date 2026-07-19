@@ -35,7 +35,7 @@ describe("ai_usage concorrenza reale (DB)", { skip: hasDb ? false : "DATABASE_UR
     userId = u!.id;
     const [f] = await db.insert(families).values({ name: "AI Usage Test Family" }).returning({ id: families.id });
     familyId = f!.id;
-    // Entitlement PREMIUM attivo: così la quota weekly-meal-plan resta 3/giorno
+    // Entitlement PREMIUM attivo: così la quota weekly-meal-plan resta 8/giorno
     // (con piano free sarebbe 1/settimana e il test "esattamente 3 ok" fallirebbe).
     await db.insert(entitlements).values({
       familyId,
@@ -53,7 +53,7 @@ describe("ai_usage concorrenza reale (DB)", { skip: hasDb ? false : "DATABASE_UR
     if (userId) await db.delete(users).where(eq(users.id, userId));
   });
 
-  test("16 richieste concorrenti su weekly-meal-plan (max 3) -> esattamente 3 'ok'", async () => {
+  test("16 richieste concorrenti su weekly-meal-plan (max 8) -> esattamente 8 'ok'", async () => {
     const N = 16;
     const results = await Promise.all(
       Array.from({ length: N }, () => reserveAiSlot(userId, familyId, "weekly-meal-plan")),
@@ -61,15 +61,15 @@ describe("ai_usage concorrenza reale (DB)", { skip: hasDb ? false : "DATABASE_UR
     const ok = results.filter((r) => r.status === "ok");
     const limited = results.filter((r) => r.status === "limited");
 
-    assert.equal(ok.length, 3, "solo 3 slot concessi sotto carico concorrente");
-    assert.equal(limited.length, N - 3);
+    assert.equal(ok.length, 8, "solo 8 slot concessi sotto carico concorrente");
+    assert.equal(limited.length, N - 8);
 
-    // Verifica diretta sul DB: esattamente 3 righe per questa famiglia/feature.
+    // Verifica diretta sul DB: esattamente 8 righe per questa famiglia/feature.
     const rows = await db
       .select()
       .from(aiUsage)
       .where(and(eq(aiUsage.familyId, familyId), eq(aiUsage.feature, "weekly-meal-plan")));
-    assert.equal(rows.length, 3);
+    assert.equal(rows.length, 8);
     assert.ok(rows.every((r) => r.status === "started"));
 
     // finalize aggiorna lo stato

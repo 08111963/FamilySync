@@ -5,6 +5,7 @@ import { db } from '../db';
 import { calendarEvents, families } from '../../shared/schema';
 import { eq, and, gte } from 'drizzle-orm';
 import { logger } from '../lib/logger';
+import { isRealIsoDate } from '../../shared/chore-recurrence';
 
 /**
  * Feed ICS pubblico del calendario famiglia.
@@ -125,6 +126,11 @@ router.get('/:token', async (req: Request, res: Response) => {
     ];
 
     for (const ev of events) {
+      // Difensivo: salta eventi con data malformata invece di far fallire l'intero feed
+      if (!isRealIsoDate(ev.date)) {
+        logger.warn('Calendar feed: skipping event with invalid date', { eventId: ev.id });
+        continue;
+      }
       lines.push('BEGIN:VEVENT');
       lines.push(foldLine(`UID:${ev.id}@familysync`));
       const stamp = (ev.updatedAt ?? ev.createdAt ?? new Date())

@@ -6,6 +6,7 @@ import {
   recurrenceLabel,
   nextDueDate,
   expandOccurrences,
+  isRealIsoDate,
 } from "../../shared/chore-recurrence";
 
 // 2026-07-18 è un sabato (ISO 6).
@@ -134,4 +135,18 @@ test("expandOccurrences: monthly più giorni con clamp", () => {
 
 test("expandOccurrences: rispetta il tetto massimo", () => {
   assert.equal(expandOccurrences("daily", "2026-07-01", "2027-07-01", 10).length, 10);
+});
+
+test("isRealIsoDate: accetta solo YYYY-MM-DD calendariali reali", () => {
+  assert.equal(isRealIsoDate("2026-07-25"), true);
+  assert.equal(isRealIsoDate("2028-02-29"), true); // bisestile
+  assert.equal(isRealIsoDate("2026-02-29"), false); // non bisestile
+  assert.equal(isRealIsoDate("2026-02-31"), false); // giorno impossibile
+  assert.equal(isRealIsoDate("2026-13-99"), false);
+  assert.equal(isRealIsoDate("non-data"), false);
+  assert.equal(isRealIsoDate("2026-07-25T00:00:00Z"), false); // suffisso ISO
+  assert.equal(isRealIsoDate("2026-07-25junk"), false);
+  assert.equal(isRealIsoDate(""), false);
+  assert.equal(isRealIsoDate(null), false);
+  assert.equal(isRealIsoDate(undefined), false);
 });

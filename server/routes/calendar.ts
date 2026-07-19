@@ -13,7 +13,7 @@ import { sendPushToUser } from '../lib/push';
 import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
-import { parseRecurrenceRule, expandOccurrences } from '../../shared/chore-recurrence';
+import { parseRecurrenceRule, expandOccurrences, isRealIsoDate } from '../../shared/chore-recurrence';
 
 /** Numero massimo di occorrenze materializzate per un evento ricorrente. */
 const MAX_RECURRENCE_OCCURRENCES = 60;
@@ -59,7 +59,7 @@ const router = Router();
 const createEventSchema = z.object({
   title: z.string().min(1, "Il titolo è obbligatorio"),
   description: z.string().optional(),
-  date: z.string().min(1, "La data è obbligatoria"),
+  date: z.string().refine(isRealIsoDate, "Data non valida (formato AAAA-MM-GG)"),
   time: z.string().optional(),
   endTime: z.string().optional(),
   allDay: z.boolean().optional().default(false),
@@ -73,7 +73,7 @@ const createEventSchema = z.object({
 const updateEventSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
-  date: z.string().optional(),
+  date: z.string().refine(isRealIsoDate, "Data non valida (formato AAAA-MM-GG)").optional(),
   time: z.string().nullable().optional(),
   endTime: z.string().nullable().optional(),
   allDay: z.boolean().optional(),
