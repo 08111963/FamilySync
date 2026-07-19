@@ -4,7 +4,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { chores, familyMembers, calendarEvents } from '../../shared/schema';
-import { eq, and, sql, isNull } from 'drizzle-orm';
+import { eq, and, sql, isNull, lt } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
@@ -50,6 +50,10 @@ const updateChoreSchema = z.object({
 // Gli errori di sync non bloccano mai l'operazione principale (best-effort).
 
 const CHORE_EVENT_COLOR = '#8B5CF6';
+
+// Le faccende completate restano visibili per questo numero di giorni,
+// poi vengono eliminate automaticamente.
+const COMPLETED_RETENTION_DAYS = 5;
 
 /** Verifica che l'assegnatario sia un membro della famiglia indicata. */
 async function isFamilyMemberId(familyId: string, memberId: string): Promise<boolean> {
@@ -154,6 +158,20 @@ async function deleteChoreCalendarEvent(
 router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
+
+    // Pulizia automatica: le faccende completate da più di 5 giorni vengono
+    // eliminate (best-effort, non blocca la lettura della lista).
+    try {
+      const cutoff = new Date(Date.now() - COMPLETED_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+      await db.delete(chores).where(and(
+        eq(chores.familyId, familyId),
+        eq(chores.isCompleted, true),
+        lt(chores.completedAt, cutoff)
+      ));
+    } catch (cleanupError) {
+      logger.error('Completed chores cleanup failed', { familyId, error: String(cleanupError) });
+    }
+
     const blockedIds = await getBlockedUserIds(req.user!.userId, familyId);
 
     const conditions: any[] = [eq(chores.familyId, familyId)];

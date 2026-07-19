@@ -397,12 +397,18 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
 
   const completeChore = useCallback((id: string) => {
     if (!currentFamilyId) return;
+    // Aggiornamento ottimistico: la spunta cambia subito, senza aspettare il
+    // server (importante per le ricorrenti, dove il refetch aggiunge anche la
+    // prossima occorrenza con lo stesso titolo).
+    qc.setQueryData<Chore[]>(["/api/chores", currentFamilyId], (old) =>
+      old?.map((c) => (c.id === id ? { ...c, isCompleted: true } : c))
+    );
     apiRequest("PATCH", `/api/chores/${currentFamilyId}/${id}/complete`)
-      .then(() => {
+      .catch(console.error)
+      .finally(() => {
         qc.invalidateQueries({ queryKey: ["/api/chores", currentFamilyId] });
         qc.invalidateQueries({ queryKey: ["/api/families", currentFamilyId] });
-      })
-      .catch(console.error);
+      });
   }, [currentFamilyId, qc]);
 
   const getMemberById = useCallback((id: string) => {
