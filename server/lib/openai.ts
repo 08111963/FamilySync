@@ -483,7 +483,7 @@ const mealItemSchema = z.object({
   steps: z.array(z.coerce.string()).optional().catch([]),
 }).catchall(z.unknown());
 
-function parseMealItems(raw: unknown): MealPlanSuggestion['items'] {
+export function parseMealItems(raw: unknown): MealPlanSuggestion['items'] {
   if (!raw || typeof raw !== 'object') return [];
   const sanitized = sanitizeKeys(raw) as Record<string, unknown>;
   const arr = Array.isArray(sanitized.items) ? sanitized.items : [];
