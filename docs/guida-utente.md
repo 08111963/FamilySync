@@ -237,16 +237,18 @@ Se hai attivato le funzionalità AI, puoi ricevere suggerimenti intelligenti:
 - Ogni suggerimento può includere una breve **motivazione** (perché l'AI te lo propone)
 
 ### Dispensa (inventario di casa)
-Quando segni un articolo come **acquistato** nella lista della spesa, finisce automaticamente nella **Dispensa**: l'inventario di ciò che hai in casa.
+La **Dispensa** è l'inventario di ciò che hai in casa. La apri con l'icona a forma di **vassoio** in alto nella scheda Spesa.
 
-- Apri la Dispensa con l'icona a forma di **vassoio** in alto nella scheda Spesa
-- Puoi anche aggiungere prodotti a mano con il pulsante **+** (nome, quantità, unità e scadenza facoltativa)
-- Tocca la riga della scadenza di un prodotto per **aggiungere o modificare la data** (formato GG/MM/AAAA)
-- I prodotti **scaduti o in scadenza** (entro 3 giorni) sono evidenziati con un avviso: così eviti gli sprechi
-- Quando finisci un prodotto, tocca l'icona del **cestino** per rimuoverlo
-- La Dispensa rende più intelligente anche l'AI:
-  - I **suggerimenti spesa** evitano di proporti ciò che hai già in casa
-  - Le **ricette AI** danno priorità agli ingredienti già in dispensa
+**Cosa avviene in automatico (non devi fare nulla):**
+- Quando segni un articolo come **acquistato** nella lista della spesa, viene aggiunto da solo alla Dispensa
+- Se il prodotto è già presente, le **quantità si sommano** automaticamente (es. avevi 1 kg di pasta, ne compri 2 → in dispensa vedi 3 kg)
+- I prodotti **scaduti o in scadenza** (entro 3 giorni) vengono evidenziati con un avviso, così eviti gli sprechi
+- L'AI usa la Dispensa da sola: i **suggerimenti spesa** evitano di proporti ciò che hai già in casa e le **ricette AI** danno priorità agli ingredienti già in dispensa
+
+**Cosa fai tu a mano:**
+- **Date di scadenza**: l'app non può conoscerle, quindi le inserisci tu — tocca la riga della scadenza sul prodotto e scrivi la data in formato GG/MM/AAAA (puoi modificarla in ogni momento)
+- **Rimuovere un prodotto finito**: tocca l'icona del **cestino** quando lo esaurisci
+- **Aggiungere prodotti che non passano dalla spesa** (es. qualcosa che avevi già in casa): pulsante **+** in alto, con nome, quantità, unità e scadenza facoltativa
 
 ### Eliminare una Lista
 - Nella schermata Spesa, scorri sulla lista e tocca l'icona di eliminazione
