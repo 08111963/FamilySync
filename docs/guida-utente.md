@@ -96,10 +96,18 @@ Per iniziare ad usare FamilySync:
 - Dopo la registrazione, effettua il login con le tue credenziali
 
 ### Creare una Famiglia
-Dopo il login, puoi creare il tuo gruppo familiare:
-- Dalla schermata Home, inserisci il nome della tua famiglia (es. "Famiglia Rossi")
-- Tocca il pulsante per creare la famiglia
+Dopo il login, se **non fai ancora parte di nessuna famiglia**, la schermata Home ti mostra il modulo di benvenuto "Crea la tua Famiglia":
+- Inserisci il nome della tua famiglia (es. "Famiglia Rossi")
+- Tocca il pulsante **Crea Famiglia**
 - Diventerai automaticamente l'**amministratore** del gruppo
+
+> Se hai già una famiglia (creata da te o a cui sei stato invitato), questo modulo non appare: la Home mostra direttamente la panoramica del gruppo.
+
+### Cambiare il Nome della Famiglia
+Solo l'**amministratore** può rinominare il gruppo:
+1. Vai alla scheda **Famiglia**
+2. Tocca l'icona a forma di **matita** accanto al nome della famiglia, in alto
+3. Scrivi il nuovo nome e conferma con il segno di **spunta** (✓); per annullare tocca la **X**
 
 ### Invitare Membri
 Per aggiungere i tuoi familiari hai **tre modi**, tutti dalla scheda **Famiglia** → **Aggiungi**:
