@@ -232,7 +232,8 @@ Se hai attivato le funzionalità AI, puoi ricevere suggerimenti intelligenti:
   - Quello che la tua famiglia compra di solito
   - Gli eventi in programma nel calendario
   - La stagione corrente
-- I suggerimenti sono suddivisi per categoria: **Alimentari**, **Casa e Pulizia**, **Cura Personale**
+- I suggerimenti sono raggruppati in due sezioni: **Cibo** e **Casa**. Gli articoli non alimentari mostrano inoltre un'etichetta colorata che indica se riguardano la **Casa** (pulizia e prodotti domestici) o la **Persona** (cura personale)
+- Ogni suggerimento può includere una breve **motivazione** (perché l'AI te lo propone)
 
 ### Eliminare una Lista
 - Nella schermata Spesa, scorri sulla lista e tocca l'icona di eliminazione
@@ -248,7 +249,7 @@ Organizza le faccende di casa con un sistema a punti che rende tutto più divert
 - Compila i dettagli:
   - **Titolo**: nome della faccenda (es. "Lavare i piatti")
   - **Descrizione**: istruzioni o note aggiuntive (opzionale)
-  - **Difficoltà**: Facile, Media o Difficile
+  - **Difficoltà**: una scala da **1 a 5** (1 = più facile, 5 = più impegnativa), con colori dal verde al rosso
   - **Punti**: scegli quanti punti vale (5, 10, 15, 20, 25, 50)
   - **Tempo stimato**: quanto tempo ci vuole (in minuti)
   - **Assegnata a**: scegli quale membro della famiglia deve farla (opzionale)
