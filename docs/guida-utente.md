@@ -397,6 +397,7 @@ Gli allegati restano collegati alla bolletta e puoi aprirli o eliminarli quando 
 Dalla scheda **Bollette**, tocca l'icona **portafoglio** in alto per aprire il **Budget familiare**: qui tieni sotto controllo tutte le spese quotidiane della famiglia.
 
 - **Registra le spese** con il pulsante **+**: basta importo e categoria (Spesa, Benzina e trasporti, Svago, Salute, Casa, Abbigliamento, Istruzione, Altro), con descrizione facoltativa
+- **Dettatura vocale**: nel form della nuova spesa, tieni premuto il **microfono** e detta la spesa (es. "50 euro di benzina"): importo e categoria vengono compilati da soli
 - Le **bollette pagate** entrano automaticamente nel totale del mese come categoria "Bollette": non serve registrarle due volte
 - **Grafici del mese**: barre per categoria (dove spendete di più) e andamento degli **ultimi 6 mesi**
 - **Tetto di budget mensile** (admin e adulti): imposta un limite di spesa; la barra di avanzamento diventa **gialla quando superi l'80%** e **rossa se sfori**, con un avviso chiaro

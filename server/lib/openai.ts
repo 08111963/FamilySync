@@ -821,3 +821,57 @@ REGOLE:
     throw mapOpenAiError(error);
   }
 }
+
+/**
+ * Estrae una spesa dal linguaggio naturale (es. "fatti 50 euro di benzina"):
+ * importo, categoria canonica e descrizione breve. La quota è gestita dalla
+ * rotta con withAiUsage.
+ */
+const parsedExpenseSchema = z.object({
+  amount: z.number().positive().max(1000000).nullable().catch(null),
+  category: z
+    .enum(['alimentari', 'trasporti', 'svago', 'salute', 'casa', 'abbigliamento', 'istruzione', 'altro'])
+    .nullable()
+    .catch(null),
+  description: z.string().nullable().catch(null),
+});
+
+export type ParsedExpense = z.infer<typeof parsedExpenseSchema>;
+
+export async function parseExpenseFromText(text: string): Promise<ParsedExpense> {
+  assertAiConfigured();
+  try {
+    const response = await getOpenAiClient().chat.completions.create({
+      model: 'gpt-5-mini',
+      reasoning_effort: 'minimal',
+      messages: [{
+        role: 'system',
+        content: `Estrai una spesa familiare da una frase in italiano.
+
+REGOLE:
+- "amount": importo in euro come numero (es. "50 euro", "24,50€" → 50, 24.5). null se non indicato.
+- "category": UNA tra: "alimentari" (spesa, supermercato, cibo), "trasporti" (benzina, carburante, treno, bus, autostrada, parcheggio, auto), "svago" (cinema, ristorante, pizza fuori, giochi, sport), "salute" (farmacia, medico, dentista), "casa" (mobili, riparazioni, giardino, detersivi), "abbigliamento" (vestiti, scarpe), "istruzione" (scuola, libri, corsi), "altro" (tutto il resto). null se non deducibile.
+- "description": descrizione breve e naturale della spesa (es. "Benzina"), senza importo. null se non c'è nulla di utile.
+- Rispondi SOLO con JSON: {"amount": ..., "category": ..., "description": ...}`,
+      }, {
+        role: 'user',
+        content: text,
+      }],
+      response_format: { type: 'json_object' },
+    });
+
+    const content = response.choices[0].message.content || '{}';
+    const parsed = parsedExpenseSchema.parse(JSON.parse(content));
+
+    // Senza importo né categoria la risposta è inutilizzabile: errore tipizzato
+    // per evitare un falso successo lato client.
+    if (parsed.amount === null && parsed.category === null) {
+      throw new AiError('AI_BAD_RESPONSE', 'parse-expense: nessun campo estratto dal testo');
+    }
+
+    return parsed;
+  } catch (error) {
+    if (error instanceof AiError) throw error;
+    throw mapOpenAiError(error);
+  }
+}

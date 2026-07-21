@@ -12,7 +12,7 @@ import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
-import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateBudgetInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, transcribeAudio, generateRecipeImage, parseEventFromText, type ShoppingSuggestionItem } from '../lib/openai';
+import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateBudgetInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, transcribeAudio, generateRecipeImage, parseEventFromText, parseExpenseFromText, type ShoppingSuggestionItem } from '../lib/openai';
 import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { recipes, recipeIngredients } from '../../shared/schema';
@@ -926,6 +926,34 @@ router.post('/:familyId/parse-event', authenticate, requireAiEnabled, requireFam
   } catch (error) {
     logger.error('Event parse error', { error: String(error) });
     sendAiError(res, error, 'Errore nella compilazione automatica');
+  }
+});
+
+// ===== COMPILAZIONE AUTOMATICA SPESA (testo libero → importo/categoria) =====
+
+router.post('/:familyId/parse-expense', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+  const familyId = getParam(req, 'familyId');
+  const userId = req.user!.userId;
+  try {
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+    if (!text) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Descrivi la spesa in una frase' } });
+    }
+    if (text.length > 300) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Descrizione troppo lunga (max 300 caratteri)' } });
+    }
+
+    const run = await withAiUsage(
+      { userId, familyId, feature: 'expense-parse' },
+      () => parseExpenseFromText(text),
+    );
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
+    if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
+
+    res.json(run.value);
+  } catch (error) {
+    logger.error('Expense parse error', { error: String(error) });
+    sendAiError(res, error, 'Errore nella compilazione automatica della spesa');
   }
 });
 

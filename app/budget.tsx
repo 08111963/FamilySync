@@ -22,6 +22,7 @@ import { useFamily } from "@/context/FamilyContext";
 import { apiRequest } from "@/lib/query-client";
 import { EmptyState } from "@/components/EmptyState";
 import { Card } from "@/components/Card";
+import { VoiceInput } from "@/components/VoiceInput";
 import { aiErrorMessage } from "@/lib/ai-error-message";
 
 interface Expense {
@@ -130,6 +131,29 @@ export default function BudgetScreen() {
   const [insights, setInsights] = useState<BudgetInsight[] | null>(null);
   const [insightsMessage, setInsightsMessage] = useState<string | null>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
+  const [parsingVoice, setParsingVoice] = useState(false);
+
+  // Dettatura spesa: "fatti 50 euro di benzina" → importo + categoria compilati.
+  const handleVoiceExpense = async (text: string) => {
+    setParsingVoice(true);
+    try {
+      const res = await apiRequest("POST", `/api/ai/${familyId}/parse-expense`, { text });
+      const parsed = await res.json();
+      if (parsed.amount != null) setAmount(String(parsed.amount).replace(".", ","));
+      if (parsed.category) setCategory(parsed.category);
+      if (parsed.description) setDescription(parsed.description);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error: any) {
+      // Fallback: metti comunque il testo dettato nella descrizione
+      setDescription(text.slice(0, 255));
+      Alert.alert(
+        "Dettatura",
+        aiErrorMessage(error, "Non sono riuscito a capire importo e categoria: ho messo il testo nella descrizione.")
+      );
+    } finally {
+      setParsingVoice(false);
+    }
+  };
 
   const summaryKey = [`/api/expenses/${familyId}/summary?month=${month}`];
   const listKey = [`/api/expenses/${familyId}?month=${month}`];
@@ -315,7 +339,17 @@ export default function BudgetScreen() {
         {/* Form aggiunta spesa */}
         {showForm && (
           <Card style={styles.formCard}>
-            <Text style={[styles.formTitle, { color: colors.text }]}>Nuova spesa</Text>
+            <View style={styles.formTitleRow}>
+              <Text style={[styles.formTitle, { color: colors.text }]}>Nuova spesa</Text>
+              {parsingVoice ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <VoiceInput familyId={familyId} onTranscribed={handleVoiceExpense} />
+              )}
+            </View>
+            <Text style={[styles.voiceHint, { color: colors.textSecondary }]}>
+              Tieni premuto il microfono e detta la spesa (es. "50 euro di benzina")
+            </Text>
             <TextInput
               style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
               placeholder="Importo (es. 24,50)"
@@ -642,7 +676,9 @@ const styles = StyleSheet.create({
   monthLabel: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
   scroll: { paddingHorizontal: 16, gap: 12 },
   formCard: { padding: 16, gap: 10 },
+  formTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   formTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  voiceHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: -4 },
   input: {
     borderWidth: 1,
     borderRadius: 10,
