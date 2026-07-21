@@ -209,6 +209,62 @@ testAnalyticsAdminRouter.get('/summary', async (req: Request, res: Response) => 
   }
 });
 
+// Dettaglio per utente: chi ha usato l'app e quali schermate ha visitato.
+// L'email è letta con join dalla tabella users (non è salvata negli eventi).
+testAnalyticsAdminRouter.get('/users', async (req: Request, res: Response) => {
+  try {
+    const since = periodStart(req);
+    const where = gte(testAnalyticsEvents.createdAt, since);
+
+    const perUser = await db
+      .select({
+        userId: testAnalyticsEvents.userId,
+        email: users.email,
+        isDemoAccount: testAnalyticsEvents.isDemoAccount,
+        totalEvents: count(),
+        lastSeen: sql<string>`max(${testAnalyticsEvents.createdAt})`,
+      })
+      .from(testAnalyticsEvents)
+      .leftJoin(users, eq(users.id, testAnalyticsEvents.userId))
+      .where(where)
+      .groupBy(testAnalyticsEvents.userId, users.email, testAnalyticsEvents.isDemoAccount)
+      .orderBy(desc(sql`max(${testAnalyticsEvents.createdAt})`))
+      .limit(50);
+
+    const screensRows = await db
+      .select({
+        userId: testAnalyticsEvents.userId,
+        screen: testAnalyticsEvents.screen,
+        n: count(),
+      })
+      .from(testAnalyticsEvents)
+      .where(and(where, eq(testAnalyticsEvents.eventName, 'screen_view')))
+      .groupBy(testAnalyticsEvents.userId, testAnalyticsEvents.screen)
+      .orderBy(desc(count()));
+
+    const screensByUser = new Map<string, { screen: string | null; n: number }[]>();
+    for (const row of screensRows) {
+      const key = row.userId ?? 'unknown';
+      if (!screensByUser.has(key)) screensByUser.set(key, []);
+      const list = screensByUser.get(key)!;
+      if (list.length < 20) list.push({ screen: row.screen, n: row.n });
+    }
+
+    res.json({
+      users: perUser.map((u) => ({
+        userId: u.userId,
+        email: u.email ?? '(utente eliminato)',
+        isDemoAccount: u.isDemoAccount,
+        totalEvents: u.totalEvents,
+        lastSeen: u.lastSeen,
+        screens: screensByUser.get(u.userId ?? 'unknown') ?? [],
+      })),
+    });
+  } catch {
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Errore nel dettaglio per utente' } });
+  }
+});
+
 testAnalyticsAdminRouter.get('/events', async (req: Request, res: Response) => {
   try {
     const since = periodStart(req);

@@ -17,6 +17,15 @@ import { apiRequest, queryClient } from "@/lib/query-client";
 
 type Period = "today" | "7d" | "30d";
 
+interface UserUsage {
+  userId: string | null;
+  email: string;
+  isDemoAccount: boolean;
+  totalEvents: number;
+  lastSeen: string;
+  screens: { screen: string | null; n: number }[];
+}
+
 interface Summary {
   period: string;
   totalEvents: number;
@@ -41,6 +50,11 @@ export default function TestAnalyticsScreen() {
 
   const { data, isLoading, isError, refetch } = useQuery<Summary>({
     queryKey: ["/api/admin/test-analytics/summary?period=" + period],
+    retry: false,
+  });
+
+  const usersQuery = useQuery<{ users: UserUsage[] }>({
+    queryKey: ["/api/admin/test-analytics/users?period=" + period],
     retry: false,
   });
 
@@ -158,6 +172,37 @@ export default function TestAnalyticsScreen() {
               <Text style={[styles.cardTitle, { color: colors.text }]}>Eventi per tipo</Text>
               {data.byEvent.map((e, i) => (
                 <Row key={i} colors={colors} label={e.eventName} value={e.n} />
+              ))}
+            </Card>
+
+            <Card>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>Per utente</Text>
+              {(usersQuery.data?.users ?? []).length === 0 && (
+                <Text style={{ color: colors.textSecondary }}>Nessun utente nel periodo</Text>
+              )}
+              {(usersQuery.data?.users ?? []).map((u) => (
+                <View
+                  key={u.userId ?? u.email}
+                  style={{ paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={{ color: colors.text, fontFamily: "Inter_600SemiBold", fontSize: 14, flex: 1 }} numberOfLines={1}>
+                      {u.email}
+                    </Text>
+                    {u.isDemoAccount && (
+                      <Text style={{ color: colors.textSecondary, fontSize: 11, fontFamily: "Inter_600SemiBold" }}>DEMO</Text>
+                    )}
+                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{u.totalEvents} eventi</Text>
+                  </View>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                    Ultimo accesso: {new Date(u.lastSeen).toLocaleString("it-IT")}
+                  </Text>
+                  {u.screens.length > 0 && (
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                      Schermate: {u.screens.map((s) => `${s.screen ?? "?"} (${s.n})`).join(" · ")}
+                    </Text>
+                  )}
+                </View>
               ))}
             </Card>
 

@@ -116,6 +116,15 @@ describe("pannello admin: autorizzazione", () => {
     assert.ok(Array.isArray(s.topScreens));
     assert.ok(s.totalEvents >= 1);
 
+    const perUser = await fetch(`${base}/api/admin/test-analytics/users?period=7d`);
+    assert.equal(perUser.status, 200);
+    const pu = await perUser.json() as any;
+    assert.ok(Array.isArray(pu.users));
+    const demoRow = pu.users.find((u: any) => u.email === demoUser.email);
+    assert.ok(demoRow, "l'utente demo deve comparire nel dettaglio per utente");
+    assert.ok(demoRow.totalEvents >= 1);
+    assert.ok(demoRow.screens.some((sc: any) => sc.screen === MARKER));
+
     const del = await fetch(`${base}/api/admin/test-analytics`, { method: "DELETE" });
     assert.equal(del.status, 200);
     const count = await db.select().from(testAnalyticsEvents);
