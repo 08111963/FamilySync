@@ -293,7 +293,15 @@ export default function FamilyScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Classifica</Text>
-            <Ionicons name="trophy" size={20} color={colors.accent} />
+            <Pressable
+              onPress={() => router.push("/rewards")}
+              style={({ pressed }) => [styles.rewardsLink, { opacity: pressed ? 0.7 : 1 }]}
+              hitSlop={8}
+              testID="rewards-link-family"
+            >
+              <Ionicons name="gift-outline" size={18} color={colors.primary} />
+              <Text style={[styles.rewardsLinkText, { color: colors.primary }]}>Premi</Text>
+            </Pressable>
           </View>
 
           <Card>
@@ -651,6 +659,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
+  },
+  rewardsLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  rewardsLinkText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   sectionTitle: {
     fontSize: 20,

@@ -350,6 +350,35 @@ export const aiUsage = pgTable("ai_usage", {
 
 export type AiUsage = typeof aiUsage.$inferSelect;
 
+// REWARDS (premi riscattabili con i punti delle faccende)
+export const rewards = pgTable("rewards", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 200 }).notNull(),
+  description: text("description"),
+  pointsCost: integer("points_cost").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type Reward = typeof rewards.$inferSelect;
+
+export const rewardRedemptions = pgTable("reward_redemptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  rewardId: uuid("reward_id").notNull().references(() => rewards.id, { onDelete: "cascade" }),
+  memberId: uuid("member_id").notNull().references(() => familyMembers.id, { onDelete: "cascade" }),
+  // Snapshot del titolo: la cronologia resta leggibile anche se il premio cambia.
+  rewardTitle: varchar("reward_title", { length: 200 }).notNull(),
+  pointsSpent: integer("points_spent").notNull(),
+  redeemedAt: timestamp("redeemed_at").defaultNow().notNull(),
+}, (table) => [
+  index("reward_redemptions_family_redeemed_idx").on(table.familyId, table.redeemedAt),
+]);
+
+export type RewardRedemption = typeof rewardRedemptions.$inferSelect;
+
 // CHAT MESSAGES
 export const messageTypeEnum = pgEnum("message_type", ["text", "image", "file"]);
 

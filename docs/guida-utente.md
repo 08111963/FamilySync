@@ -281,6 +281,25 @@ Puoi filtrare le faccende per stato:
 - La classifica è visibile nella Home e nella scheda Famiglia
 - Più faccende completi, più sali in classifica!
 
+### Premi Riscattabili
+Trasforma i punti in premi veri! Apri la schermata **Premi** dal pulsante a forma di regalo nella scheda Faccende, oppure dal link "Premi" accanto alla Classifica nella scheda Famiglia.
+
+**Creare un premio** (solo admin e adulti):
+- Tocca il pulsante **+** in alto nella schermata Premi
+- Scrivi il nome del premio (es. "Serata film a scelta", "Pizza preferita"), una descrizione facoltativa e il costo in punti
+- Tocca **Crea premio**: da quel momento tutti i membri lo vedranno nel catalogo
+
+**Riscattare un premio** (tutti i membri):
+- In alto vedi sempre i tuoi punti disponibili
+- Tocca **Riscatta** sul premio che desideri e conferma
+- I punti vengono scalati subito e il riscatto compare nella cronologia "Riscatti recenti"
+- Se i punti non bastano, l'app ti dice quanti ne mancano
+
+**Da sapere:**
+- Gli altri membri della famiglia ricevono una notifica quando qualcuno riscatta un premio
+- Admin e adulti possono eliminare un premio dal catalogo: la cronologia dei riscatti già fatti resta comunque visibile
+- I punti spesi non tolgono posizioni già guadagnate: la classifica si aggiorna con il nuovo saldo punti
+
 ### Ottimizzazione AI delle Faccende
 Se le funzionalità AI sono attive, puoi richiedere una distribuzione ottimizzata:
 - L'AI analizza le faccende in sospeso e i punti di ciascun membro

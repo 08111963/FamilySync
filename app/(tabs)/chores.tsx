@@ -102,6 +102,17 @@ export default function ChoresScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
         <Text style={[styles.title, { color: colors.text }]}>Faccende</Text>
+        <View style={styles.headerActions}>
+        <Pressable
+          onPress={() => router.push("/rewards")}
+          style={({ pressed }) => [
+            styles.addButton,
+            { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, opacity: pressed ? 0.8 : 1 },
+          ]}
+          testID="rewards-link-chores"
+        >
+          <Ionicons name="gift-outline" size={20} color={colors.primary} />
+        </Pressable>
         <Pressable
           onPress={() => router.push("/add-chore")}
           style={({ pressed }) => [
@@ -111,6 +122,7 @@ export default function ChoresScreen() {
         >
           <Ionicons name="add" size={24} color="#FFFFFF" />
         </Pressable>
+        </View>
       </View>
 
       <View style={styles.filterRow}>
@@ -277,6 +289,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontFamily: "Inter_700Bold",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   addButton: {
     width: 44,
