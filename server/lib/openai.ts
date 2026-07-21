@@ -663,6 +663,43 @@ export async function generateFamilyInsights(context: {
 }
 
 /**
+ * Analizza le abitudini di spesa mensili della famiglia e suggerisce risparmi.
+ * Riceve i totali per categoria del mese, i tetti di budget e il trend recente.
+ */
+export async function generateBudgetInsights(context: {
+  month: string;
+  total: number;
+  categories: Array<{ category: string; total: number; count: number }>;
+  budgets: Array<{ category: string; monthlyLimit: number }>;
+  trend: Array<{ month: string; total: number }>;
+}) {
+  assertAiConfigured();
+  try {
+    const response = await getOpenAiClient().chat.completions.create({
+      model: 'gpt-5-mini',
+      reasoning_effort: 'minimal',
+      messages: [{
+        role: 'system',
+        content: 'Sei un consulente finanziario familiare italiano. Analizzi le spese e dai consigli pratici e concreti per risparmiare, in tono amichevole. Rispondi SEMPRE in italiano.',
+      }, {
+        role: 'user',
+        content: `Spese famiglia mese ${context.month}: totale ${context.total.toFixed(2)}€. Per categoria: ${context.categories.map(c => `${c.category} ${c.total.toFixed(2)}€ (${c.count} spese)`).join(', ') || 'nessuna spesa'}. Tetti budget: ${context.budgets.map(b => `${b.category} ${b.monthlyLimit.toFixed(2)}€`).join(', ') || 'nessuno'}. Trend ultimi mesi: ${context.trend.map(t => `${t.month}: ${t.total.toFixed(2)}€`).join(', ')}. Analizza le abitudini di spesa e genera 3-4 consigli concreti per risparmiare, basati sui dati reali (categorie più pesanti, superamenti o rischi di sforare i tetti, andamento del trend). Rispondi con JSON: {"insights": [{"title": "titolo breve", "description": "consiglio pratico (max 2 frasi)", "type": "warning|suggestion|achievement"}]}`,
+      }],
+      response_format: { type: 'json_object' },
+    });
+
+    const content = response.choices[0].message.content || '{"insights": []}';
+    const parsed = JSON.parse(content);
+    if (!Array.isArray(parsed.insights) || parsed.insights.length === 0) {
+      throw new AiError('AI_BAD_RESPONSE', 'budget-insights: nessun insight generato');
+    }
+    return parsed;
+  } catch (error) {
+    throw mapOpenAiError(error);
+  }
+}
+
+/**
  * Trascrive un file audio (voce dell'utente) in testo italiano.
  * Usa l'API audio di OpenAI (gpt-4o-mini-transcribe). Errori sempre tipizzati
  * via mapOpenAiError; la quota è gestita dalla rotta con withAiUsage.

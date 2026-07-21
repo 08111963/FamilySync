@@ -60,6 +60,7 @@ users, families, family_members, family_invites, calendar_events, shopping_lists
 - `/api/shopping` - liste e items spesa
 - `/api/chores` - faccende con punti e classifiche
 - `/api/bills` - bollette con stati e promemoria
+- `/api/expenses` - budget familiare: spese per categoria, riepilogo mensile (include bollette pagate), tetto budget
 - `/api/recipes`, `/api/*/meal-plans` - ricette e piani pasti
 - `/api/ai` - suggerimenti AI + trascrizione vocale + foto ricette
 - `/api/purchases` - sync entitlements RevenueCat
@@ -73,6 +74,7 @@ users, families, family_members, family_invites, calendar_events, shopping_lists
 - **Liste della spesa** condivise
 - **Faccende** con gamification (punti, classifiche) e sync scadenze → calendario
 - **Bollette** con stati (scadute/da pagare/pagate), promemoria locali e sync scadenze → calendario
+- **Budget familiare**: spese quotidiane per categoria, grafici mensili e trend 6 mesi, tetto budget con avvisi (80%/sforamento), consigli di risparmio AI; bollette pagate incluse automaticamente nel riepilogo
 - **Ricette & Piani pasti**: creazione manuale + generazione AI, foto piatti AI, conversione piano → lista spesa
 - **Chat interna** in tempo reale (testo, immagini, file) via WebSocket
 - **Input vocale** (dettatura + lettura ad alta voce) nelle schermate AI, eventi, faccende, chat

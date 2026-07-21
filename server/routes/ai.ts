@@ -12,7 +12,7 @@ import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
-import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, transcribeAudio, generateRecipeImage, parseEventFromText, type ShoppingSuggestionItem } from '../lib/openai';
+import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateBudgetInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, transcribeAudio, generateRecipeImage, parseEventFromText, type ShoppingSuggestionItem } from '../lib/openai';
 import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { recipes, recipeIngredients } from '../../shared/schema';
@@ -428,6 +428,44 @@ router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requ
   } catch (error) {
     logger.error('Chore optimization error', { error: String(error) });
     sendAiError(res, error, "Errore nell'ottimizzazione");
+  }
+});
+
+// Analisi AI del budget: abitudini di spesa + consigli di risparmio (soggetto a quota).
+router.post('/:familyId/budget-insights', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+  const familyId = getParam(req, 'familyId');
+  const userId = req.user!.userId;
+  try {
+    const month = typeof req.body?.month === 'string' && /^\d{4}-\d{2}$/.test(req.body.month)
+      ? req.body.month
+      : new Date().toISOString().slice(0, 7);
+
+    const { getBudgetSummary } = await import('./expenses');
+    const summary = await getBudgetSummary(familyId, month);
+    if (!summary) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Mese non valido' } });
+    }
+    if (summary.total <= 0) {
+      return res.json({ insights: [], message: 'Nessuna spesa registrata questo mese: aggiungi qualche spesa per ricevere consigli.' });
+    }
+
+    const run = await withAiUsage(
+      { userId, familyId, feature: 'budget-insights' },
+      () => generateBudgetInsights({
+        month: summary.month,
+        total: summary.total,
+        categories: Object.entries(summary.categories).map(([category, v]) => ({ category, total: v.total, count: v.count })),
+        budgets: summary.budgets,
+        trend: summary.trend,
+      }),
+    );
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
+    if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
+
+    res.json(run.value);
+  } catch (error) {
+    logger.error('Budget insights error', { error: String(error) });
+    sendAiError(res, error, "Errore nell'analisi del budget");
   }
 });
 

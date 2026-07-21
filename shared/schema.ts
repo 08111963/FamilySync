@@ -399,6 +399,39 @@ export const pantryItems = pgTable("pantry_items", {
 
 export type PantryItem = typeof pantryItems.$inferSelect;
 
+// EXPENSES — spese quotidiane della famiglia, per categoria (budget familiare).
+export const expenses = pgTable("expenses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  memberId: uuid("member_id").references(() => familyMembers.id, { onDelete: "set null" }),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  category: varchar("category", { length: 30 }).notNull(),
+  description: varchar("description", { length: 255 }),
+  date: date("date").notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("expenses_family_date_idx").on(table.familyId, table.date),
+]);
+
+export type Expense = typeof expenses.$inferSelect;
+
+// FAMILY BUDGETS — tetto di spesa mensile (category 'total' = complessivo,
+// altrimenti tetto per singola categoria).
+export const familyBudgets = pgTable("family_budgets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  category: varchar("category", { length: 30 }).notNull().default("total"),
+  monthlyLimit: numeric("monthly_limit", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  unique("family_budgets_family_category_uq").on(table.familyId, table.category),
+]);
+
+export type FamilyBudget = typeof familyBudgets.$inferSelect;
+
 // CHAT MESSAGES
 export const messageTypeEnum = pgEnum("message_type", ["text", "image", "file"]);
 

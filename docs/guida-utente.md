@@ -393,6 +393,16 @@ Sempre nel dettaglio, con Premium puoi allegare:
 - **Documenti PDF**
 Gli allegati restano collegati alla bolletta e puoi aprirli o eliminarli quando vuoi.
 
+### Budget Familiare
+Dalla scheda **Bollette**, tocca l'icona **portafoglio** in alto per aprire il **Budget familiare**: qui tieni sotto controllo tutte le spese quotidiane della famiglia.
+
+- **Registra le spese** con il pulsante **+**: basta importo e categoria (Spesa, Benzina e trasporti, Svago, Salute, Casa, Abbigliamento, Istruzione, Altro), con descrizione facoltativa
+- Le **bollette pagate** entrano automaticamente nel totale del mese come categoria "Bollette": non serve registrarle due volte
+- **Grafici del mese**: barre per categoria (dove spendete di più) e andamento degli **ultimi 6 mesi**
+- **Tetto di budget mensile** (admin e adulti): imposta un limite di spesa; la barra di avanzamento diventa **gialla quando superi l'80%** e **rossa se sfori**, con un avviso chiaro
+- **Consigli di risparmio AI**: tocca **Analizza** e l'AI studia le abitudini di spesa del mese e suggerisce dove risparmiare (soggetto alla quota AI del tuo piano)
+- Con le **frecce** accanto al mese puoi consultare anche i mesi passati
+
 ---
 
 ## 7. Chat di Famiglia

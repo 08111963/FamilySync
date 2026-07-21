@@ -373,9 +373,18 @@ export default function BillsScreen() {
             {headerSub}
           </Text>
         </View>
-        <Pressable onPress={handleAdd} style={[styles.addButton, { backgroundColor: colors.primary }]}>
-          <Ionicons name="add" size={26} color="#fff" />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => router.push("/budget")}
+            style={[styles.budgetButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            testID="open-budget"
+          >
+            <Ionicons name="wallet-outline" size={22} color={colors.primary} />
+          </Pressable>
+          <Pressable onPress={handleAdd} style={[styles.addButton, { backgroundColor: colors.primary }]}>
+            <Ionicons name="add" size={26} color="#fff" />
+          </Pressable>
+        </View>
       </View>
 
       {!isSubscribed && (
@@ -526,6 +535,19 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 28, fontFamily: "Inter_700Bold" },
   headerSub: { fontSize: 14, fontFamily: "Inter_400Regular", marginTop: 2 },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  budgetButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   addButton: {
     width: 44,
     height: 44,
