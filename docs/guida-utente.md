@@ -37,6 +37,7 @@ L'app ha 7 schede principali in fondo allo schermo:
 |-----------|---------------|----------------|
 | Ricette | Card "Ricette" dalla Home | Generare ricette AI, cercare ricette, creare ricette proprie, salvare, aggiungere ingredienti alla spesa |
 | Piano Pasti | Card "Piano Pasti" dalla Home | Generare piani settimanali AI, creare/modificare piani manualmente, convertire in lista spesa |
+| Dispensa | Icona vassoio nella scheda Spesa | Vedere cosa c'è in casa, gestire quantità e date di scadenza, evitare sprechi e doppioni |
 | Invita Familiare | Pulsante "Aggiungi" nella scheda Famiglia | Invitare un familiare via email, WhatsApp o QR code |
 | Il mio profilo | Icona matita sulla propria riga nella scheda Famiglia | Personalizzare la foto e il colore del proprio profilo |
 | Premium | Sezione Funzionalità nella scheda Famiglia | Attivare l'abbonamento Premium e sbloccare funzioni avanzate |
@@ -234,6 +235,18 @@ Se hai attivato le funzionalità AI, puoi ricevere suggerimenti intelligenti:
   - La stagione corrente
 - I suggerimenti sono raggruppati in due sezioni: **Cibo** e **Casa**. Gli articoli non alimentari mostrano inoltre un'etichetta colorata che indica se riguardano la **Casa** (pulizia e prodotti domestici) o la **Persona** (cura personale)
 - Ogni suggerimento può includere una breve **motivazione** (perché l'AI te lo propone)
+
+### Dispensa (inventario di casa)
+Quando segni un articolo come **acquistato** nella lista della spesa, finisce automaticamente nella **Dispensa**: l'inventario di ciò che hai in casa.
+
+- Apri la Dispensa con l'icona a forma di **vassoio** in alto nella scheda Spesa
+- Puoi anche aggiungere prodotti a mano con il pulsante **+** (nome, quantità, unità e scadenza facoltativa)
+- Tocca la riga della scadenza di un prodotto per **aggiungere o modificare la data** (formato GG/MM/AAAA)
+- I prodotti **scaduti o in scadenza** (entro 3 giorni) sono evidenziati con un avviso: così eviti gli sprechi
+- Quando finisci un prodotto, tocca l'icona del **cestino** per rimuoverlo
+- La Dispensa rende più intelligente anche l'AI:
+  - I **suggerimenti spesa** evitano di proporti ciò che hai già in casa
+  - Le **ricette AI** danno priorità agli ingredienti già in dispensa
 
 ### Eliminare una Lista
 - Nella schermata Spesa, scorri sulla lista e tocca l'icona di eliminazione

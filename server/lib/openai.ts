@@ -51,12 +51,14 @@ export async function generateShoppingSuggestions(context: {
   alreadyOnList: string[];
   completedRecently: string[];
   recentSuggestions: string[];
+  pantryItems?: string[];
 }): Promise<{ items: ShoppingSuggestionItem[] }> {
   const allForbidden = [
     ...context.recentPurchases,
     ...context.alreadyOnList,
     ...context.completedRecently,
     ...context.recentSuggestions,
+    ...(context.pantryItems ?? []),
   ];
   const forbiddenSet = new Set(allForbidden.map(normalizeItemName).filter(n => n.length > 0));
 
@@ -301,6 +303,7 @@ export async function generateRecipeSuggestions(context: {
   excludedIngredients?: string[] | null;
   lastRecipeTitles?: string[];
   count?: number;
+  pantryIngredients?: string[];
 }): Promise<{ recipes: RecipeSuggestion[] }> {
   const count = context.count || 8;
   const randomSeed = Math.floor(Math.random() * 100000);
@@ -323,6 +326,9 @@ export async function generateRecipeSuggestions(context: {
   const lastTitlesText = context.lastRecipeTitles?.length
     ? `\n\nTITOLI GIÀ GENERATI (NON ripeterli, inventa piatti COMPLETAMENTE diversi): ${context.lastRecipeTitles.join(', ')}`
     : '';
+  const pantryText = context.pantryIngredients?.length
+    ? `\nINGREDIENTI GIÀ IN DISPENSA (dai priorità a ricette che li usano, per evitare sprechi): ${context.pantryIngredients.slice(0, 40).join(', ')}.`
+    : '';
 
   const allCategories = [
     "pasta", "risotto", "zuppa", "insalata", "carne al forno",
@@ -340,7 +346,7 @@ export async function generateRecipeSuggestions(context: {
     const sysPrompt = `Genera ${n} ricette italiane JSON.{"recipes":[{"title":"nome","description":"breve","servings":4,"prepTimeMinutes":10,"cookTimeMinutes":20,"steps":["..."],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"x","quantity":"200","unit":"g","category":"y"}]}]}
 Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni volta.`;
 
-    const userMsg = `${seed} ${context.familySize}pers${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${lastTitlesText}`;
+    const userMsg = `${seed} ${context.familySize}pers${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${pantryText}${lastTitlesText}`;
 
     const response = await getOpenAiClient().chat.completions.create({
       model: 'gpt-5-mini',

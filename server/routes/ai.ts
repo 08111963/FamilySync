@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { db } from '../db';
-import { familyMembers, shoppingHistory, shoppingLists, shoppingItems, calendarEvents, chores, aiInsights } from '../../shared/schema';
+import { familyMembers, shoppingHistory, shoppingLists, shoppingItems, calendarEvents, chores, aiInsights, pantryItems } from '../../shared/schema';
 import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
@@ -176,6 +176,13 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
       .where(and(eq(calendarEvents.familyId, familyId), gte(calendarEvents.date, today!)))
       .limit(10);
 
+    // Ciò che è già in dispensa non va risuggerito (evita doppioni).
+    const pantryRows = await db.select({ name: pantryItems.name })
+      .from(pantryItems)
+      .where(eq(pantryItems.familyId, familyId))
+      .limit(200);
+    const pantryNames = pantryRows.map(p => p.name);
+
     let aiResult: { items: ShoppingSuggestionItem[] } = { items: [] };
     // Prenotazione quota PRIMA di OpenAI. Comportamento specifico di shopping:
     // - "limited": quota giornaliera piena -> 429.
@@ -198,6 +205,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
           alreadyOnList,
           completedRecently,
           recentSuggestions,
+          pantryItems: pantryNames,
         });
         await finalizeAiUsage(usageId, true);
       } catch (aiErr) {
@@ -218,6 +226,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
     const completedRecentlySet = new Set(completedRecently.map(normalizeItemName).filter(n => n.length > 0));
     const recentPurchasesSet = new Set(recentPurchases.map(normalizeItemName).filter(n => n.length > 0));
     const recentSuggestionsSet = new Set(recentSuggestions.map(normalizeItemName).filter(n => n.length > 0));
+    const pantrySet = new Set(pantryNames.map(normalizeItemName).filter(n => n.length > 0));
 
     const totalFromAI = aiResult.items.length;
 
@@ -247,12 +256,13 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
       if (completedRecentlySet.has(norm)) { droppedCompletedRecently++; continue; }
       if (recentPurchasesSet.has(norm)) { droppedRecentPurchases++; continue; }
       if (recentSuggestionsSet.has(norm)) { droppedRecentSuggestions++; continue; }
+      if (pantrySet.has(norm)) { continue; }
       filtered.push(item);
     }
     const keptAfterFilters = filtered.length;
 
     const allForbiddenSet = new Set<string>();
-    for (const s of [alreadyOnListSet, completedRecentlySet, recentPurchasesSet, recentSuggestionsSet]) {
+    for (const s of [alreadyOnListSet, completedRecentlySet, recentPurchasesSet, recentSuggestionsSet, pantrySet]) {
       for (const v of s) allForbiddenSet.add(v);
     }
     // NB: non pre-aggiungere seenNames (i nomi degli articoli AI) a allForbiddenSet:
@@ -527,6 +537,13 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
     const extraTitles = Array.isArray(excludeTitles) ? excludeTitles : [];
     const lastRecipeTitles = [...new Set([...dbTitles, ...extraTitles])];
 
+    // Ingredienti già in dispensa: l'AI dà priorità a ricette che li usano.
+    const pantryRows = await db.select({ name: pantryItems.name })
+      .from(pantryItems)
+      .where(eq(pantryItems.familyId, familyId))
+      .limit(60);
+    const pantryIngredients = pantryRows.map(p => p.name);
+
     const run = await withAiUsage(
       { userId, familyId, feature: 'recipe-suggestions' },
       () => generateRecipeSuggestions({
@@ -538,6 +555,7 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
         excludedIngredients: excludedIngredients || null,
         lastRecipeTitles,
         count: Math.min(count || 8, 20),
+        pantryIngredients,
       }),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);

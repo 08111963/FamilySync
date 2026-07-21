@@ -13,6 +13,7 @@ import { getBlockedUserIds, getBlockRelatedUserIds, applyBlockedFilter } from '.
 import { parseQuantityString } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
+import { addToPantry } from './pantry';
 
 const router = Router();
 
@@ -252,6 +253,22 @@ router.patch('/:familyId/lists/:listId/items/:itemId/toggle', authenticate, requ
         quantity: item.quantity,
         category: item.category,
       });
+
+      // Prodotto acquistato → va in dispensa (dedup per nome normalizzato+unità).
+      // Best-effort: un errore qui non deve bloccare il toggle.
+      try {
+        const pantryResult = await addToPantry({
+          familyId,
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          category: item.category,
+          addedBy: req.user!.userId,
+        });
+        broadcastToFamily(familyId, 'pantry_updated', { item: pantryResult.item });
+      } catch (pantryErr) {
+        logger.error('Add purchased item to pantry failed', { error: String(pantryErr) });
+      }
     }
 
     broadcastToFamily(familyId, 'shopping_item_toggled', { listId, item });

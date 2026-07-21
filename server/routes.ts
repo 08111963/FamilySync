@@ -14,6 +14,7 @@ import calendarFeedRoutes from "./routes/calendar-feed";
 import shoppingRoutes from "./routes/shopping";
 import choresRoutes from "./routes/chores";
 import rewardsRoutes from "./routes/rewards";
+import pantryRoutes from "./routes/pantry";
 import aiRoutes from "./routes/ai";
 import paymentsRoutes from "./routes/payments";
 import purchasesRoutes, { handleRevenueCatWebhook } from "./routes/purchases";
@@ -61,6 +62,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/shopping', authenticate, requireEmailVerified, shoppingRoutes);
   app.use('/api/chores', authenticate, requireEmailVerified, choresRoutes);
   app.use('/api/rewards', authenticate, requireEmailVerified, rewardsRoutes);
+  app.use('/api/pantry', authenticate, requireEmailVerified, pantryRoutes);
   app.use('/api/ai', authenticate, requireEmailVerified, aiRoutes);
   app.use('/api/payments', authenticate, requireEmailVerified, paymentsRoutes);
   // Webhook RevenueCat: pubblico (nessun JWT), autenticato via header. Va

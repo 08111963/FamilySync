@@ -47,6 +47,17 @@ export default function ShoppingScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
         <Text style={[styles.title, { color: colors.text }]}>Spesa</Text>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => router.push("/pantry")}
+            style={({ pressed }) => [
+              styles.pantryButton,
+              { backgroundColor: colors.surface, opacity: pressed ? 0.8 : 1 },
+            ]}
+            testID="open-pantry"
+          >
+            <Ionicons name="file-tray-full-outline" size={22} color={colors.primary} />
+          </Pressable>
         <Pressable
           onPress={() => setShowNewList(true)}
           style={({ pressed }) => [
@@ -56,6 +67,7 @@ export default function ShoppingScreen() {
         >
           <Ionicons name="add" size={24} color="#FFFFFF" />
         </Pressable>
+        </View>
       </View>
 
       {showNewList && (
@@ -168,6 +180,18 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
   },
   addButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  pantryButton: {
     width: 44,
     height: 44,
     borderRadius: 22,

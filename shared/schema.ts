@@ -379,6 +379,26 @@ export const rewardRedemptions = pgTable("reward_redemptions", {
 
 export type RewardRedemption = typeof rewardRedemptions.$inferSelect;
 
+// PANTRY (dispensa/inventario di casa)
+export const pantryItems = pgTable("pantry_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  // Nome normalizzato per dedup (ricalcolato lato server, non fidarsi del client).
+  normalizedName: varchar("normalized_name", { length: 255 }).notNull(),
+  quantity: numeric("quantity"),
+  unit: varchar("unit", { length: 10 }),
+  category: varchar("category", { length: 50 }).default("food").notNull(),
+  expiryDate: date("expiry_date"),
+  addedBy: uuid("added_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("pantry_items_family_idx").on(table.familyId, table.normalizedName),
+]);
+
+export type PantryItem = typeof pantryItems.$inferSelect;
+
 // CHAT MESSAGES
 export const messageTypeEnum = pgEnum("message_type", ["text", "image", "file"]);
 

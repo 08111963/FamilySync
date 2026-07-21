@@ -132,6 +132,7 @@ function RootLayoutNav() {
       <Stack.Screen name="calendar-sync" options={{ headerShown: false }} />
       <Stack.Screen name="recipes/index" options={{ headerShown: false }} />
       <Stack.Screen name="rewards" options={{ headerShown: false }} />
+      <Stack.Screen name="pantry" options={{ headerShown: false }} />
       <Stack.Screen name="recipes/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="recipes/add" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="meal-plans/index" options={{ headerShown: false }} />
