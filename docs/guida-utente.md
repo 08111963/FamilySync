@@ -35,8 +35,8 @@ L'app ha 7 schede principali in fondo allo schermo:
 
 | Schermata | Come accedere | Cosa puoi fare |
 |-----------|---------------|----------------|
-| Ricette | Card "Ricette" dalla Home | Generare ricette AI, cercare ricette, salvare e consultare ricette |
-| Piano Pasti | Card "Piano Pasti" dalla Home | Generare piani settimanali AI, salvare piani, convertire in lista spesa |
+| Ricette | Card "Ricette" dalla Home | Generare ricette AI, cercare ricette, creare ricette proprie, salvare, aggiungere ingredienti alla spesa |
+| Piano Pasti | Card "Piano Pasti" dalla Home | Generare piani settimanali AI, creare/modificare piani manualmente, convertire in lista spesa |
 | Invita Familiare | Pulsante "Aggiungi" nella scheda Famiglia | Invitare un familiare via email, WhatsApp o QR code |
 | Il mio profilo | Icona matita sulla propria riga nella scheda Famiglia | Personalizzare la foto e il colore del proprio profilo |
 | Premium | Sezione Funzionalità nella scheda Famiglia | Attivare l'abbonamento Premium e sbloccare funzioni avanzate |
@@ -381,7 +381,7 @@ Tocca l'icona allegato accanto al campo di testo per inviare:
 
 ## 8. Ricette
 
-La sezione Ricette ti permette di scoprire, generare e salvare ricette per la tua famiglia grazie all'intelligenza artificiale.
+La sezione Ricette ti permette di scoprire, generare e salvare ricette per la tua famiglia grazie all'intelligenza artificiale, oppure di scrivere le tue ricette a mano.
 
 ### Come Accedere
 - Dalla **Home**, tocca la card **Ricette** nell'area di accesso rapido
@@ -416,6 +416,20 @@ Dopo aver generato o cercato ricette, arrivi alla schermata di anteprima dove pu
 - **Salvare** le ricette selezionate toccando il pulsante in basso. Le ricette salvate appariranno nella tua lista personale
 - **Generare altre ricette** (pulsante "Altre Ricette") se quelle proposte non ti soddisfano
 
+### Creare una Ricetta Manualmente
+Oltre alle ricette generate dall'AI, puoi inserire le tue ricette di famiglia:
+- Nella schermata Ricette, tocca il pulsante per **creare una nuova ricetta** (icona matita)
+- Compila **titolo**, **descrizione** (facoltativa), **porzioni**, **tempo di preparazione** e **cottura**
+- Aggiungi gli **ingredienti** uno alla volta, con quantità e unità di misura (g, kg, ml, l, pezzi, cucchiai, cucchiaini, tazze, pizzico, q.b.)
+- Scrivi le **istruzioni** passo per passo, aggiungendo tutti i passaggi che ti servono
+- Tocca **Salva**: la ricetta apparirà nella tua lista insieme alle altre
+
+### Foto dei Piatti
+Ogni ricetta viene accompagnata da una **foto del piatto generata dall'AI**:
+- La foto compare automaticamente sulle card delle ricette e nella schermata di dettaglio
+- Non devi fare nulla: l'app la crea da sola in base al titolo della ricetta
+- Se la foto non è disponibile (es. quota AI esaurita), viene mostrato un segnaposto discreto
+
 ### Dettaglio Ricetta
 Ogni ricetta salvata include informazioni complete:
 - **Titolo** e **descrizione**
@@ -425,6 +439,15 @@ Ogni ricetta salvata include informazioni complete:
 - **Lista ingredienti** completa con quantità e unità di misura italiane (g, kg, ml, L, cucchiai, ecc.)
 - **Istruzioni** passo per passo, dettagliate e complete
 
+### Aggiungere gli Ingredienti alla Lista della Spesa
+Dal dettaglio di una ricetta salvata puoi mandare tutti gli ingredienti direttamente alla spesa:
+- Apri la ricetta e scorri in fondo
+- Tocca il pulsante **"Aggiungi alla lista della spesa"** (icona carrello)
+- Gli ingredienti vengono aggiunti alla tua lista della spesa: se un ingrediente è già presente, le **quantità si sommano** invece di creare doppioni
+- Un messaggio ti conferma quanti ingredienti sono stati aggiunti; li trovi subito nella scheda **Spesa**
+
+> Nota: salvare una ricetta **non** aggiunge automaticamente gli ingredienti alla spesa. Sei tu a decidere quando farlo con questo pulsante.
+
 ### Eliminare una Ricetta
 - Nella lista delle ricette salvate, tocca l'icona del cestino sulla card della ricetta
 - Conferma l'eliminazione nella finestra di dialogo
@@ -433,7 +456,7 @@ Ogni ricetta salvata include informazioni complete:
 
 ## 9. Piano Pasti Settimanale
 
-Il Piano Pasti ti aiuta a organizzare i pasti della settimana per tutta la famiglia, generato dall'intelligenza artificiale.
+Il Piano Pasti ti aiuta a organizzare i pasti della settimana per tutta la famiglia: puoi farlo generare dall'intelligenza artificiale oppure crearlo e modificarlo manualmente.
 
 ### Come Accedere
 - Dalla **Home**, tocca la card **Piano Pasti** nell'area di accesso rapido
@@ -465,9 +488,24 @@ Per generare un nuovo piano settimanale:
 - Quando sei soddisfatto del piano, tocca **Salva Piano**
 - Il piano viene salvato e apparirà nella tab **I Miei Piani**
 
+### Creare un Piano Manualmente
+Se preferisci decidere tu i pasti senza usare l'AI:
+1. Nella schermata Piano Pasti, tocca **"Crea piano manualmente"** (icona matita)
+2. Scegli la **data di inizio settimana** dal calendario (una sola settimana per piano: se esiste già un piano per quella settimana, l'app te lo segnala)
+3. Tocca **Crea piano**: si apre la schermata di modifica dove aggiungi i pasti giorno per giorno
+
+### Modificare un Piano
+Ogni piano salvato può essere modificato in qualsiasi momento:
+- Nella tab **I Miei Piani**, tocca l'icona **matita** sulla card del piano
+- Per ogni giorno puoi **aggiungere un pasto** scegliendo il tipo (colazione, pranzo, cena, spuntino) e scrivendo il nome del piatto
+- In alternativa puoi **scegliere una ricetta salvata**: il pasto viene collegato alla ricetta
+- Tocca un pasto esistente per **modificarlo**, oppure usa **Rimuovi** per eliminarlo
+- Le modifiche vengono salvate subito e sincronizzate con tutta la famiglia
+
 ### Gestire i Piani Salvati
 Nella tab **I Miei Piani** puoi:
 - Vedere tutti i tuoi piani salvati con titolo, data della settimana e numero di pasti
+- **Modificare** un piano toccando l'icona della matita (vedi sopra)
 - **Converti in Lista Spesa**: tocca l'icona del carrello per creare automaticamente una lista della spesa con tutti gli ingredienti necessari per il piano. La lista apparirà nella scheda Spesa
 - **Eliminare** un piano toccando l'icona del cestino e confermando
 
