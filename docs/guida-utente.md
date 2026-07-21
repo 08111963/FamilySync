@@ -707,11 +707,23 @@ Se trovi un contenuto inappropriato o vuoi segnalare un comportamento:
 - Puoi **personalizzare foto e colore** del tuo profilo toccando la **matita** sulla tua riga nella scheda Famiglia (schermata "Il mio profilo"). I dettagli sono nella sezione **Gestione Famiglia → Personalizzare il Proprio Profilo**
 
 ### Notifiche
-FamilySync ti avvisa direttamente sul telefono per non farti dimenticare le scadenze:
-- **Promemoria bollette**: ricevi una notifica prima della scadenza delle bollette (con il piano Free arrivano **il giorno prima** e **il giorno della scadenza**, alle **8:00 del mattino**). Puoi anche aggiungere **date promemoria personalizzate**. Trovi tutti i dettagli nella sezione **Bollette → Promemoria delle Scadenze**
-- **Attivazione**: alla prima notifica l'app ti chiede il **permesso di inviare notifiche**. Concedilo per ricevere i promemoria. Se lo neghi, l'app continua a funzionare ma non ricevi gli avvisi: puoi riattivarlo in qualsiasi momento dalle **impostazioni del telefono** (sezione Notifiche → FamilySync)
+FamilySync ti avvisa direttamente sul telefono per non perderti nulla di quello che succede in famiglia:
+
+**Notifiche dalla famiglia** (arrivano quando un altro membro fa qualcosa, mai per le tue azioni):
+- **Chat**: ricevi una notifica per ogni nuovo messaggio, foto o file, con l'anteprima del testo
+- **Lista della spesa**: quando qualcuno aggiunge un prodotto (es. "Mario ha aggiunto 'Latte' alla spesa")
+- **Faccende**: quando una faccenda viene **assegnata a te**, con la scadenza se presente
+- **Calendario**: quando viene creato un **nuovo evento**; se l'evento è assegnato a te ricevi una notifica dedicata
+- **Toccando la notifica** l'app si apre direttamente sulla schermata giusta (Chat, Spesa, ecc.)
+- Se hai **bloccato** un utente (o lui ha bloccato te), non ricevete notifiche l'uno dell'altro
+
+**Promemoria bollette**:
+- Ricevi una notifica prima della scadenza delle bollette (con il piano Free arrivano **il giorno prima** e **il giorno della scadenza**, alle **8:00 del mattino**). Puoi anche aggiungere **date promemoria personalizzate**. Trovi tutti i dettagli nella sezione **Bollette → Promemoria delle Scadenze**
 - **Per ogni bolletta** puoi decidere se attivare o disattivare il promemoria con l'apposito interruttore
-- Le notifiche sono disponibili **solo nell'app sul telefono** (iPhone e Android), non sulla versione web
+
+**Attivazione e disponibilità**:
+- Al primo utilizzo l'app ti chiede il **permesso di inviare notifiche**. Concedilo per ricevere gli avvisi. Se lo neghi, l'app continua a funzionare ma senza notifiche: puoi riattivarle in qualsiasi momento dalle **impostazioni del telefono** (sezione Notifiche → FamilySync)
+- Le notifiche sono disponibili **solo nell'app installata sul telefono** (iPhone e Android, scaricata dallo store), non sulla versione web
 
 ### Sicurezza dell'Account
 - La password è protetta con crittografia avanzata
