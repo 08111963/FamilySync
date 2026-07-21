@@ -26,6 +26,7 @@ import notificationsRoutes from "./routes/notifications";
 import billsRoutes from "./routes/bills";
 import supportRoutes from "./routes/support";
 import profileRoutes from "./routes/profile";
+import { testAnalyticsEventsRouter, testAnalyticsAdminRouter, requireTestAnalyticsFlag } from "./routes/test-analytics";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(helmet({
@@ -72,6 +73,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/bills', authenticate, requireEmailVerified, billsRoutes);
   app.use('/api/support', authenticate, requireEmailVerified, supportRoutes);
   app.use('/api/profile', authenticate, requireEmailVerified, profileRoutes);
+  // Analytics interna TEMPORANEA (periodo di test): attiva solo con
+  // ENABLE_TEST_ANALYTICS=true; pannello riservato a APP_OWNER_EMAILS.
+  // Il check del flag PRIMA di authenticate: con flag off gli endpoint
+  // rispondono sempre 404 (non esposti), anche a richieste non autenticate.
+  app.use('/api/test-analytics', requireTestAnalyticsFlag, authenticate, testAnalyticsEventsRouter);
+  app.use('/api/admin/test-analytics', requireTestAnalyticsFlag, authenticate, testAnalyticsAdminRouter);
 
   // Feed ICS del calendario famiglia: PUBBLICO (nessun JWT), protetto da token
   // segreto nell'URL. Permette l'iscrizione da Google/Apple Calendar.

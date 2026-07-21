@@ -212,6 +212,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
       });
+
+      // Analytics di test (silenziosa, fire-and-forget): nessun dato personale.
+      import("@/lib/test-analytics").then((m) => m.trackEvent("login_success")).catch(() => {});
     },
     [saveAuth]
   );

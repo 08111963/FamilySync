@@ -54,8 +54,22 @@ async function tryRefreshToken(): Promise<string | null> {
   return null;
 }
 
-async function throwIfResNotOk(res: Response) {
+/**
+ * Analytics di test: registra gli errori API principali (5xx e 429) in modo
+ * TOTALMENTE silenzioso. Import dinamico per evitare cicli di import.
+ * Mai per gli endpoint analytics stessi (eviterebbe loop).
+ */
+function reportApiError(route: string, status: number): void {
+  if (status < 500 && status !== 429) return;
+  if (route.startsWith("/api/test-analytics") || route.startsWith("/api/admin/test-analytics")) return;
+  import("@/lib/test-analytics")
+    .then((m) => m.trackApiError(route, status))
+    .catch(() => {});
+}
+
+async function throwIfResNotOk(res: Response, route?: string) {
   if (!res.ok) {
+    if (route) reportApiError(route, res.status);
     let text = "";
     try { text = await res.text(); } catch {}
     let body: any = null;
@@ -109,7 +123,7 @@ export async function apiRequest(
     }
   }
 
-  await throwIfResNotOk(res);
+  await throwIfResNotOk(res, url.pathname);
   return res;
 }
 
@@ -143,6 +157,7 @@ export async function apiFetch<T>(route: string, options?: { method?: string; bo
   }
 
   if (!res.ok) {
+    reportApiError(url.pathname, res.status);
     let body = null;
     try { body = await res.json(); } catch { try { await res.text(); } catch {} }
     throw { status: res.status, body };
@@ -290,7 +305,7 @@ export const getQueryFn: <T>(options: {
       return null;
     }
 
-    await throwIfResNotOk(res);
+    await throwIfResNotOk(res, url.pathname);
     return await res.json();
   };
 

@@ -506,6 +506,30 @@ export const billPaymentHistory = pgTable("bill_payment_history", {
 
 export type BillPaymentHistory = typeof billPaymentHistory.$inferSelect;
 
+// TEST ANALYTICS EVENTS — analytics interna TEMPORANEA per il periodo di test.
+// Attiva solo con ENABLE_TEST_ANALYTICS=true. Niente contenuti personali:
+// solo nome evento, schermata, piattaforma, versione app e metadata minimale.
+// Retention: massimo 30 giorni (pulizia automatica lato server).
+export const testAnalyticsEvents = pgTable("test_analytics_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventName: varchar("event_name", { length: 50 }).notNull(),
+  userId: uuid("user_id"),
+  familyId: uuid("family_id"),
+  platform: varchar("platform", { length: 10 }),
+  appVersion: varchar("app_version", { length: 20 }),
+  screen: varchar("screen", { length: 100 }),
+  metadata: jsonb("metadata").$type<Record<string, string | number | boolean>>().notNull().default(sql`'{}'::jsonb`),
+  isDemoAccount: boolean("is_demo_account").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("test_analytics_created_idx").on(table.createdAt),
+  index("test_analytics_event_idx").on(table.eventName),
+  index("test_analytics_user_idx").on(table.userId),
+  index("test_analytics_platform_idx").on(table.platform),
+]);
+
+export type TestAnalyticsEvent = typeof testAnalyticsEvents.$inferSelect;
+
 // Insert schemas for validation
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,

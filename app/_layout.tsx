@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, usePathname, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { Alert } from "react-native";
@@ -12,6 +12,30 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { FamilyProvider } from "@/context/FamilyContext";
 import { BillNotificationsSyncProvider } from "@/context/BillNotificationsProvider";
 import { SubscriptionProvider, initializeRevenueCat } from "@/lib/revenuecat";
+import { trackEvent, trackScreenView } from "@/lib/test-analytics";
+
+// Analytics interna TEMPORANEA (periodo di test): traccia apertura app e cambio
+// schermata SOLO per utenti autenticati. Fire-and-forget, mai bloccante.
+function TestAnalyticsTracker() {
+  const { isAuthenticated } = useAuth();
+  const pathname = usePathname();
+  const appOpenSent = React.useRef(false);
+
+  useEffect(() => {
+    if (isAuthenticated && !appOpenSent.current) {
+      appOpenSent.current = true;
+      trackEvent("app_open");
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated && pathname) {
+      trackScreenView(pathname);
+    }
+  }, [isAuthenticated, pathname]);
+
+  return null;
+}
 
 SplashScreen.preventAutoHideAsync();
 
@@ -75,6 +99,7 @@ function RootLayoutNav() {
       <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
       <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
       <Stack.Screen name="help/user-guide" options={{ headerShown: false }} />
+      <Stack.Screen name="admin/test-analytics" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -115,6 +140,7 @@ export default function RootLayout() {
                 <GestureHandlerRootView>
                   <KeyboardProvider>
                     <AuthGate>
+                      <TestAnalyticsTracker />
                       <RootLayoutNav />
                     </AuthGate>
                   </KeyboardProvider>

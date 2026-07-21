@@ -16,6 +16,7 @@ import { Alert } from "react-native";
 import * as Haptics from "expo-haptics";
 
 import { apiRequest } from "@/lib/query-client";
+import { trackFeatureUsed } from "@/lib/test-analytics";
 import { useTheme } from "@/hooks/useTheme";
 import { SpeakButton } from "@/components/VoiceInput";
 import { RecipeAiImage } from "@/components/RecipeImage";
@@ -132,6 +133,7 @@ export default function RecipeDetailScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ["/api/shopping", currentFamily?.id, "lists"] });
       setSentToList(true);
+      trackFeatureUsed("recipe_to_shopping_list", currentFamily?.id);
       const msg = `${result.ingredientCount} ingredienti aggiunti a "${result.listName}"`;
       if (Platform.OS === "web") {
         window.alert(msg);

@@ -108,3 +108,9 @@ id = "lZiyQufgNN6y4e_-TgYSR"
 uri = "file://.local/state/qr/expo-go-secure.png"
 type = "image"
 title = "QR code sicuro per Expo Go (exps://)"
+
+[[outputs]]
+id = "t4EawEEMlmeZ8Nsk-s5Mm"
+uri = "file://exports/familysync-test-analytics.zip"
+type = "unspecified"
+title = "ZIP file modificati - Test Analytics"

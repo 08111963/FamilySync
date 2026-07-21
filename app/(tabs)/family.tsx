@@ -13,6 +13,7 @@ import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
 import { apiRequest, queryClient } from "@/lib/query-client";
+import { trackEvent } from "@/lib/test-analytics";
 
 export default function FamilyScreen() {
   const insets = useSafeAreaInsets();
@@ -37,11 +38,21 @@ export default function FamilyScreen() {
 
   const blockedUserIds = new Set((blocksData || []).map((b) => b.blockedUserId));
 
+  // Pannello analytics di test: visibile SOLO al proprietario dell'app
+  // (allowlist APP_OWNER_EMAILS lato server). Per tutti gli altri la query
+  // fallisce (403/404) e la voce non compare.
+  const { data: analyticsAccess } = useQuery<{ allowed: boolean }>({
+    queryKey: ["/api/admin/test-analytics/access"],
+    enabled: !!user,
+    retry: false,
+  });
+
   const handleToggleAI = async (value: boolean) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       await apiRequest("PATCH", "/api/moderation/preferences", { aiFeaturesEnabled: value });
       queryClient.invalidateQueries({ queryKey: ["/api/moderation/preferences"] });
+      trackEvent("ai_toggle_changed", { familyId, metadata: { enabled: value } });
     } catch {}
   };
 
@@ -431,6 +442,22 @@ export default function FamilyScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
           </Card>
+          {analyticsAccess?.allowed && (
+            <Card onPress={() => router.push("/admin/test-analytics")}>
+              <View style={styles.featureLinkRow}>
+                <View style={[styles.featureLinkIcon, { backgroundColor: "#5856D620" }]}>
+                  <Ionicons name="analytics-outline" size={24} color="#5856D6" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Test Analytics</Text>
+                  <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                    Pannello interno riservato (periodo di test)
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+              </View>
+            </Card>
+          )}
           {currentFamily?.myRole === "admin" && (
             <Card onPress={() => router.push("/admin-reports")}>
               <View style={styles.featureLinkRow}>

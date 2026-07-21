@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator, Alert, Modal } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,6 +11,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest } from "@/lib/query-client";
 import { useSubscription, isRevenueCatTestMode } from "@/lib/revenuecat";
+import { trackEvent } from "@/lib/test-analytics";
 
 type PlanFeature = { label: string; free: string; premium: string };
 
@@ -55,6 +56,13 @@ export default function PremiumScreen() {
 
   // Fonte di verità UNICA: /api/purchases/status (derivato da entitlements).
   const isPremium = statusQuery.data?.premium === true;
+
+  // Analytics di test: registra il controllo dello stato Premium (solo esito booleano).
+  useEffect(() => {
+    if (statusQuery.isSuccess) {
+      trackEvent("premium_status_checked", { familyId, metadata: { status: isPremium ? "premium" : "free" } });
+    }
+  }, [statusQuery.isSuccess, isPremium, familyId]);
   const expiresAt = statusQuery.data?.expiresAt as string | null | undefined;
 
   // Prezzi e package presi dall'offering RevenueCat (mai hardcoded).

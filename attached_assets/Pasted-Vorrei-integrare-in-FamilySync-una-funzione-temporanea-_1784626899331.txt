@@ -1,0 +1,193 @@
+Vorrei integrare in FamilySync una funzione temporanea di analytics interna per il periodo di test dell’app.
+
+Non voglio integrare per ora Google Analytics/Firebase Analytics.
+
+Obiettivo:
+creare un pannello “Test Analytics” visibile solo al proprietario dell’app/admin tecnico, non agli utenti normali e non agli admin delle famiglie.
+
+La funzione serve solo durante i test per capire:
+
+* quali schermate vengono aperte;
+* quali funzioni vengono usate;
+* se ci sono errori;
+* se l’app viene usata da web, Android o iOS;
+* se l’account demo/revisori funziona correttamente.
+
+Requisiti principali:
+
+1. Feature flag
+   Aggiungi una variabile ambiente:
+
+`ENABLE_TEST_ANALYTICS=true/false`
+
+Se `ENABLE_TEST_ANALYTICS` è assente o false:
+
+* non raccogliere eventi;
+* non mostrare il pannello;
+* non esporre endpoint analytics.
+
+2. Accesso solo proprietario app
+   Il pannello deve essere accessibile solo a un admin tecnico/proprietario dell’app.
+
+Non basta essere admin di una famiglia.
+
+Usa una allowlist via env, per esempio:
+
+`APP_OWNER_EMAILS=marino.pizzuti@gmail.com`
+
+Solo questi account possono vedere il pannello.
+
+Gli altri utenti devono ricevere 403.
+
+3. Pannello interno
+   Aggiungi una pagina/schermata riservata, per esempio:
+
+`/admin/test-analytics`
+
+oppure una voce nascosta/visibile solo al proprietario nella scheda Famiglia/Impostazioni.
+
+Il pannello deve mostrare:
+
+* utenti attivi oggi;
+* sessioni/app open;
+* schermate più visitate;
+* funzioni più usate;
+* errori recenti;
+* piattaforma: web / android / ios;
+* versione app;
+* ultimo evento ricevuto;
+* filtro per periodo: oggi, 7 giorni, 30 giorni.
+
+4. Eventi da raccogliere
+   Raccogli solo eventi tecnici minimi:
+
+* `app_open`
+* `login_success`
+* `screen_view`
+* `feature_used`
+* `api_error`
+* `premium_status_checked`
+* `ai_toggle_changed`
+* `delete_account_opened`
+* `legal_page_opened`
+
+Non raccogliere contenuti personali.
+
+5. Dati vietati
+   Non salvare:
+
+* testo dei messaggi chat;
+* contenuto degli allegati;
+* nomi file originali;
+* descrizioni eventi;
+* titoli bollette;
+* importi bollette;
+* note;
+* prompt AI;
+* output AI;
+* password;
+* email complete se non strettamente necessario.
+
+Se serve identificare l’utente, salva solo:
+
+* userId interno;
+* oppure email hashata;
+* oppure flag `isDemoAccount`.
+
+6. Database
+   Crea una tabella dedicata, per esempio:
+
+`test_analytics_events`
+
+Campi minimi:
+
+* id;
+* eventName;
+* userId nullable;
+* familyId nullable;
+* platform;
+* appVersion;
+* route/screen;
+* metadata JSON minimizzato;
+* createdAt.
+
+Aggiungi indici su:
+
+* createdAt;
+* eventName;
+* userId;
+* platform.
+
+7. Retention
+   Essendo una funzione temporanea di test, aggiungi cancellazione automatica o comando di pulizia.
+
+Retention consigliata:
+
+* massimo 30 giorni.
+
+Aggiungi eventualmente endpoint/admin action:
+
+* “Svuota analytics test”.
+
+8. Backend
+   Aggiungi endpoint protetti:
+
+* `POST /api/test-analytics/events`
+* `GET /api/admin/test-analytics/summary`
+* `GET /api/admin/test-analytics/events`
+* `DELETE /api/admin/test-analytics`
+
+Tutti gli endpoint admin devono richiedere:
+
+* utente autenticato;
+* email verificata;
+* email presente in `APP_OWNER_EMAILS`;
+* `ENABLE_TEST_ANALYTICS=true`.
+
+9. Frontend
+   Aggiungi tracciamento leggero:
+
+* apertura app;
+* cambio schermata;
+* uso funzioni principali;
+* errori API principali.
+
+Non bloccare mai l’app se l’analytics fallisce.
+Gli errori analytics devono essere silenziosi.
+
+10. Privacy e pubblicazione
+    Questa funzione è temporanea per test.
+
+Non modificare Privacy Policy o Termini d’Uso in questa fase senza conferma.
+
+Nel riepilogo finale indica chiaramente:
+
+* quali dati vengono raccolti;
+* dove sono salvati;
+* chi può vederli;
+* come si disattiva tutto;
+* come si cancellano i dati raccolti;
+* se secondo te serve aggiornare Data Safety / Privacy prima di lasciare questa funzione attiva in una release pubblica.
+
+11. Test
+    Aggiungi test per:
+
+* feature flag false → nessun evento salvato;
+* utente non proprietario → 403 sul pannello;
+* proprietario app → accesso consentito;
+* evento salvato senza contenuti personali;
+* endpoint summary funzionante;
+* cancellazione analytics funzionante;
+* retention/pulizia funzionante;
+* analytics failure non rompe l’app.
+
+Output finale:
+prepara ZIP e riepiloga:
+
+* file modificati;
+* migration aggiunta;
+* endpoint aggiunti;
+* schermata/pannello aggiunto;
+* dati raccolti;
+* test eseguiti;
+* come disattivare la funzione prima della pubblicazione finale.

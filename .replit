@@ -112,6 +112,8 @@ SUPPORT_EMAIL = "assistenza@familysync.it"
 ENABLE_DEMO_ACCOUNT = "true"
 DEMO_ACCOUNT_EMAIL = "demo@familysync.eu"
 ENABLE_TESTER_ACCOUNTS = "true"
+ENABLE_TEST_ANALYTICS = "true"
+APP_OWNER_EMAILS = "marino.pizzuti@gmail.com"
 
 [userenv.production]
 EXPO_PUBLIC_DOMAIN = "familysync.eu"
