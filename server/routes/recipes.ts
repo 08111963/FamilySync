@@ -3,14 +3,24 @@ import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { recipes, recipeIngredients, ingredientUnitEnum } from '../../shared/schema';
+import { recipes, recipeIngredients, ingredientUnitEnum, shoppingLists, shoppingItems } from '../../shared/schema';
 import type { Recipe, RecipeIngredient } from '../../shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { logger } from '../lib/logger';
+import { broadcastToFamily } from '../lib/websocket';
+import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
+import { normalizeItemName } from '../lib/normalize';
+import { toShoppingQuantity } from '../lib/shopping-quantity';
 
 type IngredientUnit = (typeof ingredientUnitEnum.enumValues)[number];
+
+// Etichette italiane per le unità nella lista della spesa (max 10 caratteri: colonna unit)
+const UNIT_LABELS: Record<string, string> = {
+  g: "g", kg: "kg", ml: "ml", l: "l", pcs: "pz",
+  tbsp: "cucchiai", tsp: "cucchiaini", cup: "tazza", pinch: "pizzico", to_taste: "q.b.",
+};
 
 const router = Router();
 
@@ -270,6 +280,119 @@ router.delete('/:familyId/recipes/:recipeId', authenticate, requireFamilyMember(
   } catch (error) {
     logger.error('Errore eliminazione ricetta', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'eliminazione della ricetta" } });
+  }
+});
+
+// Invia gli ingredienti di una ricetta in una lista della spesa.
+// Se il body contiene listId, aggiunge alla lista esistente (evitando doppioni
+// già presenti e non spuntati); altrimenti crea una nuova lista "Spesa per <ricetta>".
+const toShoppingListSchema = z.object({
+  listId: z.string().uuid().optional().nullable(),
+});
+
+router.post('/:familyId/recipes/:recipeId/to-shopping-list', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = getParam(req, 'familyId');
+    const recipeId = getParam(req, 'recipeId');
+
+    const parsed = toShoppingListSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dati non validi" } });
+    }
+
+    const [recipe] = await db.select()
+      .from(recipes)
+      .where(and(eq(recipes.id, recipeId), eq(recipes.familyId, familyId)))
+      .limit(1);
+
+    if (!recipe) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Ricetta non trovata" } });
+    }
+
+    const ingredients = await db.select()
+      .from(recipeIngredients)
+      .where(eq(recipeIngredients.recipeId, recipeId));
+
+    // Dedup interno alla ricetta per nome normalizzato
+    const unique = new Map<string, { name: string; quantity: string | null; unit: string | null }>();
+    for (const ing of ingredients) {
+      // Chiave con la stessa normalizzazione usata per il dedup contro la lista:
+      // il normalizedName salvato nel DB può derivare da versioni precedenti.
+      const key = normalizeItemName(ing.name) || ing.normalizedName;
+      if (!unique.has(key)) {
+        const unitLabel = ing.unit ? (UNIT_LABELS[ing.unit] ?? ing.unit) : null;
+        unique.set(key, {
+          name: ing.name,
+          ...toShoppingQuantity(ing.quantity, unitLabel),
+        });
+      }
+    }
+
+    if (unique.size === 0) {
+      return res.status(400).json({ error: { code: "NO_INGREDIENTS", message: "La ricetta non ha ingredienti" } });
+    }
+
+    const slot = await reserveBaseSlot(req.user!.userId, familyId, "shopping-item");
+    if (slot.status === "limited") {
+      return res.status(429).json(baseLimitBody(slot));
+    }
+
+    let listId = parsed.data.listId ?? null;
+    let listName: string;
+
+    if (listId) {
+      const [list] = await db.select()
+        .from(shoppingLists)
+        .where(and(eq(shoppingLists.id, listId), eq(shoppingLists.familyId, familyId)))
+        .limit(1);
+      if (!list) {
+        return res.status(404).json({ error: { code: "LIST_NOT_FOUND", message: "Lista della spesa non trovata" } });
+      }
+      listName = list.name;
+
+      // Evita doppioni: salta ingredienti già presenti e non ancora spuntati
+      const existingItems = await db.select({ name: shoppingItems.name, isChecked: shoppingItems.isChecked })
+        .from(shoppingItems)
+        .where(eq(shoppingItems.listId, listId));
+      const existingNorm = new Set(
+        existingItems.filter((i) => !i.isChecked).map((i) => normalizeItemName(i.name)).filter((n) => n.length > 0)
+      );
+      for (const norm of Array.from(unique.keys())) {
+        if (existingNorm.has(norm)) unique.delete(norm);
+      }
+
+      if (unique.size === 0) {
+        return res.status(200).json({ shoppingListId: listId, listName, ingredientCount: 0, alreadyPresent: true });
+      }
+    } else {
+      const [newList] = await db.insert(shoppingLists).values({
+        familyId,
+        name: `Spesa per ${recipe.title}`.slice(0, 255),
+        icon: "restaurant",
+        createdBy: req.user!.userId,
+      }).returning();
+      listId = newList.id;
+      listName = newList.name;
+    }
+
+    await db.insert(shoppingItems).values(
+      Array.from(unique.values()).map((ing) => ({
+        listId: listId!,
+        name: ing.name,
+        quantity: ing.quantity,
+        unit: ing.unit,
+        category: 'food',
+        createdBy: req.user!.userId,
+      }))
+    );
+
+    broadcastToFamily(familyId, 'shopping:updated', {});
+
+    logger.info('Recipe converted to shopping list', { recipeId, listId, ingredientCount: unique.size });
+    res.status(201).json({ shoppingListId: listId, listName, ingredientCount: unique.size });
+  } catch (error) {
+    logger.error('Convert recipe to shopping list error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'invio alla lista della spesa" } });
   }
 });
 

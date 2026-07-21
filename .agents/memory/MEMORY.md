@@ -22,3 +22,4 @@
 - [Ricorrenza faccende/eventi](chore-recurrence.md) — recurrenceRule multi-giorno (weekly:1,3 / monthly:1,15); eventi calendario materializzati (6 mesi, max 60 righe); guardia atomica al completamento.
 - [Event auto-fill AI](event-autofill.md) — parse-event: zod `.catch()` accetta `{}` → server deve lanciare AI_BAD_RESPONSE se nessun campo utile, client mostra successo solo se compila qualcosa.
 - [Tester trial accounts](tester-trial-accounts.md) — 15 Google Play tester accounts; entitlement trial_days flips pending→active atomically on first login then falls to free; passwords HMAC-derived; PDF gitignored.
+- [Shopping items quantity numerica](shopping-items-quantity.md) — quantity è NUMERIC + unit VARCHAR(10): mai concatenare "200 g"; dedup con normalizeItemName ricalcolato, non col normalizedName storico.

@@ -10,8 +10,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Alert } from "react-native";
+import * as Haptics from "expo-haptics";
 
+import { apiRequest } from "@/lib/query-client";
 import { useTheme } from "@/hooks/useTheme";
 import { SpeakButton } from "@/components/VoiceInput";
 import { RecipeAiImage } from "@/components/RecipeImage";
@@ -107,9 +111,46 @@ export default function RecipeDetailScreen() {
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
 
+  const qc = useQueryClient();
+  const [sentToList, setSentToList] = useState(false);
+
   const { data: recipe, isLoading } = useQuery<RecipeDetail>({
     queryKey: ["/api/recipes", currentFamily?.id, "recipes", id],
     enabled: !!currentFamily?.id && !!id,
+  });
+
+  const toShoppingMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(
+        "POST",
+        `/api/recipes/${currentFamily!.id}/recipes/${id}/to-shopping-list`,
+        {}
+      );
+      return res.json() as Promise<{ shoppingListId: string; listName: string; ingredientCount: number }>;
+    },
+    onSuccess: (result) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.invalidateQueries({ queryKey: ["/api/shopping", currentFamily?.id, "lists"] });
+      setSentToList(true);
+      const msg = `${result.ingredientCount} ingredienti aggiunti a "${result.listName}"`;
+      if (Platform.OS === "web") {
+        window.alert(msg);
+      } else {
+        Alert.alert("Fatto!", msg, [
+          { text: "OK" },
+          { text: "Vai alla spesa", onPress: () => router.push("/(tabs)/shopping") },
+        ]);
+      }
+    },
+    onError: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const msg = "Impossibile aggiungere gli ingredienti alla lista della spesa.";
+      if (Platform.OS === "web") {
+        window.alert(msg);
+      } else {
+        Alert.alert("Errore", msg);
+      }
+    },
   });
 
   if (isLoading || !recipe) {
@@ -295,6 +336,39 @@ export default function RecipeDetailScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
               Ingredienti
             </Text>
+            <Pressable
+              testID="add-to-shopping-list"
+              onPress={() => {
+                if (!toShoppingMutation.isPending) toShoppingMutation.mutate();
+              }}
+              disabled={toShoppingMutation.isPending}
+              style={[
+                styles.shoppingButton,
+                {
+                  backgroundColor: sentToList ? colors.surface : colors.primary,
+                  borderColor: colors.primary,
+                  opacity: toShoppingMutation.isPending ? 0.6 : 1,
+                },
+              ]}
+            >
+              {toShoppingMutation.isPending ? (
+                <ActivityIndicator size="small" color={sentToList ? colors.primary : "#FFFFFF"} />
+              ) : (
+                <Ionicons
+                  name={sentToList ? "checkmark-circle" : "cart-outline"}
+                  size={20}
+                  color={sentToList ? colors.primary : "#FFFFFF"}
+                />
+              )}
+              <Text
+                style={[
+                  styles.shoppingButtonText,
+                  { color: sentToList ? colors.primary : "#FFFFFF" },
+                ]}
+              >
+                {sentToList ? "Aggiunti alla spesa" : "Aggiungi alla lista della spesa"}
+              </Text>
+            </Pressable>
             <View
               style={[
                 styles.ingredientsList,
@@ -474,6 +548,20 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: "Inter_600SemiBold",
     marginBottom: 12,
+  },
+  shoppingButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  shoppingButtonText: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
   },
   ingredientsList: {
     borderRadius: 16,

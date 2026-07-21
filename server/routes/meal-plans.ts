@@ -12,6 +12,7 @@ import { broadcastToFamily } from '../lib/websocket';
 import { normalizeItemName } from '../lib/normalize';
 import { isUniqueViolation } from '../lib/db-errors';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
+import { toShoppingQuantity } from '../lib/shopping-quantity';
 
 const router = Router();
 
@@ -408,7 +409,7 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
       .from(mealPlanItems)
       .where(eq(mealPlanItems.mealPlanId, planId));
 
-    const uniqueIngredients = new Map<string, { name: string; quantity: string | null; category: string | null }>();
+    const uniqueIngredients = new Map<string, { name: string; quantity: string | null; unit: string | null; category: string | null }>();
 
     for (const item of items) {
       const inlineIngredients = item.ingredients as Array<{ name: string; quantity?: string; unit?: string }> | null;
@@ -418,12 +419,9 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
           const norm = normalizeItemName(ing.name);
           if (!norm) continue;
           if (!uniqueIngredients.has(norm)) {
-            const qtyStr = ing.quantity && ing.unit
-              ? `${ing.quantity} ${ing.unit}`
-              : ing.quantity || ing.unit || null;
             uniqueIngredients.set(norm, {
               name: ing.name,
-              quantity: qtyStr,
+              ...toShoppingQuantity(ing.quantity ?? null, ing.unit ?? null),
               category: 'food',
             });
           }
@@ -444,7 +442,7 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
         if (!uniqueIngredients.has(ing.normalizedName)) {
           uniqueIngredients.set(ing.normalizedName, {
             name: ing.name,
-            quantity: ing.quantity,
+            ...toShoppingQuantity(ing.quantity, ing.unit),
             category: ing.category,
           });
         }
@@ -473,6 +471,7 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
       listId: shoppingList.id,
       name: ing.name,
       quantity: ing.quantity,
+      unit: ing.unit,
       category: ing.category ?? 'food',
       createdBy: req.user!.userId,
     }));
