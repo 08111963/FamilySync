@@ -8,6 +8,7 @@ import { chatMessages, familyMembers, users } from "../../shared/schema";
 import { eq, and, desc, lt } from "drizzle-orm";
 import { getBlockRelatedUserIds, applyBlockedFilter } from "../lib/block-filter";
 import { broadcastChatMessageToFamily } from "../lib/websocket";
+import { sendPushToFamily } from "../lib/push";
 import { logger } from "../lib/logger";
 import { reserveBaseSlot, baseLimitBody } from "../lib/base-usage";
 
@@ -378,6 +379,18 @@ router.post("/:familyId/messages", async (req: Request, res: Response) => {
 
     await broadcastChatMessageToFamily(familyId, userId, "chat:new_message", enrichedMessage);
 
+    // Push agli altri membri (esclusi autore e utenti in blocco reciproco).
+    void (async () => {
+      const excluded = new Set(await getBlockRelatedUserIds(userId, familyId));
+      excluded.add(userId);
+      const preview = content.trim().length > 120 ? content.trim().slice(0, 117) + "..." : content.trim();
+      await sendPushToFamily(familyId, {
+        title: `Nuovo messaggio da ${user.name}`,
+        body: preview,
+        data: { route: "/(tabs)/chat" },
+      }, { excludeUserIds: excluded });
+    })().catch(() => {});
+
     res.status(201).json(enrichedMessage);
   } catch (error) {
     logger.error("Errore POST messaggio chat", { error: String(error) });
@@ -455,6 +468,17 @@ router.post("/:familyId/upload", requireFamilyMembership, upload.single("file"),
     const enrichedUpload = withAbsoluteFileUrl(fullMessage, req);
 
     await broadcastChatMessageToFamily(familyId, userId, "chat:new_message", enrichedUpload);
+
+    // Push agli altri membri (esclusi autore e utenti in blocco reciproco).
+    void (async () => {
+      const excluded = new Set(await getBlockRelatedUserIds(userId, familyId));
+      excluded.add(userId);
+      await sendPushToFamily(familyId, {
+        title: `Nuovo messaggio da ${user.name}`,
+        body: isImage ? "📷 Ha inviato una foto" : "📎 Ha inviato un file",
+        data: { route: "/(tabs)/chat" },
+      }, { excludeUserIds: excluded });
+    })().catch(() => {});
 
     res.status(201).json(enrichedUpload);
   } catch (error) {

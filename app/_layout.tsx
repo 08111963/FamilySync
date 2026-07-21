@@ -13,6 +13,47 @@ import { FamilyProvider } from "@/context/FamilyContext";
 import { BillNotificationsSyncProvider } from "@/context/BillNotificationsProvider";
 import { SubscriptionProvider, initializeRevenueCat } from "@/lib/revenuecat";
 import { trackEvent, trackScreenView } from "@/lib/test-analytics";
+import * as Notifications from "expo-notifications";
+import { isPushSupported, registerForPushNotifications } from "@/lib/push-notifications";
+
+// Come mostrare le notifiche quando l'app è in primo piano (solo build native).
+if (isPushSupported()) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
+
+// Registra il token push quando l'utente è autenticato e gestisce il tap
+// sulla notifica navigando alla schermata indicata in data.route.
+function PushNotificationsManager() {
+  const { isAuthenticated, accessToken, user } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isAuthenticated && accessToken && user?.id) {
+      registerForPushNotifications(accessToken, user.id);
+    }
+  }, [isAuthenticated, accessToken, user?.id]);
+
+  useEffect(() => {
+    if (!isPushSupported()) return;
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const route = response.notification.request.content.data?.route;
+      if (typeof route === "string" && route.startsWith("/")) {
+        router.push(route as any);
+      }
+    });
+    return () => sub.remove();
+  }, [router]);
+
+  return null;
+}
 
 // Analytics interna TEMPORANEA (periodo di test): traccia apertura app e cambio
 // schermata SOLO per utenti autenticati. Fire-and-forget, mai bloccante.
@@ -141,6 +182,7 @@ export default function RootLayout() {
                   <KeyboardProvider>
                     <AuthGate>
                       <TestAnalyticsTracker />
+                      <PushNotificationsManager />
                       <RootLayoutNav />
                     </AuthGate>
                   </KeyboardProvider>

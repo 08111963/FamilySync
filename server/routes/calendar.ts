@@ -9,8 +9,8 @@ import { eq, and, gte, lte } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily, notifyUserInFamily } from '../lib/websocket';
-import { sendPushToUser } from '../lib/push';
-import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
+import { sendPushToUser, sendPushToFamily } from '../lib/push';
+import { getBlockedUserIds, getBlockRelatedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 import { parseRecurrenceRule, expandOccurrences, isRealIsoDate } from '../../shared/chore-recurrence';
@@ -199,6 +199,31 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       broadcastToFamily(familyId, 'event_created', ev);
     }
     void notifyAssignedMember(familyId, event, req.user!.userId);
+
+    // Push agli altri membri della famiglia (l'assegnatario riceve già la sua
+    // notifica dedicata; esclusi anche gli utenti in blocco reciproco col creatore).
+    void (async () => {
+      const creatorId = req.user!.userId;
+      const excluded = new Set<string>(await getBlockRelatedUserIds(creatorId, familyId));
+      excluded.add(creatorId);
+      if (event.memberId) {
+        const [assignee] = await db
+          .select({ userId: familyMembers.userId })
+          .from(familyMembers)
+          .where(eq(familyMembers.id, event.memberId))
+          .limit(1);
+        if (assignee) excluded.add(assignee.userId);
+      }
+      const body = event.time
+        ? `${event.title} · ${event.date} alle ${event.time}`
+        : `${event.title} · ${event.date}`;
+      await sendPushToFamily(familyId, {
+        title: 'Nuovo evento in calendario',
+        body,
+        data: { route: '/(tabs)/calendar' },
+      }, { excludeUserIds: excluded });
+    })().catch(() => {});
+
     res.status(201).json(event);
   } catch (error) {
     logger.error('Create event error', { error: String(error) });

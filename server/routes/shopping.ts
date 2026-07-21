@@ -3,12 +3,13 @@ import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { shoppingLists, shoppingItems, shoppingHistory } from '../../shared/schema';
+import { shoppingLists, shoppingItems, shoppingHistory, users } from '../../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
-import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
+import { sendPushToFamily } from '../lib/push';
+import { getBlockedUserIds, getBlockRelatedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { parseQuantityString } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
@@ -192,6 +193,20 @@ router.post('/:familyId/lists/:listId/items', authenticate, requireFamilyMember(
     }).returning();
 
     broadcastToFamily(familyId, 'shopping_item_added', { listId, item });
+
+    // Push agli altri membri (esclusi autore e utenti in blocco reciproco).
+    void (async () => {
+      const authorId = req.user!.userId;
+      const excluded = new Set(await getBlockRelatedUserIds(authorId, familyId));
+      excluded.add(authorId);
+      const [author] = await db.select({ name: users.name }).from(users).where(eq(users.id, authorId)).limit(1);
+      await sendPushToFamily(familyId, {
+        title: 'Lista della spesa',
+        body: `${author?.name ?? 'Un familiare'} ha aggiunto "${item.name}" alla spesa`,
+        data: { route: '/(tabs)/shopping' },
+      }, { excludeUserIds: excluded });
+    })().catch(() => {});
+
     res.status(201).json(item);
   } catch (error) {
     logger.error('Add shopping item error', { error: String(error) });

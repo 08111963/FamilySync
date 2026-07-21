@@ -8,7 +8,8 @@ import { eq, and, sql, isNull, lt } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
-import { getBlockedUserIds, applyBlockedFilter } from '../lib/block-filter';
+import { sendPushToUser } from '../lib/push';
+import { getBlockedUserIds, getBlockRelatedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 import { nextDueDate, parseRecurrenceRule } from '../../shared/chore-recurrence';
@@ -155,6 +156,41 @@ async function deleteChoreCalendarEvent(
   }
 }
 
+/**
+ * Push all'assegnatario di una faccenda (se diverso da chi ha fatto l'azione).
+ * assignedTo è l'id di familyMembers: viene mappato allo userId.
+ */
+async function notifyChoreAssignee(
+  familyId: string,
+  chore: typeof chores.$inferSelect,
+  actorUserId: string
+) {
+  try {
+    if (!chore.assignedTo) return;
+
+    const [member] = await db
+      .select({ userId: familyMembers.userId })
+      .from(familyMembers)
+      .where(and(eq(familyMembers.id, chore.assignedTo), eq(familyMembers.familyId, familyId)))
+      .limit(1);
+
+    if (!member || member.userId === actorUserId) return;
+
+    // Niente push tra utenti in blocco reciproco.
+    const blockRelated = await getBlockRelatedUserIds(actorUserId, familyId);
+    if (blockRelated.includes(member.userId)) return;
+
+    const due = chore.dueDate ? ` · scadenza ${chore.dueDate.toISOString().slice(0, 10)}` : '';
+    await sendPushToUser(member.userId, {
+      title: 'Nuova faccenda assegnata',
+      body: `${chore.title}${due}`,
+      data: { route: '/(tabs)/chores' },
+    });
+  } catch (error) {
+    logger.error('notifyChoreAssignee error', { error: String(error) });
+  }
+}
+
 router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
@@ -225,6 +261,7 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
     chore = await createChoreCalendarEvent(chore, req.user!.userId);
 
     broadcastToFamily(familyId, 'chore_created', chore);
+    void notifyChoreAssignee(familyId, chore, req.user!.userId);
     res.status(201).json(chore);
   } catch (error) {
     logger.error('Create chore error', { error: String(error) });
@@ -275,6 +312,9 @@ router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (re
     }
 
     broadcastToFamily(familyId, 'chore_updated', chore);
+    if (parsed.data.assignedTo && !chore.isCompleted) {
+      void notifyChoreAssignee(familyId, chore, req.user!.userId);
+    }
     res.json(chore);
   } catch (error) {
     logger.error('Update chore error', { error: String(error) });

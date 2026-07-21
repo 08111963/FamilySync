@@ -62,6 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearAuth = useCallback(async () => {
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
+      // Invalida anche la registrazione push locale: al prossimo login
+      // il token verrà ri-registrato per l'utente corrente.
+      await AsyncStorage.removeItem('@family_sync_push_token');
       setUser(null);
       setAccessToken(null);
       updateRefreshToken(null);
@@ -319,7 +322,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      const pushToken = await AsyncStorage.getItem('@family_sync_push_token');
+      const rawPush = await AsyncStorage.getItem('@family_sync_push_token');
+      // Il valore può essere JSON {token,userId} (nuovo) o stringa token (vecchio).
+      let pushToken: string | null = null;
+      if (rawPush) {
+        if (rawPush.startsWith('{')) {
+          try { pushToken = (JSON.parse(rawPush) as { token?: string })?.token ?? null; } catch {}
+        } else {
+          pushToken = rawPush;
+        }
+      }
       if (pushToken && accessToken) {
         const url = new URL('/api/notifications/unregister', getApiUrl());
         await authFetch(url.toString(), {
