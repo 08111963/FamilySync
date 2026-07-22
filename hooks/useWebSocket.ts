@@ -21,13 +21,21 @@ function getIO() {
 export function useWebSocket(familyId: string | null, accessToken: string | null) {
   const qc = useQueryClient();
   const socketRef = useRef<any>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Debounce: una raffica di messaggi WebSocket (es. modifiche multiple in
+  // rapida successione) produce UNA sola ricarica, non decine di richieste
+  // che farebbero scattare il rate limiter del server.
   const invalidateFamily = useCallback(() => {
     if (!familyId) return;
-    qc.invalidateQueries({ queryKey: ["/api/families", familyId] });
-    qc.invalidateQueries({ queryKey: ["/api/calendar", familyId] });
-    qc.invalidateQueries({ queryKey: ["/api/shopping", familyId, "lists"] });
-    qc.invalidateQueries({ queryKey: ["/api/chores", familyId] });
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      qc.invalidateQueries({ queryKey: ["/api/families", familyId] });
+      qc.invalidateQueries({ queryKey: ["/api/calendar", familyId] });
+      qc.invalidateQueries({ queryKey: ["/api/shopping", familyId, "lists"] });
+      qc.invalidateQueries({ queryKey: ["/api/chores", familyId] });
+    }, 400);
   }, [familyId, qc]);
 
   useEffect(() => {
@@ -90,6 +98,12 @@ export function useWebSocket(familyId: string | null, accessToken: string | null
         socket.disconnect();
       }
       socketRef.current = null;
+      // Annulla eventuali invalidazioni in coda: evita ricariche tardive
+      // dopo cambio famiglia o logout.
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
     };
   }, [familyId, accessToken, invalidateFamily]);
 }

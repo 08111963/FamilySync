@@ -27,4 +27,5 @@
 - [Dispensa (pantry)](pantry-inventory.md) — dedup atomico ON CONFLICT su (family,normalized_name,COALESCE(unit,'')); 23505→409; AI spesa/ricette usano la dispensa; migrazioni 0009+0010 da portare in prod.
 - [Budget familiare](family-budget.md) — bollette pagate sommate read-only nel summary (mai doppie); memberId mai dal client; tetto budget upsert atomico; quota AI budget-insights.
 - [Shopping items quantity numerica](shopping-items-quantity.md) — quantity è NUMERIC + unit VARCHAR(10): mai concatenare "200 g"; dedup con normalizeItemName ricalcolato, non col normalizedName storico.
+- [WebSocket invalidation storm](websocket-invalidation-storm.md) — broadcast batch = UN solo messaggio; invalidazioni client debounced, altrimenti il rate limiter /api svuota le liste (429).
 - [Test analytics temporanea](test-analytics.md) — flag ENABLE_TEST_ANALYTICS check PRIMA di authenticate (404 anche unauth); pannello owner via APP_OWNER_EMAILS riletta da DB; metadata whitelist, retention 30gg.

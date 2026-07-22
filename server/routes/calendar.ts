@@ -195,9 +195,10 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
     ).returning();
 
     const event = inserted[0]!;
-    for (const ev of inserted) {
-      broadcastToFamily(familyId, 'event_created', ev);
-    }
+    // Un solo broadcast anche per gli eventi ricorrenti: i client ricaricano
+    // comunque l'intera lista (una raffica di 50+ messaggi faceva scattare il
+    // rate limiter globale e il calendario restava vuoto).
+    broadcastToFamily(familyId, 'event_created', event);
     void notifyAssignedMember(familyId, event, req.user!.userId);
 
     // Push agli altri membri della famiglia (l'assegnatario riceve già la sua
