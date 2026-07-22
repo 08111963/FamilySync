@@ -107,6 +107,28 @@ export default function AddEventScreen() {
         filled = true;
       }
       if (parsed.endTime) { setEndTime(parsed.endTime); filled = true; }
+      if (parsed.repeat === "daily" || parsed.repeat === "weekly" || parsed.repeat === "monthly") {
+        setRepeat(parsed.repeat);
+        const wd = Array.isArray(parsed.weekdays)
+          ? parsed.weekdays.filter((n: number) => Number.isInteger(n) && n >= 1 && n <= 7)
+          : [];
+        const md = Array.isArray(parsed.monthDays)
+          ? parsed.monthDays.filter((n: number) => Number.isInteger(n) && n >= 1 && n <= 31)
+          : [];
+        // Default coerenti con la data appena compilata (non con quella precedente).
+        const baseIso = parsed.date && isRealIso(parsed.date) ? parsed.date : date;
+        const baseDate = new Date(`${baseIso.slice(0, 10)}T12:00:00`);
+        const baseWeekday = isNaN(baseDate.getTime()) ? 1 : (baseDate.getDay() === 0 ? 7 : baseDate.getDay());
+        const baseMonthDay = isNaN(baseDate.getTime()) ? 1 : baseDate.getDate();
+        if (parsed.repeat === "daily") setDailyWeekdays(wd);
+        if (parsed.repeat === "weekly") setWeeklyDays(wd.length > 0 ? wd : [baseWeekday]);
+        if (parsed.repeat === "monthly") setMonthDays(md.length > 0 ? md : [baseMonthDay]);
+        filled = true;
+      }
+      if (parsed.assigneeMemberId && data.members.some((m) => m.id === parsed.assigneeMemberId)) {
+        setSelectedMember(parsed.assigneeMemberId);
+        filled = true;
+      }
       if (filled) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {

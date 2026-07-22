@@ -915,14 +915,27 @@ router.post('/:familyId/parse-event', authenticate, requireAiEnabled, requireFam
     const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Rome' });
     const weekdayName = new Date().toLocaleDateString('it-IT', { weekday: 'long', timeZone: 'Europe/Rome' });
 
+    // Nomi dei membri per riconoscere l'assegnatario ("per Marco", "assegnalo a Anna").
+    const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
+    const memberNames = members.map(m => m.nickname).filter((n): n is string => !!n);
+
     const run = await withAiUsage(
       { userId, familyId, feature: 'event-parse' },
-      () => parseEventFromText({ text, todayIso, weekdayName }),
+      () => parseEventFromText({ text, todayIso, weekdayName, memberNames }),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
 
-    res.json(run.value);
+    // Mappa il nome scelto dall'AI sull'id membro (case-insensitive, solo match esatto).
+    const parsed = run.value;
+    let assigneeMemberId: string | null = null;
+    if (parsed.assigneeName) {
+      const target = parsed.assigneeName.trim().toLowerCase();
+      const match = members.find(m => (m.nickname || '').trim().toLowerCase() === target);
+      if (match) assigneeMemberId = match.id;
+    }
+
+    res.json({ ...parsed, assigneeMemberId });
   } catch (error) {
     logger.error('Event parse error', { error: String(error) });
     sendAiError(res, error, 'Errore nella compilazione automatica');
