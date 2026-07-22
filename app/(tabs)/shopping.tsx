@@ -56,7 +56,8 @@ export default function ShoppingScreen() {
             ]}
             testID="open-pantry"
           >
-            <Ionicons name="file-tray-full-outline" size={22} color={colors.primary} />
+            <Ionicons name="file-tray-full-outline" size={20} color={colors.primary} />
+            <Text style={[styles.actionLabel, { color: colors.primary }]}>Dispensa</Text>
           </Pressable>
         <Pressable
           onPress={() => setShowNewList(true)}
@@ -192,11 +193,17 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   pantryButton: {
-    width: 44,
     height: 44,
     borderRadius: 22,
+    paddingHorizontal: 14,
+    flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+    gap: 6,
+  },
+  actionLabel: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   newListCard: {
     marginHorizontal: 20,

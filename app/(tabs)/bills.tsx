@@ -379,7 +379,8 @@ export default function BillsScreen() {
             style={[styles.budgetButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
             testID="open-budget"
           >
-            <Ionicons name="wallet-outline" size={22} color={colors.primary} />
+            <Ionicons name="wallet-outline" size={20} color={colors.primary} />
+            <Text style={[styles.actionLabel, { color: colors.primary }]}>Budget</Text>
           </Pressable>
           <Pressable onPress={handleAdd} style={[styles.addButton, { backgroundColor: colors.primary }]}>
             <Ionicons name="add" size={26} color="#fff" />
@@ -541,12 +542,18 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   budgetButton: {
-    width: 44,
     height: 44,
     borderRadius: 22,
     borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+    gap: 6,
+  },
+  actionLabel: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   addButton: {
     width: 44,

@@ -106,12 +106,13 @@ export default function ChoresScreen() {
         <Pressable
           onPress={() => router.push("/rewards")}
           style={({ pressed }) => [
-            styles.addButton,
+            styles.rewardsButton,
             { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, opacity: pressed ? 0.8 : 1 },
           ]}
           testID="rewards-link-chores"
         >
-          <Ionicons name="gift-outline" size={20} color={colors.primary} />
+          <Ionicons name="gift-outline" size={18} color={colors.primary} />
+          <Text style={[styles.actionLabel, { color: colors.primary }]}>Premi</Text>
         </Pressable>
         <Pressable
           onPress={() => router.push("/add-chore")}
@@ -301,6 +302,19 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
+  },
+  rewardsButton: {
+    height: 44,
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+  },
+  actionLabel: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   filterRow: {
     flexDirection: "row",
