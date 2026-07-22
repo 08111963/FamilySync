@@ -16,6 +16,7 @@ export type AiFeature =
   | "recipe-image"
   | "event-parse"
   | "expense-parse"
+  | "chore-parse"
   | "budget-insights";
 
 export type AiUsageStatus = "started" | "succeeded" | "failed";
@@ -50,6 +51,7 @@ export const PLAN_LIMITS: Record<Plan, Record<AiFeature, FeatureLimit>> = {
     "recipe-image": { max: 10, window: "day" },
     "event-parse": { max: 3, window: "day" },
     "expense-parse": { max: 3, window: "day" },
+    "chore-parse": { max: 3, window: "day" },
     "budget-insights": { max: 1, window: "week" },
   },
   premium: {
@@ -63,6 +65,7 @@ export const PLAN_LIMITS: Record<Plan, Record<AiFeature, FeatureLimit>> = {
     "recipe-image": { max: 55, window: "day" },
     "event-parse": { max: 40, window: "day" },
     "expense-parse": { max: 40, window: "day" },
+    "chore-parse": { max: 40, window: "day" },
     "budget-insights": { max: 10, window: "day" },
   },
 };
@@ -82,6 +85,7 @@ export const AI_DAILY_LIMITS: Record<AiFeature, number> = {
   "recipe-image": PLAN_LIMITS.premium["recipe-image"].max,
   "event-parse": PLAN_LIMITS.premium["event-parse"].max,
   "expense-parse": PLAN_LIMITS.premium["expense-parse"].max,
+  "chore-parse": PLAN_LIMITS.premium["chore-parse"].max,
   "budget-insights": PLAN_LIMITS.premium["budget-insights"].max,
 };
 

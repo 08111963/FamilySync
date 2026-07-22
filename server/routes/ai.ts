@@ -12,7 +12,7 @@ import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
-import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateBudgetInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, transcribeAudio, generateRecipeImage, parseEventFromText, parseExpenseFromText, type ShoppingSuggestionItem } from '../lib/openai';
+import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateBudgetInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, transcribeAudio, generateRecipeImage, parseEventFromText, parseExpenseFromText, parseChoreFromText, type ShoppingSuggestionItem } from '../lib/openai';
 import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { recipes, recipeIngredients } from '../../shared/schema';
@@ -938,6 +938,50 @@ router.post('/:familyId/parse-event', authenticate, requireAiEnabled, requireFam
     res.json({ ...parsed, assigneeMemberId });
   } catch (error) {
     logger.error('Event parse error', { error: String(error) });
+    sendAiError(res, error, 'Errore nella compilazione automatica');
+  }
+});
+
+// ===== COMPILAZIONE AUTOMATICA FACCENDA (testo libero → campi) =====
+
+router.post('/:familyId/parse-chore', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
+  const familyId = getParam(req, 'familyId');
+  const userId = req.user!.userId;
+  try {
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+    if (!text) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Descrivi la faccenda in una frase' } });
+    }
+    if (text.length > 500) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Descrizione troppo lunga (max 500 caratteri)' } });
+    }
+
+    const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Rome' });
+    const weekdayName = new Date().toLocaleDateString('it-IT', { weekday: 'long', timeZone: 'Europe/Rome' });
+
+    // Nomi dei membri per riconoscere l'assegnatario ("per Marco", "tocca a Anna").
+    const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
+    const memberNames = members.map(m => m.nickname).filter((n): n is string => !!n);
+
+    const run = await withAiUsage(
+      { userId, familyId, feature: 'chore-parse' },
+      () => parseChoreFromText({ text, todayIso, weekdayName, memberNames }),
+    );
+    if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
+    if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
+
+    // Mappa il nome scelto dall'AI sull'id membro (case-insensitive, solo match esatto).
+    const parsed = run.value;
+    let assigneeMemberId: string | null = null;
+    if (parsed.assigneeName) {
+      const target = parsed.assigneeName.trim().toLowerCase();
+      const match = members.find(m => (m.nickname || '').trim().toLowerCase() === target);
+      if (match) assigneeMemberId = match.id;
+    }
+
+    res.json({ ...parsed, assigneeMemberId });
+  } catch (error) {
+    logger.error('Chore parse error', { error: String(error) });
     sendAiError(res, error, 'Errore nella compilazione automatica');
   }
 });

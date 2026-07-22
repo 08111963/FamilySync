@@ -836,6 +836,81 @@ ${memberList.length > 0 ? `- "assigneeName": se il testo dice a chi è assegnato
 }
 
 /**
+ * Estrae i campi di una faccenda domestica da una descrizione in linguaggio
+ * naturale (es. "Butta la spazzatura ogni martedì e giovedì, 10 punti, per Anna").
+ * La quota è gestita dalla rotta con withAiUsage.
+ */
+const parsedChoreSchema = z.object({
+  title: z.string().catch(''),
+  description: z.string().nullable().catch(null),
+  points: z.number().int().min(1).max(100).nullable().catch(null),
+  difficulty: z.number().int().min(1).max(5).nullable().catch(null),
+  estimatedMinutes: z.number().int().min(1).max(600).nullable().catch(null),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+  repeat: z.enum(['daily', 'weekly', 'monthly']).nullable().catch(null),
+  weekdays: z.array(z.number().int().min(1).max(7)).catch([]),
+  monthDays: z.array(z.number().int().min(1).max(31)).catch([]),
+  assigneeName: z.string().nullable().catch(null),
+});
+
+export type ParsedChore = z.infer<typeof parsedChoreSchema>;
+
+export async function parseChoreFromText(input: {
+  text: string;
+  todayIso: string;
+  weekdayName: string;
+  memberNames?: string[];
+}): Promise<ParsedChore> {
+  assertAiConfigured();
+  const memberList = (input.memberNames ?? []).slice(0, 20).map((n) => n.slice(0, 60));
+  try {
+    const response = await getOpenAiClient().chat.completions.create({
+      model: 'gpt-5-mini',
+      reasoning_effort: 'minimal',
+      messages: [{
+        role: 'system',
+        content: `Estrai i dati di una faccenda domestica da una frase in italiano.
+
+REGOLE:
+- Oggi è ${input.todayIso} (${input.weekdayName}), fuso orario Europe/Rome. Risolvi date relative ("domani", "venerdì") in date assolute FUTURE (mai nel passato).
+- "title": titolo breve e naturale della faccenda (es. "Buttare la spazzatura"), senza punti/giorni/assegnatario.
+- "description": eventuali dettagli extra non coperti dagli altri campi, altrimenti null.
+- "points": i punti se indicati (es. "vale 15 punti" → 15), numero intero 1-100, altrimenti null.
+- "difficulty": difficoltà 1-5 solo se indicata esplicitamente (es. "difficoltà 4", "molto difficile" → 5, "facilissima" → 1), altrimenti null.
+- "estimatedMinutes": durata stimata in minuti se indicata (es. "ci vuole mezz'ora" → 30), altrimenti null.
+- "dueDate": data di scadenza YYYY-MM-DD se indicata una scadenza singola, null se non deducibile o se la faccenda è ricorrente.
+- "repeat": frequenza se la faccenda è ricorrente: "daily" (ogni giorno o alcuni giorni della settimana), "weekly" (una volta a settimana in uno o più giorni, es. "ogni martedì e giovedì"), "monthly" (giorni fissi del mese, es. "il 1° e il 15 di ogni mese"). null se non si ripete.
+- "weekdays": con repeat "daily" o "weekly", i giorni della settimana come numeri ISO (1=lunedì ... 7=domenica), es. "ogni martedì e giovedì" → [2,4]. Altrimenti [].
+- "monthDays": con repeat "monthly", i giorni del mese (1-31), es. "il 1° e il 15" → [1,15]. Altrimenti [].
+- Se l'utente dice "ogni <giorno>" usa repeat "weekly" con i weekdays indicati.
+${memberList.length > 0 ? `- "assigneeName": se il testo dice a chi è assegnata la faccenda (es. "per Marco", "tocca a Anna", "assegnala a Luca"), scegli il nome ESATTO più vicino da questa lista: ${JSON.stringify(memberList)}. null se non indicato o nessun nome corrisponde.` : '- "assigneeName": sempre null.'}
+- Rispondi SOLO con JSON: {"title": "...", "description": ..., "points": ..., "difficulty": ..., "estimatedMinutes": ..., "dueDate": ..., "repeat": ..., "weekdays": [...], "monthDays": [...], "assigneeName": ...}`,
+      }, {
+        role: 'user',
+        content: input.text,
+      }],
+      response_format: { type: 'json_object' },
+    });
+
+    const content = response.choices[0].message.content || '{}';
+    const parsed = parsedChoreSchema.parse(JSON.parse(content));
+
+    // Risposta inutilizzabile: errore tipizzato per evitare un falso successo.
+    const hasUsefulField = parsed.title.trim().length > 0
+      || parsed.description || parsed.points || parsed.difficulty || parsed.estimatedMinutes
+      || parsed.dueDate || parsed.repeat || parsed.assigneeName;
+    if (!hasUsefulField) {
+      throw new AiError('AI_BAD_RESPONSE', 'parse-chore: nessun campo estratto dal testo');
+    }
+
+    return parsed;
+  } catch (error) {
+    if (error instanceof AiError) throw error;
+    throw mapOpenAiError(error);
+  }
+}
+
+/**
  * Estrae una spesa dal linguaggio naturale (es. "fatti 50 euro di benzina"):
  * importo, categoria canonica e descrizione breve. La quota è gestita dalla
  * rotta con withAiUsage.

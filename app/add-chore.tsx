@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Switch, TextInput, Alert } from "react-native";
+import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Switch, TextInput, Alert, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -13,6 +13,7 @@ import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { freeLimitMessage } from "@/lib/plan-limit";
+import { aiErrorMessage } from "@/lib/ai-error-message";
 import { buildRecurrenceRule, WEEKDAY_LABELS } from "@/shared/chore-recurrence";
 
 const POINTS_OPTIONS = [5, 10, 15, 20, 25, 50];
@@ -36,6 +37,8 @@ export default function AddChoreScreen() {
   const { colors } = useTheme();
   const { data, currentFamily } = useFamily();
 
+  const [aiText, setAiText] = useState("");
+  const [isCompiling, setIsCompiling] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -53,6 +56,76 @@ export default function AddChoreScreen() {
   const [selectedMember, setSelectedMember] = useState(data.members[0]?.id || "");
 
   const familyId = currentFamily?.id;
+
+  const showError = (msg: string) => {
+    if (Platform.OS === "web") alert(msg);
+    else Alert.alert("Errore", msg);
+  };
+
+  const isRealIso = (iso: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!m) return false;
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    const dt = new Date(y, mo - 1, d);
+    return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d;
+  };
+
+  const handleCompile = async () => {
+    if (!aiText.trim() || !familyId || isCompiling) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsCompiling(true);
+    try {
+      const res = await apiRequest("POST", `/api/ai/${familyId}/parse-chore`, {
+        text: aiText.trim(),
+      });
+      const parsed = await res.json();
+      let filled = false;
+      if (parsed.title) { setTitle(parsed.title); filled = true; }
+      if (parsed.description) { setDescription(parsed.description); filled = true; }
+      if (typeof parsed.points === "number" && parsed.points >= 1 && parsed.points <= 100) {
+        setPoints(parsed.points);
+        filled = true;
+      }
+      if (typeof parsed.difficulty === "number" && parsed.difficulty >= 1 && parsed.difficulty <= 5) {
+        setDifficulty(parsed.difficulty);
+        filled = true;
+      }
+      if (typeof parsed.estimatedMinutes === "number" && parsed.estimatedMinutes >= 1) {
+        setEstimatedMinutes(String(parsed.estimatedMinutes));
+        filled = true;
+      }
+      if (parsed.dueDate && isRealIso(parsed.dueDate)) { setDueDate(parsed.dueDate); filled = true; }
+      if (parsed.repeat === "daily" || parsed.repeat === "weekly" || parsed.repeat === "monthly") {
+        setIsRecurring(true);
+        setFrequency(parsed.repeat);
+        const wd = Array.isArray(parsed.weekdays)
+          ? parsed.weekdays.filter((n: number) => Number.isInteger(n) && n >= 1 && n <= 7)
+          : [];
+        const md = Array.isArray(parsed.monthDays)
+          ? parsed.monthDays.filter((n: number) => Number.isInteger(n) && n >= 1 && n <= 31)
+          : [];
+        if (parsed.repeat === "daily") setDailyWeekdays(wd);
+        if (parsed.repeat === "weekly" && wd.length > 0) setWeeklyDays(wd);
+        if (parsed.repeat === "monthly" && md.length > 0) setMonthDays(md);
+        filled = true;
+      }
+      if (parsed.assigneeMemberId && data.members.some((m) => m.id === parsed.assigneeMemberId)) {
+        setSelectedMember(parsed.assigneeMemberId);
+        filled = true;
+      }
+      if (filled) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        showError("Non ho capito la faccenda: prova a descriverla in modo più specifico.");
+      }
+    } catch (e) {
+      showError(aiErrorMessage(e, "Non sono riuscito a compilare i campi. Riprova."));
+    } finally {
+      setIsCompiling(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!title.trim() || !familyId) return;
@@ -105,11 +178,12 @@ export default function AddChoreScreen() {
           <View style={styles.titleRow}>
             <View style={styles.titleInput}>
               <Input
-                label="Titolo"
-                placeholder="Cosa c'è da fare?"
-                value={title}
-                onChangeText={setTitle}
-                autoFocus
+                label="Descrivi la faccenda"
+                placeholder={'Es. "Butta la spazzatura ogni martedì e giovedì, 10 punti, per Anna"'}
+                value={aiText}
+                onChangeText={setAiText}
+                multiline
+                style={{ height: 80, textAlignVertical: "top", paddingTop: 12 }}
               />
             </View>
             {familyId ? (
@@ -117,12 +191,56 @@ export default function AddChoreScreen() {
                 <VoiceInput
                   familyId={familyId}
                   onTranscribed={(text) =>
-                    setTitle((prev) => (prev ? `${prev} ${text}` : text))
+                    setAiText((prev) => (prev ? `${prev} ${text}` : text))
                   }
                 />
               </View>
             ) : null}
           </View>
+          <View style={styles.compileRow}>
+            <Text style={[styles.compileHint, { color: colors.textSecondary }]}>
+              Detta o scrivi tutto in una frase: titolo, punti, ricorrenza e assegnatario verranno compilati qui sotto.
+            </Text>
+            <Pressable
+              onPress={handleCompile}
+              disabled={!aiText.trim() || isCompiling}
+              style={[
+                styles.compileButton,
+                {
+                  backgroundColor: aiText.trim() && !isCompiling ? colors.primary : colors.surface,
+                  borderColor: aiText.trim() && !isCompiling ? colors.primary : colors.border,
+                },
+              ]}
+              testID="compile-chore"
+            >
+              {isCompiling ? (
+                <ActivityIndicator size="small" color={colors.text} />
+              ) : (
+                <Ionicons
+                  name="sparkles"
+                  size={16}
+                  color={aiText.trim() ? "#FFFFFF" : colors.textSecondary}
+                />
+              )}
+              <Text
+                style={[
+                  styles.compileText,
+                  { color: aiText.trim() && !isCompiling ? "#FFFFFF" : colors.textSecondary },
+                ]}
+              >
+                Compila
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.field}>
+          <Input
+            label="Titolo"
+            placeholder="Cosa c'è da fare?"
+            value={title}
+            onChangeText={setTitle}
+          />
         </View>
 
         <View style={styles.field}>
@@ -482,6 +600,30 @@ const styles = StyleSheet.create({
   },
   micWrap: {
     marginBottom: 6,
+  },
+  compileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 8,
+  },
+  compileHint: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+  },
+  compileButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  compileText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   label: {
     fontSize: 14,
