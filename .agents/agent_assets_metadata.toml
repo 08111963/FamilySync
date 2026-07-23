@@ -114,3 +114,9 @@ id = "t4EawEEMlmeZ8Nsk-s5Mm"
 uri = "file://exports/familysync-test-analytics.zip"
 type = "unspecified"
 title = "ZIP file modificati - Test Analytics"
+
+[[outputs]]
+id = "KV2nrzwWZ-w3zMBAbO6Ab"
+uri = "file://exports/Guida-FamilySync-sul-telefono.pdf"
+type = "pdf"
+title = "Guida: FamilySync sul telefono"
