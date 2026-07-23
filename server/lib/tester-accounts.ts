@@ -1,7 +1,7 @@
 /**
  * Account TESTER per il canale di test chiuso di Google Play Console.
  *
- * Crea 15 account con email già verificata e una PROVA gratuita di 15 giorni con
+ * Crea 100 account con email già verificata e una PROVA gratuita di 15 giorni con
  * accesso a TUTTE le funzioni (Premium). La prova parte dal PRIMO login di ogni
  * account (vedi activatePendingTrialsForUser in entitlements.ts): l'entitlement
  * nasce "pending" con trialDays=15 e viene attivato al primo accesso. Alla
@@ -26,7 +26,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, families, familyMembers, entitlements } from "../../shared/schema";
 
-export const TESTER_COUNT = 15;
+export const TESTER_COUNT = 100;
 export const TESTER_TRIAL_DAYS = 15;
 
 // Abilitazione via env var (shared: dev + prod). Come l'account demo.
@@ -164,7 +164,7 @@ export interface EnsureTesterResult {
 }
 
 /**
- * Garantisce i 15 account tester.
+ * Garantisce i 100 account tester.
  * - reset=false (boot): crea solo quelli mancanti (idempotente).
  * - reset=true (script CLI): rigenera tutti da zero (pulizia marker-scoped).
  * - force=true: ignora il flag ENABLE_TESTER_ACCOUNTS (usato dallo script).

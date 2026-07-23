@@ -1,5 +1,5 @@
 /**
- * Seed manuale dei 15 ACCOUNT TESTER per il test chiuso di Google Play Console
+ * Seed manuale dei 100 ACCOUNT TESTER per il test chiuso di Google Play Console
  * + generazione del PDF con le credenziali.
  *
  * Rigenera da zero gli account tester (modalita reset) sul database puntato da
