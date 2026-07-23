@@ -12,3 +12,7 @@ The backend (port 5000) serves a static Expo web export from `web-build/` alongs
 **In-session regen is UNRELIABLE:** background/detached `expo export` (nohup, setsid, even `script` PTY, with CI=1) consistently dies right after "Starting Metro Bundler" and produces no bundle — likely OOM in contention with the already-running Frontend Metro (8081). Foreground reaches ~78% then hits the 120s tool cap. Do NOT burn many attempts here. The Expo Launch / deploy pipeline rebuilds web-build in its own environment, so republishing is the reliable path to refresh the static/production surface.
 
 **Canvas/preview port:** `.replit` maps localPort 8081 → externalPort 80 (Replit's PRIMARY web preview) = Metro LIVE. Port 5000 (externalPort 5000) is the Express backend serving the STALE static web-build. The screenshot/app_preview tool tends to hit 5000 (stale), which is NOT what the user's canvas "Mobile App" iframe shows (that's 8081, live). Don't conclude "user sees stale" from the screenshot tool alone.
+
+## Icona PWA (manifest)
+- `expo export --platform web` NON genera un web manifest: icona installazione = `public/manifest.json` + icon-192/512 + `<link rel="manifest">` patchato in `web-build/index.html` (patch da rifare a ogni export, come lang=it).
+- Dopo la ripubblicazione l'utente deve rimuovere e ri-aggiungere l'app alla Home per aggiornare l'icona.
