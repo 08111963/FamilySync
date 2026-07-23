@@ -470,6 +470,33 @@ export const pushTokens = pgTable("push_tokens", {
 
 export type PushToken = typeof pushTokens.$inferSelect;
 
+// WEB PUSH SUBSCRIPTIONS — notifiche push per la web app (PWA) via VAPID.
+// L'endpoint identifica univocamente il browser/dispositivo.
+export const webPushSubscriptions = pgTable("web_push_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("web_push_subs_user_idx").on(table.userId),
+]);
+
+export type WebPushSubscription = typeof webPushSubscriptions.$inferSelect;
+
+// BILL REMINDER LOG — deduplica dei promemoria bollette inviati dal server
+// (email + push). Una riga per (bolletta, tipo promemoria).
+export const billReminderLog = pgTable("bill_reminder_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  billId: uuid("bill_id").notNull().references(() => bills.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 20 }).notNull(), // 'due_tomorrow' | 'due_today'
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+}, (table) => [
+  unique("bill_reminder_log_unique").on(table.billId, table.kind),
+]);
+
 // ENTITLEMENTS — Premium acquistato tramite store nativi (Google Play / Apple).
 // Premium è UNICO per famiglia: una sola riga per familyId (unique).
 // La verifica server-side aggiorna status/expiresAt; isPremium(familyId) legge qui.

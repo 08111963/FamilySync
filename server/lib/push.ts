@@ -1,7 +1,8 @@
 import { db } from '../db';
-import { pushTokens, familyMembers } from '../../shared/schema';
+import { pushTokens, webPushSubscriptions, familyMembers } from '../../shared/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { logger } from './logger';
+import { sendWebPushToSubscriptions } from './web-push';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
@@ -88,16 +89,29 @@ export async function sendPushToFamily(
       .filter((id) => !excluded.has(id));
     if (targetIds.length === 0) return;
 
-    const tokens = await db
-      .select({ token: pushTokens.token })
-      .from(pushTokens)
-      .where(inArray(pushTokens.userId, targetIds));
+    const [tokens, webSubs] = await Promise.all([
+      db
+        .select({ token: pushTokens.token })
+        .from(pushTokens)
+        .where(inArray(pushTokens.userId, targetIds)),
+      db
+        .select({
+          endpoint: webPushSubscriptions.endpoint,
+          p256dh: webPushSubscriptions.p256dh,
+          auth: webPushSubscriptions.auth,
+        })
+        .from(webPushSubscriptions)
+        .where(inArray(webPushSubscriptions.userId, targetIds)),
+    ]);
 
     const validTokens = tokens
       .map((t) => t.token)
       .filter((t) => isExpoPushToken(t));
 
-    await sendToTokens(validTokens, payload);
+    await Promise.all([
+      sendToTokens(validTokens, payload),
+      sendWebPushToSubscriptions(webSubs, payload),
+    ]);
   } catch (error) {
     logger.error('sendPushToFamily error', { error: String(error) });
   }
@@ -112,16 +126,29 @@ export async function sendPushToUser(
   payload: { title: string; body: string; data?: Record<string, any> }
 ): Promise<void> {
   try {
-    const tokens = await db
-      .select({ token: pushTokens.token })
-      .from(pushTokens)
-      .where(eq(pushTokens.userId, userId));
+    const [tokens, webSubs] = await Promise.all([
+      db
+        .select({ token: pushTokens.token })
+        .from(pushTokens)
+        .where(eq(pushTokens.userId, userId)),
+      db
+        .select({
+          endpoint: webPushSubscriptions.endpoint,
+          p256dh: webPushSubscriptions.p256dh,
+          auth: webPushSubscriptions.auth,
+        })
+        .from(webPushSubscriptions)
+        .where(eq(webPushSubscriptions.userId, userId)),
+    ]);
 
     const validTokens = tokens
       .map((t) => t.token)
       .filter((t) => isExpoPushToken(t));
 
-    await sendToTokens(validTokens, payload);
+    await Promise.all([
+      sendToTokens(validTokens, payload),
+      sendWebPushToSubscriptions(webSubs, payload),
+    ]);
   } catch (error) {
     logger.error('sendPushToUser error', { error: String(error) });
   }

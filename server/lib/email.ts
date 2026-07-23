@@ -163,6 +163,45 @@ export async function sendFamilyInviteEmail(
 }
 
 /**
+ * Promemoria bolletta in scadenza. Inviata dal server (scheduler) ai membri
+ * della famiglia con email verificata. `kind` distingue "scade domani" da
+ * "scade oggi".
+ */
+export async function sendBillReminderEmail(params: {
+  to: string;
+  recipientName: string;
+  billTitle: string;
+  amount: string;
+  dueDate: string; // già formattata (es. "23 luglio 2026")
+  kind: 'due_tomorrow' | 'due_today';
+}) {
+  const when = params.kind === 'due_today' ? 'scade OGGI' : 'scade DOMANI';
+
+  if (!isEmailConfigured()) {
+    console.log(`[DEV] Promemoria bolletta "${params.billTitle}" (${when}) per ${params.to}`);
+    return;
+  }
+
+  const name = escapeHtml(params.recipientName);
+  const title = escapeHtml(params.billTitle);
+  const amount = escapeHtml(params.amount);
+  const dueDate = escapeHtml(params.dueDate);
+  const appLink = clientBaseUrl();
+
+  await sendEmail({
+    to: params.to,
+    subject: `Promemoria: la bolletta "${params.billTitle.replace(/[\r\n]+/g, ' ').trim()}" ${when.toLowerCase()}`,
+    html: `
+      <h2>Ciao ${name}!</h2>
+      <p>La bolletta <strong>${title}</strong> di <strong>€ ${amount}</strong> ${when.toLowerCase()} (${dueDate}).</p>
+      <p>Ricordati di pagarla e di segnarla come pagata nell'app.</p>
+      ${appLink ? `<p><a href="${appLink}">Apri FamilySync</a></p>` : ''}
+      <p style="color:#888;font-size:12px;">Ricevi questa email perché i promemoria sono attivi per questa bolletta.</p>
+    `,
+  });
+}
+
+/**
  * Invia alla casella di assistenza una richiesta inviata da un utente dall'app.
  * Il Reply-To è impostato sull'email dell'utente, così l'assistenza può
  * rispondere direttamente con un semplice "Rispondi". Il chiamante deve aver già

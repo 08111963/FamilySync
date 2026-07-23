@@ -40,6 +40,65 @@ export async function presentLocalNotification(
   } catch {}
 }
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+/**
+ * Registra le notifiche web push (browser): service worker + sottoscrizione
+ * VAPID, poi invia la sottoscrizione al server. Ritorna true se registrata.
+ * Al cambio account il server riassocia l'endpoint al nuovo utente (rebind).
+ */
+async function registerWebPush(): Promise<boolean> {
+  try {
+    if (Platform.OS !== "web") return false;
+    if (typeof window === "undefined") return false;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      return false;
+    }
+
+    // Chiave pubblica VAPID dal server (503 se non configurata).
+    const keyRes = await apiRequest("GET", "/api/notifications/web/public-key");
+    const { publicKey } = await keyRes.json();
+    if (!publicKey) return false;
+
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+
+    let permission = Notification.permission;
+    if (permission === "default") {
+      permission = await Notification.requestPermission();
+    }
+    if (permission !== "granted") return false;
+
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey) as unknown as BufferSource,
+      });
+    }
+
+    const json = subscription.toJSON();
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false;
+
+    await apiRequest("POST", "/api/notifications/web/subscribe", {
+      endpoint: json.endpoint,
+      keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function registerForPush(): Promise<string | null> {
   try {
     if (Platform.OS === "web") return null;
@@ -86,6 +145,10 @@ export function usePushNotifications(enabled: boolean) {
     let cancelled = false;
 
     (async () => {
+      if (Platform.OS === "web") {
+        await registerWebPush();
+        return;
+      }
       const token = await registerForPush();
       if (cancelled || !token || registeredToken.current === token) return;
       try {

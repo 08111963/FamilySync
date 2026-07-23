@@ -9,6 +9,7 @@ import { seedOwnerEntitlements } from './lib/entitlements';
 import { ensureDemoAccount } from './lib/demo-account';
 import { ensureTesterAccounts } from './lib/tester-accounts';
 import { ensureVipAccount } from './lib/vip-account';
+import { startBillReminderScheduler } from './lib/bill-reminders';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -417,6 +418,8 @@ function setupErrorHandler(app: express.Application) {
             log(`vip account skipped: set VIP_ACCOUNT_PASSWORD to enable`);
         })
         .catch((err) => log(`vip account seed failed: ${String(err)}`));
+      // Promemoria bollette lato server (email + push, dedup su DB).
+      startBillReminderScheduler();
     },
   );
 })();
