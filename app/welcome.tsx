@@ -176,7 +176,10 @@ export default function WelcomeScreen() {
             contentFit="cover"
           />
           <Text style={styles.appTitle}>FamilySync</Text>
-          <Text style={styles.appSubtitle}>Meno caos, più tempo insieme</Text>
+          <Text style={styles.appSubtitle}>La tua famiglia, finalmente sincronizzata</Text>
+          <Text style={styles.appTagline}>
+            Calendario, spesa, faccende, bollette e chat: tutto in un unico posto.
+          </Text>
         </Animated.View>
 
         <View style={styles.featuresSection}>
@@ -303,11 +306,20 @@ const styles = StyleSheet.create({
     letterSpacing: -1.5,
   },
   appSubtitle: {
-    fontSize: 16,
-    fontFamily: "Inter_400Regular",
-    color: "rgba(255,255,255,0.8)",
+    fontSize: 17,
+    fontFamily: "Inter_600SemiBold",
+    color: "rgba(255,255,255,0.95)",
     marginTop: 8,
     textAlign: "center",
+  },
+  appTagline: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    color: "rgba(255,255,255,0.75)",
+    marginTop: 6,
+    textAlign: "center",
+    lineHeight: 20,
+    paddingHorizontal: 24,
   },
   featuresSection: {
     gap: 12,
