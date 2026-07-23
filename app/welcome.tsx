@@ -10,6 +10,7 @@ import {
   useColorScheme,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -169,14 +170,13 @@ export default function WelcomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={FadeInDown.delay(100).duration(700)} style={styles.heroSection}>
-          <LinearGradient
-            colors={["rgba(255,255,255,0.25)", "rgba(255,255,255,0.1)"]}
-            style={styles.logoCircle}
-          >
-            <Ionicons name="people" size={40} color="#FFFFFF" />
-          </LinearGradient>
+          <Image
+            source={require("@/assets/images/icon.png")}
+            style={styles.logoImage}
+            contentFit="cover"
+          />
           <Text style={styles.appTitle}>FamilySync</Text>
-          <Text style={styles.appSubtitle}>La tua famiglia, perfettamente coordinata</Text>
+          <Text style={styles.appSubtitle}>Meno caos, più tempo insieme</Text>
         </Animated.View>
 
         <View style={styles.featuresSection}>
@@ -290,12 +290,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 36,
   },
-  logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: "center",
-    alignItems: "center",
+  logoImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 24,
     marginBottom: 16,
   },
   appTitle: {
