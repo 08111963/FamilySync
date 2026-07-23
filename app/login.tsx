@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
+import { loginWithGoogle, loginWithApple, isAppleLoginAvailable } from '@/lib/social-login';
 
 function validatePassword(pw: string): string | null {
   if (pw.length < 8) return 'La password deve avere almeno 8 caratteri';
@@ -19,7 +20,7 @@ function validatePassword(pw: string): string | null {
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { login, signup } = useAuth();
+  const { login, signup, applySession } = useAuth();
   const { redirect } = useLocalSearchParams<{ redirect?: string }>();
 
   const [isSignup, setIsSignup] = useState(false);
@@ -30,7 +31,33 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [socialSubmitting, setSocialSubmitting] = useState<'google' | 'apple' | null>(null);
+  const [appleAvailable, setAppleAvailable] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    isAppleLoginAvailable().then(setAppleAvailable).catch(() => {});
+  }, []);
+
+  const handleSocialLogin = async (provider: 'google' | 'apple') => {
+    if (isSubmitting || socialSubmitting) return;
+    setError('');
+    setSocialSubmitting(provider);
+    try {
+      const session = provider === 'google' ? await loginWithGoogle() : await loginWithApple();
+      if (!session) return; // utente ha annullato
+      await applySession(session.user, session.accessToken, session.refreshToken);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (redirect) {
+        router.replace(redirect as any);
+      }
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError(err?.message || 'Accesso non riuscito. Riprova.');
+    } finally {
+      setSocialSubmitting(null);
+    }
+  };
 
   const handleSubmit = async () => {
     setError('');
@@ -265,6 +292,48 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
 
+            <View style={styles.dividerRow}>
+              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+              <Text style={[styles.dividerText, { color: colors.textSecondary }]}>oppure</Text>
+              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.socialButton, { borderColor: colors.border }]}
+              onPress={() => handleSocialLogin('google')}
+              disabled={isSubmitting || !!socialSubmitting}
+              activeOpacity={0.8}
+              testID="google-login-button"
+            >
+              {socialSubmitting === 'google' ? (
+                <ActivityIndicator color={colors.text} />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={20} color="#DB4437" />
+                  <Text style={[styles.socialButtonText, { color: colors.text }]}>Continua con Google</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {appleAvailable && (
+              <TouchableOpacity
+                style={[styles.socialButton, styles.appleButton]}
+                onPress={() => handleSocialLogin('apple')}
+                disabled={isSubmitting || !!socialSubmitting}
+                activeOpacity={0.8}
+                testID="apple-login-button"
+              >
+                {socialSubmitting === 'apple' ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="logo-apple" size={22} color="#fff" />
+                    <Text style={[styles.socialButtonText, { color: '#fff' }]}>Continua con Apple</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity onPress={toggleMode} style={styles.toggleButton} testID="toggle-mode">
               <Text style={[styles.toggleText, { color: colors.textSecondary }]}>
                 {isSignup ? 'Hai già un account? ' : 'Non hai un account? '}
@@ -416,6 +485,39 @@ const styles = StyleSheet.create({
   },
   forgotText: {
     fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  dividerRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    marginTop: 20,
+    marginBottom: 14,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+  },
+  socialButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 10,
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    marginBottom: 12,
+  },
+  appleButton: {
+    backgroundColor: '#000',
+    borderColor: '#000',
+  },
+  socialButtonText: {
+    fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
   },
   toggleButton: {

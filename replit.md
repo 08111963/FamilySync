@@ -24,7 +24,7 @@ L'app è pensata per essere production-ready per App Store e Google Play: interf
 - **Framework**: Express.js v5 in TypeScript (tsx in dev)
 - **API**: RESTful con prefisso `/api`
 - **DB**: Drizzle ORM su PostgreSQL; validazione con Zod + drizzle-zod
-- **Auth**: JWT (access token 15 min, refresh token 7 giorni)
+- **Auth**: JWT (access token 15 min, refresh token 7 giorni) + login social Google (OAuth code-flow lato server) e Apple (Sign in with Apple, verifica identityToken via JWKS)
 - **Real-time**: Socket.io per sincronizzazione tra dispositivi
 - **AI**: OpenAI per suggerimenti (spesa, faccende, ricette, trascrizione vocale)
 - **Pagamenti**: RevenueCat (sorgente di verità per Premium); Stripe presente ma dormiente
@@ -102,6 +102,7 @@ users, families, family_members, family_invites, calendar_events, shopping_lists
 
 ### Opzionali
 - `OPENAI_API_KEY` - funzionalità AI
+- `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` - "Accedi con Google" (redirect URI: `https://<dominio>/api/auth/google/callback`)
 - `RESEND_API_KEY` - email transazionali via Resend
 - `EMAIL_FROM` - mittente email (default `noreply@familysync.eu`, dominio verificato)
 - `SUPPORT_EMAIL` - Reply-To (`assistenza@familysync.it`)

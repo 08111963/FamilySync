@@ -40,7 +40,10 @@ export const billAttachmentKindEnum = pgEnum("bill_attachment_kind", ["document"
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: varchar("email", { length: 255 }).notNull().unique(),
-  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  // Nullable: gli account creati con login social (Google/Apple) non hanno password
+  passwordHash: varchar("password_hash", { length: 255 }),
+  // 'google' | 'apple' | null (email+password)
+  authProvider: varchar("auth_provider", { length: 20 }),
   name: varchar("name", { length: 255 }).notNull(),
   avatarUrl: text("avatar_url"),
   emailVerified: boolean("email_verified").default(false),

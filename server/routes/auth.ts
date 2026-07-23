@@ -16,6 +16,18 @@ import { config } from '../lib/config';
 import { generateResetToken, hashResetToken } from '../lib/reset-token';
 import { deleteUserAccount } from '../lib/account-deletion';
 import { activatePendingTrialsForUser } from '../lib/entitlements';
+import {
+  isGoogleLoginConfigured,
+  isAllowedReturnUrl,
+  getGoogleRedirectUri,
+  signOauthState,
+  verifyOauthState,
+  signLoginCode,
+  verifyLoginCode,
+  exchangeGoogleCode,
+  verifyAppleIdentityToken,
+  type OauthProfile,
+} from '../lib/oauth';
 
 const router = Router();
 
@@ -161,6 +173,12 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: { code: "INVALID_CREDENTIALS", message: "Credenziali non valide" } });
     }
     
+    if (!user.passwordHash) {
+      return res.status(401).json({
+        error: { code: "SOCIAL_LOGIN_ONLY", message: "Questo account usa l'accesso con Google o Apple: usa il pulsante dedicato." },
+      });
+    }
+
     const validPassword = await bcrypt.compare(password, user.passwordHash);
     if (!validPassword) {
       return res.status(401).json({ error: { code: "INVALID_CREDENTIALS", message: "Credenziali non valide" } });
@@ -242,6 +260,12 @@ router.post('/change-password', authenticate, async (req: Request, res: Response
     const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
     if (!user) {
       return res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utente non trovato" } });
+    }
+
+    if (!user.passwordHash) {
+      return res.status(400).json({
+        error: { code: "SOCIAL_LOGIN_ONLY", message: "Questo account usa l'accesso con Google o Apple e non ha una password." },
+      });
     }
 
     const validPassword = await bcrypt.compare(currentPassword, user.passwordHash);
@@ -496,9 +520,13 @@ router.delete('/account', deleteAccountLimiter, authenticate, async (req: Reques
       return res.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Utente non trovato" } });
     }
 
-    const validPassword = await bcrypt.compare(password, user.passwordHash);
-    if (!validPassword) {
-      return res.status(400).json({ error: { code: "INVALID_PASSWORD", message: "La password attuale non è corretta" } });
+    // Account social (senza password): la conferma "ELIMINA" resta obbligatoria,
+    // la password viene verificata solo se esiste.
+    if (user.passwordHash) {
+      const validPassword = await bcrypt.compare(password, user.passwordHash);
+      if (!validPassword) {
+        return res.status(400).json({ error: { code: "INVALID_PASSWORD", message: "La password attuale non è corretta" } });
+      }
     }
 
     const summary = await deleteUserAccount(user.id);
@@ -514,6 +542,160 @@ router.delete('/account', deleteAccountLimiter, authenticate, async (req: Reques
     logger.error('Delete account error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante l'eliminazione dell'account" } });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Login social (Google / Apple)
+// ---------------------------------------------------------------------------
+
+const socialLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
+/**
+ * Trova o crea l'utente per un login social. L'email arriva verificata dal
+ * provider, quindi emailVerified=true. Se l'utente esiste già (anche con
+ * password) viene semplicemente autenticato: stessa email = stesso account.
+ */
+async function upsertSocialUser(profile: OauthProfile, provider: 'google' | 'apple') {
+  const [existing] = await db.select().from(users).where(eq(users.email, profile.email)).limit(1);
+  if (existing) {
+    if (existing.deletedAt) {
+      throw Object.assign(new Error('ACCOUNT_DELETED'), { code: 'ACCOUNT_DELETED' });
+    }
+    // L'email è confermata dal provider: se non era ancora verificata, ora lo è.
+    if (!existing.emailVerified) {
+      await db.update(users).set({ emailVerified: true }).where(eq(users.id, existing.id));
+      existing.emailVerified = true;
+    }
+    return existing;
+  }
+  const [created] = await db.insert(users).values({
+    email: profile.email,
+    passwordHash: null,
+    authProvider: provider,
+    name: profile.name || profile.email.split('@')[0],
+    emailVerified: true,
+    termsAcceptedAt: new Date(),
+  }).returning();
+  return created;
+}
+
+function issueSessionResponse(user: typeof users.$inferSelect) {
+  return {
+    user: { id: user.id, email: user.email, name: user.name, emailVerified: user.emailVerified },
+    accessToken: generateAccessToken(user),
+    refreshToken: generateRefreshToken(user),
+  };
+}
+
+/**
+ * Avvio del flusso Google: valida il returnUrl, firma lo state e reindirizza
+ * alla schermata di consenso Google.
+ */
+router.get('/google/start', socialLoginLimiter, (req: Request, res: Response) => {
+  if (!isGoogleLoginConfigured()) {
+    return res.status(503).send('Accesso con Google non configurato.');
+  }
+  const returnUrl = typeof req.query.returnUrl === 'string' ? req.query.returnUrl : '';
+  if (!isAllowedReturnUrl(returnUrl)) {
+    return res.status(400).send('returnUrl non valido.');
+  }
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_OAUTH_CLIENT_ID!,
+    redirect_uri: getGoogleRedirectUri(),
+    response_type: 'code',
+    scope: 'openid email profile',
+    state: signOauthState(returnUrl),
+    prompt: 'select_account',
+  });
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+});
+
+/**
+ * Callback Google: scambia il code, trova/crea l'utente e rimanda l'app al
+ * returnUrl con un codice di login monouso (mai i token di sessione nell'URL).
+ */
+router.get('/google/callback', socialLoginLimiter, async (req: Request, res: Response) => {
+  try {
+    const code = typeof req.query.code === 'string' ? req.query.code : '';
+    const state = typeof req.query.state === 'string' ? req.query.state : '';
+    if (!code || !state) {
+      return res.status(400).send('Richiesta non valida.');
+    }
+    const { returnUrl } = verifyOauthState(state);
+    if (!isAllowedReturnUrl(returnUrl)) {
+      return res.status(400).send('returnUrl non valido.');
+    }
+    const profile = await exchangeGoogleCode(code);
+    const user = await upsertSocialUser(profile, 'google');
+    await activatePendingTrialsForUser(user.id);
+    const loginCode = signLoginCode(user.id);
+    const sep = returnUrl.includes('?') ? '&' : '?';
+    res.redirect(`${returnUrl}${sep}loginCode=${encodeURIComponent(loginCode)}`);
+  } catch (error: any) {
+    if (error?.code === 'ACCOUNT_DELETED') {
+      return res.status(403).send('Questo account è stato eliminato.');
+    }
+    logger.error('Google OAuth callback error', { error: String(error) });
+    res.status(500).send("Errore durante l'accesso con Google. Riprova.");
+  }
+});
+
+/**
+ * Scambio del codice di login monouso con i token di sessione.
+ */
+router.post('/oauth/complete', socialLoginLimiter, async (req: Request, res: Response) => {
+  try {
+    const code = typeof req.body?.loginCode === 'string' ? req.body.loginCode : '';
+    if (!code) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'loginCode obbligatorio' } });
+    }
+    const { userId } = verifyLoginCode(code);
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user || user.deletedAt) {
+      return res.status(401).json({ error: { code: 'INVALID_CODE', message: 'Codice di accesso non valido' } });
+    }
+    res.json(issueSessionResponse(user));
+  } catch (error) {
+    logger.warn('OAuth complete error', { error: String(error) });
+    res.status(401).json({ error: { code: 'INVALID_CODE', message: 'Codice di accesso scaduto o non valido' } });
+  }
+});
+
+/**
+ * Accesso con Apple: il client nativo invia l'identityToken di Sign in with
+ * Apple; il server ne verifica firma/issuer/audience e autentica l'utente.
+ */
+router.post('/apple', socialLoginLimiter, async (req: Request, res: Response) => {
+  try {
+    const identityToken = typeof req.body?.identityToken === 'string' ? req.body.identityToken : '';
+    if (!identityToken) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'identityToken obbligatorio' } });
+    }
+    // Apple fornisce il nome solo al primissimo accesso: il client lo inoltra.
+    const fullName = typeof req.body?.fullName === 'string' ? req.body.fullName.trim().slice(0, 100) : '';
+    const profile = await verifyAppleIdentityToken(identityToken);
+    if (fullName) profile.name = fullName;
+    const user = await upsertSocialUser(profile, 'apple');
+    await activatePendingTrialsForUser(user.id);
+    res.json(issueSessionResponse(user));
+  } catch (error: any) {
+    if (error?.code === 'ACCOUNT_DELETED') {
+      return res.status(403).json({ error: { code: 'ACCOUNT_DELETED', message: 'Questo account è stato eliminato' } });
+    }
+    logger.warn('Apple login error', { error: String(error) });
+    res.status(401).json({ error: { code: 'INVALID_APPLE_TOKEN', message: 'Accesso con Apple non riuscito. Riprova.' } });
+  }
+});
+
+/** Config pubblica: dice al client quali login social sono disponibili. */
+router.get('/social-config', (_req: Request, res: Response) => {
+  res.json({ google: isGoogleLoginConfigured(), apple: true });
 });
 
 export default router;
