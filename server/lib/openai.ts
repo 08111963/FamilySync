@@ -700,6 +700,37 @@ export async function generateBudgetInsights(context: {
 }
 
 /**
+ * Rileva l'"eco del prompt": con audio vuoto o solo rumore, il modello di
+ * trascrizione può restituire il prompt di contesto invece del parlato reale.
+ * La regola è volutamente conservativa per non scartare dettature legittime
+ * brevi (es. "venerdì alle 20"): scatta solo se la trascrizione è lunga e
+ * quasi identica al prompt nel suo insieme.
+ */
+export function isPromptEcho(text: string, prompt: string): boolean {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const textNorm = normalize(text);
+  const promptNorm = normalize(prompt);
+  if (!textNorm || !promptNorm) return false;
+
+  // Caso 1: la trascrizione è una porzione lunga e contigua del prompt.
+  // Le frasi corte (sotto 30 caratteri) non vengono mai scartate.
+  if (textNorm.length >= 30 && promptNorm.includes(textNorm)) return true;
+
+  // Caso 2: quasi tutte le parole della trascrizione (lunga) vengono dal
+  // prompt E coprono gran parte del prompt stesso (similarità bidirezionale).
+  const textWords = textNorm.split(' ');
+  if (textWords.length >= 8) {
+    const promptWords = promptNorm.split(' ');
+    const promptSet = new Set(promptWords);
+    const textSet = new Set(textWords);
+    const fromPrompt = textWords.filter((w) => promptSet.has(w)).length / textWords.length;
+    const coverage = promptWords.filter((w) => textSet.has(w)).length / promptWords.length;
+    if (fromPrompt >= 0.9 && coverage >= 0.6) return true;
+  }
+  return false;
+}
+
+/**
  * Trascrive un file audio (voce dell'utente) in testo italiano.
  * Usa l'API audio di OpenAI (gpt-4o-mini-transcribe). Errori sempre tipizzati
  * via mapOpenAiError; la quota è gestita dalla rotta con withAiUsage.
@@ -708,16 +739,27 @@ export async function transcribeAudio(input: {
   buffer: Buffer;
   filename: string;
   mimeType: string;
+  context?: string;
 }): Promise<{ text: string }> {
   assertAiConfigured();
   try {
     const file = await toFile(input.buffer, input.filename, { type: input.mimeType });
+    // Il prompt orienta il modello sul lessico atteso (italiano, dominio famiglia)
+    // e riduce gli errori di trascrizione su nomi, date e orari.
+    const baseHint =
+      'Dettatura vocale in italiano per un\'app di famiglia (eventi, spesa, faccende, ricette, budget). ' +
+      'Date, giorni della settimana e orari come "venerdì alle 20", "domani alle 14:30".';
+    const extra = (input.context || '').trim().slice(0, 300);
     const response = await getOpenAiClient().audio.transcriptions.create({
       file,
       model: 'gpt-4o-mini-transcribe',
       language: 'it',
+      prompt: extra ? `${baseHint} ${extra}` : baseHint,
     });
     const text = (response.text || '').trim();
+    if (isPromptEcho(text, extra ? `${baseHint} ${extra}` : baseHint)) {
+      return { text: '' };
+    }
     return { text };
   } catch (error) {
     throw mapOpenAiError(error);

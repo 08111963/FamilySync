@@ -29,5 +29,6 @@
 - [Shopping items quantity numerica](shopping-items-quantity.md) — quantity è NUMERIC + unit VARCHAR(10): mai concatenare "200 g"; dedup con normalizeItemName ricalcolato, non col normalizedName storico.
 - [WebSocket invalidation storm](websocket-invalidation-storm.md) — broadcast batch = UN solo messaggio; invalidazioni client debounced, altrimenti il rate limiter /api svuota le liste (429).
 - [Social login Google/Apple](social-login.md) — code monouso (jti), JWKS verify, allow-list returnUrl (exp:// solo dev), email verificata obbligatoria prima del linking.
+- [Trascrizione vocale](voice-transcription.md) — prompt di contesto migliora l'accuratezza ma può essere "ecoato" su audio vuoto: serve filtro anti-eco conservativo, niente frasi d'esempio nel context.
 - [Test analytics temporanea](test-analytics.md) — flag ENABLE_TEST_ANALYTICS check PRIMA di authenticate (404 anche unauth); pannello owner via APP_OWNER_EMAILS riletta da DB; metadata whitelist, retention 30gg.
 - [Mic hold-to-talk web](voice-input-web.md) — su web il browser annulla il long-press (scroll/selezione/prompt permesso): serve touchAction:none + fallback toggle, mai alert "tieni premuto" su tocco breve.

@@ -884,6 +884,7 @@ router.post('/:familyId/transcribe', authenticate, requireAiEnabled, requireFami
           buffer: file.buffer,
           filename: `voice.${audioExtension(mime)}`,
           mimeType: mime,
+          context: typeof req.body?.context === 'string' ? req.body.context : undefined,
         }),
       );
       if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);

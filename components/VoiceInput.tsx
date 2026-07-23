@@ -49,6 +49,8 @@ interface VoiceInputProps {
   onTranscribed: (text: string) => void;
   size?: number;
   disabled?: boolean;
+  /** Contesto opzionale inviato al server per migliorare l'accuratezza della trascrizione. */
+  context?: string;
 }
 
 /**
@@ -56,7 +58,7 @@ interface VoiceInputProps {
  * premi e tieni premuto, parla, poi rilascia. L'audio viene trascritto in testo
  * dal backend (OpenAI) e passato a onTranscribed.
  */
-export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: VoiceInputProps) {
+export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, context }: VoiceInputProps) {
   const { colors } = useTheme();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recording, setRecording] = useState(false);
@@ -169,6 +171,8 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
           type: "audio/m4a",
         } as any);
       }
+
+      if (context) formData.append("context", context);
 
       const res = await apiUpload<{ text: string }>(`/api/ai/${familyId}/transcribe`, formData);
       const text = (res.text || "").trim();

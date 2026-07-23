@@ -196,6 +196,7 @@ export default function AddEventScreen() {
               <View style={styles.micWrap}>
                 <VoiceInput
                   familyId={currentFamily.id}
+                  context={'Evento del calendario familiare: titolo, luogo, data, orario di inizio e fine, eventuale ripetizione.'}
                   onTranscribed={(text) => {
                     // Come WhatsApp: al rilascio del microfono la compilazione
                     // parte subito, senza dover premere "Compila".
