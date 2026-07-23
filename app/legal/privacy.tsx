@@ -5,7 +5,7 @@ import { router } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { getApiUrl } from "@/lib/query-client";
 
-const LAST_UPDATED = "29 giugno 2026";
+const LAST_UPDATED = "23 luglio 2026";
 
 export default function PrivacyPolicyScreen() {
   const insets = useSafeAreaInsets();
@@ -93,15 +93,18 @@ export default function PrivacyPolicyScreen() {
         <Section title="8. Notifiche" colors={colors}>
           <Bullet colors={colors}>Notifiche locali: programmate sul dispositivo (es. promemoria scadenze bollette); non inviano i contenuti a server esterni</Bullet>
           <Bullet colors={colors}>Notifiche push remote: se attivate, possono usare un token push e i servizi di notifica di Expo/Apple/Google</Bullet>
+          <Bullet colors={colors}>Notifiche push web: se attivate dal browser, usano il servizio push del browser stesso (Google, Apple, Mozilla o Microsoft), revocabile dalle impostazioni del browser</Bullet>
         </Section>
 
         <Section title="9. Condivisione con Terze Parti e Fornitori" colors={colors}>
-          <Bullet colors={colors}>Replit: hosting e deploy dell'applicazione e del backend</Bullet>
-          <Bullet colors={colors}>Neon / PostgreSQL: database in cui sono archiviati i dati</Bullet>
-          <Bullet colors={colors}>Resend: invio di email transazionali</Bullet>
-          <Bullet colors={colors}>OpenAI: generazione di suggerimenti AI (solo dati minimizzati, funzione opzionale)</Bullet>
+          <Bullet colors={colors}>Replit, Inc.: hosting e deploy dell'applicazione e del backend</Bullet>
+          <Bullet colors={colors}>Neon, Inc. (PostgreSQL): database in cui sono archiviati i dati</Bullet>
+          <Bullet colors={colors}>Resend (Plus Five Five, Inc.): invio di email transazionali</Bullet>
+          <Bullet colors={colors}>OpenAI: generazione di suggerimenti AI e trascrizione vocale (solo dati minimizzati, funzione opzionale su consenso)</Bullet>
           <Bullet colors={colors}>RevenueCat, Apple, Google: gestione di abbonamenti e acquisti in-app</Bullet>
-          <Bullet colors={colors}>Servizi di notifica push (Expo/Apple/Google): recapito delle notifiche push, se attive</Bullet>
+          <Bullet colors={colors}>Google e Apple: accesso tramite login social ("Accedi con Google" / "Sign in with Apple"), se scelto dall'utente</Bullet>
+          <Bullet colors={colors}>Servizi di notifica push (Expo/Apple/Google e, per il web, i servizi push del browser di Google/Apple/Mozilla/Microsoft): recapito delle notifiche push, se attive</Bullet>
+          <P colors={colors}>Con ciascun fornitore che tratta dati personali per nostro conto è in essere un Accordo sul Trattamento dei Dati (DPA - Data Processing Addendum) conforme all'art. 28 GDPR, comprensivo, ove necessario, delle Clausole Contrattuali Standard per i trasferimenti extra-UE.</P>
           <P colors={colors}>Non vendiamo, affittiamo o condividiamo i tuoi dati personali con terze parti per finalita di marketing.</P>
         </Section>
 

@@ -4,7 +4,7 @@ import { config } from '../lib/config';
 
 const router = Router();
 
-const LAST_UPDATED = "30 giugno 2026";
+const LAST_UPDATED = "23 luglio 2026";
 const APP_NAME = "FamilySync";
 const OWNER = "Marino Pizzuti / FamilySync";
 const CONTACT_EMAIL = "assistenza@familysync.it";
@@ -171,18 +171,21 @@ router.get('/privacy', (_req: Request, res: Response) => {
     <ul>
       <li><strong>Notifiche locali:</strong> programmate direttamente sul dispositivo (ad esempio i promemoria per le scadenze delle bollette); non richiedono l'invio dei contenuti a server esterni.</li>
       <li><strong>Notifiche push remote:</strong> se attivate, possono utilizzare un token push del dispositivo e i servizi di notifica di Expo/Apple/Google per recapitare gli avvisi.</li>
+      <li><strong>Notifiche push web:</strong> se attivate dal browser, utilizzano il servizio push del browser stesso (Google, Apple, Mozilla o Microsoft) tramite una sottoscrizione revocabile in qualsiasi momento dalle impostazioni del browser.</li>
     </ul>
 
     <h2>9. Condivisione con Terze Parti e Fornitori</h2>
-    <p>I dati possono essere trattati dai seguenti fornitori, esclusivamente per le finalita indicate:</p>
+    <p>I dati possono essere trattati dai seguenti fornitori (sub-responsabili del trattamento), esclusivamente per le finalita indicate:</p>
     <ul>
-      <li><strong>Replit:</strong> hosting e deploy dell'applicazione e del backend</li>
-      <li><strong>Neon / PostgreSQL:</strong> database in cui sono archiviati i dati</li>
-      <li><strong>Resend:</strong> invio di email transazionali</li>
-      <li><strong>OpenAI:</strong> generazione di suggerimenti AI (solo dati minimizzati, funzione opzionale)</li>
+      <li><strong>Replit, Inc.:</strong> hosting e deploy dell'applicazione e del backend</li>
+      <li><strong>Neon, Inc. (PostgreSQL):</strong> database in cui sono archiviati i dati</li>
+      <li><strong>Resend (Plus Five Five, Inc.):</strong> invio di email transazionali</li>
+      <li><strong>OpenAI:</strong> generazione di suggerimenti AI e trascrizione vocale (solo dati minimizzati, funzione opzionale su consenso)</li>
       <li><strong>RevenueCat, Apple, Google:</strong> gestione di abbonamenti e acquisti in-app</li>
-      <li><strong>Servizi di notifica push</strong> (Expo/Apple/Google): recapito delle notifiche push, se attive</li>
+      <li><strong>Google e Apple:</strong> accesso tramite login social ("Accedi con Google" / "Sign in with Apple"), se scelto dall'utente</li>
+      <li><strong>Servizi di notifica push</strong> (Expo/Apple/Google e, per il web, i servizi push del browser di Google/Apple/Mozilla/Microsoft): recapito delle notifiche push, se attive</li>
     </ul>
+    <p>Con ciascun fornitore che tratta dati personali per nostro conto e in essere un Accordo sul Trattamento dei Dati (DPA - Data Processing Addendum) conforme all'art. 28 GDPR, comprensivo, ove necessario, delle Clausole Contrattuali Standard per i trasferimenti extra-UE.</p>
     <p>Non vendiamo, affittiamo o condividiamo i tuoi dati personali con terze parti per finalita di marketing.</p>
 
     <h2>10. Trasferimenti Extra-UE</h2>
