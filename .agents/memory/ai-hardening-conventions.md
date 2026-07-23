@@ -37,3 +37,6 @@ Convenzioni adottate per le funzioni AI (OpenAI) di FamilySync, da rispettare in
 - **Dedup risorse uniche** (es. meal plan settimanale): check di esistenza → 409 + catch race su unique con `isUniqueViolation()` (`server/lib/db-errors.ts`, SQLSTATE 23505).
 
 - **Test**: `npm run test:ai` (node:test via tsx). `ai-usage.test.ts` inietta uno store in-memory atomico via `__setAiUsageStoreForTest`/`__resetAiUsageStoreForTest` (interface `AiUsageStore`): verifica reserve/finalize, withAiUsage (malformato/timeout/provider→failed, ok→succeeded, limited/unavailable→OpenAI NON chiamato), concorrenza→no overshoot. `ai-usage-db.test.ts` è integration sul DB reale (skip se manca `DATABASE_URL`): N richieste concorrenti reserve, assert esatti `max` ok + righe DB; cleanup via cascade delete family+user. I middleware 403 (requireAiEnabled / requireFamilyMember) sono DB-coupled e verificati dal wiring delle rotte.
+
+## Chiave OpenAI (da lug 2026)
+- resolveOpenAiConfig() in server/lib/ai-errors.ts: preferisce OPENAI_API_KEY (account personale utente, endpoint ufficiale, mai il gateway Replit) con fallback AI_INTEGRATIONS_OPENAI_API_KEY+BASE_URL. Il republish serve per caricare il secret in prod.
