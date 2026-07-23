@@ -26,7 +26,7 @@ async function parseJsonOrThrow(res: Response, fallbackMsg: string): Promise<any
 }
 
 /** Scambia il codice di login monouso con i token di sessione. */
-async function completeOauth(loginCode: string): Promise<SocialSession> {
+export async function completeOauth(loginCode: string): Promise<SocialSession> {
   const url = new URL("/api/auth/oauth/complete", getApiUrl());
   const res = await fetch(url.toString(), {
     method: "POST",

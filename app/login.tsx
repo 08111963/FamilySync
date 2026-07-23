@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
-import { loginWithGoogle, loginWithApple, isAppleLoginAvailable } from '@/lib/social-login';
+import { loginWithGoogle, loginWithApple, isAppleLoginAvailable, completeOauth } from '@/lib/social-login';
 
 function validatePassword(pw: string): string | null {
   if (pw.length < 8) return 'La password deve avere almeno 8 caratteri';
@@ -21,7 +21,7 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { login, signup, applySession } = useAuth();
-  const { redirect } = useLocalSearchParams<{ redirect?: string }>();
+  const { redirect, loginCode } = useLocalSearchParams<{ redirect?: string; loginCode?: string }>();
 
   const [isSignup, setIsSignup] = useState(false);
   const [name, setName] = useState('');
@@ -38,6 +38,28 @@ export default function LoginScreen() {
   useEffect(() => {
     isAppleLoginAvailable().then(setAppleAvailable).catch(() => {});
   }, []);
+
+  // Sul web (soprattutto mobile) il ritorno da Google ricarica l'app:
+  // il codice di login arriva come parametro nell'URL e va completato qui.
+  const oauthHandled = useRef(false);
+  useEffect(() => {
+    if (!loginCode || oauthHandled.current) return;
+    oauthHandled.current = true;
+    setSocialSubmitting('google');
+    setError('');
+    completeOauth(loginCode)
+      .then(async (session) => {
+        await applySession(session.user, session.accessToken, session.refreshToken);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.replace((redirect as any) || '/');
+      })
+      .catch((err: any) => {
+        setError(err?.message || 'Accesso non riuscito. Riprova.');
+        // Pulisce il codice (monouso) dall'URL per evitare nuovi tentativi falliti.
+        router.replace('/login');
+      })
+      .finally(() => setSocialSubmitting(null));
+  }, [loginCode]);
 
   const handleSocialLogin = async (provider: 'google' | 'apple') => {
     if (isSubmitting || socialSubmitting) return;
