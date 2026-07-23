@@ -16,3 +16,7 @@ The backend (port 5000) serves a static Expo web export from `web-build/` alongs
 ## Icona PWA (manifest)
 - `expo export --platform web` NON genera un web manifest: icona installazione = `public/manifest.json` + icon-192/512 + `<link rel="manifest">` patchato in `web-build/index.html` (patch da rifare a ogni export, come lang=it).
 - Dopo la ripubblicazione l'utente deve rimuovere e ri-aggiungere l'app alla Home per aggiornare l'icona.
+
+## Patch centralizzata
+- `scripts/patch-web-build.sh <dir>` applica lang=it + link manifest PWA (idempotente); usarlo dopo OGNI export locale e già integrato nel build di deploy (.replit [deployment] via deployConfig).
+- Il build di publish RI-ESPORTA web-build da zero: patch manuali su web-build vengono perse se non sono nello script.
