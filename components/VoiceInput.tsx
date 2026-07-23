@@ -66,6 +66,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
   const pressedRef = useRef(false);
   const startingRef = useRef(false);
   const recordStartRef = useRef(0);
+  const justStoppedRef = useRef(false);
 
   const activeMic = useSyncExternalStore(subscribeMic, getActiveMic, getActiveMic);
   const lockedByOther = activeMic !== null && activeMic !== idRef.current;
@@ -89,7 +90,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const cancelRecording = async (showHint: boolean) => {
+  const cancelRecording = async () => {
     recordingRef.current = false;
     setRecording(false);
     try {
@@ -97,12 +98,6 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
     } catch {}
     await resetAudioMode();
     setActiveMic(null);
-    if (showHint) {
-      Alert.alert(
-        "Dettatura",
-        "Tieni premuto il microfono mentre parli, poi rilascia per trascrivere."
-      );
-    }
   };
 
   const startRecording = async () => {
@@ -129,10 +124,8 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
       // Se l'utente ha già rilasciato mentre stavamo avviando (es. durante la
-      // richiesta di permesso), annulla e mostra il suggerimento d'uso.
-      if (!pressedRef.current) {
-        await cancelRecording(true);
-      }
+      // richiesta di permesso del browser), NON annullare: restiamo in
+      // registrazione e il prossimo tocco fermerà e trascriverà (modalità toggle).
     } catch (err) {
       console.error("Errore avvio registrazione:", err);
       recordingRef.current = false;
@@ -203,10 +196,14 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
     if (Platform.OS !== "web" || !recording) return;
     const win = globalThis as any;
     if (!win?.addEventListener) return;
-    const onPointerUp = () => handlePressOut();
+    // Solo se la pressione è iniziata sul microfono: in modalità toggle un
+    // click altrove non deve fermare la registrazione.
+    const onPointerUp = () => {
+      if (pressedRef.current) handlePressOut();
+    };
     const onWindowBlur = () => {
       pressedRef.current = false;
-      if (recordingRef.current) cancelRecording(false);
+      if (recordingRef.current) cancelRecording();
     };
     win.addEventListener("pointerup", onPointerUp);
     win.addEventListener("blur", onWindowBlur);
@@ -219,24 +216,35 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
 
   const handlePressIn = () => {
     if (transcribing || lockedByOther || disabled) return;
-    pressedRef.current = true;
-    if (!recordingRef.current && !startingRef.current) {
-      startRecording();
+    if (startingRef.current) return;
+    if (recordingRef.current) {
+      // Modalità toggle: un nuovo tocco mentre registra ferma e trascrive
+      justStoppedRef.current = true;
+      stopAndTranscribe();
+      return;
     }
+    pressedRef.current = true;
+    startRecording();
   };
 
   const handlePressOut = () => {
     pressedRef.current = false;
-    // Se stiamo ancora avviando, sarà startRecording a gestire il rilascio
+    if (justStoppedRef.current) {
+      // Rilascio del tocco che ha appena fermato la registrazione: ignora
+      justStoppedRef.current = false;
+      return;
+    }
+    // Se stiamo ancora avviando (es. permesso in corso), non annullare:
+    // la registrazione resterà attiva in modalità toggle.
     if (startingRef.current) return;
     if (!recordingRef.current) return;
     const elapsed = Date.now() - recordStartRef.current;
     if (elapsed < 400) {
-      // Tocco troppo breve: annulla e spiega come si usa
-      cancelRecording(true);
-    } else {
-      stopAndTranscribe();
+      // Tocco breve: resta in registrazione (toggle). Il prossimo tocco
+      // fermerà e trascriverà.
+      return;
     }
+    stopAndTranscribe();
   };
 
   if (transcribing) {
@@ -251,8 +259,10 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled }: Voi
       onPressOut={handlePressOut}
       disabled={isDisabled}
       hitSlop={8}
-      style={styles.button}
-      accessibilityLabel={recording ? "Rilascia per trascrivere" : "Tieni premuto e parla"}
+      style={[styles.button, webHoldStyle]}
+      accessibilityLabel={
+        recording ? "Rilascia o tocca per trascrivere" : "Tieni premuto e parla, o tocca per avviare"
+      }
       testID="voice-input-button"
     >
       <Ionicons
@@ -362,6 +372,18 @@ export function SpeakButton({ text, size = 22, color }: SpeakButtonProps) {
     </Pressable>
   );
 }
+
+// Web/touch: senza questi stili il browser interpreta la pressione prolungata
+// come scroll o selezione testo e annulla il tocco ("tocco troppo breve").
+const webHoldStyle =
+  Platform.OS === "web"
+    ? ({
+        touchAction: "none",
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
+      } as any)
+    : null;
 
 const styles = StyleSheet.create({
   button: {
