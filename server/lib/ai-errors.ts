@@ -43,13 +43,26 @@ export function isAiError(err: unknown): err is AiError {
 }
 
 /**
- * Verifica che la chiave OpenAI sia configurata. Non logga mai il valore.
- * In produzione fa fail-fast con AI_NOT_CONFIGURED.
+ * Risolve la chiave OpenAI da usare: preferisce OPENAI_API_KEY (account
+ * personale) e ricade sull'integrazione Replit (AI_INTEGRATIONS_*).
+ * Ritorna anche il baseURL da usare (solo per l'integrazione Replit).
  */
+export function resolveOpenAiConfig(): { apiKey: string | undefined; baseURL: string | undefined } {
+  const personalKey = process.env.OPENAI_API_KEY?.trim();
+  if (personalKey) {
+    // Chiave personale: sempre endpoint ufficiale OpenAI, mai il gateway Replit.
+    return { apiKey: personalKey, baseURL: undefined };
+  }
+  return {
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY?.trim() || undefined,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL?.trim() || undefined,
+  };
+}
+
 export function assertAiConfigured(): void {
-  const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  if (!key || key.trim().length === 0) {
-    throw new AiError("AI_NOT_CONFIGURED", "AI_INTEGRATIONS_OPENAI_API_KEY non configurata");
+  const { apiKey } = resolveOpenAiConfig();
+  if (!apiKey) {
+    throw new AiError("AI_NOT_CONFIGURED", "Nessuna chiave OpenAI configurata (OPENAI_API_KEY o AI_INTEGRATIONS_OPENAI_API_KEY)");
   }
 }
 

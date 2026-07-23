@@ -1,7 +1,7 @@
 import OpenAI, { toFile } from 'openai';
 import { z } from 'zod';
 import { normalizeItemName } from './normalize';
-import { AiError, assertAiConfigured, mapOpenAiError } from './ai-errors';
+import { AiError, assertAiConfigured, mapOpenAiError, resolveOpenAiConfig } from './ai-errors';
 
 // Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
 // SDK lancia se la chiave manca, e ciò impedirebbe l'avvio del server.
@@ -12,12 +12,12 @@ let openaiClient: OpenAI | null = null;
 function getOpenAiClient(): OpenAI {
   assertAiConfigured();
   if (!openaiClient) {
+    const { apiKey, baseURL } = resolveOpenAiConfig();
     openaiClient = new OpenAI({
-      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-      // baseURL opzionale: impostato solo se realmente configurato
-      ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL
-        ? { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }
-        : {}),
+      apiKey,
+      // baseURL solo per l'integrazione Replit; con chiave personale si usa
+      // l'endpoint ufficiale OpenAI.
+      ...(baseURL ? { baseURL } : {}),
       timeout: 60_000,
       maxRetries: 1,
     });
