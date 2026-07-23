@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -165,9 +166,11 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.logoContainer}>
-            <View style={[styles.logoCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.3)' }]}>
-              <Ionicons name="people" size={48} color="#fff" />
-            </View>
+            <Image
+              source={require('@/assets/images/icon.png')}
+              style={styles.logoImage}
+              contentFit="cover"
+            />
             <Text style={styles.appName}>FamilySync</Text>
             <Text style={styles.tagline}>La tua famiglia, finalmente sincronizzata</Text>
           </View>
@@ -401,12 +404,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 32,
   },
-  logoCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
+  logoImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 24,
     marginBottom: 16,
   },
   appName: {
