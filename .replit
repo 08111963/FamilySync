@@ -7,7 +7,7 @@ packages = ["jq", "imagemagick", "chromium", "glib", "nss", "nspr", "at-spi2-atk
 
 [deployment]
 deploymentTarget = "autoscale"
-build = ["sh", "-c", "EXPO_PUBLIC_DOMAIN=familysync.eu npx expo export --platform web --output-dir web-build && npm run server:build"]
+build = ["sh", "-c", "EXPO_PUBLIC_DOMAIN=familysync.eu npx expo export --platform web --output-dir web-build && sed -i 's/<html lang=\"en\"/<html lang=\"it\"/' web-build/index.html && npm run server:build"]
 run = ["npm", "run", "server:prod"]
 
 [[ports]]
