@@ -11,6 +11,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
+import { WebPushBanner } from "@/components/WebPushBanner";
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -152,6 +153,8 @@ export default function HomeScreen() {
           {data.members.length} membr{data.members.length !== 1 ? "i" : "o"}
         </Text>
       </View>
+
+      {Platform.OS === "web" && <WebPushBanner />}
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
