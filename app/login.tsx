@@ -31,6 +31,9 @@ export default function LoginScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [ageBand, setAgeBand] = useState<'under14' | '14_17' | 'adult' | null>(null);
+  // Consenso AI: MAI preselezionato (opt-in esplicito, GDPR).
+  const [aiConsent, setAiConsent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [socialSubmitting, setSocialSubmitting] = useState<'google' | 'apple' | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
@@ -104,6 +107,14 @@ export default function LoginScreen() {
         setError(pwError);
         return;
       }
+      if (!ageBand) {
+        setError('Indica la tua fascia di età');
+        return;
+      }
+      if (ageBand === 'under14') {
+        setError('Per creare un account da solo/a devi avere almeno 14 anni. Chiedi a un genitore di creare il tuo profilo nella famiglia.');
+        return;
+      }
       if (!acceptedTerms) {
         setError('Devi accettare Privacy Policy e Termini d\'Uso');
         return;
@@ -113,7 +124,7 @@ export default function LoginScreen() {
     setIsSubmitting(true);
     try {
       if (isSignup) {
-        await signup(email.trim(), password, name.trim(), acceptedTerms);
+        await signup(email.trim(), password, name.trim(), acceptedTerms, ageBand === 'under14' ? undefined : (ageBand ?? undefined), aiConsent);
       } else {
         await login(email.trim(), password);
       }
@@ -148,6 +159,8 @@ export default function LoginScreen() {
     setPassword('');
     setConfirmPassword('');
     setAcceptedTerms(false);
+    setAgeBand(null);
+    setAiConsent(false);
   };
 
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
@@ -265,6 +278,46 @@ export default function LoginScreen() {
             )}
 
             {isSignup && (
+              <View style={styles.ageSection}>
+                <Text style={[styles.ageLabel, { color: colors.textSecondary }]}>La tua età</Text>
+                <View style={styles.ageRow}>
+                  {([
+                    { value: 'under14' as const, label: 'Meno di 14' },
+                    { value: '14_17' as const, label: '14-17 anni' },
+                    { value: 'adult' as const, label: '18 o più' },
+                  ]).map((opt) => (
+                    <Pressable
+                      key={opt.value}
+                      style={[
+                        styles.ageOption,
+                        { borderColor: colors.border },
+                        ageBand === opt.value && styles.ageOptionSelected,
+                      ]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setAgeBand(opt.value);
+                        setError('');
+                      }}
+                      testID={`age-option-${opt.value}`}
+                    >
+                      <Text style={[
+                        styles.ageOptionText,
+                        { color: ageBand === opt.value ? '#fff' : colors.textSecondary },
+                      ]}>
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {ageBand === 'under14' && (
+                  <Text style={styles.ageWarning}>
+                    Per creare un account da solo/a devi avere almeno 14 anni. Chiedi a un genitore o tutore di creare il tuo profilo all'interno della famiglia.
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {isSignup && (
               <Pressable
                 style={styles.termsRow}
                 onPress={() => {
@@ -297,6 +350,30 @@ export default function LoginScreen() {
                   >
                     Termini d'Uso
                   </Text>
+                </Text>
+              </Pressable>
+            )}
+
+            {isSignup && ageBand !== 'under14' && (
+              <Pressable
+                style={styles.termsRow}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setAiConsent(!aiConsent);
+                }}
+                testID="ai-consent-checkbox"
+              >
+                <View style={[
+                  styles.checkbox,
+                  { borderColor: colors.border },
+                  aiConsent && styles.checkboxChecked,
+                ]}>
+                  {aiConsent && (
+                    <Ionicons name="checkmark" size={14} color="#fff" />
+                  )}
+                </View>
+                <Text style={[styles.termsText, { color: colors.textSecondary }]}>
+                  (Facoltativo) Attivo le funzioni di intelligenza artificiale: alcuni dati minimizzati verranno inviati al fornitore AI (OpenAI) per generare i suggerimenti. Posso cambiare idea in qualsiasi momento dalle impostazioni.
                 </Text>
               </Pressable>
             )}
@@ -555,6 +632,42 @@ const styles = StyleSheet.create({
   },
   toggleTextBold: {
     fontFamily: 'Inter_600SemiBold',
+  },
+  ageSection: {
+    marginBottom: 12,
+    marginTop: 2,
+  },
+  ageLabel: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    marginBottom: 8,
+  },
+  ageRow: {
+    flexDirection: 'row' as const,
+    gap: 8,
+  },
+  ageOption: {
+    flex: 1,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  ageOptionSelected: {
+    backgroundColor: '#FF6B6B',
+    borderColor: '#FF6B6B',
+  },
+  ageOptionText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  ageWarning: {
+    marginTop: 8,
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    color: '#E74C3C',
+    lineHeight: 18,
   },
   termsRow: {
     flexDirection: 'row' as const,

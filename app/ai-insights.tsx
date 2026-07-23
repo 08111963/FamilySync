@@ -11,6 +11,7 @@ import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
+import { AiBadge } from "@/components/AiBadge";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface Insight {
@@ -257,6 +258,7 @@ export default function AIInsightsScreen() {
           <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
         </Pressable>
       </View>
+      <AiBadge style={{ marginTop: 8 }} />
     </Card>
   ), [colors]);
 

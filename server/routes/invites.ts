@@ -12,6 +12,7 @@ import { hashInviteToken } from '../lib/invite-token';
 import { isFamilyMemberLimitReached, isFamilyMemberLimitReachedTx, FREE_MAX_FAMILY_MEMBERS } from '../lib/entitlements';
 import { broadcastToFamily } from '../lib/websocket';
 import { logger } from '../lib/logger';
+import { recordConsent } from '../lib/consents';
 
 const router = Router();
 
@@ -161,6 +162,8 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
           name,
           emailVerified: true,
           termsAcceptedAt: new Date(),
+          // Consenso AI opt-in: mai attivo di default per i nuovi account.
+          aiFeaturesEnabled: false,
         }).returning();
 
         const [member] = await tx.insert(familyMembers).values({
@@ -180,6 +183,10 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
       });
       createdUser = result.user;
       createdMember = result.member;
+      // Registro consensi (fail-safe, fuori transazione): Termini accettati
+      // in registrazione via invito; AI opt-in non espresso => disattivo.
+      await recordConsent(createdUser.id, "terms", true);
+      await recordConsent(createdUser.id, "ai_features", false);
     } catch (txError: any) {
       if (txError?.message === 'MEMBER_LIMIT_REACHED') {
         return res.status(403).json({

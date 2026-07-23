@@ -142,6 +142,8 @@ function RootLayoutNav() {
       <Stack.Screen name="join-link/[code]" options={{ headerShown: false }} />
       <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
       <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
+      <Stack.Screen name="legal/minors" options={{ headerShown: false }} />
+      <Stack.Screen name="privacy-center" options={{ headerShown: false }} />
       <Stack.Screen name="help/user-guide" options={{ headerShown: false }} />
       <Stack.Screen name="admin/test-analytics" options={{ headerShown: false }} />
     </Stack>

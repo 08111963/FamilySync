@@ -48,7 +48,11 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   emailVerified: boolean("email_verified").default(false),
   termsAcceptedAt: timestamp("terms_accepted_at"),
-  aiFeaturesEnabled: boolean("ai_features_enabled").default(true).notNull(),
+  aiFeaturesEnabled: boolean("ai_features_enabled").default(false).notNull(),
+  // Fascia d'età dichiarata in registrazione: 'under14' | '14_17' | 'adult'.
+  // NULL per gli account creati prima dell'introduzione (trattati come adulti,
+  // vedi Privacy Policy). Nessuna data di nascita completa: minimizzazione.
+  ageBand: varchar("age_band", { length: 10 }),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -641,6 +645,28 @@ export const testAnalyticsEvents = pgTable("test_analytics_events", {
 ]);
 
 export type TestAnalyticsEvent = typeof testAnalyticsEvents.$inferSelect;
+
+// CONSENT RECORDS — registro append-only dei consensi/accettazioni (GDPR).
+// Una riga per ogni variazione: grant (granted=true, grantedAt valorizzato)
+// o revoca (granted=false, revokedAt valorizzato). Non si aggiorna mai una
+// riga esistente: la storia completa resta consultabile.
+export const consentTypeEnum = pgEnum("consent_type", ["terms", "ai_features"]);
+
+export const consentRecords = pgTable("consent_records", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  consentType: consentTypeEnum("consent_type").notNull(),
+  granted: boolean("granted").notNull(),
+  policyVersion: varchar("policy_version", { length: 20 }).notNull(),
+  grantedAt: timestamp("granted_at"),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("consent_records_user_idx").on(table.userId, table.consentType, table.createdAt),
+]);
+
+export type ConsentRecord = typeof consentRecords.$inferSelect;
 
 // Insert schemas for validation
 export const insertUserSchema = createInsertSchema(users).pick({

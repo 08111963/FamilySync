@@ -3,12 +3,13 @@ import { getParam, getQuery } from '../lib/http-params';
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { db } from "../db";
-import { reports, blocks, users, familyMembers, calendarEvents, shoppingItems, shoppingLists, chores } from "../../shared/schema";
+import { reports, blocks, users, familyMembers, calendarEvents, shoppingItems, shoppingLists, chores, consentRecords } from "../../shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { authenticate } from "../middleware/auth";
 import { requireFamilyAdmin } from "../middleware/family";
 import { logger } from "../lib/logger";
 import { invalidateBlockCache } from "../lib/websocket";
+import { recordConsent } from "../lib/consents";
 
 const router = Router();
 
@@ -286,19 +287,50 @@ router.patch("/preferences", authenticate, async (req: Request, res: Response) =
       });
     }
 
-    const [updated] = await db
-      .update(users)
-      .set({ aiFeaturesEnabled, updatedAt: new Date() })
-      .where(eq(users.id, req.user!.userId))
-      .returning({
-        id: users.id,
-        aiFeaturesEnabled: users.aiFeaturesEnabled,
-      });
+    // Transazione: il cambio di consenso e la sua registrazione (GDPR art. 7)
+    // devono riuscire insieme — se il registro non scrive, il toggle viene annullato.
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(users)
+        .set({ aiFeaturesEnabled, updatedAt: new Date() })
+        .where(eq(users.id, req.user!.userId))
+        .returning({
+          id: users.id,
+          aiFeaturesEnabled: users.aiFeaturesEnabled,
+        });
+      if (row) {
+        await recordConsent(req.user!.userId, "ai_features", aiFeaturesEnabled, tx, { strict: true });
+      }
+      return row;
+    });
 
     res.json(updated);
   } catch (error) {
     logger.error("Update preferences error", { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'aggiornamento preferenze" } });
+  }
+});
+
+// Registro consensi (GDPR): l'utente può consultare lo storico dei propri consensi.
+router.get("/consents", authenticate, async (req: Request, res: Response) => {
+  try {
+    const records = await db
+      .select({
+        id: consentRecords.id,
+        consentType: consentRecords.consentType,
+        granted: consentRecords.granted,
+        policyVersion: consentRecords.policyVersion,
+        createdAt: consentRecords.createdAt,
+      })
+      .from(consentRecords)
+      .where(eq(consentRecords.userId, req.user!.userId))
+      .orderBy(desc(consentRecords.createdAt))
+      .limit(50);
+
+    res.json(records);
+  } catch (error) {
+    logger.error("Get consents error", { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero del registro consensi" } });
   }
 });
 
@@ -310,7 +342,8 @@ router.get("/preferences", authenticate, async (req: Request, res: Response) => 
       .where(eq(users.id, req.user!.userId))
       .limit(1);
 
-    res.json({ aiFeaturesEnabled: user?.aiFeaturesEnabled ?? true });
+    // Fail-closed: se l'utente non viene trovato, l'AI risulta disattiva (opt-in).
+    res.json({ aiFeaturesEnabled: user?.aiFeaturesEnabled ?? false });
   } catch (error) {
     logger.error("Get preferences error", { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero preferenze" } });

@@ -13,7 +13,15 @@ import { lt } from 'drizzle-orm';
  * - Retention: massimo 30 giorni (pulizia automatica opportunistica).
  */
 
-export const RETENTION_DAYS = 30;
+// Retention configurabile via env (TEST_ANALYTICS_RETENTION_DAYS), senza
+// cambiare codice. Default e tetto massimo: 30 giorni, come dichiarato
+// nella Privacy Policy v2.1 (il codice non deve mai superare la policy).
+function resolveRetentionDays(): number {
+  const raw = Number(process.env.TEST_ANALYTICS_RETENTION_DAYS);
+  if (Number.isFinite(raw) && raw >= 1 && raw <= 30) return Math.floor(raw);
+  return 30;
+}
+export const RETENTION_DAYS = resolveRetentionDays();
 
 // Eventi tecnici ammessi: tutto il resto viene rifiutato.
 export const ALLOWED_EVENTS = new Set([

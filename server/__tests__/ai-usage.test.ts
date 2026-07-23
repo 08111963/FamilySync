@@ -250,7 +250,9 @@ describe("withAiUsage", () => {
     __setAiUsageStoreForTest(spyStore);
 
     const saved = process.env[AI_KEY_ENV];
+    const savedPersonal = process.env.OPENAI_API_KEY;
     delete process.env[AI_KEY_ENV];
+    delete process.env.OPENAI_API_KEY;
     try {
       await assert.rejects(
         withAiUsage({ userId: "u1", familyId: "fam-1", feature: "insights" }, async () => {
@@ -265,6 +267,8 @@ describe("withAiUsage", () => {
     } finally {
       if (saved === undefined) delete process.env[AI_KEY_ENV];
       else process.env[AI_KEY_ENV] = saved;
+      if (savedPersonal === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = savedPersonal;
     }
   });
 

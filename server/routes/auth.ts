@@ -16,6 +16,7 @@ import { config } from '../lib/config';
 import { generateResetToken, hashResetToken } from '../lib/reset-token';
 import { deleteUserAccount } from '../lib/account-deletion';
 import { activatePendingTrialsForUser } from '../lib/entitlements';
+import { recordConsent } from '../lib/consents';
 import {
   isGoogleLoginConfigured,
   isAllowedReturnUrl,
@@ -68,7 +69,14 @@ const signupSchema = z.object({
   email: emailSchema,
   password: strongPasswordSchema,
   name: z.string().min(1, "Il nome è obbligatorio").max(100),
-  acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare Privacy Policy e Termini d'Uso" }) }),
+  acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare i Termini d'Uso" }) }),
+  // Fascia d'età dichiarata (minimizzazione: niente data di nascita completa).
+  // 'under14' viene rifiutata: sotto i 14 anni il profilo deve essere creato
+  // e gestito da un genitore/tutore (vedi Privacy Policy §minori).
+  // Opzionale per retrocompatibilità con client vecchi (trattata come 'adult').
+  ageBand: z.enum(["under14", "14_17", "adult"]).optional(),
+  // Consenso AI facoltativo e MAI preselezionato lato client.
+  aiConsent: z.boolean().optional(),
 });
 
 const loginSchema = z.object({
@@ -105,7 +113,16 @@ router.post('/signup', async (req: Request, res: Response) => {
       });
     }
 
-    const { email, password, name } = parsed.data;
+    const { email, password, name, ageBand, aiConsent } = parsed.data;
+
+    if (ageBand === "under14") {
+      return res.status(403).json({
+        error: {
+          code: "UNDER_AGE",
+          message: "Sotto i 14 anni non è possibile creare un account autonomamente: chiedi a un genitore o tutore di creare e gestire il profilo per te.",
+        },
+      });
+    }
 
     const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
     if (existing.length > 0) {
@@ -120,7 +137,15 @@ router.post('/signup', async (req: Request, res: Response) => {
       name,
       emailVerified: false,
       termsAcceptedAt: new Date(),
+      ageBand: ageBand ?? null,
+      // Consenso AI esplicito e facoltativo: se non espresso resta disattivo
+      // (opt-in, mai preselezionato). Riattivabile dalle impostazioni.
+      aiFeaturesEnabled: aiConsent === true,
     }).returning();
+
+    // Registro consensi (append-only): versione Termini accettata + scelta AI.
+    await recordConsent(newUser.id, "terms", true);
+    await recordConsent(newUser.id, "ai_features", aiConsent === true);
     
     const verificationToken = uuidv4();
     const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
@@ -581,7 +606,12 @@ async function upsertSocialUser(profile: OauthProfile, provider: 'google' | 'app
     name: profile.name || profile.email.split('@')[0],
     emailVerified: true,
     termsAcceptedAt: new Date(),
+    // Consenso AI opt-in: mai attivo di default per i nuovi account.
+    // L'utente può attivarlo dalle impostazioni (Privacy Center).
+    aiFeaturesEnabled: false,
   }).returning();
+  await recordConsent(created.id, "terms", true);
+  await recordConsent(created.id, "ai_features", false);
   return created;
 }
 

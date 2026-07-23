@@ -24,6 +24,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Card } from "@/components/Card";
 import { VoiceInput } from "@/components/VoiceInput";
 import { aiErrorMessage } from "@/lib/ai-error-message";
+import { AiBadge } from "@/components/AiBadge";
 
 interface Expense {
   id: string;
@@ -583,7 +584,9 @@ export default function BudgetScreen() {
               {insightsMessage ? (
                 <Text style={[styles.aiEmptyText, { color: colors.textSecondary }]}>{insightsMessage}</Text>
               ) : insights && insights.length > 0 ? (
-                insights.map((ins, i) => {
+                <>
+                <AiBadge style={{ marginBottom: 8 }} />
+                {insights.map((ins, i) => {
                   const meta = INSIGHT_META[ins.type] || INSIGHT_META.suggestion;
                   return (
                     <View key={i} style={[styles.insightRow, { borderColor: colors.border }]}>
@@ -594,7 +597,8 @@ export default function BudgetScreen() {
                       </View>
                     </View>
                   );
-                })
+                })}
+                </>
               ) : (
                 <Text style={[styles.aiEmptyText, { color: colors.textSecondary }]}>
                   L'AI analizza le abitudini di spesa del mese e suggerisce dove risparmiare.

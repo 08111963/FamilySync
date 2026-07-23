@@ -1,0 +1,685 @@
+Devi eseguire un intervento completo di revisione e adeguamento della Privacy Policy di FamilySync, verificando contemporaneamente che quanto dichiarato nel documento corrisponda al comportamento reale dell’app, del backend, del database e dei servizi esterni.
+
+## OBIETTIVO
+
+Aggiornare la Privacy Policy di FamilySync e implementare gli eventuali adeguamenti tecnici necessari affinché:
+
+1. la policy descriva fedelmente il funzionamento reale dell’app;
+2. non siano presenti dichiarazioni assolute non verificabili;
+3. siano trattati correttamente GDPR, minori, dati familiari, AI, analytics, fornitori, trasferimenti extra-UE, conservazione e cancellazione;
+4. la stessa versione della policy sia visibile e coerente su web app, app mobile e documentazione del progetto;
+5. non vengano introdotti servizi a pagamento, nuovi fornitori o modifiche non necessarie.
+
+Usa come documento di partenza:
+
+`FamilySync_Privacy_Policy_2026.docx`
+
+La nuova versione dovrà essere indicata come **Versione 2.1**, con la data effettiva di completamento del lavoro.
+
+## VINCOLO SUL TITOLARE DEL TRATTAMENTO
+
+Per il momento NON sostituire il nome del Titolare con una persona fisica, società, indirizzo o partita IVA.
+
+Mantenere esattamente:
+
+**Il Titolare del trattamento dei dati personali è FamilySync.**
+
+Mantenere inoltre:
+
+* email: `assistenza@familysync.it`
+* sito: `https://familysync.eu`
+
+Non aggiungere dati identificativi inventati o segnaposto visibili agli utenti.
+
+Inserire eventualmente nel codice o nella documentazione tecnica interna un TODO non visibile agli utenti:
+
+`TODO PRIVACY: sostituire in futuro FamilySync con l’identità giuridica completa del Titolare del trattamento.`
+
+## FASE 1 — VERIFICA PRELIMINARE OBBLIGATORIA
+
+Prima di modificare il testo, esamina il codice e la configurazione reale del progetto.
+
+Verifica almeno:
+
+* dati salvati nel database;
+* dati contenuti nelle tabelle utenti, famiglie, inviti, calendario, chat, faccende, liste, bollette, ricevute, pagamenti manuali, notifiche e abbonamenti;
+* dati inviati alle API AI;
+* contenuti inviati a OpenAI per ricette, meal planner, suggerimenti, chat AI, trascrizione vocale, moderazione o altre funzioni;
+* eventuali log, analytics, eventi di test, crash reporting e indirizzi IP;
+* provider realmente integrati;
+* localizzazione dei dati e impostazioni regionali disponibili;
+* modalità di cancellazione dell’account;
+* gestione dei contenuti condivisi dopo la cancellazione;
+* eventuali backup;
+* token di sessione, verifica email, reset password, inviti, media token e push token;
+* acquisti in-app e dati ottenuti da RevenueCat, Apple e Google;
+* login Google e Apple;
+* strumenti di moderazione o sicurezza;
+* dati raccolti da web app ed Expo mobile.
+
+Non limitarti a leggere nomi di file o commenti: verifica i flussi effettivi, gli endpoint, i payload e le chiamate ai provider.
+
+Non modificare la policy sulla base di funzioni solo pianificate ma non ancora operative.
+
+Quando un’informazione non può essere verificata nel codice o nella configurazione:
+
+* non inventarla;
+* non presentarla come certa;
+* usa una formulazione prudente;
+* segnalala nel report finale come elemento da verificare manualmente.
+
+## FASE 2 — CORREZIONI DELLA PRIVACY POLICY
+
+### 1. Dati raccolti
+
+Aggiorna l’elenco delle categorie di dati sulla base del database e del codice reali.
+
+Distingui chiaramente:
+
+* dati forniti direttamente dall’utente;
+* dati inseriti da altri membri della famiglia;
+* dati generati durante l’utilizzo dell’app;
+* dati tecnici e di sicurezza;
+* dati ricevuti da provider esterni;
+* dati relativi agli abbonamenti;
+* dati eventualmente inviati alle funzioni AI;
+* dati raccolti dagli analytics interni di test.
+
+Correggi la descrizione delle password in:
+
+**“Password protetta mediante una funzione di hashing robusta e mai conservata in chiaro.”**
+
+Non usare l’espressione “crittografata con hashing”.
+
+Non indicare necessariamente bcrypt nella policy pubblica, per evitare che il documento diventi inesatto in caso di futuro cambio dell’algoritmo.
+
+### 2. Dati inseriti da altri membri della famiglia
+
+Aggiungi una sezione autonoma denominata:
+
+**Dati inseriti da altri membri della famiglia**
+
+La sezione deve spiegare che un membro può inserire informazioni riferite ad altri componenti, ad esempio:
+
+* nome;
+* ruolo familiare;
+* email di invito;
+* eventi;
+* faccende assegnate;
+* responsabili di bollette;
+* ripartizioni;
+* messaggi e informazioni condivise.
+
+Specificare che:
+
+* tali dati possono non essere raccolti direttamente dall’interessato;
+* chi inserisce dati riferiti a un’altra persona deve essere autorizzato a farlo;
+* l’interessato può esercitare i propri diritti contattando FamilySync;
+* l’informativa è resa disponibile anche agli utenti invitati al momento dell’accesso o della registrazione.
+
+Verifica che il collegamento alla Privacy Policy sia effettivamente mostrato nel flusso di invito, registrazione e primo accesso.
+
+### 3. Finalità e basi giuridiche
+
+Crea una tabella chiara con almeno queste colonne:
+
+* trattamento;
+* finalità;
+* dati interessati;
+* base giuridica;
+* durata o criterio di conservazione.
+
+Verifica la base giuridica effettiva di ogni trattamento.
+
+Non usare il consenso come base generica per tutto.
+
+Per le funzioni AI:
+
+* mantenere il consenso solo se la funzione è realmente opzionale;
+* verificare che il rifiuto o la revoca non blocchino le funzioni essenziali;
+* verificare che esista un controllo tecnico per attivare e disattivare l’AI;
+* registrare data, versione della policy e stato del consenso;
+* interrompere gli invii ai provider AI dopo la revoca;
+* consentire all’utente di modificare la scelta dalle impostazioni.
+
+Se il consenso AI non è ancora tecnicamente registrato, implementare una tabella o struttura equivalente, con migrazione sicura e retrocompatibile.
+
+Campi minimi consigliati:
+
+* `userId`
+* `consentType`
+* `granted`
+* `policyVersion`
+* `grantedAt`
+* `revokedAt`
+* `updatedAt`
+
+Non utilizzare una checkbox preselezionata.
+
+### 4. Funzioni AI
+
+Riscrivi la sezione AI sulla base dei dati realmente inviati.
+
+Non mantenere frasi come:
+
+* “non vengono mai inviati contenuti delle chat”;
+* “non vengono mai inviati allegati”;
+* “non vengono mai inviati dati personali”;
+
+a meno che siano dimostrate dal codice per tutte le funzioni AI.
+
+Inserire invece:
+
+* quali funzionalità utilizzano AI;
+* quale provider viene usato;
+* quali categorie di dati possono essere inviate;
+* per quale finalità;
+* quali dati vengono esclusi tecnicamente;
+* se i dati sono minimizzati o pseudonimizzati;
+* il periodo di conservazione dichiarato dal provider, se applicabile;
+* la possibilità di revocare il consenso;
+* il fatto che i risultati possono essere inesatti;
+* il fatto che le decisioni finali spettano all’utente;
+* l’assenza di decisioni esclusivamente automatizzate con effetti giuridici o analogamente significativi, se confermata dal codice.
+
+Verifica specificamente:
+
+* ricette AI;
+* meal planner;
+* suggerimenti intelligenti;
+* trascrizione vocale;
+* chat o assistente AI;
+* moderazione automatica;
+* analisi di immagini o altri allegati;
+* eventuali prompt contenenti dati familiari.
+
+Non affermare che i dati API non vengono usati per addestramento senza precisare che ciò vale secondo le condizioni e la configurazione applicabile al servizio API utilizzato.
+
+Non dichiarare una configurazione Zero Data Retention se non è realmente attiva e documentata.
+
+### 5. Trasparenza AI Act
+
+Correggi il riferimento all’articolo 50 dell’AI Act evitando di affermare che ogni singolo suggerimento debba obbligatoriamente essere etichettato nello stesso modo.
+
+Utilizza una formulazione prudente simile a questa:
+
+**“Quando una funzionalità prevede un’interazione diretta con un sistema di intelligenza artificiale, l’utente viene informato in modo chiaro, al più tardi al momento della prima interazione. I contenuti o suggerimenti generati o assistiti dall’intelligenza artificiale sono identificati all’interno dell’app quando necessario o opportuno per garantire trasparenza.”**
+
+Verifica che nell’interfaccia venga effettivamente mostrata un’indicazione come:
+
+* “Generato con intelligenza artificiale”;
+* “Suggerimento AI”;
+* “Stai interagendo con un sistema di intelligenza artificiale”.
+
+L’avviso deve essere visibile prima o al momento della prima interazione AI.
+
+Non presentare l’AI come una persona o un professionista umano.
+
+### 6. Minori
+
+Rivedi completamente la sezione dedicata ai minori.
+
+Mantenere la soglia italiana dei 14 anni, ma specificare che:
+
+* un minore di 14 anni non può creare autonomamente un account o una famiglia;
+* il profilo del minore deve essere creato o gestito da un genitore o tutore;
+* l’utilizzo avviene sotto la responsabilità del genitore o tutore;
+* il genitore può gestire o chiedere la cancellazione dei dati del minore;
+* le funzioni AI non sono progettate per essere utilizzate autonomamente da minori di 14 anni;
+* l’app non raccoglie consapevolmente dati di minori senza il coinvolgimento del genitore o tutore.
+
+Verifica il comportamento reale dell’app.
+
+Se attualmente un minore può registrarsi autonomamente senza controlli:
+
+* non dichiarare che il controllo esiste;
+* implementare un meccanismo proporzionato;
+* almeno richiedere data o fascia di età, dichiarazione dell’utente adulto e gestione del profilo minore da parte dell’owner della famiglia;
+* evitare di raccogliere una data di nascita completa se non necessaria;
+* preferire una fascia come “meno di 14 anni / 14-17 anni / maggiorenne”, se sufficiente.
+
+Per i profili sotto i 14 anni, le funzioni AI devono essere disattivate per impostazione predefinita.
+
+Prepara anche una breve informativa semplificata e comprensibile per i minori, accessibile dall’app, senza sostituire la policy completa.
+
+### 7. Categorie particolari di dati
+
+Aggiungi una sezione sui campi liberi, chat, note, calendario, bollette e allegati.
+
+Spiegare che tali spazi potrebbero consentire agli utenti di inserire accidentalmente:
+
+* dati sanitari;
+* dati relativi a disabilità;
+* opinioni politiche;
+* convinzioni religiose;
+* informazioni sulla vita sessuale;
+* documenti di identità;
+* dati bancari;
+* altre informazioni particolarmente sensibili.
+
+Poiché queste informazioni non sono necessarie al normale funzionamento di FamilySync, inserisci un avviso chiaro:
+
+**“Non inserire dati sanitari, documenti di identità, credenziali, dati bancari o altre informazioni particolarmente sensibili se non strettamente necessario.”**
+
+Verifica se sia opportuno mostrare lo stesso avviso anche vicino ai campi allegato o nota.
+
+Non bloccare automaticamente contenuti legittimi senza una valutazione tecnica, ma evita che l’app incoraggi l’inserimento di dati sensibili.
+
+### 8. Analytics interni di test
+
+Aggiungi una sezione specifica sugli analytics temporanei di test già previsti per FamilySync.
+
+Descrivere esclusivamente il sistema realmente implementato.
+
+La sezione deve indicare:
+
+* che gli analytics sono utilizzati temporaneamente durante la fase di test;
+* quali eventi vengono raccolti;
+* se gli eventi sono associati all’utente, alla famiglia o a un identificatore tecnico;
+* che i dati sono visibili esclusivamente all’amministratore/proprietario autorizzato;
+* che non sono utilizzati per pubblicità, profilazione commerciale o vendita di dati;
+* la finalità di individuare errori, verificare il funzionamento e migliorare l’usabilità;
+* la base giuridica adottata;
+* il periodo di conservazione;
+* la procedura di eliminazione;
+* se vengono usati solo strumenti interni o anche fornitori esterni.
+
+Se gli analytics sono solo interni al database FamilySync, dichiararlo chiaramente.
+
+Non citare Google Analytics, Firebase Analytics, Sentry, PostHog o altri servizi se non sono realmente installati.
+
+Verifica che la dashboard analytics:
+
+* sia accessibile solo all’account amministratore autorizzato;
+* sia protetta lato backend e non soltanto nascosta nel frontend;
+* non esponga dati ad altri membri;
+* registri il minimo necessario;
+* non memorizzi il testo completo di chat, note, bollette o altri contenuti personali;
+* non raccolga password, token, allegati o contenuti AI completi;
+* consenta la cancellazione periodica degli eventi.
+
+Inserire una retention definita. Se non esiste ancora, applicare come impostazione iniziale prudenziale:
+
+**90 giorni per gli eventi analytics di test**, con eliminazione automatica o comando amministrativo verificabile.
+
+La retention deve essere facilmente modificabile tramite configurazione, senza cambiare codice.
+
+### 9. Fornitori e ruoli privacy
+
+Rivedi l’elenco dei fornitori sulla base delle integrazioni realmente attive.
+
+Per ciascun fornitore indica, quando verificabile:
+
+* nome;
+* servizio fornito;
+* categorie di dati;
+* finalità;
+* possibile ubicazione del trattamento;
+* ruolo privacy;
+* garanzia per eventuali trasferimenti extra-SEE;
+* collegamento alla relativa informativa o documentazione privacy.
+
+Controlla almeno:
+
+* Replit;
+* Neon;
+* Resend;
+* OpenAI;
+* RevenueCat;
+* Apple;
+* Google;
+* Expo;
+* eventuali provider di notifiche;
+* eventuali provider di storage;
+* eventuali servizi di moderazione;
+* eventuali provider non ancora elencati.
+
+Non affermare che tutti i fornitori agiscono necessariamente come responsabili del trattamento.
+
+Usa una formulazione simile:
+
+**“Quando un fornitore tratta dati personali per conto di FamilySync, il rapporto è disciplinato, ove richiesto, da un accordo ai sensi dell’articolo 28 GDPR. Alcuni soggetti, come gli store o i provider di identità, possono trattare determinati dati anche come titolari autonomi secondo le rispettive informative.”**
+
+Non dichiarare che un DPA è già in essere se non esiste una prova documentale o contrattuale.
+
+Prepara nella documentazione interna una tabella di controllo con:
+
+* provider;
+* funzione;
+* dati;
+* ruolo;
+* DPA verificato sì/no;
+* SCC o altro meccanismo;
+* privacy policy;
+* sub-responsabili;
+* azione richiesta.
+
+Questa tabella interna non deve necessariamente essere mostrata integralmente agli utenti.
+
+### 10. Trasferimenti extra-SEE
+
+Rendi la sezione più precisa.
+
+Indicare che alcuni fornitori possono trattare dati fuori dallo Spazio Economico Europeo e che, quando richiesto, possono essere utilizzati:
+
+* decisioni di adeguatezza;
+* Data Privacy Framework, se applicabile e verificato per il soggetto;
+* Clausole Contrattuali Standard;
+* misure supplementari;
+* altri meccanismi previsti dal GDPR.
+
+Non dichiarare che un meccanismo specifico è applicato da un fornitore senza averlo verificato.
+
+Aggiungi che l’utente può richiedere informazioni sulle garanzie applicate scrivendo a:
+
+`assistenza@familysync.it`
+
+### 11. Conservazione dei dati
+
+Sostituisci le formulazioni eccessivamente generiche con una tabella di retention.
+
+Definisci, in base al funzionamento reale, la conservazione di:
+
+* account;
+* profili familiari;
+* inviti;
+* calendario;
+* liste;
+* faccende;
+* chat;
+* allegati;
+* bollette;
+* ricevute;
+* pagamenti registrati manualmente;
+* token push;
+* refresh token;
+* sessioni;
+* token verifica email;
+* token reset password;
+* media token;
+* log di sicurezza;
+* analytics di test;
+* richieste di supporto;
+* registri del consenso;
+* dati di abbonamento;
+* prompt e output AI eventualmente salvati;
+* backup;
+* dati necessari per obblighi legali o contestazioni.
+
+Non usare “per il tempo necessario” senza specificare almeno il criterio.
+
+Per i backup, indicare:
+
+* se esistono;
+* durata massima;
+* quando i dati cancellati vengono eliminati anche dai backup;
+* che i backup non vengono utilizzati per ripristinare selettivamente account cancellati, salvo necessità di sicurezza o continuità operativa.
+
+Se il progetto non dispone di backup gestiti direttamente da FamilySync, descrivere con prudenza le funzionalità offerte dal provider, senza inventare tempi.
+
+### 12. Cancellazione dell’account
+
+Verifica il flusso reale di cancellazione.
+
+La policy deve distinguere tra:
+
+* eliminazione definitiva;
+* anonimizzazione irreversibile;
+* rimozione dei dati identificativi;
+* contenuti condivisi che restano visibili agli altri membri;
+* dati conservati per obblighi legali;
+* dati presenti temporaneamente nei backup;
+* gestione dell’abbonamento sullo store.
+
+Non usare contemporaneamente “eliminazione” e “anonimizzazione” come sinonimi.
+
+Se i contenuti condivisi restano visibili come “Utente eliminato”, chiarire:
+
+* quali contenuti restano;
+* perché restano;
+* quali dati identificativi vengono rimossi;
+* se l’utente può eliminarli prima di cancellare l’account.
+
+Verifica che la cancellazione account:
+
+* sia accessibile dall’app;
+* richieda una conferma adeguata;
+* non dipenda esclusivamente da un’email al supporto;
+* revochi sessioni e refresh token;
+* rimuova o renda inutilizzabili i push token;
+* interrompa i futuri trattamenti AI;
+* rimuova gli analytics identificativi quando previsto;
+* gestisca correttamente il caso dell’owner della famiglia;
+* non lasci record orfani o accessibili.
+
+Non modificare automaticamente o annullare abbonamenti Apple/Google se tecnicamente non consentito. Spiegare che devono essere gestiti dallo store.
+
+### 13. Diritti degli interessati
+
+Mantenere i diritti GDPR già presenti e aggiungere, dove opportuno:
+
+* diritto di ottenere informazioni sulle garanzie per i trasferimenti;
+* diritto di opporsi ai trattamenti fondati sul legittimo interesse;
+* diritto di revocare il consenso senza pregiudicare la liceità del trattamento precedente;
+* modalità di verifica dell’identità per evitare accessi non autorizzati;
+* possibilità di richiedere dati riferiti a un minore sotto responsabilità genitoriale.
+
+Mantenere il termine ordinario di risposta di un mese.
+
+Non promettere sempre l’accoglimento della richiesta: indicare che la richiesta sarà valutata secondo il GDPR.
+
+### 14. Data breach
+
+Mantenere il termine GDPR attualmente vigente di 72 ore.
+
+Non applicare anticipatamente eventuali modifiche proposte ma non entrate in vigore.
+
+Riscrivere la sezione chiarendo che:
+
+* la notifica al Garante avviene quando la violazione presenta un rischio per i diritti e le libertà delle persone;
+* la comunicazione all’interessato avviene quando il rischio è elevato;
+* la violazione viene documentata internamente anche quando non viene notificata, ove richiesto.
+
+Non dichiarare che qualsiasi incidente viene sempre notificato.
+
+### 15. Digital Omnibus
+
+Rimuovi dalla Privacy Policy pubblica il riferimento esteso al “Digital Omnibus” e alle possibili modifiche future del termine di notifica.
+
+Non è necessario spiegare agli utenti proposte normative non ancora in vigore.
+
+Può essere mantenuta una breve nota nella documentazione tecnica interna, senza presentarla come legge vigente.
+
+### 16. Cookie, local storage e tecnologie simili
+
+Verifica la web app e indica:
+
+* cookie strettamente necessari;
+* session cookie;
+* local storage;
+* token o identificatori salvati nel browser;
+* preferenze;
+* analytics;
+* notifiche push web;
+* eventuali strumenti di terze parti.
+
+Se vengono usati solo strumenti strettamente necessari, dichiararlo.
+
+Se esistono cookie o tracker non necessari:
+
+* predisporre una Cookie Policy;
+* predisporre un meccanismo di consenso preventivo;
+* bloccare i tracker fino al consenso;
+* consentire la revoca;
+* non usare dark pattern;
+* registrare la preferenza.
+
+Non aggiungere un banner cookie se tecnicamente non necessario.
+
+### 17. Sicurezza
+
+Mantieni la sezione sicurezza ad alto livello.
+
+Non pubblicare dettagli che possano facilitare attacchi.
+
+Descrivere in modo generale:
+
+* hashing delle password;
+* HTTPS/TLS;
+* autenticazione e scadenza token;
+* autorizzazioni lato server;
+* rate limiting;
+* validazione degli upload;
+* controllo degli accessi agli allegati;
+* logging di sicurezza;
+* misure di minimizzazione;
+* procedure di gestione degli incidenti.
+
+Verifica che tutte le affermazioni corrispondano al codice reale.
+
+Non affermare che i dati “sono crittografati a riposo” se non è stato verificato.
+
+## FASE 3 — INTEGRAZIONI NELL’APP
+
+### Privacy Center
+
+Predisponi o aggiorna una sezione “Privacy” nelle impostazioni dell’app, accessibile sia da web sia da mobile.
+
+Deve contenere almeno:
+
+* link alla Privacy Policy;
+* versione e data della policy;
+* gestione consenso AI;
+* informazioni sugli analytics di test;
+* richiesta esportazione dati;
+* richiesta cancellazione o eliminazione account;
+* contatto privacy;
+* eventuale informativa minori;
+* elenco sintetico dei principali fornitori.
+
+Non duplicare logica tra web e mobile se può essere condivisa.
+
+### Accettazione della policy
+
+Nel flusso di registrazione:
+
+* mostra link alla Privacy Policy e ai Termini d’uso;
+* non usare formule che trasformino la semplice presa visione della privacy policy in un consenso generale;
+* separa l’accettazione dei Termini dall’eventuale consenso AI;
+* registra la versione dei Termini accettata;
+* registra, se necessario, la versione della policy mostrata.
+
+La Privacy Policy è un’informativa e non deve essere presentata come un consenso obbligatorio a tutti i trattamenti.
+
+### Aggiornamenti della policy
+
+Prevedi un sistema semplice di versionamento.
+
+Se una modifica futura richiede un nuovo consenso, chiedilo solo per il trattamento interessato.
+
+Per modifiche puramente informative, mostra un avviso senza bloccare inutilmente l’utente.
+
+## FASE 4 — COERENZA DOCUMENTALE
+
+Aggiorna tutte le copie della Privacy Policy presenti nel progetto:
+
+* pagina web pubblica;
+* schermata mobile;
+* eventuale file HTML o Markdown;
+* documentazione;
+* seed o contenuti database;
+* testo incorporato nei bundle;
+* file Word di partenza, se tecnicamente possibile;
+* eventuale versione inglese.
+
+La versione italiana deve essere quella principale.
+
+Se esiste una versione inglese, deve essere una traduzione coerente della versione aggiornata, senza omissioni o aggiunte.
+
+Evita di mantenere più testi divergenti.
+
+Preferisci una singola fonte strutturata o condivisa, quando compatibile con l’architettura.
+
+Le pagine legali devono restare accessibili senza login, come già previsto per le route pubbliche legali.
+
+## FASE 5 — TEST OBBLIGATORI
+
+Esegui test automatici e manuali almeno sui seguenti casi:
+
+1. Privacy Policy accessibile senza autenticazione.
+2. Versione e data coerenti su web e mobile.
+3. Link privacy funzionante in registrazione e invito.
+4. Consenso AI non preselezionato.
+5. Revoca consenso AI effettiva.
+6. Nessuna chiamata AI dopo la revoca.
+7. Funzioni principali utilizzabili senza AI.
+8. AI disattivata per profili sotto i 14 anni.
+9. Analytics accessibili solo all’amministratore autorizzato.
+10. Endpoint analytics protetti lato server.
+11. Analytics senza contenuti sensibili o token.
+12. Cancellazione account con revoca delle sessioni.
+13. Eliminazione o anonimizzazione coerente con la policy.
+14. Gestione corretta dell’owner della famiglia.
+15. Allegati non accessibili dopo perdita dell’autorizzazione.
+16. Export dati limitato all’utente o alla famiglia autorizzata.
+17. Nessuna dichiarazione nella policy relativa a provider non presenti.
+18. Nessuna regressione nelle funzioni esistenti.
+19. TypeScript senza errori.
+20. Suite di test esistente completamente verde.
+
+Non modificare test esistenti solo per nascondere errori.
+
+## DELIVERABLE FINALI
+
+Al termine fornisci:
+
+1. codice aggiornato;
+2. migrazioni database eventualmente necessarie;
+3. Privacy Policy italiana Versione 2.1;
+4. eventuale versione inglese aggiornata;
+5. informativa semplificata per minori;
+6. tabella interna dei fornitori e dei DPA;
+7. tabella delle retention;
+8. elenco delle funzioni AI e dei dati realmente inviati;
+9. elenco degli analytics realmente raccolti;
+10. report dei test eseguiti;
+11. elenco delle modifiche effettuate;
+12. elenco separato delle informazioni che non è stato possibile verificare;
+13. ZIP finale leggero del progetto modificato, escludendo:
+
+* `node_modules`
+* build generate
+* cache
+* log
+* file temporanei
+* segreti
+* `.env`
+* credenziali
+* archivi ZIP precedenti.
+
+## REGOLE OPERATIVE
+
+* Non aggiungere nuovi provider.
+* Non installare iubenda o altri servizi esterni.
+* Non attivare pagamenti o OpenAI se non sono già configurati.
+* Non inserire chiavi API.
+* Non modificare prezzi o piani.
+* Non cambiare il Titolare del trattamento: deve restare “FamilySync”.
+* Non inventare DPA, SCC, certificazioni, localizzazioni o retention.
+* Non dichiarare funzioni di sicurezza non realmente presenti.
+* Non rimuovere funzioni esistenti per semplificare il lavoro.
+* Non limitarti a produrre un report: esegui le correzioni tecniche e documentali necessarie.
+* Evita cicli ripetitivi di analisi e verifiche già concluse.
+* Esegui un’unica verifica iniziale, implementa le modifiche e concludi con test e ZIP finale.
+* Mantieni compatibilità con web app ed Expo mobile.
+* Mantieni le route legali accessibili senza account verificato.
+* Conserva le misure di sicurezza già implementate su autenticazione, chat, blocchi utenti e allegati.
+* Prima di concludere, confronta ogni affermazione della nuova Privacy Policy con il codice effettivo.
+
+Nel report finale includi una matrice con tre colonne:
+
+| Dichiarazione nella policy | Evidenza nel codice/configurazione                  | Esito                                 |
+| -------------------------- | --------------------------------------------------- | ------------------------------------- |
+| Testo dichiarato           | File, endpoint, tabella o configurazione verificata | Confermato / corretto / da verificare |
+
+Non considerare il lavoro completato finché la policy e il comportamento reale dell’app non risultano coerenti.

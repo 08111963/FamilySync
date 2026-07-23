@@ -19,7 +19,7 @@ import { isPremium as isFamilyPremium } from "../lib/entitlements";
 export async function requireAiEnabled(req: Request, res: Response, next: NextFunction) {
   try {
     const [user] = await db
-      .select({ aiFeaturesEnabled: users.aiFeaturesEnabled })
+      .select({ aiFeaturesEnabled: users.aiFeaturesEnabled, ageBand: users.ageBand })
       .from(users)
       .where(eq(users.id, req.user!.userId))
       .limit(1);
@@ -29,6 +29,17 @@ export async function requireAiEnabled(req: Request, res: Response, next: NextFu
         error: {
           code: "AI_DISABLED",
           message: "Le funzionalità AI sono disabilitate. Attivale nelle impostazioni per continuare.",
+        },
+      });
+    }
+
+    // Le funzioni AI non sono progettate per l'uso autonomo da parte di
+    // minori di 14 anni: blocco lato server indipendente dal toggle.
+    if (user.ageBand === "under14") {
+      return res.status(403).json({
+        error: {
+          code: "AI_DISABLED_MINOR",
+          message: "Le funzionalità AI non sono disponibili per i profili sotto i 14 anni.",
         },
       });
     }

@@ -9,18 +9,26 @@ import {
 } from "../lib/ai-errors";
 
 const ORIGINAL_KEY = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+const ORIGINAL_PERSONAL_KEY = process.env.OPENAI_API_KEY;
 
 afterEach(() => {
   if (ORIGINAL_KEY === undefined) {
     delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
   } else {
     process.env.AI_INTEGRATIONS_OPENAI_API_KEY = ORIGINAL_KEY;
+  }
+  if (ORIGINAL_PERSONAL_KEY === undefined) {
+    delete process.env.OPENAI_API_KEY;
+  } else {
+    process.env.OPENAI_API_KEY = ORIGINAL_PERSONAL_KEY;
   }
 });
 
 describe("assertAiConfigured", () => {
   test("chiave mancante -> AiError AI_NOT_CONFIGURED (503)", () => {
     delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
     try {
       assertAiConfigured();
       assert.fail("doveva lanciare");
@@ -32,6 +40,7 @@ describe("assertAiConfigured", () => {
   });
 
   test("chiave vuota/spazi -> AI_NOT_CONFIGURED", () => {
+    delete process.env.OPENAI_API_KEY;
     process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "   ";
     assert.throws(() => assertAiConfigured(), (err: unknown) => isAiError(err) && err.code === "AI_NOT_CONFIGURED");
   });
@@ -43,6 +52,7 @@ describe("assertAiConfigured", () => {
 
   test("non logga mai il valore della chiave nel messaggio", () => {
     delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
     process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "sk-super-secret-value";
     // con chiave presente non lancia; ma verifichiamo che il messaggio interno
     // della classe non includa mai un valore di chiave.
@@ -113,6 +123,7 @@ describe("mapOpenAiError", () => {
 describe("openai client lazy (avvio senza chiave)", () => {
   test("importare ../lib/openai SENZA chiave non lancia (il server può partire)", async () => {
     delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
     // Il client OpenAI deve essere lazy: l'import del modulo non deve costruire
     // il client (il costruttore del SDK lancia se la chiave manca).
     await assert.doesNotReject(async () => {
