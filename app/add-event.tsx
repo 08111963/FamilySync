@@ -87,13 +87,14 @@ export default function AddEventScreen() {
     else Alert.alert("Errore", msg);
   };
 
-  const handleCompile = async () => {
-    if (!aiText.trim() || !currentFamily || isCompiling) return;
+  const handleCompile = async (textOverride?: string) => {
+    const inputText = (textOverride ?? aiText).trim();
+    if (!inputText || !currentFamily || isCompiling) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsCompiling(true);
     try {
       const res = await apiRequest("POST", `/api/ai/${currentFamily.id}/parse-event`, {
-        text: aiText.trim(),
+        text: inputText,
       });
       const parsed = await res.json();
       let filled = false;
@@ -195,9 +196,13 @@ export default function AddEventScreen() {
               <View style={styles.micWrap}>
                 <VoiceInput
                   familyId={currentFamily.id}
-                  onTranscribed={(text) =>
-                    setAiText((prev) => (prev ? `${prev} ${text}` : text))
-                  }
+                  onTranscribed={(text) => {
+                    // Come WhatsApp: al rilascio del microfono la compilazione
+                    // parte subito, senza dover premere "Compila".
+                    const combined = aiText ? `${aiText} ${text}` : text;
+                    setAiText(combined);
+                    handleCompile(combined);
+                  }}
                 />
               </View>
             ) : null}
@@ -207,7 +212,7 @@ export default function AddEventScreen() {
               Detta o scrivi tutto in una frase: titolo, luogo e orari verranno compilati qui sotto.
             </Text>
             <Pressable
-              onPress={handleCompile}
+              onPress={() => handleCompile()}
               disabled={!aiText.trim() || isCompiling}
               style={[
                 styles.compileButton,

@@ -72,13 +72,14 @@ export default function AddChoreScreen() {
     return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d;
   };
 
-  const handleCompile = async () => {
-    if (!aiText.trim() || !familyId || isCompiling) return;
+  const handleCompile = async (textOverride?: string) => {
+    const inputText = (textOverride ?? aiText).trim();
+    if (!inputText || !familyId || isCompiling) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsCompiling(true);
     try {
       const res = await apiRequest("POST", `/api/ai/${familyId}/parse-chore`, {
-        text: aiText.trim(),
+        text: inputText,
       });
       const parsed = await res.json();
       let filled = false;
@@ -190,9 +191,13 @@ export default function AddChoreScreen() {
               <View style={styles.micWrap}>
                 <VoiceInput
                   familyId={familyId}
-                  onTranscribed={(text) =>
-                    setAiText((prev) => (prev ? `${prev} ${text}` : text))
-                  }
+                  onTranscribed={(text) => {
+                    // Come WhatsApp: al rilascio del microfono la compilazione
+                    // parte subito, senza dover premere "Compila".
+                    const combined = aiText ? `${aiText} ${text}` : text;
+                    setAiText(combined);
+                    handleCompile(combined);
+                  }}
                 />
               </View>
             ) : null}
@@ -202,7 +207,7 @@ export default function AddChoreScreen() {
               Detta o scrivi tutto in una frase: titolo, punti, ricorrenza e assegnatario verranno compilati qui sotto.
             </Text>
             <Pressable
-              onPress={handleCompile}
+              onPress={() => handleCompile()}
               disabled={!aiText.trim() || isCompiling}
               style={[
                 styles.compileButton,
