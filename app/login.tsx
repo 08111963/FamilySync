@@ -169,7 +169,7 @@ export default function LoginScreen() {
               <Ionicons name="people" size={48} color="#fff" />
             </View>
             <Text style={styles.appName}>FamilySync</Text>
-            <Text style={styles.tagline}>Coordinamento familiare intelligente</Text>
+            <Text style={styles.tagline}>La tua famiglia, finalmente sincronizzata</Text>
           </View>
 
           <View style={[styles.formCard, { backgroundColor: isDark ? 'rgba(30,30,30,0.95)' : 'rgba(255,255,255,0.95)' }]}>
