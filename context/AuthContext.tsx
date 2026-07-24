@@ -13,6 +13,8 @@ interface User {
   name: string;
   avatarUrl?: string;
   emailVerified: boolean;
+  ageBand?: 'under14' | '14_17' | 'adult' | null;
+  needsOnboarding?: boolean;
 }
 
 interface AuthContextType {

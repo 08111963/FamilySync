@@ -13,6 +13,7 @@ import {
   entitlements,
   chatMessages,
   billAttachments,
+  testAnalyticsEvents,
 } from "../../shared/schema";
 import { deleteUploadFiles } from "./uploads-cleanup";
 
@@ -155,6 +156,11 @@ export async function deleteUserAccount(
     await tx
       .delete(passwordResetTokens)
       .where(eq(passwordResetTokens.userId, userId));
+    // Analytics di test: gli eventi associati all'utente vengono eliminati
+    // (diritto alla cancellazione, art. 17 GDPR).
+    await tx
+      .delete(testAnalyticsEvents)
+      .where(eq(testAnalyticsEvents.userId, userId));
     // Stacca il riferimento personale da eventuali entitlement di famiglia.
     await tx
       .update(entitlements)

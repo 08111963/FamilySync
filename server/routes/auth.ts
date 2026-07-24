@@ -3,8 +3,10 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { db } from '../db';
-import { users, emailVerificationTokens, passwordResetTokens } from '../../shared/schema';
-import { eq } from 'drizzle-orm';
+import { users, emailVerificationTokens, passwordResetTokens, socialSignupTokens } from '../../shared/schema';
+import { eq, and, isNull, gt } from 'drizzle-orm';
+import nodeCrypto from 'crypto';
+import { PRIVACY_POLICY_VERSION } from '../../shared/policy-version';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken, generateMediaToken } from '../lib/jwt';
 import { resolveUploadFileAccess, userIsFamilyMember } from '../lib/media-auth';
 import { sendVerificationEmail, sendPasswordResetEmail, isPasswordResetEmailConfigured, isVerificationEmailConfigured } from '../lib/email';
@@ -73,8 +75,10 @@ const signupSchema = z.object({
   // Fascia d'età dichiarata (minimizzazione: niente data di nascita completa).
   // 'under14' viene rifiutata: sotto i 14 anni il profilo deve essere creato
   // e gestito da un genitore/tutore (vedi Privacy Policy §minori).
-  // Opzionale per retrocompatibilità con client vecchi (trattata come 'adult').
-  ageBand: z.enum(["under14", "14_17", "adult"]).optional(),
+  // OBBLIGATORIA per ogni nuovo account: nessun default "adulto".
+  ageBand: z.enum(["under14", "14_17", "adult"], {
+    errorMap: () => ({ message: "La fascia d'età è obbligatoria" }),
+  }),
   // Consenso AI facoltativo e MAI preselezionato lato client.
   aiConsent: z.boolean().optional(),
 });
@@ -137,7 +141,8 @@ router.post('/signup', async (req: Request, res: Response) => {
       name,
       emailVerified: false,
       termsAcceptedAt: new Date(),
-      ageBand: ageBand ?? null,
+      privacyPolicySeenVersion: PRIVACY_POLICY_VERSION,
+      ageBand,
       // Consenso AI esplicito e facoltativo: se non espresso resta disattivo
       // (opt-in, mai preselezionato). Riattivabile dalle impostazioni.
       aiFeaturesEnabled: aiConsent === true,
@@ -265,9 +270,63 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
       name: user.name,
       avatarUrl: user.avatarUrl,
       emailVerified: user.emailVerified,
+      ageBand: user.ageBand,
+      // Onboarding richiesto per account creati prima delle nuove regole:
+      // fascia d'età mancante o Termini mai accettati esplicitamente.
+      needsOnboarding: !user.ageBand || !user.termsAcceptedAt,
     });
   } catch (error) {
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero utente" } });
+  }
+});
+
+const onboardingSchema = z.object({
+  ageBand: z.enum(['under14', '14_17', 'adult'], {
+    errorMap: () => ({ message: "La fascia d'età è obbligatoria" }),
+  }),
+  acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare i Termini d'Uso" }) }),
+  aiConsent: z.boolean().optional(),
+});
+
+/**
+ * Onboarding per account ESISTENTI creati prima delle nuove regole (fascia
+ * d'età obbligatoria, accettazione esplicita dei Termini). Non tocca nessun
+ * altro dato dell'utente: nessuna perdita di famiglie, liste o contenuti.
+ */
+router.post('/onboarding', authenticate, async (req: Request, res: Response) => {
+  try {
+    const parsed = onboardingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0]?.message || 'Dati non validi' } });
+    }
+    const { ageBand, aiConsent } = parsed.data;
+    if (ageBand === 'under14') {
+      return res.status(403).json({ error: { code: 'AGE_RESTRICTED', message: "Sotto i 14 anni l'account deve essere gestito da un genitore o tutore." } });
+    }
+    const updated = await db.transaction(async (tx) => {
+      const setValues: Record<string, unknown> = {
+        ageBand,
+        termsAcceptedAt: new Date(),
+        privacyPolicySeenVersion: PRIVACY_POLICY_VERSION,
+        updatedAt: new Date(),
+      };
+      if (typeof aiConsent === 'boolean') setValues.aiFeaturesEnabled = aiConsent;
+      const [row] = await tx
+        .update(users)
+        .set(setValues)
+        .where(eq(users.id, req.user!.userId))
+        .returning({ id: users.id, ageBand: users.ageBand });
+      if (!row) throw new Error('USER_NOT_FOUND');
+      await recordConsent(req.user!.userId, 'terms', true, tx, { strict: true });
+      if (typeof aiConsent === 'boolean') {
+        await recordConsent(req.user!.userId, 'ai_features', aiConsent, tx, { strict: true });
+      }
+      return row;
+    });
+    res.json({ ok: true, ageBand: updated.ageBand });
+  } catch (error) {
+    logger.error('Onboarding error', { error: String(error) });
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: "Errore durante il completamento del profilo" } });
   }
 });
 
@@ -582,38 +641,121 @@ const socialLoginLimiter = rateLimit({
 });
 
 /**
- * Trova o crea l'utente per un login social. L'email arriva verificata dal
+ * Cerca l'utente ESISTENTE per un login social. L'email arriva verificata dal
  * provider, quindi emailVerified=true. Se l'utente esiste già (anche con
  * password) viene semplicemente autenticato: stessa email = stesso account.
+ * Se NON esiste, restituisce null: la creazione avviene SOLO dopo che
+ * l'utente ha completato la registrazione (età, presa visione privacy,
+ * accettazione Termini) tramite /social/complete — nessun consenso implicito.
  */
-async function upsertSocialUser(profile: OauthProfile, provider: 'google' | 'apple') {
+async function findSocialUser(profile: OauthProfile) {
   const [existing] = await db.select().from(users).where(eq(users.email, profile.email)).limit(1);
-  if (existing) {
-    if (existing.deletedAt) {
-      throw Object.assign(new Error('ACCOUNT_DELETED'), { code: 'ACCOUNT_DELETED' });
-    }
-    // L'email è confermata dal provider: se non era ancora verificata, ora lo è.
-    if (!existing.emailVerified) {
-      await db.update(users).set({ emailVerified: true }).where(eq(users.id, existing.id));
-      existing.emailVerified = true;
-    }
-    return existing;
+  if (!existing) return null;
+  if (existing.deletedAt) {
+    throw Object.assign(new Error('ACCOUNT_DELETED'), { code: 'ACCOUNT_DELETED' });
   }
-  const [created] = await db.insert(users).values({
-    email: profile.email,
-    passwordHash: null,
-    authProvider: provider,
-    name: profile.name || profile.email.split('@')[0],
-    emailVerified: true,
-    termsAcceptedAt: new Date(),
-    // Consenso AI opt-in: mai attivo di default per i nuovi account.
-    // L'utente può attivarlo dalle impostazioni (Privacy Center).
-    aiFeaturesEnabled: false,
-  }).returning();
-  await recordConsent(created.id, "terms", true);
-  await recordConsent(created.id, "ai_features", false);
-  return created;
+  // L'email è confermata dal provider: se non era ancora verificata, ora lo è.
+  if (!existing.emailVerified) {
+    await db.update(users).set({ emailVerified: true }).where(eq(users.id, existing.id));
+    existing.emailVerified = true;
+  }
+  return existing;
 }
+
+const SOCIAL_SIGNUP_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * Registra un profilo social verificato in attesa di completamento.
+ * Nel DB va SOLO l'hash SHA-256 del token; il token in chiaro torna al client.
+ */
+async function createSocialSignupToken(profile: OauthProfile, provider: 'google' | 'apple'): Promise<string> {
+  const token = nodeCrypto.randomBytes(32).toString('hex');
+  const tokenHash = nodeCrypto.createHash('sha256').update(token).digest('hex');
+  await db.insert(socialSignupTokens).values({
+    tokenHash,
+    provider,
+    email: profile.email,
+    suggestedName: (profile.name || '').slice(0, 100) || null,
+    expiresAt: new Date(Date.now() + SOCIAL_SIGNUP_TTL_MS),
+  });
+  return token;
+}
+
+const socialCompleteSchema = z.object({
+  signupToken: z.string().min(32).max(200),
+  name: z.string().min(1, 'Il nome è obbligatorio').max(100),
+  ageBand: z.enum(['under14', '14_17', 'adult'], {
+    errorMap: () => ({ message: "La fascia d'età è obbligatoria" }),
+  }),
+  acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare i Termini d'Uso" }) }),
+  aiConsent: z.boolean().optional(),
+});
+
+/**
+ * Completamento della registrazione social: consuma il token monouso in
+ * transazione, crea l'account con i consensi espressi ORA dall'utente e
+ * restituisce la sessione. Nessun account viene creato prima di questo punto.
+ */
+router.post('/social/complete', socialLoginLimiter, async (req: Request, res: Response) => {
+  const parsed = socialCompleteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0]?.message || 'Dati non validi' } });
+  }
+  const { signupToken, name, ageBand, aiConsent } = parsed.data;
+  if (ageBand === 'under14') {
+    return res.status(403).json({ error: { code: 'AGE_RESTRICTED', message: "Sotto i 14 anni l'account deve essere creato da un genitore o tutore." } });
+  }
+  const tokenHash = nodeCrypto.createHash('sha256').update(signupToken).digest('hex');
+  try {
+    const result = await db.transaction(async (tx) => {
+      // Consumo monouso: marca usato SOLO se ancora valido e non usato.
+      const [pending] = await tx
+        .update(socialSignupTokens)
+        .set({ usedAt: new Date() })
+        .where(and(
+          eq(socialSignupTokens.tokenHash, tokenHash),
+          isNull(socialSignupTokens.usedAt),
+          gt(socialSignupTokens.expiresAt, new Date()),
+        ))
+        .returning();
+      if (!pending) return null;
+      const [existing] = await tx.select().from(users).where(eq(users.email, pending.email)).limit(1);
+      if (existing) {
+        if (existing.deletedAt) {
+          throw Object.assign(new Error('ACCOUNT_DELETED'), { code: 'ACCOUNT_DELETED' });
+        }
+        return existing;
+      }
+      const [created] = await tx.insert(users).values({
+        email: pending.email,
+        passwordHash: null,
+        authProvider: pending.provider as 'google' | 'apple',
+        name,
+        emailVerified: true,
+        termsAcceptedAt: new Date(),
+        privacyPolicySeenVersion: PRIVACY_POLICY_VERSION,
+        ageBand,
+        // Opt-in esplicito: attivo SOLO se l'utente ha spuntato la casella.
+        aiFeaturesEnabled: aiConsent === true,
+        aiHealthConsent: false,
+      }).returning();
+      return created;
+    });
+    if (!result) {
+      return res.status(401).json({ error: { code: 'INVALID_SIGNUP_TOKEN', message: 'Registrazione scaduta o già completata. Riprova ad accedere.' } });
+    }
+    await recordConsent(result.id, 'terms', true);
+    await recordConsent(result.id, 'ai_features', aiConsent === true);
+    await activatePendingTrialsForUser(result.id);
+    res.status(201).json(issueSessionResponse(result));
+  } catch (error: any) {
+    if (error?.code === 'ACCOUNT_DELETED') {
+      return res.status(403).json({ error: { code: 'ACCOUNT_DELETED', message: 'Questo account è stato eliminato' } });
+    }
+    logger.error('Social signup completion error', { error: String(error) });
+    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Errore durante il completamento della registrazione' } });
+  }
+});
 
 function issueSessionResponse(user: typeof users.$inferSelect) {
   return {
@@ -662,10 +804,17 @@ router.get('/google/callback', socialLoginLimiter, async (req: Request, res: Res
       return res.status(400).send('returnUrl non valido.');
     }
     const profile = await exchangeGoogleCode(code);
-    const user = await upsertSocialUser(profile, 'google');
+    const user = await findSocialUser(profile);
+    const sep = returnUrl.includes('?') ? '&' : '?';
+    if (!user) {
+      // Nuovo utente: NIENTE account finché non completa la registrazione
+      // (fascia d'età, presa visione privacy, accettazione Termini).
+      const signupToken = await createSocialSignupToken(profile, 'google');
+      const nameParam = profile.name ? `&suggestedName=${encodeURIComponent(profile.name.slice(0, 100))}` : '';
+      return res.redirect(`${returnUrl}${sep}signupToken=${encodeURIComponent(signupToken)}${nameParam}`);
+    }
     await activatePendingTrialsForUser(user.id);
     const loginCode = signLoginCode(user.id);
-    const sep = returnUrl.includes('?') ? '&' : '?';
     res.redirect(`${returnUrl}${sep}loginCode=${encodeURIComponent(loginCode)}`);
   } catch (error: any) {
     if (error?.code === 'ACCOUNT_DELETED') {
@@ -711,7 +860,16 @@ router.post('/apple', socialLoginLimiter, async (req: Request, res: Response) =>
     const fullName = typeof req.body?.fullName === 'string' ? req.body.fullName.trim().slice(0, 100) : '';
     const profile = await verifyAppleIdentityToken(identityToken);
     if (fullName) profile.name = fullName;
-    const user = await upsertSocialUser(profile, 'apple');
+    const user = await findSocialUser(profile);
+    if (!user) {
+      // Nuovo utente: il client deve mostrare la schermata di completamento.
+      const signupToken = await createSocialSignupToken(profile, 'apple');
+      return res.status(200).json({
+        needsCompletion: true,
+        signupToken,
+        suggestedName: profile.name || null,
+      });
+    }
     await activatePendingTrialsForUser(user.id);
     res.json(issueSessionResponse(user));
   } catch (error: any) {

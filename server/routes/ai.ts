@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { db } from '../db';
-import { familyMembers, shoppingHistory, shoppingLists, shoppingItems, calendarEvents, chores, aiInsights, pantryItems } from '../../shared/schema';
+import { familyMembers, shoppingHistory, shoppingLists, shoppingItems, calendarEvents, chores, aiInsights, pantryItems, users } from '../../shared/schema';
 import { eq, and, gte, desc, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
@@ -23,6 +23,35 @@ import { isAiError } from '../lib/ai-errors';
 const router = Router();
 
 /** Mappa un AiError sul suo HTTP status + messaggio utente; altrimenti 500 generico. */
+/**
+ * Consenso salute (art. 9 GDPR): allergie/intolleranze possono rivelare dati
+ * relativi alla salute. Verifica fail-closed: in caso di dubbio o errore,
+ * il dato NON viene inviato a OpenAI.
+ */
+async function userHasAiHealthConsent(userId: string): Promise<boolean> {
+  try {
+    const [user] = await db
+      .select({ aiHealthConsent: users.aiHealthConsent })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user?.aiHealthConsent === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Rimuove le allergie dalle preferenze pasti se manca il consenso ai_health. */
+async function stripHealthDataIfNoConsent<T extends { allergies?: unknown } | undefined>(
+  userId: string,
+  preferences: T,
+): Promise<T> {
+  if (!preferences || preferences.allergies == null) return preferences;
+  if (await userHasAiHealthConsent(userId)) return preferences;
+  const { allergies: _omitted, ...rest } = preferences as Record<string, unknown>;
+  return rest as T;
+}
+
 function sendAiError(res: Response, error: unknown, fallbackMsg: string) {
   if (isAiError(error)) {
     return res.status(error.httpStatus).json({ error: { code: error.code, message: error.userMessage } });
@@ -414,10 +443,13 @@ router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requ
       return res.json({ assignments: [], message: 'Nessuna faccenda da assegnare' });
     }
 
+    // Minimizzazione: a OpenAI vanno SOLO alias generici ("Membro 1", …),
+    // mai i nomi reali dei familiari. L'AI risponde con gli id, quindi il
+    // risultato resta corretto senza esporre dati personali.
     const run = await withAiUsage(
       { userId, familyId, feature: 'chore-optimization' },
       () => optimizeChoreSchedule({
-        members: members.map(m => ({ id: m.id, name: m.nickname || 'Membro', points: m.points || 0 })),
+        members: members.map((m, i) => ({ id: m.id, name: `Membro ${i + 1}`, points: m.points || 0 })),
         chores: pendingChores.map(c => ({ id: c.id, title: c.title, estimatedMinutes: c.estimatedMinutes || 30 })),
       }),
     );
@@ -565,6 +597,9 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
     const { dietaryPreferences, allergies, maxTimeMinutes, cuisinePreferences, excludedIngredients, count, excludeTitles } = req.body || {};
+    // Allergie/intolleranze = possibili dati salute (art. 9 GDPR): vanno a
+    // OpenAI SOLO con il consenso specifico ai_health attivo.
+    const allowedAllergies = (await userHasAiHealthConsent(userId)) ? allergies : undefined;
 
     const existingRecipes = await db.select({ title: recipes.title })
       .from(recipes)
@@ -587,7 +622,7 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
       () => generateRecipeSuggestions({
         familySize: members.length || 1,
         dietaryPreferences,
-        allergies,
+        allergies: allowedAllergies,
         maxTimeMinutes: maxTimeMinutes || null,
         cuisinePreferences: cuisinePreferences || null,
         excludedIngredients: excludedIngredients || null,
@@ -634,7 +669,7 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
     const context = {
       familySize: members.length || 1,
       weekStartDate,
-      preferences,
+      preferences: await stripHealthDataIfNoConsent(userId, preferences),
     };
 
     const run = await withAiUsage(
@@ -712,7 +747,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     const plan = await generateWeeklyMealPlan({
       familySize: members.length || 1,
       weekStartDate,
-      preferences,
+      preferences: await stripHealthDataIfNoConsent(userId, preferences),
       planVariant,
       onProgress: (items) => {
         if (clientClosed) return;

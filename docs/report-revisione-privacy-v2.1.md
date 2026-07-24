@@ -6,7 +6,7 @@ Data: 23 luglio 2026 — FamilySync
 
 ### Policy e informative
 - Privacy Policy riscritta in **Versione 2.1 (23 luglio 2026)** in entrambe le copie: pagina web pubblica `/legal/privacy` e schermata in-app (`app/legal/privacy.tsx`). Versione e data provengono da un'unica fonte condivisa (`shared/policy-version.ts`).
-- Formulazione prudente sui fornitori: nessun DPA dichiarato "in essere" (il DPA OpenAI è in corso di firma e non viene dichiarato attivo).
+- Formulazione prudente sui fornitori: nessun DPA dichiarato "in essere" senza prova. Eccezione: **DPA OpenAI verificato e firmato in data 23/07/2026**.
 - I Termini d'Uso mantengono la loro data (30 giugno 2026) e il titolare della proprietà intellettuale invariato.
 - Nuova **informativa semplificata per minori**: pagina pubblica `/legal/minori` + schermata in-app.
 
@@ -45,7 +45,7 @@ Data: 23 luglio 2026 — FamilySync
 ## 4. Informazioni non verificabili (a cura del titolare)
 
 - Firma effettiva dei DPA con Replit, Neon, Resend, RevenueCat, Expo.
-- DPA OpenAI: in corso di firma — completare e archiviare.
+- DPA OpenAI: verificato e firmato in data 23/07/2026 — nessuna azione residua.
 - Adesione attuale dei fornitori al Data Privacy Framework.
 - Localizzazione fisica esatta dei dati presso i fornitori.
 
@@ -54,6 +54,36 @@ Data: 23 luglio 2026 — FamilySync
 Il database di produzione è separato da quello di sviluppo. Dopo il Republish vanno applicate al DB di produzione le migrazioni:
 - `migrations/0014_privacy_consent.sql` (registro consensi + fascia età)
 - `migrations/0015_ai_optin_default.sql` (default AI opt-in)
+- `migrations/0016_social_completion_health_consent.sql` (completamento social, versione policy vista, consenso salute AI, onboarding)
+
+## 5-bis. Correzioni v2.1-bis (24 luglio 2026)
+
+### Sicurezza e segreti
+- **Chiave privata VAPID rimossa dal file `.replit`** e spostata nei Replit Secrets. **IMPORTANTE: la chiave precedentemente esposta è stata sostituita con una nuova coppia di chiavi (rotazione eseguita); la vecchia chiave non deve più essere utilizzata.** Le sottoscrizioni push web esistenti andranno rinnovate dal browser.
+- `docs/tester-accounts.pdf` rimosso dal repository e dallo ZIP; nessuna password tester nel progetto.
+- `.gitignore` e nuovo script `scripts/export-consegna.sh` escludono: `.env*`, chiavi private, secret, credenziali, PDF tester, ZIP precedenti, log, file temporanei, upload utenti, build. Lo script esegue una scansione finale e annulla la consegna se trova file sensibili.
+
+### Registrazione social (Google/Apple) con consenso reale
+- Nuovo utente social: l'account NON viene più creato automaticamente. Viene emesso un **codice temporaneo monouso a scadenza** e si apre la schermata di completamento (`app/social-complete.tsx`) che richiede nome, fascia d'età (obbligatoria), dichiarazione di presa visione della Privacy Policy, accettazione esplicita dei Termini e scelta AI facoltativa (mai preselezionata). Solo alla conferma l'account viene creato (POST `/api/auth/social/complete`).
+- Nessuna impostazione automatica di `termsAcceptedAt`, consenso AI, maggiore età o presa visione della policy.
+
+### Fascia d'età obbligatoria ovunque
+- Obbligatoria lato server per ogni flusso di registrazione (email, social, inviti, join-link, tester/demo/VIP). Un account senza fascia d'età ha `needsOnboarding = true`, viene indirizzato all'onboarding (`app/onboarding.tsx`, POST `/api/auth/onboarding`) e non può usare gli endpoint AI. Nessun utente con fascia mancante è considerato adulto.
+- Account tester/demo/VIP: AI disattivata, nessun consenso simulato, onboarding obbligatorio al primo accesso; l'eventuale Premium di prova è indipendente dal consenso AI.
+
+### Consenso salute separato (allergie/intolleranze)
+- Nuovo consenso `ai_health` (migrazione 0016): facoltativo, esplicito, mai preselezionato, distinto dal consenso AI generale, registrato con data e versione, revocabile dal Centro Privacy. Senza consenso le allergie/intolleranze vengono rimosse dai payload AI e l'utente è informato che i suggerimenti non ne terranno conto.
+
+### Wording e Centro Privacy
+- Ovunque: "Dichiaro di aver letto la Privacy Policy e accetto i Termini d'Uso." (la policy è un'informativa, non un consenso contrattuale).
+- Voce del registro consensi rinominata in "Accettazione dei Termini d'Uso".
+- Centro Privacy completato: versioni/date di Policy e Termini, data di accettazione dei Termini, stato consensi AI e AI-salute, spiegazione analytics di test, elenco fornitori principali, email cliccabile assistenza@familysync.it, link a richiesta/esportazione dati e a Elimina account, link informativa minori.
+
+### Policy v2.1 aggiornata (testi)
+- §7 AI: elenco dati realmente inviati (note libere pasti, importi/categorie, testi eventi/faccende/bollette/spese; faccende con alias "Membro N" al posto dei soprannomi); rimossa la dichiarazione assoluta su indirizzi/telefoni "mai inviati"; avvertenza di minimizzazione (replicata nell'app vicino alle funzioni AI); paragrafo sul consenso salute separato.
+- §10 Analytics: dichiarata l'associabilità a ID utente/famiglia e il collegamento ID-email in dashboard admin; niente pubblicità/profilazione/vendita; eliminazione eventi alla cancellazione account.
+- Retention log: rimossa la promessa "massimo 12 mesi" (non tecnicamente controllabile), sostituita con formulazione coerente con i provider di hosting (anche nella pagina Eliminazione Account).
+- Fascia d'età indicata come obbligatoria nella sezione Dati Raccolti.
 
 ## 6. Documenti collegati
 

@@ -20,6 +20,7 @@ import * as Haptics from "expo-haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import AiPrivacyNotice from "@/components/AiPrivacyNotice";
 import { useTheme } from "@/hooks/useTheme";
 import { VoiceInput, speakText } from "@/components/VoiceInput";
 import { useAutoSpeak } from "@/hooks/useAutoSpeak";
@@ -471,6 +472,10 @@ export default function RecipesScreen() {
             onTranscribed={handleVoiceSearch}
           />
         ) : null}
+      </View>
+
+      <View style={{ paddingHorizontal: 20 }}>
+        <AiPrivacyNotice />
       </View>
 
       {currentFamily ? (

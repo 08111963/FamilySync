@@ -3,7 +3,7 @@ import { consentRecords } from "../../shared/schema";
 import { PRIVACY_POLICY_VERSION, TERMS_VERSION } from "../../shared/policy-version";
 import { logger } from "./logger";
 
-type ConsentType = "terms" | "ai_features";
+type ConsentType = "terms" | "ai_features" | "ai_health";
 
 /**
  * Registra una variazione di consenso (append-only, GDPR art. 7).
@@ -23,6 +23,7 @@ export async function recordConsent(
 ): Promise<void> {
   const now = new Date();
   const policyVersion = consentType === "terms" ? TERMS_VERSION : PRIVACY_POLICY_VERSION;
+  // 'ai_features' e 'ai_health' fanno riferimento alla Privacy Policy corrente.
   try {
     await (tx ?? db).insert(consentRecords).values({
       userId,

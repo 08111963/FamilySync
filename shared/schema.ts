@@ -53,6 +53,12 @@ export const users = pgTable("users", {
   // NULL per gli account creati prima dell'introduzione (trattati come adulti,
   // vedi Privacy Policy). Nessuna data di nascita completa: minimizzazione.
   ageBand: varchar("age_band", { length: 10 }),
+  // Consenso SPECIFICO e separato per l'invio all'AI di allergie/intolleranze
+  // (possibili dati relativi alla salute, art. 9 GDPR). Opt-in, mai preselezionato.
+  aiHealthConsent: boolean("ai_health_consent").default(false).notNull(),
+  // Versione della Privacy Policy di cui l'utente ha dichiarato presa visione
+  // (informativa, NON consenso contrattuale). NULL = mai registrata.
+  privacyPolicySeenVersion: varchar("privacy_policy_seen_version", { length: 20 }),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -650,7 +656,7 @@ export type TestAnalyticsEvent = typeof testAnalyticsEvents.$inferSelect;
 // Una riga per ogni variazione: grant (granted=true, grantedAt valorizzato)
 // o revoca (granted=false, revokedAt valorizzato). Non si aggiorna mai una
 // riga esistente: la storia completa resta consultabile.
-export const consentTypeEnum = pgEnum("consent_type", ["terms", "ai_features"]);
+export const consentTypeEnum = pgEnum("consent_type", ["terms", "ai_features", "ai_health"]);
 
 export const consentRecords = pgTable("consent_records", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -667,6 +673,23 @@ export const consentRecords = pgTable("consent_records", {
 ]);
 
 export type ConsentRecord = typeof consentRecords.$inferSelect;
+
+// SOCIAL SIGNUP PENDING (GDPR): un nuovo utente Google/Apple NON viene creato
+// subito. Il profilo verificato dal provider resta qui in attesa che l'utente
+// completi la registrazione (nome, fascia d'età, presa visione privacy,
+// accettazione Termini, consensi). Token monouso, hash-only, scadenza breve.
+export const socialSignupTokens = pgTable("social_signup_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+  provider: varchar("provider", { length: 20 }).notNull(), // 'google' | 'apple'
+  email: varchar("email", { length: 255 }).notNull(),
+  suggestedName: varchar("suggested_name", { length: 100 }),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type SocialSignupToken = typeof socialSignupTokens.$inferSelect;
 
 // Insert schemas for validation
 export const insertUserSchema = createInsertSchema(users).pick({

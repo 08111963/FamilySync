@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Switch, ActivityIndicator } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Switch, ActivityIndicator, Linking } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -6,6 +6,7 @@ import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/hooks/useTheme";
 import { apiRequest, queryClient } from "@/lib/query-client";
+import { PRIVACY_POLICY_VERSION, PRIVACY_POLICY_DATE, TERMS_VERSION } from "@/shared/policy-version";
 
 interface ConsentRecord {
   id: string;
@@ -16,8 +17,9 @@ interface ConsentRecord {
 }
 
 const CONSENT_LABELS: Record<string, string> = {
-  terms: "Termini d'Uso e Privacy Policy",
+  terms: "Accettazione dei Termini d'Uso",
   ai_features: "Funzioni AI",
+  ai_health: "Dati su allergie e intolleranze (AI)",
 };
 
 export default function PrivacyCenterScreen() {
@@ -26,7 +28,7 @@ export default function PrivacyCenterScreen() {
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const { data: prefsData } = useQuery<{ aiFeaturesEnabled: boolean }>({
+  const { data: prefsData } = useQuery<{ aiFeaturesEnabled: boolean; aiHealthConsent: boolean }>({
     queryKey: ["/api/moderation/preferences"],
   });
 
@@ -45,6 +47,21 @@ export default function PrivacyCenterScreen() {
       queryClient.invalidateQueries({ queryKey: ["/api/moderation/preferences"] });
     }
   };
+
+  const handleToggleAiHealth = async (value: boolean) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await apiRequest("PATCH", "/api/moderation/preferences", { aiHealthConsent: value });
+      queryClient.invalidateQueries({ queryKey: ["/api/moderation/preferences"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/moderation/consents"] });
+    } catch {
+      queryClient.invalidateQueries({ queryKey: ["/api/moderation/preferences"] });
+    }
+  };
+
+  const latestTermsConsent = consents
+    ?.filter((c) => c.consentType === "terms" && c.granted)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 
   const formatDate = (iso: string) => {
     try {
@@ -89,6 +106,26 @@ export default function PrivacyCenterScreen() {
               trackColor={{ false: colors.border, true: colors.secondary }}
               thumbColor="#FFFFFF"
               testID="ai-consent-switch"
+            />
+          </View>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={styles.row}>
+            <View style={[styles.rowIcon, { backgroundColor: "#FF3B3020" }]}>
+              <Ionicons name="medkit-outline" size={22} color="#FF3B30" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>Allergie e intolleranze (AI)</Text>
+              <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
+                Consenso separato: se attivo, le allergie/intolleranze salvate nelle preferenze pasti vengono incluse nelle richieste AI (ricette e piani pasti). Richiede le Funzioni AI attive.
+              </Text>
+            </View>
+            <Switch
+              value={prefsData?.aiHealthConsent ?? false}
+              onValueChange={handleToggleAiHealth}
+              disabled={!(prefsData?.aiFeaturesEnabled ?? false)}
+              trackColor={{ false: colors.border, true: colors.secondary }}
+              thumbColor="#FFFFFF"
+              testID="ai-health-consent-switch"
             />
           </View>
         </View>
@@ -165,8 +202,79 @@ export default function PrivacyCenterScreen() {
           )}
         </View>
 
+        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>VERSIONI E ACCETTAZIONI</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>Privacy Policy</Text>
+              <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>Versione {PRIVACY_POLICY_VERSION} · {PRIVACY_POLICY_DATE}</Text>
+            </View>
+          </View>
+          <View style={[styles.divider, { backgroundColor: colors.border, marginLeft: 14 }]} />
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>Termini d'Uso</Text>
+              <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
+                Versione {TERMS_VERSION}
+                {latestTermsConsent ? ` · Accettati il ${formatDate(latestTermsConsent.createdAt)}` : " · Accettazione non ancora registrata"}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>ANALYTICS DI TEST</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
+                Durante il periodo di test raccogliamo eventi tecnici di utilizzo (schermate visitate, funzioni usate, errori) associabili al tuo ID utente e famiglia. Non contengono contenuti personali (chat, note, importi), non servono per pubblicità e vengono cancellati automaticamente entro 30 giorni. Sono visibili solo agli amministratori autorizzati.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>FORNITORI PRINCIPALI</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
+                Replit (hosting) · Neon (database) · Resend (email) · OpenAI (funzioni AI, solo con consenso) · RevenueCat (abbonamenti) · Apple e Google (acquisti, login e notifiche). L'elenco completo è nella Privacy Policy.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>I TUOI DIRITTI</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Pressable
+            style={styles.row}
+            onPress={() => Linking.openURL("mailto:assistenza@familysync.it?subject=Richiesta%20dati%20FamilySync")}
+            testID="link-data-request"
+          >
+            <View style={[styles.rowIcon, { backgroundColor: colors.primary + "20" }]}>
+              <Ionicons name="mail-outline" size={22} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>Richiedi o esporta i tuoi dati</Text>
+              <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>Scrivi a assistenza@familysync.it</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+          </Pressable>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <Pressable style={styles.row} onPress={() => router.push("/delete-account")} testID="link-delete-account">
+            <View style={[styles.rowIcon, { backgroundColor: "#FF3B3020" }]}>
+              <Ionicons name="trash-outline" size={22} color="#FF3B30" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>Elimina account</Text>
+              <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>Eliminazione definitiva del tuo account</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+
         <Text style={[styles.footerNote, { color: colors.textSecondary }]}>
-          Per esercitare i tuoi diritti (accesso, rettifica, cancellazione, portabilità) scrivi a assistenza@familysync.it. Puoi eliminare il tuo account dalla scheda Famiglia.
+          Per esercitare i tuoi diritti (accesso, rettifica, cancellazione, portabilità) scrivi a assistenza@familysync.it.
         </Text>
       </ScrollView>
     </View>

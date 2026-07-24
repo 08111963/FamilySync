@@ -92,6 +92,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "join-link" || root === "legal" || root === "help" || root === "forgot-password" || root === "reset-password";
     const needsVerification = isAuthenticated && !!user && user.emailVerified === false;
     const inVerifyScreen = root === "verify-email";
+    // Onboarding privacy: utenti esistenti senza fascia d'età / accettazione Termini.
+    const needsOnboarding = isAuthenticated && !!user && user.needsOnboarding === true;
+    const inOnboardingScreen = root === "onboarding";
+    const onboardingAllowed = inOnboardingScreen || root === "legal" || root === "help" || root === "delete-account";
     // L'eliminazione account e un diritto fondamentale: deve restare accessibile
     // anche a utenti autenticati con email non ancora verificata.
     const verificationAllowed = inVerifyScreen || root === "legal" || root === "help" || root === "delete-account";
@@ -100,7 +104,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       router.replace("/welcome");
     } else if (needsVerification && !verificationAllowed) {
       router.replace("/verify-email");
-    } else if (isAuthenticated && !needsVerification && (inVerifyScreen || (inPublicGroup && root !== "join" && root !== "join-link" && root !== "legal" && root !== "help" && root !== "forgot-password" && root !== "reset-password"))) {
+    } else if (needsOnboarding && !onboardingAllowed) {
+      router.replace("/onboarding");
+    } else if (isAuthenticated && !needsVerification && !needsOnboarding && (inVerifyScreen || inOnboardingScreen || (inPublicGroup && root !== "join" && root !== "join-link" && root !== "legal" && root !== "help" && root !== "forgot-password" && root !== "reset-password"))) {
       router.replace("/");
     }
   }, [isAuthenticated, isLoading, user, segments]);
@@ -113,6 +119,8 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
       <Stack.Screen name="welcome" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="social-complete" options={{ headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="verify-email" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="add-member" options={{ presentation: "modal", headerShown: false }} />

@@ -279,27 +279,41 @@ router.get("/blocks/:familyId", authenticate, async (req: Request, res: Response
 
 router.patch("/preferences", authenticate, async (req: Request, res: Response) => {
   try {
-    const { aiFeaturesEnabled } = req.body;
+    const { aiFeaturesEnabled, aiHealthConsent } = req.body;
 
-    if (typeof aiFeaturesEnabled !== "boolean") {
+    const hasAiToggle = typeof aiFeaturesEnabled === "boolean";
+    const hasHealthToggle = typeof aiHealthConsent === "boolean";
+    if (!hasAiToggle && !hasHealthToggle) {
       return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "aiFeaturesEnabled deve essere un booleano" },
+        error: { code: "VALIDATION_ERROR", message: "Indicare aiFeaturesEnabled e/o aiHealthConsent come booleano" },
       });
     }
 
     // Transazione: il cambio di consenso e la sua registrazione (GDPR art. 7)
     // devono riuscire insieme — se il registro non scrive, il toggle viene annullato.
     const updated = await db.transaction(async (tx) => {
+      const setValues: Record<string, unknown> = { updatedAt: new Date() };
+      if (hasAiToggle) setValues.aiFeaturesEnabled = aiFeaturesEnabled;
+      if (hasHealthToggle) setValues.aiHealthConsent = aiHealthConsent;
+      // Se l'AI viene disattivata, decade anche il consenso salute (dipendente).
+      if (hasAiToggle && aiFeaturesEnabled === false) setValues.aiHealthConsent = false;
       const [row] = await tx
         .update(users)
-        .set({ aiFeaturesEnabled, updatedAt: new Date() })
+        .set(setValues)
         .where(eq(users.id, req.user!.userId))
         .returning({
           id: users.id,
           aiFeaturesEnabled: users.aiFeaturesEnabled,
+          aiHealthConsent: users.aiHealthConsent,
         });
       if (row) {
-        await recordConsent(req.user!.userId, "ai_features", aiFeaturesEnabled, tx, { strict: true });
+        if (hasAiToggle) {
+          await recordConsent(req.user!.userId, "ai_features", aiFeaturesEnabled, tx, { strict: true });
+        }
+        if (hasHealthToggle || (hasAiToggle && aiFeaturesEnabled === false)) {
+          const healthValue = hasAiToggle && aiFeaturesEnabled === false ? false : aiHealthConsent;
+          await recordConsent(req.user!.userId, "ai_health", healthValue, tx, { strict: true });
+        }
       }
       return row;
     });
@@ -337,13 +351,16 @@ router.get("/consents", authenticate, async (req: Request, res: Response) => {
 router.get("/preferences", authenticate, async (req: Request, res: Response) => {
   try {
     const [user] = await db
-      .select({ aiFeaturesEnabled: users.aiFeaturesEnabled })
+      .select({ aiFeaturesEnabled: users.aiFeaturesEnabled, aiHealthConsent: users.aiHealthConsent })
       .from(users)
       .where(eq(users.id, req.user!.userId))
       .limit(1);
 
     // Fail-closed: se l'utente non viene trovato, l'AI risulta disattiva (opt-in).
-    res.json({ aiFeaturesEnabled: user?.aiFeaturesEnabled ?? false });
+    res.json({
+      aiFeaturesEnabled: user?.aiFeaturesEnabled ?? false,
+      aiHealthConsent: user?.aiHealthConsent ?? false,
+    });
   } catch (error) {
     logger.error("Get preferences error", { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero preferenze" } });

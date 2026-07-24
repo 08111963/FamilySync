@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
+import AiPrivacyNotice from "@/components/AiPrivacyNotice";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { AiBadge } from "@/components/AiBadge";
@@ -522,6 +523,10 @@ export default function AIInsightsScreen() {
           </Text>
         </View>
       )}
+
+      <View style={{ paddingHorizontal: 20 }}>
+        <AiPrivacyNotice />
+      </View>
 
       <View style={styles.tabRow}>
         {TAB_CONFIG.map((tab) => (

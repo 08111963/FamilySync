@@ -14,6 +14,19 @@ export interface SocialSession {
   refreshToken: string;
 }
 
+/** Nuovo utente social: la registrazione va completata (età, privacy, Termini). */
+export interface SocialSignupPending {
+  needsCompletion: true;
+  signupToken: string;
+  suggestedName: string | null;
+}
+
+export type SocialLoginResult = SocialSession | SocialSignupPending;
+
+export function isSignupPending(r: SocialLoginResult): r is SocialSignupPending {
+  return (r as SocialSignupPending).needsCompletion === true;
+}
+
 async function parseJsonOrThrow(res: Response, fallbackMsg: string): Promise<any> {
   let body: any = null;
   try {
@@ -41,7 +54,7 @@ export async function completeOauth(loginCode: string): Promise<SocialSession> {
  * browser sicura; al ritorno l'URL contiene un codice di login monouso che
  * viene scambiato con i token di sessione.
  */
-export async function loginWithGoogle(): Promise<SocialSession | null> {
+export async function loginWithGoogle(): Promise<SocialLoginResult | null> {
   const returnUrl = Linking.createURL("login");
   const startUrl = new URL("/api/auth/google/start", getApiUrl());
   startUrl.searchParams.set("returnUrl", returnUrl);
@@ -52,14 +65,39 @@ export async function loginWithGoogle(): Promise<SocialSession | null> {
     return null;
   }
   let loginCode: string | null = null;
+  let signupToken: string | null = null;
+  let suggestedName: string | null = null;
   try {
     const parsed = Linking.parse(result.url);
     loginCode = (parsed.queryParams?.loginCode as string) || null;
+    signupToken = (parsed.queryParams?.signupToken as string) || null;
+    suggestedName = (parsed.queryParams?.suggestedName as string) || null;
   } catch {}
+  if (signupToken) {
+    // Nuovo utente: nessun account ancora creato, serve il completamento.
+    return { needsCompletion: true, signupToken, suggestedName };
+  }
   if (!loginCode) {
     throw new Error("Accesso con Google non riuscito. Riprova.");
   }
   return completeOauth(loginCode);
+}
+
+/** Completa la registrazione social con i consensi espressi dall'utente. */
+export async function completeSocialSignup(data: {
+  signupToken: string;
+  name: string;
+  ageBand: "under14" | "14_17" | "adult";
+  acceptedTerms: true;
+  aiConsent?: boolean;
+}): Promise<SocialSession> {
+  const url = new URL("/api/auth/social/complete", getApiUrl());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return parseJsonOrThrow(res, "Registrazione non riuscita. Riprova.");
 }
 
 /** Il pulsante Apple va mostrato solo dove il login nativo è disponibile. */
@@ -76,7 +114,7 @@ export async function isAppleLoginAvailable(): Promise<boolean> {
  * Accesso con Apple (nativo iOS): ottiene l'identityToken e lo invia al
  * backend, che ne verifica la firma e autentica l'utente.
  */
-export async function loginWithApple(): Promise<SocialSession | null> {
+export async function loginWithApple(): Promise<SocialLoginResult | null> {
   let credential: AppleAuthentication.AppleAuthenticationCredential;
   try {
     credential = await AppleAuthentication.signInAsync({

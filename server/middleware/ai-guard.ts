@@ -33,6 +33,17 @@ export async function requireAiEnabled(req: Request, res: Response, next: NextFu
       });
     }
 
+    // Fascia d'età OBBLIGATORIA prima di usare l'AI: gli account creati prima
+    // dell'introduzione devono completare l'onboarding (nessun default adulto).
+    if (!user.ageBand) {
+      return res.status(403).json({
+        error: {
+          code: "ONBOARDING_REQUIRED",
+          message: "Completa il tuo profilo (fascia d'età) nelle impostazioni per usare le funzionalità AI.",
+        },
+      });
+    }
+
     // Le funzioni AI non sono progettate per l'uso autonomo da parte di
     // minori di 14 anni: blocco lato server indipendente dal toggle.
     if (user.ageBand === "under14") {

@@ -19,6 +19,7 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import AiPrivacyNotice from "@/components/AiPrivacyNotice";
 import { useTheme } from "@/hooks/useTheme";
 import { VoiceInput, SpeakButton, speakText } from "@/components/VoiceInput";
 import { useAutoSpeak } from "@/hooks/useAutoSpeak";
@@ -829,6 +830,7 @@ export default function MealPlansScreen() {
                   disabled={generating || generatingAlt}
                 />
               </View>
+              <AiPrivacyNotice />
               {voicePrefs ? (
                 <View style={[styles.voicePrefsBox, { borderColor: colors.border }]}>
                   <Text style={[styles.voicePrefsText, { color: colors.text }]} numberOfLines={3}>

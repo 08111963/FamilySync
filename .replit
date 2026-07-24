@@ -114,8 +114,7 @@ DEMO_ACCOUNT_EMAIL = "demo@familysync.eu"
 ENABLE_TESTER_ACCOUNTS = "true"
 ENABLE_TEST_ANALYTICS = "true"
 APP_OWNER_EMAILS = "marino.pizzuti@gmail.com"
-VAPID_PUBLIC_KEY = "BKQCoeQAXVgkKvoZMhj2ADjfbydUhP0ZLiyu7uglf1n7r_CMPcvP9U9fUaTrUPwjtqViz_RgR5o8koA5-vrBlko"
-VAPID_PRIVATE_KEY = "OGgGk4RajL5m-7CmnPGASD8n9fKliT_-If4n9Q1TrKQ"
+VAPID_PUBLIC_KEY = "BIOQPeeJ_HUiAgNw1-_DQ27vE_HKM1c0rybIslNHOU5lqZ_UWCHqLi2xafYzvvina8OvAnSMsanJb67l9bneu78"
 VAPID_SUBJECT = "mailto:assistenza@familysync.it"
 
 [userenv.production]

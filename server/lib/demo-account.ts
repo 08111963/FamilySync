@@ -167,8 +167,10 @@ export async function ensureDemoAccount(
         passwordHash,
         name: DEMO_NAME,
         emailVerified: true,
-        termsAcceptedAt: now,
-        aiFeaturesEnabled: true,
+        // Nessun consenso pre-impostato: anche il revisore store passa
+        // dall'onboarding (fascia d'età, Termini, consenso AI opt-in).
+        termsAcceptedAt: null,
+        aiFeaturesEnabled: false,
       })
       .returning();
 
@@ -179,8 +181,8 @@ export async function ensureDemoAccount(
         passwordHash: partnerHash,
         name: PARTNER_NAME,
         emailVerified: true,
-        termsAcceptedAt: now,
-        aiFeaturesEnabled: true,
+        termsAcceptedAt: null,
+        aiFeaturesEnabled: false,
       })
       .returning();
 

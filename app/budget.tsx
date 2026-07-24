@@ -17,6 +17,7 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import AiPrivacyNotice from "@/components/AiPrivacyNotice";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest } from "@/lib/query-client";
@@ -604,6 +605,7 @@ export default function BudgetScreen() {
                   L'AI analizza le abitudini di spesa del mese e suggerisce dove risparmiare.
                 </Text>
               )}
+              <AiPrivacyNotice />
             </Card>
 
             {/* Lista spese */}

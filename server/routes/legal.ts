@@ -114,7 +114,7 @@ router.get('/privacy', (_req: Request, res: Response) => {
     <p>${APP_NAME} raccoglie e tratta le seguenti categorie di dati personali, in base alle funzioni che utilizzi:</p>
     <ul>
       <li><strong>Dati di account:</strong> nome, indirizzo email e password. La password non viene mai conservata in chiaro: viene salvata solo una sua rappresentazione irreversibile ottenuta con un algoritmo di hashing robusto, secondo le buone pratiche di settore</li>
-      <li><strong>Fascia di età (facoltativa):</strong> in fase di registrazione puoi indicare una fascia di età (14-17 anni oppure 18 anni o più). Non raccogliamo la data di nascita. Questa informazione serve solo ad applicare le tutele previste per i minori</li>
+      <li><strong>Fascia di età (obbligatoria):</strong> in fase di registrazione ti chiediamo di indicare una fascia di età (14-17 anni oppure 18 anni o più). Non raccogliamo la data di nascita. Questa informazione serve solo ad applicare le tutele previste per i minori</li>
       <li><strong>Verifica e sicurezza account:</strong> token di verifica email (a scadenza temporale) e token di reset password (conservati in forma hashata), stato di verifica</li>
       <li><strong>Registro dei consensi:</strong> data, tipo di consenso (es. Termini, funzioni AI), stato (prestato/revocato) e versione della policy in vigore al momento</li>
       <li><strong>Dati familiari:</strong> nomi dei membri, ruoli nel gruppo, inviti familiari e relativi token di invito (conservati in forma hashata)</li>
@@ -159,15 +159,16 @@ router.get('/privacy', (_req: Request, res: Response) => {
     <p>Le funzioni AI disponibili e i dati inviati al fornitore per ciascuna sono:</p>
     <ul>
       <li><strong>Suggerimenti spesa:</strong> numero di membri (senza nomi), articoli recenti delle liste, contenuto della dispensa, titoli degli eventi in programma, stagione corrente</li>
-      <li><strong>Ottimizzazione faccende:</strong> soprannomi dei membri, punti accumulati, titoli e durata stimata delle faccende</li>
+      <li><strong>Ottimizzazione faccende:</strong> punti accumulati, titoli e durata stimata delle faccende; i membri vengono indicati con alias temporanei (es. "Membro 1") e i soprannomi reali non vengono inviati</li>
       <li><strong>Insights familiari e consigli di risparmio:</strong> conteggi aggregati (eventi, faccende, spese per categoria), soprannome del miglior contributore, punti settimanali</li>
-      <li><strong>Ricette e piani pasti:</strong> preferenze indicate, ingredienti disponibili in dispensa, titoli delle ricette</li>
-      <li><strong>Compilazione assistita (eventi, faccende, bollette, spese):</strong> il testo libero che detti o scrivi per farti aiutare a compilare i campi</li>
+      <li><strong>Ricette e piani pasti:</strong> preferenze alimentari indicate, eventuali note libere sui pasti, ingredienti disponibili in dispensa, titoli e descrizioni delle ricette. Le <strong>allergie e intolleranze</strong> vengono incluse <strong>solo se hai prestato il consenso specifico e separato</strong> descritto più sotto; senza quel consenso vengono rimosse dai dati inviati e i suggerimenti non ne terranno conto</li>
+      <li><strong>Compilazione assistita (eventi, faccende, bollette, spese):</strong> il testo libero che detti o scrivi per farti aiutare a compilare i campi (può includere testi relativi a eventi, faccende, bollette e spese, importi e categorie di spesa)</li>
       <li><strong>Trascrizione vocale:</strong> la registrazione audio della tua voce, inviata al solo scopo di trascriverla in testo; l'audio non viene conservato sui nostri server</li>
       <li><strong>Foto ricette AI:</strong> il titolo della ricetta, usato per generare un'immagine illustrativa del piatto</li>
     </ul>
-    <p><strong>Dati NON inviati al fornitore AI:</strong> password, indirizzi email, dati di pagamento, allegati e ricevute, contenuti della chat, indirizzi fisici o numeri di telefono.</p>
-    <p><strong>Attenzione ai campi di testo libero:</strong> quando usi la dettatura o la compilazione assistita, il testo che scrivi o detti viene inviato al fornitore AI così com'è. Ti invitiamo a non inserire in questi campi dati sensibili (es. informazioni sulla salute) o dati di terze persone non necessari.</p>
+    <p><strong>Dati che non inviamo mai per progettazione al fornitore AI:</strong> password, indirizzi email degli account, identificativi interni (ID utente, ID famiglia), dati di pagamento, allegati e ricevute, contenuti della chat. Attenzione però: i <strong>campi di testo libero</strong> (testi di eventi, faccende, bollette, spese, note sui pasti, dettatura vocale) vengono inviati così come li scrivi o li detti; se vi inserisci tu stesso/a informazioni come indirizzi, numeri di telefono o dati di terzi, queste verranno trasmesse insieme al resto del testo.</p>
+    <p><strong>Avvertenza:</strong> non inserire nei campi di testo libero dati sanitari non necessari, documenti di identità, credenziali, dati bancari, indirizzi, numeri di telefono o informazioni di terzi non necessarie. Un avviso equivalente è mostrato nell'app vicino alle funzioni AI.</p>
+    <p><strong>Allergie e intolleranze (consenso separato):</strong> le allergie e intolleranze alimentari possono costituire dati relativi alla salute (art. 9 GDPR). Per questo il loro invio alle funzioni AI richiede un <strong>consenso specifico, facoltativo, esplicito e mai preselezionato</strong>, distinto dal consenso AI generale, che puoi prestare e revocare in qualsiasi momento dal Centro Privacy. Il consenso viene registrato con data e versione della policy. Senza questo consenso (o dopo la revoca) le allergie e intolleranze non vengono inviate al fornitore AI e i suggerimenti non ne terranno conto.</p>
     <p>In base ai termini contrattuali del fornitore applicabili all'uso via API, i dati inviati non vengono utilizzati per l'addestramento dei modelli. Il trattamento è regolato anche dalla <a href="https://openai.com/policies/privacy-policy" target="_blank">Privacy Policy di OpenAI</a>.</p>
     <p>I contenuti generati dall'AI sono chiaramente presentati come tali nell'app. Hanno natura indicativa, possono contenere errori e non costituiscono consulenza professionale. ${APP_NAME} <strong>non adotta decisioni basate unicamente su trattamenti automatizzati</strong> che producano effetti giuridici o significativi sugli utenti.</p>
     <p><strong>Base giuridica:</strong> consenso esplicito dell'utente (art. 6.1.a GDPR), revocabile in qualsiasi momento senza pregiudicare la liceità del trattamento precedente.</p>
@@ -189,11 +190,13 @@ router.get('/privacy', (_req: Request, res: Response) => {
 
     <h2>10. Analytics Interna Temporanea (Periodo di Test)</h2>
     <p>Durante il periodo di test dell'app può essere attiva una raccolta <strong>interna e temporanea</strong> di eventi tecnici minimi (es. apertura dell'app, schermata visitata, errori tecnici), utile a verificare stabilità e funzionamento.</p>
+    <p>Gli eventi analytics sono <strong>dati personali di utilizzo</strong> e possono essere associati a: ID utente, ID famiglia, schermate visitate, funzioni utilizzate, data e ora, piattaforma, versione dell'app ed errori tecnici. Nella dashboard amministrativa l'ID utente può essere collegato all'indirizzo email dell'account.</p>
     <ul>
-      <li>Non vengono registrati contenuti personali (niente messaggi, titoli, importi o dati delle liste)</li>
+      <li>Non contengono il testo di chat, note, eventi, bollette o allegati, né password, token o dati di pagamento</li>
       <li>I metadati sono filtrati da una lista ristretta di campi tecnici ammessi</li>
-      <li>Gli eventi sono conservati al massimo <strong>30 giorni</strong> e poi cancellati automaticamente</li>
-      <li>L'accesso è riservato al solo titolare dell'app; nessun dato è condiviso con terze parti</li>
+      <li>Non vengono usati per pubblicità né per profilazione commerciale e non vengono venduti</li>
+      <li>Gli eventi sono conservati al massimo <strong>30 giorni</strong> e poi cancellati automaticamente; alla cancellazione dell'account gli eventi associati all'utente vengono eliminati</li>
+      <li>Sono visibili esclusivamente agli amministratori autorizzati, tramite un accesso protetto lato server; nessun dato è condiviso con terze parti</li>
       <li>Non vengono utilizzati SDK di analytics di terze parti né strumenti di tracciamento pubblicitario</li>
     </ul>
     <p><strong>Base giuridica:</strong> legittimo interesse (art. 6.1.f GDPR) al miglioramento e alla stabilità del servizio. Puoi opporti scrivendo a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
@@ -243,7 +246,7 @@ router.get('/privacy', (_req: Request, res: Response) => {
       <tr><td style="padding:8px; border:1px solid #ddd;">Sessioni / refresh token</td><td style="padding:8px; border:1px solid #ddd;">7 giorni</td></tr>
       <tr><td style="padding:8px; border:1px solid #ddd;">Eventi di analytics interna di test</td><td style="padding:8px; border:1px solid #ddd;">Massimo 30 giorni</td></tr>
       <tr><td style="padding:8px; border:1px solid #ddd;">Registro dei consensi</td><td style="padding:8px; border:1px solid #ddd;">Per la durata dell'account e per il tempo necessario a dimostrare l'adempimento degli obblighi di legge</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Log di sistema</td><td style="padding:8px; border:1px solid #ddd;">Il tempo necessario, fino a un massimo di 12 mesi</td></tr>
+      <tr><td style="padding:8px; border:1px solid #ddd;">Log di sistema</td><td style="padding:8px; border:1px solid #ddd;">Per il tempo strettamente necessario a finalità di sicurezza e diagnostica, secondo le impostazioni tecniche dei fornitori di hosting</td></tr>
       <tr><td style="padding:8px; border:1px solid #ddd;">Registrazioni vocali per la trascrizione</td><td style="padding:8px; border:1px solid #ddd;">Non conservate sui nostri server</td></tr>
     </table>
     <p>I dati possono inoltre risiedere temporaneamente nei backup dell'infrastruttura del fornitore di database, gestiti secondo i cicli tecnici di quest'ultimo, e vengono rimossi con la naturale rotazione dei backup.</p>
@@ -538,7 +541,7 @@ router.get('/delete-account', (_req: Request, res: Response) => {
     <h2>4. Quali dati possono essere conservati</h2>
     <ul>
       <li>I contenuti che hai condiviso in famiglie con altri membri (ad esempio eventi o messaggi) possono restare visibili agli altri membri, ma senza il tuo nome (autore mostrato come "Utente eliminato")</li>
-      <li>Alcuni dati possono essere conservati per il tempo necessario ad adempiere a obblighi di legge, contabili o di sicurezza, e i log di sistema fino a un massimo di 12 mesi</li>
+      <li>Alcuni dati possono essere conservati per il tempo necessario ad adempiere a obblighi di legge, contabili o di sicurezza; i log di sistema sono conservati per il tempo strettamente necessario a finalità di sicurezza e diagnostica, secondo le impostazioni tecniche dei fornitori di hosting</li>
     </ul>
 
     <h2>5. Abbonamenti Premium</h2>

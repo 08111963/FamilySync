@@ -1,0 +1,399 @@
+Correggi esclusivamente le omissioni e gli errori ancora presenti nella consegna:
+
+`familysync-consegna-v2.1.zip`
+
+Non ripetere l’analisi generale della Privacy Policy, non riscrivere da zero le parti già corrette e non modificare le funzionalità che risultano già conformi.
+
+## INFORMAZIONE DEFINITIVA SUL DPA OPENAI
+
+Considera acquisita e verificata questa informazione:
+
+* **DPA OpenAI: verificato e firmato**
+* **Data di sottoscrizione: 23/07/2026**
+
+Aggiorna tutti i documenti interni eliminando eventuali diciture come:
+
+* “DPA in corso di firma”;
+* “DPA da firmare”;
+* “DPA da verificare”;
+* “completare la firma del DPA OpenAI”.
+
+Nei documenti interni deve comparire:
+
+`DPA OpenAI: verificato e firmato in data 23/07/2026`
+
+Non inventare la denominazione della controparte contrattuale, il meccanismo di trasferimento, le SCC, la regione di trattamento o altre informazioni non disponibili nel progetto.
+
+Il DPA non deve essere nuovamente messo in discussione.
+
+## 1. RIMOZIONE DI SEGRETI E CREDENZIALI
+
+Nello ZIP consegnato risultano presenti dati che non devono essere inclusi in un archivio del progetto.
+
+Correggi immediatamente:
+
+1. rimuovi `VAPID_PRIVATE_KEY` dal file `.replit`;
+2. utilizza la chiave privata VAPID esclusivamente tramite Replit Secrets;
+3. non riportare la chiave in codice, documentazione, log o ZIP;
+4. indica nel report finale che la chiave precedentemente esposta deve essere ruotata;
+5. rimuovi `docs/tester-accounts.pdf` dal repository e dallo ZIP;
+6. non includere password o credenziali degli account tester;
+7. aggiorna `.gitignore` e lo script di esportazione per escludere:
+
+   * file `.env`;
+   * chiavi private;
+   * secret;
+   * credenziali;
+   * PDF degli account tester;
+   * ZIP precedenti;
+   * log e file temporanei.
+
+Prima della consegna finale esegui una scansione del progetto per verificare che non siano rimasti segreti in chiaro.
+
+## 2. REGISTRAZIONE CON GOOGLE E APPLE
+
+Attualmente i nuovi account Google e Apple risultano creati registrando automaticamente l’accettazione dei Termini.
+
+Questo comportamento deve essere corretto.
+
+Per un nuovo utente social implementa questo flusso:
+
+1. autenticazione con Google o Apple;
+2. verifica dell’esistenza dell’account;
+3. se l’account esiste, normale accesso;
+4. se l’account non esiste, apertura di una schermata di completamento;
+5. richiesta obbligatoria di:
+
+   * nome;
+   * fascia d’età;
+   * dichiarazione di presa visione della Privacy Policy;
+   * accettazione esplicita dei Termini d’uso;
+   * scelta facoltativa relativa alle funzioni AI;
+6. creazione definitiva dell’account soltanto dopo la conferma.
+
+Non impostare automaticamente:
+
+* `termsAcceptedAt`;
+* consenso AI;
+* maggiore età;
+* presa visione della Privacy Policy.
+
+Il consenso AI deve essere disattivato per impostazione predefinita e non preselezionato.
+
+Il completamento social deve utilizzare un codice temporaneo:
+
+* sicuro;
+* a durata limitata;
+* utilizzabile una sola volta;
+* non contenente token sensibili negli URL.
+
+## 3. FASCIA D’ETÀ OBBLIGATORIA
+
+Rendi la fascia d’età obbligatoria lato server per ogni nuovo account creato tramite:
+
+* email e password;
+* Google;
+* Apple;
+* invito email;
+* link WhatsApp;
+* QR code;
+* account tester;
+* account demo;
+* account VIP;
+* qualsiasi altro flusso di registrazione.
+
+Non considerare adulto un utente con fascia d’età mancante.
+
+Un account privo della fascia d’età:
+
+* deve essere indirizzato al completamento del profilo;
+* non deve poter attivare l’AI;
+* non deve poter utilizzare endpoint AI.
+
+Un minore di 14 anni non deve poter creare autonomamente un account ordinario.
+
+Non dichiarare che esistono profili per minori gestiti dai genitori se questa funzione non è effettivamente implementata.
+
+## 4. CORRETTA FORMULAZIONE DI TERMINI E PRIVACY
+
+Sostituisci ovunque formulazioni come:
+
+`Accetto la Privacy Policy e i Termini d’Uso`
+
+con:
+
+`Dichiaro di aver letto la Privacy Policy e accetto i Termini d’Uso.`
+
+La Privacy Policy è un’informativa e non deve essere presentata come un consenso contrattuale generale.
+
+Mantieni separati:
+
+* versione dei Termini accettata;
+* data di accettazione dei Termini;
+* versione della Privacy Policy mostrata;
+* eventuale data della presa visione;
+* consenso AI;
+* eventuale consenso specifico per dati sanitari inviati all’AI.
+
+Nel Centro Privacy sostituisci eventuali voci denominate:
+
+`Termini d’Uso e Privacy Policy`
+
+con:
+
+`Accettazione dei Termini d’Uso`
+
+quando il dato mostrato riguarda l’accettazione contrattuale.
+
+## 5. ACCOUNT TESTER, DEMO E VIP
+
+Gli account tester, demo e VIP non devono essere creati con:
+
+* AI già attiva;
+* Termini automaticamente accettati;
+* consenso simulato;
+* fascia d’età presunta.
+
+Imposta per questi account:
+
+* `aiFeaturesEnabled = false`;
+* onboarding obbligatorio al primo accesso;
+* richiesta della fascia d’età;
+* presa visione della Privacy Policy;
+* accettazione dei Termini;
+* consenso AI facoltativo e non preselezionato.
+
+L’eventuale accesso Premium di prova può essere già predisposto, ma deve essere indipendente dal consenso AI.
+
+Non inserire le password di questi account nel repository o nello ZIP.
+
+## 6. DATI REALMENTE INVIATI A OPENAI
+
+Verifica tutti i payload inviati a OpenAI e correggi la Privacy Policy affinché descriva i dati realmente trattati.
+
+Tra i dati potenzialmente inviati risultano:
+
+* preferenze alimentari;
+* allergie e intolleranze;
+* ingredienti;
+* note libere sui pasti;
+* testi relativi a eventi;
+* testi relativi a faccende;
+* testi relativi a bollette e spese;
+* nomi o soprannomi dei membri;
+* importi e categorie di spesa;
+* audio per la trascrizione;
+* titoli o descrizioni di ricette.
+
+Non mantenere dichiarazioni assolute secondo cui indirizzi o numeri di telefono non vengono mai inviati, perché potrebbero essere inseriti dall’utente nei campi di testo libero.
+
+Aggiungi vicino alle funzioni AI un avviso equivalente a:
+
+`Non inserire dati sanitari non necessari, documenti di identità, credenziali, dati bancari, indirizzi, numeri di telefono o informazioni di terzi non necessarie.`
+
+### Allergie e intolleranze
+
+Allergie e intolleranze possono costituire dati relativi alla salute.
+
+Implementa un consenso specifico e separato per il loro invio alle funzioni AI.
+
+Il consenso deve essere:
+
+* facoltativo;
+* esplicito;
+* non preselezionato;
+* distinto dal consenso AI generale;
+* registrato con data e versione;
+* revocabile.
+
+In assenza di tale consenso:
+
+* non inviare allergie e intolleranze a OpenAI;
+* rimuovi questi campi dal payload;
+* informa l’utente che i suggerimenti AI non terranno conto di tali informazioni.
+
+Dopo la revoca, interrompi immediatamente i futuri invii.
+
+### Minimizzazione
+
+Non inviare a OpenAI:
+
+* UUID reali;
+* email;
+* ID famiglia;
+* ID account;
+* altri identificatori interni;
+
+quando non sono strettamente necessari.
+
+Per l’assegnazione delle faccende utilizza alias temporanei e riconcilia il risultato lato server.
+
+## 7. ANALYTICS INTERNI DI TEST
+
+Mantieni la retention già adottata di **30 giorni**. Non riportarla a 90 giorni.
+
+Correggi la Privacy Policy specificando che gli analytics possono essere associati a:
+
+* ID utente;
+* ID famiglia;
+* schermate visitate;
+* funzioni utilizzate;
+* data e ora;
+* piattaforma;
+* versione dell’app;
+* errori tecnici;
+* eventuale collegamento tra ID utente ed email nella dashboard amministrativa.
+
+Deve essere chiarito che:
+
+* gli eventi analytics sono dati personali di utilizzo;
+* non vengono usati per pubblicità;
+* non vengono usati per profilazione commerciale;
+* non vengono venduti;
+* sono visibili esclusivamente agli amministratori autorizzati;
+* non contengono il testo di chat, note, eventi, bollette o allegati;
+* non contengono password, token o dati di pagamento.
+
+La dashboard deve essere protetta lato backend, non soltanto nascosta nel frontend.
+
+Alla cancellazione dell’account:
+
+* elimina gli eventi associati all’utente;
+* oppure rendili anonimi irreversibilmente;
+* oppure documenta la loro eliminazione automatica entro il limite massimo di 30 giorni.
+
+## 8. DOCUMENTAZIONE DEI FORNITORI
+
+Per OpenAI riporta definitivamente:
+
+* DPA verificato: SÌ;
+* DPA firmato: SÌ;
+* data di sottoscrizione: 23/07/2026.
+
+Per gli altri fornitori, tra cui Replit, Neon, Resend, RevenueCat, Expo, Apple e Google:
+
+* non dichiarare un DPA verificato senza prova;
+* non dichiarare SCC o Data Privacy Framework senza verifica;
+* non qualificare automaticamente tutti come responsabili del trattamento;
+* distingui i casi in cui il fornitore può agire come titolare autonomo.
+
+Nella Privacy Policy usa, per gli altri fornitori, una formulazione prudente equivalente a:
+
+`Quando un fornitore tratta dati personali per conto di FamilySync, il rapporto è disciplinato, ove richiesto, da un accordo ai sensi dell’articolo 28 GDPR. Alcuni fornitori possono trattare determinati dati come titolari autonomi secondo le rispettive condizioni e informative.`
+
+## 9. RETENTION DEI LOG
+
+La policy non deve promettere una conservazione massima dei log di 12 mesi se questa durata non è verificata o tecnicamente applicata.
+
+Procedi in uno dei seguenti modi:
+
+* implementa una cancellazione automatica effettiva e configurabile;
+* oppure sostituisci il termine preciso con una formulazione coerente con le impostazioni reali dei provider.
+
+Non dichiarare una retention tecnica che il progetto non può controllare.
+
+## 10. COMPLETAMENTO DEL CENTRO PRIVACY
+
+Completa il Centro Privacy, sia web sia mobile, aggiungendo:
+
+* versione e data della Privacy Policy;
+* versione dei Termini d’uso;
+* data di accettazione dei Termini;
+* stato del consenso AI;
+* stato del consenso per l’invio all’AI di allergie e intolleranze;
+* spiegazione sintetica degli analytics di test;
+* collegamento alla richiesta o esportazione dei dati;
+* collegamento diretto a Elimina account;
+* email cliccabile `assistenza@familysync.it`;
+* elenco sintetico dei principali fornitori;
+* collegamento all’informativa semplificata per minori.
+
+Non mostrare agli utenti informazioni amministrative interne relative al DPA.
+
+## 11. MIGRAZIONI
+
+Verifica l’effettiva applicazione delle migrazioni già presenti:
+
+* `0014_privacy_consent.sql`;
+* `0015_ai_optin_default.sql`.
+
+Aggiungi soltanto le migrazioni strettamente necessarie per:
+
+* fascia d’età obbligatoria;
+* completamento della registrazione social;
+* versione della Privacy Policy mostrata;
+* consenso specifico per allergie e intolleranze;
+* stato di onboarding.
+
+Non impostare automaticamente nuovi consensi a `true`.
+
+Gli utenti esistenti con informazioni mancanti devono completare l’onboarding al successivo accesso senza perdere i dati già presenti.
+
+## 12. DOCUMENTI MANCANTI
+
+Completa la consegna producendo:
+
+1. Privacy Policy italiana versione 2.1 aggiornata;
+2. file DOCX della Privacy Policy;
+3. versione web e mobile coerenti;
+4. informativa semplificata per minori;
+5. documento interno di conformità aggiornato;
+6. tabella dei fornitori;
+7. tabella delle retention;
+8. elenco dei dati realmente inviati a OpenAI;
+9. elenco degli eventi analytics;
+10. report delle migrazioni;
+11. report dei test;
+12. matrice tra dichiarazioni della policy e comportamento del codice;
+13. elenco delle informazioni ancora da verificare;
+14. ZIP finale privo di segreti e credenziali.
+
+## 13. TEST MINIMI OBBLIGATORI
+
+Esegui e documenta almeno i seguenti test:
+
+1. nuovo account Google non creato prima del completamento;
+2. nuovo account Apple non creato prima del completamento;
+3. account social esistente non duplicato;
+4. fascia d’età obbligatoria in tutti i flussi;
+5. Termini non registrati senza accettazione;
+6. Privacy Policy non registrata come consenso generale;
+7. AI disattivata per impostazione predefinita;
+8. account tester senza AI già attiva;
+9. allergie non inviate senza consenso specifico;
+10. revoca del consenso AI effettiva;
+11. utente sotto i 14 anni bloccato nella registrazione autonoma;
+12. dashboard analytics accessibile solo all’amministratore;
+13. endpoint analytics protetti lato server;
+14. cancellazione account coerente con gli analytics;
+15. pagine legali accessibili senza autenticazione;
+16. Centro Privacy coerente su web e mobile;
+17. nessun segreto nello ZIP;
+18. nessuna password tester nello ZIP;
+19. TypeScript senza errori;
+20. suite automatica esistente completamente verde.
+
+Nel report finale indica:
+
+* comando eseguito;
+* numero dei test superati;
+* numero dei test falliti;
+* eventuali test saltati;
+* motivazione di ogni eventuale fallimento.
+
+## REGOLE FINALI
+
+* Non riscrivere le parti già corrette senza necessità.
+* Non aggiungere nuovi provider.
+* Non attivare nuovi servizi a pagamento.
+* Non modificare prezzi o piani.
+* Non cambiare il Titolare del trattamento, che deve restare `FamilySync`.
+* Non modificare la retention analytics di 30 giorni.
+* Non rimettere in discussione il DPA OpenAI.
+* Non dichiarare il DPA OpenAI come incompleto.
+* Non inventare informazioni contrattuali.
+* Non dichiarare Zero Data Retention senza prova.
+* Non limitarti alla documentazione: correggi codice, database, onboarding e testi.
+* Non includere segreti o credenziali nello ZIP finale.
+
+Il lavoro sarà considerato completato soltanto quando le correzioni sopra indicate saranno implementate, testate e incluse in un nuovo ZIP finale sicuro.
