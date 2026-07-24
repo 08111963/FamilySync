@@ -1,11 +1,11 @@
 # Report finale — Revisione Privacy Policy v2.1 e adeguamenti GDPR
 
-Data: 23 luglio 2026 — FamilySync
+Data: 24 luglio 2026 — FamilySync
 
 ## 1. Elenco modifiche
 
 ### Policy e informative
-- Privacy Policy riscritta in **Versione 2.1 (23 luglio 2026)** in entrambe le copie: pagina web pubblica `/legal/privacy` e schermata in-app (`app/legal/privacy.tsx`). Versione e data provengono da un'unica fonte condivisa (`shared/policy-version.ts`).
+- Privacy Policy riscritta in **Versione 2.1 (24 luglio 2026)** in entrambe le copie: pagina web pubblica `/legal/privacy` e schermata in-app (`app/legal/privacy.tsx`). Versione e data provengono da un'unica fonte condivisa (`shared/policy-version.ts`).
 - Formulazione prudente sui fornitori: nessun DPA dichiarato "in essere" senza prova. Eccezione: **DPA OpenAI verificato e firmato in data 23/07/2026**.
 - I Termini d'Uso mantengono la loro data (30 giugno 2026) e il titolare della proprietà intellettuale invariato.
 - Nuova **informativa semplificata per minori**: pagina pubblica `/legal/minori` + schermata in-app.

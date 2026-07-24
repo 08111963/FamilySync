@@ -1,7 +1,7 @@
 # Documentazione interna privacy — FamilySync
 
 > Documento interno di controllo GDPR. Non destinato alla pubblicazione integrale agli utenti.
-> Aggiornato al 23 luglio 2026 — Privacy Policy v2.1.
+> Aggiornato al 24 luglio 2026 — Privacy Policy v2.1.
 
 ## 1. Tabella fornitori e DPA
 
