@@ -125,7 +125,7 @@ title = "Guida: FamilySync sul telefono"
 id = "OwANvfIx-c8_2VY-DmkEl"
 uri = "file://familysync-consegna-v2.1.zip"
 type = "unspecified"
-title = "FamilySync — ZIP di consegna v2.1 (aggiornato al 24 luglio)"
+title = "FamilySync — ZIP di consegna v2.1"
 
 [[outputs]]
 id = "Y6Kxd6T52jkOyM6ag8LCz"
@@ -138,3 +138,9 @@ id = "USFsV5_a3lGCmp0Nopy4i"
 uri = "file://docs/privacy-compliance-interna.md"
 type = "text"
 title = "Documentazione interna fornitori/DPA"
+
+[[outputs]]
+id = "ftOfAFbD-w7y8-kSh5L3U"
+uri = "file://docs/FamilySync_Privacy_Policy_v2.1.docx"
+type = "word_document"
+title = "Privacy Policy v2.1 (DOCX)"
