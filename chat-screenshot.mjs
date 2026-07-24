@@ -3,11 +3,20 @@ import puppeteer from 'puppeteer-core';
 const CHROMIUM = '/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium';
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+const email = process.env.SCREENSHOT_TEST_EMAIL;
+const password = process.env.SCREENSHOT_TEST_PASSWORD;
+
+if (!email || !password) {
+  throw new Error(
+    "Configurare SCREENSHOT_TEST_EMAIL e SCREENSHOT_TEST_PASSWORD"
+  );
+}
+
 async function main() {
   const loginRes = await fetch('http://localhost:5000/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'chatscreen_qy9kpw@test.com', password: 'ChatTest123!' })
+    body: JSON.stringify({ email, password })
   });
   const loginData = await loginRes.json();
   const token = loginData.accessToken;

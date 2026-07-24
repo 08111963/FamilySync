@@ -184,6 +184,7 @@ describe("gestione password (DB + HTTP)", { skip: hasDb ? false : "DATABASE_URL 
         email,
         password: "StrongPass123",
         name: "Test Prod",
+        ageBand: "adult",
         acceptedTerms: true,
       });
       assert.equal(res.status, 201);

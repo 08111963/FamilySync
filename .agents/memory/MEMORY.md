@@ -34,3 +34,4 @@
 - [Mic hold-to-talk web](voice-input-web.md) — su web il browser annulla il long-press (scroll/selezione/prompt permesso): serve touchAction:none + fallback toggle, mai alert "tieni premuto" su tocco breve.
 - [Privacy Policy v2.1 / consensi GDPR](privacy-policy-v21.md) — opt-in AI fail-closed a ogni livello, registro consensi strict sul toggle, mai dichiarare DPA attivi, data Termini separata.
 - [ZIP di consegna pulito](delivery-zip-export.md) — usare scripts/export-consegna.sh (esclusioni + doppia scansione anti-segreti), mai zip manuale.
+- [Privacy policy fonte unica](privacy-policy-single-source.md) — testo policy SOLO in shared/privacy-policy-content.ts (web+mobile+DOCX); mai duplicare testi legali; DOCX generato senza dipendenze via scripts/generate-privacy-docx.ts.

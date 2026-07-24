@@ -18,11 +18,13 @@ Data: 24 luglio 2026 — FamilySync
 - **Etichetta "Generato con AI"** sui contenuti AI (insights e consigli budget).
 - **Analytics di test**: retention con tetto massimo 30 giorni nel codice (non può superare quanto dichiarato in policy); accesso solo owner; endpoint spenti (404) senza flag.
 
-## 2. Test eseguiti (FASE 5)
+## 2. Test eseguiti (sessione finale, 24 luglio 2026)
 
-- TypeScript: `tsc --noEmit` pulito.
-- Suite backend: 24 file di test, tutti verdi (unica modifica ai test: gestione della variabile `OPENAI_API_KEY` presente nell'ambiente, non per nascondere errori).
-- Verifiche manuali via HTTP: rotte legali pubbliche (200 senza login), versione/data coerenti web+app, nessun provider non presente citato in policy.
+- TypeScript: `tsc --noEmit` → **PASS** (0 errori).
+- Suite backend: 25 file di test, **329 test totali, 329 superati, 0 falliti, 0 saltati**. Un test (`password.test.ts`) è stato aggiornato per includere il campo `ageBand` ora obbligatorio alla registrazione (non per nascondere errori).
+- Nuovo test `policy-source.test.ts`: verifica che pagina web e schermata mobile importino la **stessa fonte unica** (`shared/privacy-policy-content.ts`) e che il testo contenga le 10 correzioni obbligatorie v2.1.
+- Scansione sicurezza ZIP: **PASS** (nomi file sensibili, valori di segreti, password hardcoded, coppie email+password, PDF con credenziali). Verificato che la scansione rileva credenziali piantate di prova.
+- Verifiche manuali via HTTP: `/legal/privacy` pubblica (200 senza login), 22 sezioni, versione/data coerenti web+app+DOCX.
 
 ## 3. Matrice dichiarazione / evidenza / esito
 
@@ -49,12 +51,17 @@ Data: 24 luglio 2026 — FamilySync
 - Adesione attuale dei fornitori al Data Privacy Framework.
 - Localizzazione fisica esatta dei dati presso i fornitori.
 
-## 5. Azioni dopo la pubblicazione (IMPORTANTE)
+## 5. Stato migrazioni in produzione
 
-Il database di produzione è separato da quello di sviluppo. Dopo il Republish vanno applicate al DB di produzione le migrazioni:
-- `migrations/0014_privacy_consent.sql` (registro consensi + fascia età)
-- `migrations/0015_ai_optin_default.sql` (default AI opt-in)
-- `migrations/0016_social_completion_health_consent.sql` (completamento social, versione policy vista, consenso salute AI, onboarding)
+Il database di produzione è separato da quello di sviluppo. Stato verificato:
+
+| Migrazione | Contenuto | Stato in produzione |
+|---|---|---|
+| `migrations/0014_privacy_consent.sql` | registro consensi + fascia età | già presente (verificata) |
+| `migrations/0015_ai_optin_default.sql` | default AI opt-in | già presente (verificata) |
+| `migrations/0016_social_completion_health_consent.sql` | completamento social, versione policy vista, consenso salute AI, onboarding | già presente (verificata) |
+
+Nessuna nuova migrazione introdotta in questa revisione (nessuna modifica allo schema).
 
 ## 5-bis. Correzioni v2.1-bis (24 luglio 2026)
 

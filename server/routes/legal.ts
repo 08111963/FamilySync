@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { config } from '../lib/config';
 import { PRIVACY_POLICY_VERSION, PRIVACY_POLICY_DATE } from '../../shared/policy-version';
+import { PRIVACY_POLICY_SECTIONS, PRIVACY_POLICY_INTRO, type PolicyBlock } from '../../shared/privacy-policy-content';
 
 const router = Router();
 
@@ -101,208 +102,48 @@ function htmlWrapper(title: string, body: string, lastUpdated: string = LAST_UPD
 </html>`;
 }
 
+function inlineHtml(text: string): string {
+  let out = text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/(https?:\/\/[^\s)]+)/g, '<a href="$1" target="_blank">$1</a>');
+  out = out.replace(/(^|[\s:(])((?:[a-zA-Z0-9._%+-]+)@(?:[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}))/g, '$1<a href="mailto:$2">$2</a>');
+  out = out.replace(/(^|[\s(])(www\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '$1<a href="https://$2" target="_blank">$2</a>');
+  return out;
+}
+
+function renderPolicyBlocks(blocks: PolicyBlock[]): string {
+  const parts: string[] = [];
+  let listItems: string[] = [];
+  const flush = () => {
+    if (listItems.length > 0) {
+      parts.push(`<ul>${listItems.join('')}</ul>`);
+      listItems = [];
+    }
+  };
+  for (const block of blocks) {
+    if (block.type === 'li') {
+      listItems.push(`<li>${inlineHtml(block.text)}</li>`);
+    } else {
+      flush();
+      parts.push(`<p>${inlineHtml(block.text)}</p>`);
+    }
+  }
+  flush();
+  return parts.join('\n    ');
+}
+
 router.get('/privacy', (_req: Request, res: Response) => {
+  // Il contenuto proviene dalla FONTE UNICA condivisa (shared/privacy-policy-content.ts),
+  // la stessa usata dalla schermata mobile e dal DOCX di consegna.
+  const sectionsHtml = PRIVACY_POLICY_SECTIONS.map(
+    (section) => `<h2>${inlineHtml(section.title)}</h2>\n    ${renderPolicyBlocks(section.blocks)}`
+  ).join('\n\n    ');
+
   const body = `
-    <p><strong>Versione ${PRIVACY_POLICY_VERSION} — ${LAST_UPDATED}</strong></p>
+    <p>${inlineHtml(PRIVACY_POLICY_INTRO)}</p>
 
-    <h2>1. Titolare del Trattamento</h2>
-    <p>Il titolare del trattamento dei dati personali è <strong>FamilySync</strong>.</p>
-    <p>Per qualsiasi domanda o richiesta relativa alla privacy, all'esercizio dei tuoi diritti o al supporto, puoi contattarci all'unico indirizzo email: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
-    <p>Sito di riferimento: <a href="https://familysync.eu" target="_blank">https://familysync.eu</a></p>
-
-    <h2>2. Dati Raccolti</h2>
-    <p>${APP_NAME} raccoglie e tratta le seguenti categorie di dati personali, in base alle funzioni che utilizzi:</p>
-    <ul>
-      <li><strong>Dati di account:</strong> nome, indirizzo email e password. La password non viene mai conservata in chiaro: viene salvata solo una sua rappresentazione irreversibile ottenuta con un algoritmo di hashing robusto, secondo le buone pratiche di settore</li>
-      <li><strong>Fascia di età (obbligatoria):</strong> in fase di registrazione ti chiediamo di indicare una fascia di età (14-17 anni oppure 18 anni o più). Non raccogliamo la data di nascita. Questa informazione serve solo ad applicare le tutele previste per i minori</li>
-      <li><strong>Verifica e sicurezza account:</strong> token di verifica email (a scadenza temporale) e token di reset password (conservati in forma hashata), stato di verifica</li>
-      <li><strong>Registro dei consensi:</strong> data, tipo di consenso (es. Termini, funzioni AI), stato (prestato/revocato) e versione della policy in vigore al momento</li>
-      <li><strong>Dati familiari:</strong> nomi dei membri, ruoli nel gruppo, inviti familiari e relativi token di invito (conservati in forma hashata)</li>
-      <li><strong>Eventi calendario:</strong> titoli, date, orari, luoghi e descrizioni degli eventi condivisi</li>
-      <li><strong>Liste della spesa e dispensa:</strong> nomi delle liste, articoli inseriti e relativo storico</li>
-      <li><strong>Faccende domestiche:</strong> attività assegnate, stato di completamento, punti accumulati</li>
-      <li><strong>Ricette e piani pasti:</strong> ricette, ingredienti e pianificazioni settimanali</li>
-      <li><strong>Chat e messaggi:</strong> contenuti dei messaggi scambiati tra i membri della famiglia ed eventuali file/immagini allegati</li>
-      <li><strong>Allegati caricati dagli utenti:</strong> immagini e documenti caricati nell'app (ad esempio nelle chat o associati alle bollette)</li>
-      <li><strong>Bollette, scadenze e budget:</strong> titoli, categorie, importi, date di scadenza, fornitori, intestatari, responsabili, note, ricevute, allegati e spese registrate manualmente</li>
-      <li><strong>Ripartizioni e pagamenti:</strong> suddivisione degli importi tra i membri e storico dei pagamenti registrati manualmente</li>
-      <li><strong>Registrazioni vocali (facoltative):</strong> se usi la dettatura vocale, l'audio viene inviato al fornitore AI per la sola trascrizione e non viene conservato sui nostri server</li>
-      <li><strong>Notifiche:</strong> preferenze di notifica e, se attive le notifiche push, il token push del dispositivo</li>
-      <li><strong>Dati tecnici:</strong> informazioni sul dispositivo, log di accesso e di sistema, indirizzo IP (se raccolto dai log), token di sessione</li>
-    </ul>
-
-    <h2>3. Dati Inseriti da Altri Membri della Famiglia</h2>
-    <p>${APP_NAME} è un'app condivisa: alcune informazioni che ti riguardano possono essere inserite da altri membri della tua famiglia (ad esempio il tuo soprannome, eventi che ti coinvolgono, faccende assegnate a te, ripartizioni di spesa o messaggi che ti citano).</p>
-    <p>Chi inserisce dati relativi ad altre persone è responsabile di farlo in modo corretto e rispettoso. Se ritieni che un dato che ti riguarda sia inesatto o non debba essere presente, puoi modificarlo (dove previsto), chiedere al membro che lo ha inserito di correggerlo, oppure scriverci a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
-
-    <h2>4. Finalità e Basi Giuridiche del Trattamento</h2>
-    <table style="width:100%; border-collapse:collapse; margin-bottom:16px;">
-      <tr style="background:#f0f0f5;"><th style="text-align:left; padding:8px; border:1px solid #ddd;">Finalità</th><th style="text-align:left; padding:8px; border:1px solid #ddd;">Base giuridica (art. 6 GDPR)</th></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Erogazione del servizio (calendario, liste, faccende, chat, bollette, budget, ricette, sincronizzazione)</td><td style="padding:8px; border:1px solid #ddd;">Esecuzione del contratto (art. 6.1.b)</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Comunicazioni di servizio (verifica email, reset password, inviti)</td><td style="padding:8px; border:1px solid #ddd;">Esecuzione del contratto (art. 6.1.b)</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Funzionalità di intelligenza artificiale</td><td style="padding:8px; border:1px solid #ddd;">Consenso esplicito (art. 6.1.a), revocabile in qualsiasi momento</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Sicurezza, prevenzione abusi, rate limiting, log tecnici</td><td style="padding:8px; border:1px solid #ddd;">Legittimo interesse (art. 6.1.f) alla sicurezza del servizio</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Analytics interna temporanea di test (eventi tecnici minimi)</td><td style="padding:8px; border:1px solid #ddd;">Legittimo interesse (art. 6.1.f) al miglioramento e alla stabilità del servizio</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Adempimento di obblighi di legge</td><td style="padding:8px; border:1px solid #ddd;">Obbligo legale (art. 6.1.c)</td></tr>
-    </table>
-
-    <h2>5. Bollette e Scadenze</h2>
-    <p>${APP_NAME} consente di registrare bollette e scadenze domestiche, inclusi importi, date di scadenza, fornitori, intestatari, note, allegati e ricevute, oltre alla ripartizione delle spese tra i membri della famiglia e allo storico dei pagamenti.</p>
-    <p><strong>Importante:</strong> l'app NON effettua pagamenti reali, NON elabora transazioni verso terzi, NON salva carte di credito, NON salva codici CVV e NON salva coordinate bancarie (IBAN). Lo stato "pagato" e i relativi importi sono registrazioni inserite manualmente dagli utenti a scopo organizzativo.</p>
-
-    <h2>6. Email Transazionali</h2>
-    <p>${APP_NAME} invia email transazionali tramite il fornitore <strong>Resend</strong> per: verifica dell'account, inviti familiari, reset della password e comunicazioni essenziali relative al servizio.</p>
-    <p>Le email <strong>non contengono mai la password</strong> dell'utente. I link di verifica e reset hanno una durata limitata nel tempo (vedi sezione Conservazione dei Dati).</p>
-
-    <h2>7. Funzionalità di Intelligenza Artificiale (AI)</h2>
-    <p>${APP_NAME} offre funzionalità facoltative basate sull'intelligenza artificiale tramite il fornitore <strong>OpenAI</strong>. Le funzioni AI sono <strong>disattivate finché non le attivi tu</strong>: il consenso non è mai preselezionato, viene richiesto in fase di registrazione oppure può essere prestato in seguito dalle impostazioni, ed è revocabile in qualsiasi momento (Famiglia &rarr; Centro Privacy).</p>
-    <p>Le funzioni AI disponibili e i dati inviati al fornitore per ciascuna sono:</p>
-    <ul>
-      <li><strong>Suggerimenti spesa:</strong> numero di membri (senza nomi), articoli recenti delle liste, contenuto della dispensa, titoli degli eventi in programma, stagione corrente</li>
-      <li><strong>Ottimizzazione faccende:</strong> punti accumulati, titoli e durata stimata delle faccende; i membri vengono indicati con alias temporanei (es. "Membro 1") e i soprannomi reali non vengono inviati</li>
-      <li><strong>Insights familiari e consigli di risparmio:</strong> conteggi aggregati (eventi, faccende, spese per categoria), soprannome del miglior contributore, punti settimanali</li>
-      <li><strong>Ricette e piani pasti:</strong> preferenze alimentari indicate, eventuali note libere sui pasti, ingredienti disponibili in dispensa, titoli e descrizioni delle ricette. Le <strong>allergie e intolleranze</strong> vengono incluse <strong>solo se hai prestato il consenso specifico e separato</strong> descritto più sotto; senza quel consenso vengono rimosse dai dati inviati e i suggerimenti non ne terranno conto</li>
-      <li><strong>Compilazione assistita (eventi, faccende, bollette, spese):</strong> il testo libero che detti o scrivi per farti aiutare a compilare i campi (può includere testi relativi a eventi, faccende, bollette e spese, importi e categorie di spesa)</li>
-      <li><strong>Trascrizione vocale:</strong> la registrazione audio della tua voce, inviata al solo scopo di trascriverla in testo; l'audio non viene conservato sui nostri server</li>
-      <li><strong>Foto ricette AI:</strong> il titolo della ricetta, usato per generare un'immagine illustrativa del piatto</li>
-    </ul>
-    <p><strong>Dati che non inviamo mai per progettazione al fornitore AI:</strong> password, indirizzi email degli account, identificativi interni (ID utente, ID famiglia), dati di pagamento, allegati e ricevute, contenuti della chat. Attenzione però: i <strong>campi di testo libero</strong> (testi di eventi, faccende, bollette, spese, note sui pasti, dettatura vocale) vengono inviati così come li scrivi o li detti; se vi inserisci tu stesso/a informazioni come indirizzi, numeri di telefono o dati di terzi, queste verranno trasmesse insieme al resto del testo.</p>
-    <p><strong>Avvertenza:</strong> non inserire nei campi di testo libero dati sanitari non necessari, documenti di identità, credenziali, dati bancari, indirizzi, numeri di telefono o informazioni di terzi non necessarie. Un avviso equivalente è mostrato nell'app vicino alle funzioni AI.</p>
-    <p><strong>Allergie e intolleranze (consenso separato):</strong> le allergie e intolleranze alimentari possono costituire dati relativi alla salute (art. 9 GDPR). Per questo il loro invio alle funzioni AI richiede un <strong>consenso specifico, facoltativo, esplicito e mai preselezionato</strong>, distinto dal consenso AI generale, che puoi prestare e revocare in qualsiasi momento dal Centro Privacy. Il consenso viene registrato con data e versione della policy. Senza questo consenso (o dopo la revoca) le allergie e intolleranze non vengono inviate al fornitore AI e i suggerimenti non ne terranno conto.</p>
-    <p>In base ai termini contrattuali del fornitore applicabili all'uso via API, i dati inviati non vengono utilizzati per l'addestramento dei modelli. Il trattamento è regolato anche dalla <a href="https://openai.com/policies/privacy-policy" target="_blank">Privacy Policy di OpenAI</a>.</p>
-    <p>I contenuti generati dall'AI sono chiaramente presentati come tali nell'app. Hanno natura indicativa, possono contenere errori e non costituiscono consulenza professionale. ${APP_NAME} <strong>non adotta decisioni basate unicamente su trattamenti automatizzati</strong> che producano effetti giuridici o significativi sugli utenti.</p>
-    <p><strong>Base giuridica:</strong> consenso esplicito dell'utente (art. 6.1.a GDPR), revocabile in qualsiasi momento senza pregiudicare la liceità del trattamento precedente.</p>
-
-    <h2>8. Minori</h2>
-    <p>${APP_NAME} è un'app per il coordinamento familiare, pensata per essere usata dalla famiglia insieme.</p>
-    <ul>
-      <li>Per creare un account in autonomia occorre avere <strong>almeno 14 anni</strong> (età del consenso digitale in Italia, art. 2-quinquies D.Lgs. 196/2003). La registrazione autonoma di minori di 14 anni non è consentita e viene bloccata</li>
-      <li>I minori di 14 anni possono usare l'app solo tramite profili creati e supervisionati da un genitore o tutore che è membro della famiglia</li>
-      <li>Per i profili di età inferiore ai 14 anni le <strong>funzioni AI non sono disponibili</strong>: il blocco è applicato dai nostri server e non dipende dalle impostazioni del dispositivo</li>
-      <li>In fase di registrazione chiediamo solo una fascia di età, non la data di nascita, in linea con il principio di minimizzazione</li>
-      <li>Se veniamo a conoscenza di aver raccolto dati di un minore di 14 anni senza il coinvolgimento di un genitore o tutore, provvederemo alla loro cancellazione tempestiva</li>
-    </ul>
-    <p>Una <a href="${getBaseUrl(_req)}/legal/minori">informativa semplificata per ragazze e ragazzi</a> è disponibile con un linguaggio adatto ai più giovani.</p>
-
-    <h2>9. Categorie Particolari di Dati (Dati Sensibili)</h2>
-    <p>${APP_NAME} non richiede e non è progettata per raccogliere categorie particolari di dati personali (art. 9 GDPR), come dati sulla salute, convinzioni religiose od opinioni politiche.</p>
-    <p>Tuttavia, i campi di testo libero (eventi, note, chat, faccende, liste) potrebbero contenere informazioni di questo tipo se scelte e inserite dagli utenti (ad esempio "visita cardiologica" nel calendario). Questi contenuti restano visibili solo alla famiglia, non vengono usati per altre finalità e ti invitiamo a inserirli solo se necessario. Ricorda che, se attivi le funzioni AI, alcuni titoli o testi liberi possono essere inviati al fornitore AI (vedi sezione 7).</p>
-
-    <h2>10. Analytics Interna Temporanea (Periodo di Test)</h2>
-    <p>Durante il periodo di test dell'app può essere attiva una raccolta <strong>interna e temporanea</strong> di eventi tecnici minimi (es. apertura dell'app, schermata visitata, errori tecnici), utile a verificare stabilità e funzionamento.</p>
-    <p>Gli eventi analytics sono <strong>dati personali di utilizzo</strong> e possono essere associati a: ID utente, ID famiglia, schermate visitate, funzioni utilizzate, data e ora, piattaforma, versione dell'app ed errori tecnici. Nella dashboard amministrativa l'ID utente può essere collegato all'indirizzo email dell'account.</p>
-    <ul>
-      <li>Non contengono il testo di chat, note, eventi, bollette o allegati, né password, token o dati di pagamento</li>
-      <li>I metadati sono filtrati da una lista ristretta di campi tecnici ammessi</li>
-      <li>Non vengono usati per pubblicità né per profilazione commerciale e non vengono venduti</li>
-      <li>Gli eventi sono conservati al massimo <strong>30 giorni</strong> e poi cancellati automaticamente; alla cancellazione dell'account gli eventi associati all'utente vengono eliminati</li>
-      <li>Sono visibili esclusivamente agli amministratori autorizzati, tramite un accesso protetto lato server; nessun dato è condiviso con terze parti</li>
-      <li>Non vengono utilizzati SDK di analytics di terze parti né strumenti di tracciamento pubblicitario</li>
-    </ul>
-    <p><strong>Base giuridica:</strong> legittimo interesse (art. 6.1.f GDPR) al miglioramento e alla stabilità del servizio. Puoi opporti scrivendo a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
-
-    <h2>11. Pagamenti e Abbonamenti Premium</h2>
-    <p>Gli eventuali abbonamenti Premium nell'app mobile sono gestiti tramite gli acquisti in-app degli store, con la gestione degli abbonamenti e dei diritti (entitlements) affidata a <strong>RevenueCat</strong>:</p>
-    <ul>
-      <li><strong>Apple In-App Purchase / StoreKit</strong> su iOS;</li>
-      <li><strong>Google Play Billing</strong> su Android;</li>
-      <li><strong>RevenueCat</strong> per la gestione di abbonamenti, stato dell'abbonamento ed entitlements.</li>
-    </ul>
-    <p>I dati di pagamento (carte, ecc.) sono trattati direttamente da Apple o Google secondo le rispettive policy; ${APP_NAME} non ha accesso ai dati completi della tua carta.</p>
-
-    <h2>12. Notifiche</h2>
-    <ul>
-      <li><strong>Notifiche locali:</strong> programmate direttamente sul dispositivo (ad esempio i promemoria per le scadenze delle bollette); non richiedono l'invio dei contenuti a server esterni.</li>
-      <li><strong>Notifiche push remote:</strong> se attivate, possono utilizzare un token push del dispositivo e i servizi di notifica di Expo/Apple/Google per recapitare gli avvisi.</li>
-      <li><strong>Notifiche push web:</strong> se attivate dal browser, utilizzano il servizio push del browser stesso (Google, Apple, Mozilla o Microsoft) tramite una sottoscrizione revocabile in qualsiasi momento dalle impostazioni del browser.</li>
-    </ul>
-
-    <h2>13. Fornitori e Condivisione con Terze Parti</h2>
-    <p>Per erogare il servizio ci avvaliamo dei seguenti fornitori, ciascuno per le sole finalità indicate:</p>
-    <ul>
-      <li><strong>Replit, Inc.:</strong> hosting e deploy dell'applicazione e del backend (responsabile del trattamento)</li>
-      <li><strong>Neon, Inc. (PostgreSQL):</strong> database in cui sono archiviati i dati (responsabile del trattamento)</li>
-      <li><strong>Resend (Plus Five Five, Inc.):</strong> invio di email transazionali (responsabile del trattamento)</li>
-      <li><strong>OpenAI, L.L.C.:</strong> funzioni AI e trascrizione vocale, solo dati minimizzati e solo con il tuo consenso (responsabile del trattamento)</li>
-      <li><strong>RevenueCat, Inc.:</strong> gestione di abbonamenti e acquisti in-app (responsabile del trattamento)</li>
-      <li><strong>Apple e Google:</strong> acquisti in-app, login social ("Accedi con Google" / "Sign in with Apple") e servizi di notifica; per queste attività operano in base alle proprie policy, in genere come titolari autonomi del trattamento</li>
-      <li><strong>Servizi di notifica push</strong> (Expo e, per il web, i servizi push del browser di Google/Apple/Mozilla/Microsoft): recapito delle notifiche push, se attive</li>
-    </ul>
-    <p>Quando un fornitore tratta dati personali per conto di FamilySync, il rapporto è disciplinato, ove richiesto, da un accordo ai sensi dell'articolo 28 GDPR. Alcuni soggetti, come gli store o i provider di identità, possono trattare determinati dati anche come titolari autonomi secondo le rispettive informative.</p>
-    <p>Non vendiamo, affittiamo o condividiamo i tuoi dati personali con terze parti per finalità di marketing.</p>
-
-    <h2>14. Trasferimenti Extra-SEE</h2>
-    <p>Alcuni fornitori (ad esempio OpenAI, Resend, RevenueCat, Apple, Google o Replit) hanno sede negli Stati Uniti o possono trattare i dati su infrastrutture situate al di fuori dello Spazio Economico Europeo (SEE).</p>
-    <p>In questi casi i trasferimenti si basano sulle garanzie previste dal GDPR, secondo quanto dichiarato da ciascun fornitore nei propri termini: in particolare le <strong>Clausole Contrattuali Standard (SCC)</strong> della Commissione Europea e, per i fornitori aderenti, il <strong>Data Privacy Framework UE-USA</strong>. Puoi chiederci maggiori informazioni sui trasferimenti scrivendo a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
-
-    <h2>15. Conservazione dei Dati</h2>
-    <table style="width:100%; border-collapse:collapse; margin-bottom:16px;">
-      <tr style="background:#f0f0f5;"><th style="text-align:left; padding:8px; border:1px solid #ddd;">Dato</th><th style="text-align:left; padding:8px; border:1px solid #ddd;">Conservazione</th></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Dati dell'account</td><td style="padding:8px; border:1px solid #ddd;">Fino alla cancellazione dell'account</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Dati familiari (calendario, liste, faccende, chat, bollette, budget, ricette, allegati)</td><td style="padding:8px; border:1px solid #ddd;">Fino alla cancellazione della famiglia o dell'account</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Token di reset password</td><td style="padding:8px; border:1px solid #ddd;">1 ora</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Token di verifica email</td><td style="padding:8px; border:1px solid #ddd;">6 ore</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Token di invito familiare</td><td style="padding:8px; border:1px solid #ddd;">72 ore</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Sessioni / refresh token</td><td style="padding:8px; border:1px solid #ddd;">7 giorni</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Eventi di analytics interna di test</td><td style="padding:8px; border:1px solid #ddd;">Massimo 30 giorni</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Registro dei consensi</td><td style="padding:8px; border:1px solid #ddd;">Per la durata dell'account e per il tempo necessario a dimostrare l'adempimento degli obblighi di legge</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Log di sistema</td><td style="padding:8px; border:1px solid #ddd;">Per il tempo strettamente necessario a finalità di sicurezza e diagnostica, secondo le impostazioni tecniche dei fornitori di hosting</td></tr>
-      <tr><td style="padding:8px; border:1px solid #ddd;">Registrazioni vocali per la trascrizione</td><td style="padding:8px; border:1px solid #ddd;">Non conservate sui nostri server</td></tr>
-    </table>
-    <p>I dati possono inoltre risiedere temporaneamente nei backup dell'infrastruttura del fornitore di database, gestiti secondo i cicli tecnici di quest'ultimo, e vengono rimossi con la naturale rotazione dei backup.</p>
-
-    <h2>16. Cancellazione dell'Account</h2>
-    <p>Puoi eliminare il tuo account in autonomia e in qualsiasi momento direttamente dall'app, nella scheda <strong>Famiglia</strong> &rarr; <strong>Elimina account</strong>, confermando con la tua password. In alternativa puoi richiedere la cancellazione scrivendo a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
-    <p>Cosa succede in concreto:</p>
-    <ul>
-      <li>Il tuo profilo personale viene <strong>reso anonimo</strong>: nome ed email vengono rimossi e sostituiti, la password e i token di accesso vengono eliminati e non è più possibile accedere all'account</li>
-      <li>Se sei l'<strong>unico membro</strong> di una famiglia, quella famiglia e tutti i suoi dati (calendario, liste, faccende, chat, allegati, bollette e ricevute) vengono <strong>eliminati definitivamente</strong>, inclusi i file fisici allegati</li>
-      <li>Se la famiglia ha <strong>altri membri</strong>, i contenuti che hai condiviso restano visibili agli altri in forma anonima (autore mostrato come "Utente eliminato"): questo tutela la continuità dei dati condivisi della famiglia</li>
-    </ul>
-    <p>L'eliminazione è definitiva e irreversibile. Alcuni dati possono essere conservati per il tempo necessario ad adempiere a obblighi di legge. L'eliminazione dell'account non annulla automaticamente eventuali abbonamenti Premium, che vanno gestiti dallo store (Apple o Google). Maggiori dettagli sono disponibili alla pagina dedicata all'<a href="${getBaseUrl(_req)}/legal/delete-account">eliminazione dell'account</a>.</p>
-
-    <h2>17. Diritti dell'Utente</h2>
-    <p>In conformità con il GDPR (artt. 15-22), hai il diritto di:</p>
-    <ul>
-      <li><strong>Accesso:</strong> richiedere una copia dei tuoi dati personali</li>
-      <li><strong>Rettifica:</strong> correggere dati inesatti o incompleti</li>
-      <li><strong>Cancellazione:</strong> richiedere la cancellazione dei tuoi dati</li>
-      <li><strong>Portabilità:</strong> ricevere i tuoi dati in un formato strutturato, di uso comune e leggibile da dispositivo automatico</li>
-      <li><strong>Opposizione:</strong> opporti ai trattamenti basati sul legittimo interesse (ad esempio l'analytics interna di test), per motivi connessi alla tua situazione particolare</li>
-      <li><strong>Limitazione:</strong> chiedere la limitazione del trattamento dei tuoi dati</li>
-      <li><strong>Revoca del consenso:</strong> revocare in qualsiasi momento i consensi prestati (ad esempio per le funzioni AI, dal Centro Privacy nell'app), senza pregiudicare la liceità del trattamento precedente</li>
-      <li><strong>Reclamo:</strong> proporre reclamo al Garante per la protezione dei dati personali (<a href="https://www.garanteprivacy.it" target="_blank">www.garanteprivacy.it</a>)</li>
-    </ul>
-    <p>Per esercitare questi diritti scrivi a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. Per proteggerti, prima di dare seguito a una richiesta potremmo doverti chiedere elementi per verificare la tua identità. Rispondiamo entro un mese dalla richiesta, prorogabile di due mesi nei casi complessi previsti dal GDPR. L'esportazione dei dati viene fornita tramite il canale email di assistenza.</p>
-
-    <h2>18. Violazioni dei Dati (Data Breach)</h2>
-    <p>In caso di violazione dei dati personali che presenti un rischio per i diritti e le libertà degli utenti, notificheremo la violazione al Garante per la protezione dei dati personali <strong>entro 72 ore</strong> dal momento in cui ne veniamo a conoscenza, come previsto dall'art. 33 GDPR.</p>
-    <p>Se la violazione presenta un rischio elevato per te, te ne daremo comunicazione senza ingiustificato ritardo (art. 34 GDPR), indicando la natura della violazione e le misure adottate.</p>
-
-    <h2>19. Cookie e Archiviazione Locale</h2>
-    <p>${APP_NAME} <strong>non utilizza cookie di profilazione né strumenti di tracciamento pubblicitario</strong>, né su mobile né su web.</p>
-    <ul>
-      <li><strong>App mobile:</strong> i dati di sessione (token di accesso) e alcune preferenze sono salvati nella memoria locale del dispositivo per mantenerti collegato e far funzionare la modalità offline</li>
-      <li><strong>Versione web:</strong> il browser salva i dati di sessione e le preferenze nella memoria locale (localStorage), una tecnologia strettamente necessaria al funzionamento del servizio; non vengono usati cookie di terze parti</li>
-      <li>Eliminando i dati del sito dal browser o disinstallando l'app, questi dati locali vengono rimossi</li>
-    </ul>
-
-    <h2>20. Sicurezza</h2>
-    <ul>
-      <li>Password conservate esclusivamente in forma hashata con algoritmi robusti e mai in chiaro</li>
-      <li>Comunicazioni protette tramite protocollo HTTPS/TLS</li>
-      <li>Autenticazione basata su token a scadenza temporale</li>
-      <li>Token sensibili (verifica, reset, inviti) conservati solo in forma hashata</li>
-      <li>Rate limiting e protezioni contro gli abusi delle API</li>
-      <li>Header di sicurezza HTTP e controlli di accesso per famiglia</li>
-    </ul>
-
-    <h2>21. Modifiche alla Privacy Policy</h2>
-    <p>Questa è la versione ${PRIVACY_POLICY_VERSION} della Privacy Policy. Potremo aggiornarla in futuro: in caso di modifiche rilevanti lo comunicheremo tramite l'applicazione e/o via email, indicando la nuova versione e la data. Ti invitiamo a consultare periodicamente questa pagina.</p>
-
-    <h2>22. Contatti</h2>
-    <p>Per qualsiasi domanda o richiesta relativa a questa Privacy Policy, puoi contattarci all'unico indirizzo:</p>
-    <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+    ${sectionsHtml}
   `;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
