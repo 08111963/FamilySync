@@ -1,0 +1,238 @@
+Correggi esclusivamente le omissioni ancora presenti in `familysync-consegna-v2.1 (1).zip`. Non riscrivere le parti già corrette e non ripetere l’analisi generale.
+
+Il DPA OpenAI è definitivamente:
+
+* verificato;
+* firmato;
+* sottoscritto il 23/07/2026.
+
+Non modificare questo stato e non inserirlo tra le attività pendenti.
+
+### 1. Allineamento Privacy Policy web e mobile
+
+La policy web in `server/routes/legal.ts` è più aggiornata della policy mobile in `app/legal/privacy.tsx`.
+
+Allinea integralmente la versione mobile alla versione web corretta.
+
+Rimuovi dalla versione mobile le dichiarazioni obsolete, comprese:
+
+* fascia d’età “facoltativa”;
+* indirizzi e numeri di telefono mai inviati;
+* log conservati fino a 12 mesi;
+* soprannomi inviati nell’ottimizzazione faccende;
+* analytics descritti come non personali;
+* ruoli dei fornitori dichiarati come certi senza verifica;
+* assenza della sezione sul consenso separato per allergie e intolleranze.
+
+Web e mobile devono mostrare esattamente la stessa sostanza, versione e data.
+
+### 2. Inviti e join-link
+
+Correggi:
+
+* `server/routes/invites.ts`
+* `server/routes/join-link.ts`
+* `app/join/[token].tsx`
+* `app/join-link/[code].tsx`
+
+Aggiungi obbligatoriamente:
+
+* `ageBand`;
+* blocco `under14`;
+* presa visione della versione corrente della Privacy Policy;
+* accettazione dei Termini;
+* scelta AI facoltativa e non preselezionata.
+
+Non creare l’account finché questi dati non sono stati confermati.
+
+Non assegnare automaticamente il ruolo `adult` a un utente di 14–17 anni senza una regola coerente con il sistema dei ruoli.
+
+Sostituisci ovunque:
+
+“Accetto i Termini di servizio e la Privacy Policy”
+
+con:
+
+“Dichiaro di aver letto la Privacy Policy e accetto i Termini d’Uso.”
+
+### 3. Consenso sanitario e trascrizione vocale
+
+Il consenso `ai_health` deve coprire anche l’audio che contiene allergie o intolleranze.
+
+Attualmente il piano pasti invita l’utente a dettare “dieta, allergie e preferenze”, ma l’endpoint di trascrizione invia l’audio a OpenAI anche senza consenso sanitario.
+
+Correggi in modo fail-closed:
+
+* senza `aiHealthConsent = true`, non invitare l’utente a dettare allergie;
+* non inviare a OpenAI audio dichiaratamente destinato a contenere allergie o intolleranze;
+* oppure richiedi il consenso sanitario prima dell’avvio della registrazione;
+* dopo la revoca, interrompi immediatamente tali trascrizioni.
+
+Aggiungi test specifici.
+
+### 4. Dettatura nella chat
+
+La dettatura dei messaggi chat invia l’audio a OpenAI per la trascrizione.
+
+Correggi la Privacy Policy chiarendo che:
+
+* i messaggi già archiviati nella chat non vengono inviati all’AI;
+* quando l’utente utilizza volontariamente la dettatura, l’audio del messaggio viene inviato al fornitore AI per la sola trascrizione.
+
+Mostra un’informazione chiara vicino al microfono della chat.
+
+### 5. Eliminazione degli UUID dai payload OpenAI
+
+In `server/routes/ai.ts`, l’ottimizzazione delle faccende invia ancora:
+
+* `familyMembers.id`;
+* `chores.id`.
+
+Sostituisci gli UUID con identificatori temporanei:
+
+* `member_1`;
+* `member_2`;
+* `chore_1`;
+* `chore_2`.
+
+Mantieni una mappa esclusivamente lato server e riconcilia il risultato dopo la risposta AI.
+
+Nessun UUID reale deve essere inviato a OpenAI.
+
+Aggiungi un test che intercetti il payload e verifichi l’assenza degli UUID reali.
+
+### 6. Soprannomi nella compilazione automatica
+
+Gli endpoint `parse-event` e `parse-chore` inviano i soprannomi reali dei membri.
+
+Procedi in uno dei due modi:
+
+* minimizza il dato usando alias temporanei quando possibile;
+* oppure descrivi espressamente nella policy che i soprannomi possono essere inviati quando necessari per riconoscere l’assegnatario indicato dall’utente.
+
+Non dichiarare che tutti i nomi vengono sempre sostituiti con “Membro N”.
+
+### 7. Callback Google
+
+Rimuovi `suggestedName` dall’URL di ritorno Google.
+
+Il nome è già disponibile nel record temporaneo server-side associato al token.
+
+Il client deve recuperarlo attraverso un endpoint protetto dal token temporaneo oppure lasciare il campo nome vuoto.
+
+Il token di completamento deve restare:
+
+* opaco;
+* monouso;
+* salvato soltanto in forma hashata;
+* con scadenza di 15 minuti.
+
+### 8. Registro consensi transazionale
+
+Nelle registrazioni email, social, invito e join-link:
+
+* creazione utente;
+* accettazione Termini;
+* consenso AI;
+* versione Privacy Policy mostrata;
+
+devono essere salvati nella stessa transazione.
+
+Utilizza `recordConsent(..., tx, { strict: true })`.
+
+Se il registro dei consensi non può essere scritto, non attivare l’AI e non completare la registrazione.
+
+### 9. DPA OpenAI
+
+Mantieni:
+
+`DPA OpenAI: verificato e firmato il 23/07/2026`.
+
+La denominazione della controparte deve essere trascritta esattamente dal DPA sottoscritto.
+
+Non indicare automaticamente `OpenAI, L.L.C.`, `OpenAI Ireland Ltd.`, Microsoft Azure, SCC, DPF o regione di trattamento senza verifica sul documento firmato.
+
+Se la controparte non è disponibile nel repository, scrivi internamente:
+
+`Controparte contrattuale: da trascrivere dal DPA firmato`.
+
+### 10. Ruoli degli altri fornitori
+
+Per Replit, Neon, Resend, RevenueCat ed Expo non dichiarare definitivamente il ruolo di responsabile del trattamento se il DPA non è verificato.
+
+Elenca servizio e dati trattati e usa la formulazione prudente:
+
+“Quando un fornitore tratta dati personali per conto di FamilySync, il rapporto è disciplinato, ove richiesto, da un accordo ai sensi dell’articolo 28 GDPR.”
+
+### 11. Credenziali negli script screenshot
+
+Rimuovi da:
+
+* `chat-screenshot.mjs`
+* `shopping-screenshot.mjs`
+
+le credenziali:
+
+* `chatscreen_qy9kpw@test.com`;
+* `ChatTest123!`.
+
+Utilizza esclusivamente variabili d’ambiente:
+
+* `SCREENSHOT_TEST_EMAIL`;
+* `SCREENSHOT_TEST_PASSWORD`.
+
+Se non configurate, gli script devono terminare con un errore chiaro senza stampare valori sensibili.
+
+Aggiorna la scansione di `scripts/export-consegna.sh` affinché intercetti anche credenziali più corte e combinazioni email/password presenti nei file non di test.
+
+### 12. Test
+
+Aggiungi test automatici dedicati a:
+
+1. registrazione Google incompleta;
+2. registrazione Apple incompleta;
+3. consumo monouso del social signup token;
+4. invito senza ageBand rifiutato;
+5. join-link senza ageBand rifiutato;
+6. under14 rifiutato in tutti i flussi;
+7. consenso sanitario non preselezionato;
+8. allergie rimosse senza consenso;
+9. trascrizione di allergie bloccata senza consenso sanitario;
+10. revoca del consenso sanitario;
+11. assenza di UUID reali nei payload OpenAI;
+12. registro consensi transazionale;
+13. coerenza testuale tra policy web e mobile;
+14. assenza di credenziali nello ZIP.
+
+Nel report indica:
+
+* comando completo;
+* numero totale dei test;
+* superati;
+* falliti;
+* saltati.
+
+Non limitarti a indicare il numero dei file di test.
+
+### 13. Migrazioni
+
+Verifica e applica sul database corretto:
+
+* `0014_privacy_consent.sql`;
+* `0015_ai_optin_default.sql`;
+* `0016_social_completion_health_consent.sql`.
+
+Non dichiarare il lavoro operativo in produzione finché l’applicazione delle migrazioni non è stata confermata.
+
+Non esporre `DATABASE_URL`.
+
+### 14. DOCX e consegna
+
+Fornisci anche:
+
+* `FamilySync_Privacy_Policy_v2.1.docx`;
+* report test completo;
+* matrice policy/codice/esito aggiornata;
+* nuovo ZIP privo di credenziali, segreti, `.env`, `.replit`, PDF tester, build e ZIP precedenti.
+
+Non modificare prezzi, piani, pagamenti, titolare del trattamento o stato del DPA OpenAI.
