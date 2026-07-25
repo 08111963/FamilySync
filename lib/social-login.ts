@@ -59,7 +59,11 @@ export async function loginWithGoogle(): Promise<SocialLoginResult | null> {
   const startUrl = new URL("/api/auth/google/start", getApiUrl());
   startUrl.searchParams.set("returnUrl", returnUrl);
 
-  const result = await WebBrowser.openAuthSessionAsync(startUrl.toString(), returnUrl);
+  // showInRecents (Android): mantiene viva la finestra di accesso quando
+  // l'utente cambia app per confermare la verifica di sicurezza sul telefono.
+  const result = await WebBrowser.openAuthSessionAsync(startUrl.toString(), returnUrl, {
+    showInRecents: true,
+  });
   if (result.type !== "success" || !result.url) {
     // L'utente ha chiuso la finestra: nessun errore da mostrare.
     return null;
