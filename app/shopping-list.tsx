@@ -145,7 +145,9 @@ export default function ShoppingListScreen() {
               onTranscribed={(text) => {
                 const cleaned = text.replace(/[.。!?]+\s*$/, "").trim();
                 if (!cleaned) return;
-                setNewItemName((prev) => (prev ? `${prev} ${cleaned}` : cleaned));
+                // Dettatura = aggiunta diretta alla lista, senza passaggi extra.
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                addShoppingItem(id, { name: cleaned, category: newCategory });
               }}
             />
           ) : null}

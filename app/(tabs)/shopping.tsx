@@ -10,11 +10,13 @@ import { useFamily } from "@/context/FamilyContext";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/Button";
+import { VoiceInput } from "@/components/VoiceInput";
 
 export default function ShoppingScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { data, addShoppingList, deleteShoppingList } = useFamily();
+  const { data, currentFamily, addShoppingList, deleteShoppingList } = useFamily();
+  const familyId = currentFamily?.id || "";
   const [showNewList, setShowNewList] = useState(false);
   const [newListName, setNewListName] = useState("");
 
@@ -74,22 +76,30 @@ export default function ShoppingScreen() {
       {showNewList && (
         <Card style={styles.newListCard}>
           <Text style={[styles.newListTitle, { color: colors.text }]}>Nuova Lista</Text>
-          <TextInput
-            style={[
-              styles.newListInput,
-              {
-                backgroundColor: colors.background,
-                borderColor: colors.border,
-                color: colors.text,
-              },
-            ]}
-            placeholder="Nome della lista..."
-            placeholderTextColor={colors.textSecondary}
-            value={newListName}
-            onChangeText={setNewListName}
-            autoFocus
-            keyboardAppearance={isDark ? "dark" : "light"}
-          />
+          <View style={[styles.newListInputRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <TextInput
+              style={[styles.newListInput, { color: colors.text }]}
+              placeholder="Nome della lista..."
+              placeholderTextColor={colors.textSecondary}
+              value={newListName}
+              onChangeText={setNewListName}
+              onSubmitEditing={handleCreateList}
+              returnKeyType="done"
+              autoFocus
+              keyboardAppearance={isDark ? "dark" : "light"}
+            />
+            {familyId ? (
+              <VoiceInput
+                familyId={familyId}
+                context="Nome di una lista della spesa"
+                onTranscribed={(text) => {
+                  const cleaned = text.replace(/[.。!?]+\s*$/, "").trim();
+                  if (!cleaned) return;
+                  setNewListName((prev) => (prev ? `${prev} ${cleaned}` : cleaned));
+                }}
+              />
+            ) : null}
+          </View>
           <View style={styles.newListButtons}>
             <Pressable
               onPress={() => {
@@ -214,14 +224,20 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     marginBottom: 12,
   },
-  newListInput: {
-    height: 48,
+  newListInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
     borderRadius: 12,
     borderWidth: 1,
+    paddingRight: 8,
+    marginBottom: 16,
+  },
+  newListInput: {
+    flex: 1,
+    height: 48,
     paddingHorizontal: 16,
     fontSize: 16,
     fontFamily: "Inter_400Regular",
-    marginBottom: 16,
   },
   newListButtons: {
     flexDirection: "row",
