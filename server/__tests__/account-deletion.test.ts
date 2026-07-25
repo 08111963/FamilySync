@@ -465,7 +465,7 @@ describe("cancellazione account (DB + HTTP)", { skip: hasDb ? false : "DATABASE_
       "limiti consentiti dalla legge",
       "Legge Applicabile e Foro Competente",
       "Elimina account",
-      "Marino Pizzuti / FamilySync",
+      "di proprietà esclusiva di FamilySync",
     ];
     for (const term of required) {
       assert.ok(html.includes(term), `i Termini web devono contenere: "${term}"`);
@@ -495,7 +495,7 @@ describe("cancellazione account (DB + HTTP)", { skip: hasDb ? false : "DATABASE_
       "Alcune funzionalità Premium possono essere disponibili solo dopo l'attivazione",
       "Licenza limitata sui contenuti",
       "Legge Applicabile e Foro Competente",
-      "Marino Pizzuti / FamilySync",
+      "di proprietà esclusiva di FamilySync",
     ];
     for (const term of required) {
       assert.ok(native.includes(term), `i Termini native devono contenere: "${term}"`);

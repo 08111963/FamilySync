@@ -336,7 +336,7 @@ router.get('/terms', (_req: Request, res: Response) => {
     <p>Nessuna disposizione dei presenti Termini esclude o limita la responsabilità nei casi in cui ciò non sia consentito dalla legge, inclusi i diritti inderogabili riconosciuti ai consumatori.</p>
 
     <h2>16. Proprietà Intellettuale</h2>
-    <p>Tutti i diritti di proprietà intellettuale relativi a ${APP_NAME}, inclusi design, codice, marchi e contenuti originali, sono di proprietà esclusiva di Marino Pizzuti / FamilySync. L'utente non acquisisce alcun diritto di proprietà intellettuale sull'applicazione. Restano salvi i diritti dell'utente sui propri contenuti (UGC) e la licenza limitata descritta alla sezione 6.</p>
+    <p>Tutti i diritti di proprietà intellettuale relativi a ${APP_NAME}, inclusi design, codice, marchi e contenuti originali, sono di proprietà esclusiva di FamilySync. L'utente non acquisisce alcun diritto di proprietà intellettuale sull'applicazione. Restano salvi i diritti dell'utente sui propri contenuti (UGC) e la licenza limitata descritta alla sezione 6.</p>
 
     <h2>17. Legge Applicabile e Foro Competente</h2>
     <p>I presenti Termini d'Uso sono regolati dalla legge italiana. Per qualsiasi controversia derivante dall'utilizzo del servizio, sarà competente il Foro del luogo di residenza del consumatore, in conformità con il Codice del Consumo italiano.</p>

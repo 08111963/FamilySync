@@ -149,7 +149,7 @@ export default function TermsScreen() {
         </Section>
 
         <Section title="16. Proprietà Intellettuale" colors={colors}>
-          <P colors={colors}>Tutti i diritti di proprietà intellettuale relativi a FamilySync, inclusi design, codice, marchi e contenuti originali, sono di proprietà esclusiva di Marino Pizzuti / FamilySync. Restano salvi i diritti dell'utente sui propri contenuti (UGC) e la licenza limitata descritta alla sezione 6.</P>
+          <P colors={colors}>Tutti i diritti di proprietà intellettuale relativi a FamilySync, inclusi design, codice, marchi e contenuti originali, sono di proprietà esclusiva di FamilySync. Restano salvi i diritti dell'utente sui propri contenuti (UGC) e la licenza limitata descritta alla sezione 6.</P>
         </Section>
 
         <Section title="17. Legge Applicabile e Foro Competente" colors={colors}>
