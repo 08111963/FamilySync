@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert, Modal } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -31,6 +31,7 @@ export default function CalendarScreen() {
   const events = getEventsForDate(selectedDate);
   const familyId = currentFamily?.id || "";
   const [savingToDeviceId, setSavingToDeviceId] = useState<string | null>(null);
+  const [seriesPrompt, setSeriesPrompt] = useState<{ id: string; title: string } | null>(null);
 
   const handleSaveToDevice = async (event: (typeof events)[number]) => {
     if (savingToDeviceId) return;
@@ -126,11 +127,7 @@ export default function CalendarScreen() {
     // Evento ricorrente: chiedi se eliminare solo questa occorrenza o tutta la serie
     if (event?.recurrenceRule) {
       if (Platform.OS === "web") {
-        if (confirm(`"${event.title}" si ripete. Vuoi eliminare TUTTE le ripetizioni?\n\nOK = elimina tutta la serie\nAnnulla = elimina solo questa`)) {
-          deleteEvent(eventId, "series");
-        } else {
-          deleteEvent(eventId);
-        }
+        setSeriesPrompt({ id: eventId, title: event.title });
       } else {
         Alert.alert(
           "Evento ricorrente",
@@ -321,6 +318,49 @@ export default function CalendarScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Modal
+        visible={seriesPrompt !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSeriesPrompt(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Evento ricorrente</Text>
+            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
+              {`"${seriesPrompt?.title}" si ripete. Cosa vuoi eliminare?`}
+            </Text>
+            <Pressable
+              testID="delete-single-occurrence"
+              onPress={() => {
+                if (seriesPrompt) deleteEvent(seriesPrompt.id);
+                setSeriesPrompt(null);
+              }}
+              style={({ pressed }) => [styles.modalButton, { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 }]}
+            >
+              <Text style={styles.modalButtonText}>Solo questo</Text>
+            </Pressable>
+            <Pressable
+              testID="delete-whole-series"
+              onPress={() => {
+                if (seriesPrompt) deleteEvent(seriesPrompt.id, "series");
+                setSeriesPrompt(null);
+              }}
+              style={({ pressed }) => [styles.modalButton, { backgroundColor: colors.error, opacity: pressed ? 0.8 : 1 }]}
+            >
+              <Text style={styles.modalButtonText}>Tutta la serie</Text>
+            </Pressable>
+            <Pressable
+              testID="delete-cancel"
+              onPress={() => setSeriesPrompt(null)}
+              style={({ pressed }) => [styles.modalButtonOutline, { borderColor: colors.border, opacity: pressed ? 0.8 : 1 }]}
+            >
+              <Text style={[styles.modalButtonOutlineText, { color: colors.text }]}>Annulla</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -328,6 +368,50 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 16,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 8,
+  },
+  modalMessage: {
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+    marginBottom: 16,
+  },
+  modalButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  modalButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+  },
+  modalButtonOutline: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  modalButtonOutlineText: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
   },
   header: {
     flexDirection: "row",
