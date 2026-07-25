@@ -59,12 +59,34 @@ export async function loginWithGoogle(): Promise<SocialLoginResult | null> {
   const startUrl = new URL("/api/auth/google/start", getApiUrl());
   startUrl.searchParams.set("returnUrl", returnUrl);
 
-  // showInRecents (Android): mantiene viva la finestra di accesso quando
-  // l'utente cambia app per confermare la verifica di sicurezza sul telefono.
-  const result = await WebBrowser.openAuthSessionAsync(startUrl.toString(), returnUrl, {
-    showInRecents: true,
+  // Su Android (specialmente in Expo Go) openAuthSessionAsync a volte ritorna
+  // "dismiss" anche quando il redirect è avvenuto: ascoltiamo anche l'evento
+  // di deep link come rete di sicurezza per catturare comunque l'URL di ritorno.
+  let deepLinkUrl: string | null = null;
+  const subscription = Linking.addEventListener("url", ({ url }) => {
+    if (url && (url.includes("loginCode=") || url.includes("signupToken="))) {
+      deepLinkUrl = url;
+    }
   });
-  if (result.type !== "success" || !result.url) {
+
+  let result: WebBrowser.WebBrowserAuthSessionResult;
+  try {
+    // showInRecents (Android): mantiene viva la finestra di accesso quando
+    // l'utente cambia app per confermare la verifica di sicurezza sul telefono.
+    result = await WebBrowser.openAuthSessionAsync(startUrl.toString(), returnUrl, {
+      showInRecents: true,
+    });
+    if (result.type !== "success" && !deepLinkUrl) {
+      // Piccola attesa: l'evento di deep link può arrivare subito dopo
+      // la chiusura della finestra del browser.
+      await new Promise((r) => setTimeout(r, 700));
+    }
+  } finally {
+    subscription.remove();
+  }
+
+  const finalUrl = result.type === "success" && result.url ? result.url : deepLinkUrl;
+  if (!finalUrl) {
     // L'utente ha chiuso la finestra: nessun errore da mostrare.
     return null;
   }
@@ -72,7 +94,7 @@ export async function loginWithGoogle(): Promise<SocialLoginResult | null> {
   let signupToken: string | null = null;
   let suggestedName: string | null = null;
   try {
-    const parsed = Linking.parse(result.url);
+    const parsed = Linking.parse(finalUrl);
     loginCode = (parsed.queryParams?.loginCode as string) || null;
     signupToken = (parsed.queryParams?.signupToken as string) || null;
     suggestedName = (parsed.queryParams?.suggestedName as string) || null;
