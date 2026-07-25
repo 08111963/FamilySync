@@ -25,6 +25,12 @@ pkill -f "node_modules/.cache/ngrok/ngrok" 2>/dev/null || true
 
 export EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN:5000"
 
+# Fixed tunnel subdomain: the auto-generated one includes the Expo username,
+# which may contain underscores — invalid in hostnames, and Android's URL
+# parser (toASCII STD3) rejects them with "Android internal error".
+# A fixed, hyphen-only subdomain also keeps the QR URL stable across restarts.
+export EXPO_TUNNEL_SUBDOMAIN="familysync-marino-dev"
+
 echo "[tunnel] Starting Expo with its built-in tunnel (exp.direct)."
 echo "[tunnel] Scan the Expo Go QR below on Android to connect."
 
