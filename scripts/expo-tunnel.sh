@@ -23,6 +23,14 @@ fi
 # Kill any leftover personal ngrok from previous runs (frees port 4040).
 pkill -f "node_modules/.cache/ngrok/ngrok" 2>/dev/null || true
 
+# Free port 8081 if a previous Expo/Metro instance survived a workflow restart,
+# otherwise "expo start" exits immediately with "Port 8081 is being used".
+for pid in $(fuser 8081/tcp 2>/dev/null); do
+  kill -TERM "$pid" 2>/dev/null || true
+done
+sleep 1
+fuser -k 8081/tcp 2>/dev/null || true
+
 export EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN:5000"
 
 # Fixed tunnel subdomain: the auto-generated one includes the Expo username,
