@@ -38,6 +38,19 @@ async function parseJsonOrThrow(res: Response, fallbackMsg: string): Promise<any
   return body;
 }
 
+// Il loginCode è monouso lato server: può arrivare sia dalla promise di
+// loginWithGoogle sia dal deep link gestito da login.tsx. Chi lo "prenota"
+// per primo lo scambia; l'altro percorso deve ignorarlo, altrimenti il
+// secondo tentativo fallisce con "codice già usato".
+const claimedLoginCodes = new Set<string>();
+
+/** Prenota un loginCode: ritorna true solo al primo chiamante. */
+export function claimLoginCode(code: string): boolean {
+  if (claimedLoginCodes.has(code)) return false;
+  claimedLoginCodes.add(code);
+  return true;
+}
+
 /** Scambia il codice di login monouso con i token di sessione. */
 export async function completeOauth(loginCode: string): Promise<SocialSession> {
   const url = new URL("/api/auth/oauth/complete", getApiUrl());
@@ -111,6 +124,11 @@ export async function loginWithGoogle(): Promise<SocialLoginResult | null> {
   }
   if (!loginCode) {
     throw new Error("Accesso con Google non riuscito. Riprova.");
+  }
+  if (!claimLoginCode(loginCode)) {
+    // Il deep link è già stato preso in carico dalla schermata di login:
+    // non consumare di nuovo il codice, nessun errore da mostrare.
+    return null;
   }
   return completeOauth(loginCode);
 }

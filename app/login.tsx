@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
-import { loginWithGoogle, loginWithApple, isAppleLoginAvailable, completeOauth, isSignupPending } from '@/lib/social-login';
+import { loginWithGoogle, loginWithApple, isAppleLoginAvailable, completeOauth, claimLoginCode, isSignupPending } from '@/lib/social-login';
 
 function validatePassword(pw: string): string | null {
   if (pw.length < 8) return 'La password deve avere almeno 8 caratteri';
@@ -60,6 +60,9 @@ export default function LoginScreen() {
   useEffect(() => {
     if (!loginCode || oauthHandled.current) return;
     oauthHandled.current = true;
+    // Il codice è monouso: se loginWithGoogle lo sta già scambiando, non
+    // riprovare qui (fallirebbe con "codice già usato").
+    if (!claimLoginCode(loginCode)) return;
     setSocialSubmitting('google');
     setError('');
     completeOauth(loginCode)
