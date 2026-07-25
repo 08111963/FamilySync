@@ -8,6 +8,7 @@ import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
 import { EmptyState } from "@/components/EmptyState";
+import { VoiceInput } from "@/components/VoiceInput";
 
 const UNIT_OPTIONS = [
   { value: "", label: "-" },
@@ -137,6 +138,17 @@ export default function ShoppingListScreen() {
             returnKeyType="done"
             keyboardAppearance={isDark ? "dark" : "light"}
           />
+          {familyId ? (
+            <VoiceInput
+              familyId={familyId}
+              context="Nome di un prodotto per la lista della spesa"
+              onTranscribed={(text) => {
+                const cleaned = text.replace(/[.。!?]+\s*$/, "").trim();
+                if (!cleaned) return;
+                setNewItemName((prev) => (prev ? `${prev} ${cleaned}` : cleaned));
+              }}
+            />
+          ) : null}
           <Pressable
             onPress={() => setShowOptions(!showOptions)}
             style={styles.optionsToggle}
