@@ -14,3 +14,7 @@ Regole:
 
 **Why:** review di sicurezza ha bocciato la prima versione per open redirect via `exp://*`, loginCode replayabile e linking per email non verificata.
 **How to apply:** qualsiasi nuovo provider social deve seguire lo stesso schema (code monouso + JWKS + allow-list returnUrl).
+
+## Redirect URI in dev (porta obbligatoria)
+Il dominio Replit dev SENZA porta (externalPort 80) punta a Metro/Expo web (8081), NON al backend: un callback OAuth senza `:5000` viene "servito" dalla SPA e l'utente torna al benvenuto senza errori. `getPublicBaseUrl()` in dev deve includere `:5000`, e l'URI `https://<REPLIT_DEV_DOMAIN>:5000/api/auth/google/callback` va registrato nella Google Cloud Console (match esatto, porta inclusa).
+**Come diagnosticare:** nei log backend si vede `google/start 302` ma MAI `google/callback` → il callback finisce altrove (Metro o prod).

@@ -37,7 +37,9 @@ export function isGoogleLoginConfigured(): boolean {
  */
 export function getPublicBaseUrl(): string {
   if (isProduction && process.env.CLIENT_URL) return process.env.CLIENT_URL.replace(/\/$/, '');
-  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  // Nota: in dev il dominio Replit senza porta punta al server web Expo (8081),
+  // non al backend. Il callback OAuth deve quindi includere la porta :5000.
+  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}:5000`;
   if (process.env.CLIENT_URL) return process.env.CLIENT_URL.replace(/\/$/, '');
   return 'http://localhost:5000';
 }
