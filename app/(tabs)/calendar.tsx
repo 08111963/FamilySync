@@ -122,6 +122,28 @@ export default function CalendarScreen() {
 
   const handleDeleteEvent = (eventId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const event = data.events.find((e) => e.id === eventId);
+    // Evento ricorrente: chiedi se eliminare solo questa occorrenza o tutta la serie
+    if (event?.recurrenceRule) {
+      if (Platform.OS === "web") {
+        if (confirm(`"${event.title}" si ripete. Vuoi eliminare TUTTE le ripetizioni?\n\nOK = elimina tutta la serie\nAnnulla = elimina solo questa`)) {
+          deleteEvent(eventId, "series");
+        } else {
+          deleteEvent(eventId);
+        }
+      } else {
+        Alert.alert(
+          "Evento ricorrente",
+          `"${event.title}" si ripete. Cosa vuoi eliminare?`,
+          [
+            { text: "Solo questo", onPress: () => deleteEvent(eventId) },
+            { text: "Tutta la serie", style: "destructive", onPress: () => deleteEvent(eventId, "series") },
+            { text: "Annulla", style: "cancel" },
+          ]
+        );
+      }
+      return;
+    }
     deleteEvent(eventId);
   };
 

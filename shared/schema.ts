@@ -133,6 +133,9 @@ export const calendarEvents = pgTable("calendar_events", {
   color: varchar("color", { length: 7 }).notNull(),
   memberId: uuid("member_id").references(() => familyMembers.id, { onDelete: "set null" }),
   recurrenceRule: text("recurrence_rule"),
+  // Identificatore condiviso dalle occorrenze materializzate della stessa serie
+  // ricorrente: permette di eliminare "tutta la serie" senza ambiguità.
+  seriesId: uuid("series_id"),
   createdBy: uuid("created_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

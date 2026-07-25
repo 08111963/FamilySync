@@ -124,7 +124,7 @@ interface FamilyContextType {
   deleteMember: (id: string) => void;
   addEvent: (event: Omit<CalendarEvent, "id" | "familyId" | "createdBy">) => void;
   updateEvent: (id: string, updates: Partial<CalendarEvent>) => void;
-  deleteEvent: (id: string) => void;
+  deleteEvent: (id: string, scope?: "single" | "series") => void;
   addShoppingList: (name: string) => void;
   deleteShoppingList: (id: string) => void;
   addShoppingItem: (listId: string, item: { name: string; addedBy?: string; quantity?: string; unit?: string; category?: string }) => void;
@@ -323,9 +323,10 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       .catch(console.error);
   }, [currentFamilyId, qc]);
 
-  const deleteEvent = useCallback((id: string) => {
+  const deleteEvent = useCallback((id: string, scope?: "single" | "series") => {
     if (!currentFamilyId) return;
-    apiRequest("DELETE", `/api/calendar/${currentFamilyId}/${id}`)
+    const suffix = scope === "series" ? "?scope=series" : "";
+    apiRequest("DELETE", `/api/calendar/${currentFamilyId}/${id}${suffix}`)
       .then(() => qc.invalidateQueries({ queryKey: ["/api/calendar", currentFamilyId] }))
       .catch(console.error);
   }, [currentFamilyId, qc]);

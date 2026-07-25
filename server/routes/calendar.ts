@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { getParam, getQuery } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { calendarEvents, familyMembers, families } from '../../shared/schema';
-import { eq, and, gte, lte } from 'drizzle-orm';
+import { eq, and, gte, lte, isNull } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily, notifyUserInFamily } from '../lib/websocket';
@@ -185,11 +185,16 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       if (expanded.length > 0) dates = expanded;
     }
 
+    // Le occorrenze della stessa serie ricorrente condividono un seriesId,
+    // così "elimina tutta la serie" è univoco anche con titoli uguali.
+    const seriesId = parsed.data.recurrenceRule ? randomUUID() : null;
+
     const inserted = await db.insert(calendarEvents).values(
       dates.map((date) => ({
         familyId,
         ...parsed.data,
         date,
+        seriesId,
         createdBy: req.user!.userId,
       }))
     ).returning();
@@ -271,10 +276,39 @@ router.delete('/:familyId/:eventId', authenticate, requireFamilyMember(), async 
   try {
     const familyId = getParam(req, 'familyId');
     const eventId = getParam(req, 'eventId');
+    const scope = getQuery(req, 'scope');
 
-    await db.delete(calendarEvents).where(and(eq(calendarEvents.id, eventId), eq(calendarEvents.familyId, familyId)));
+    const [deleted] = await db
+      .delete(calendarEvents)
+      .where(and(eq(calendarEvents.id, eventId), eq(calendarEvents.familyId, familyId)))
+      .returning();
 
-    broadcastToFamily(familyId, 'event_deleted', { eventId });
+    // Se richiesto, elimina anche tutte le altre occorrenze della stessa serie.
+    if (scope === 'series' && deleted?.recurrenceRule) {
+      if (deleted.seriesId) {
+        // Serie nuove: identificate in modo univoco dal seriesId.
+        await db.delete(calendarEvents).where(
+          and(
+            eq(calendarEvents.familyId, familyId),
+            eq(calendarEvents.seriesId, deleted.seriesId),
+          ),
+        );
+      } else {
+        // Serie create prima dell'introduzione del seriesId: fallback sui campi
+        // discriminanti disponibili (titolo, regola, orario, creatore).
+        const conditions = [
+          eq(calendarEvents.familyId, familyId),
+          eq(calendarEvents.title, deleted.title),
+          eq(calendarEvents.recurrenceRule, deleted.recurrenceRule),
+          eq(calendarEvents.createdBy, deleted.createdBy),
+          isNull(calendarEvents.seriesId),
+          deleted.time === null ? isNull(calendarEvents.time) : eq(calendarEvents.time, deleted.time),
+        ];
+        await db.delete(calendarEvents).where(and(...conditions));
+      }
+    }
+
+    broadcastToFamily(familyId, 'event_deleted', { eventId, scope: scope === 'series' ? 'series' : 'single' });
     res.json({ message: 'Evento eliminato' });
   } catch (error) {
     logger.error('Delete event error', { error: String(error) });
