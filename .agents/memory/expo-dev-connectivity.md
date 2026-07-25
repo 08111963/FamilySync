@@ -3,12 +3,17 @@ name: Expo dev connectivity (exps:// scheme)
 description: Why Replit "Simulate on Android/iOS" + Expo Go QR fail with "Packager is not running", and the patch-package fix.
 ---
 
-## ✅ ANDROID SOLVED: modern ngrok v3 tunnel — the working fix
+## ✅ CURRENT (2026-07-25): `expo start --tunnel` (exp.direct) — the working fix
 
-Real Android Expo Go over the Replit https-only edge is fixed by tunneling Metro through **ngrok v3** (NOT expo's built-in `--tunnel`).
+The personal ngrok v3 tunnel hit the free-plan monthly bandwidth cap (**ERR_NGROK_725**, 403 on every request → Expo Go "Packager is not running"). Full JS bundles are ~15MB each, so the 1GB free quota burns fast — the personal-ngrok path is NOT sustainable.
 
-**Why expo's `--tunnel` fails and v3 standalone works:**
-- `expo start --tunnel` uses `@expo/ngrok` → `@expo/ngrok-bin@2.3.42` (ancient ngrok **v2** client) + requests an `exp.direct` hostname that only expo's shared ngrok account can create. With a user's free token it throws the vague `Cannot read properties of undefined (reading 'body')` (wrapper choking on the failed connect). Do NOT chase this path.
+Switched `scripts/expo-tunnel.sh` to plain `npx expo start --tunnel`: **it works now** ("Tunnel connected/ready", `exp://<id>-8081.exp.direct`, `/status` → 200 over public http). Uses Expo's shared account → no user bandwidth cap. The older claim that `--tunnel` always fails with `Cannot read properties of undefined (reading 'body')` is STALE — that was the unauthenticated-ngrok era; with `@expo/ngrok` installed it connects fine. exp.direct serves plain http so no exps:// conversion is needed for it (the social-login exp→exps rewrite only targets hosts containing "ngrok").
+
+**Caveat:** exp.direct URL changes per restart → user must re-scan the QR after each frontend restart.
+
+## (Superseded) ngrok v3 personal tunnel
+
+Was the fix before the bandwidth cap: standalone ngrok v3 binary + `NGROK_AUTHTOKEN`, `EXPO_PACKAGER_PROXY_URL` + `REACT_NATIVE_PACKAGER_HOSTNAME`, QR `exps://<host>.ngrok-free.dev`. Keep as reference only; do not revert to it (quota).
 - The DNS "can't resolve external" note below is STALE — `dns.lookup('tunnel.ngrok.com')` resolves fine; external connectivity works.
 
 **The working setup (in repo):**
