@@ -55,7 +55,13 @@ export async function completeOauth(loginCode: string): Promise<SocialSession> {
  * viene scambiato con i token di sessione.
  */
 export async function loginWithGoogle(): Promise<SocialLoginResult | null> {
-  const returnUrl = Linking.createURL("login");
+  // In Expo Go tramite tunnel HTTPS (ngrok) il deep link di ritorno deve usare
+  // lo schema sicuro exps://, altrimenti Expo Go non riesce a ricaricare il
+  // progetto ("Something went wrong") quando il browser rimanda all'app.
+  let returnUrl = Linking.createURL("login");
+  if (returnUrl.startsWith("exp://") && returnUrl.includes("ngrok")) {
+    returnUrl = returnUrl.replace(/^exp:\/\//, "exps://");
+  }
   const startUrl = new URL("/api/auth/google/start", getApiUrl());
   startUrl.searchParams.set("returnUrl", returnUrl);
 

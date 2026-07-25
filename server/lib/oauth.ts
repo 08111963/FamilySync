@@ -58,7 +58,7 @@ export function isAllowedReturnUrl(returnUrl: string): boolean {
   if (returnUrl.startsWith('myapp://')) return true;
   // Deep link Expo Go: ammessi SOLO in sviluppo (in produzione l'app usa lo
   // schema nativo myapp:// o il dominio web).
-  if (!isProduction && /^exp(\+[a-z0-9-]+)?:\/\//i.test(returnUrl)) return true;
+  if (!isProduction && /^exps?(\+[a-z0-9-]+)?:\/\//i.test(returnUrl)) return true;
   let parsed: URL;
   try {
     parsed = new URL(returnUrl);

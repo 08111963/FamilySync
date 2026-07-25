@@ -6,7 +6,8 @@ description: Convenzioni di sicurezza per il login social di FamilySync
 Regole:
 - Google usa il code-flow LATO SERVER (`/api/auth/google/start` → callback → redirect al client con `loginCode` monouso). I token di sessione non passano MAI nell'URL.
 - Il `loginCode` è un JWT 2 min con `jti` consumato in-memory al primo `/oauth/complete`; il replay va rifiutato.
-- `returnUrl` è validato con allow-list: `myapp://`, host noti (dev domain, CLIENT_URL, EXPO_PUBLIC_DOMAIN); `exp://` SOLO in sviluppo.
+- `returnUrl` è validato con allow-list: `myapp://`, host noti (dev domain, CLIENT_URL, EXPO_PUBLIC_DOMAIN); `exp://` e `exps://` SOLO in sviluppo.
+- Expo Go via tunnel ngrok: il deep link di ritorno DEVE essere `exps://` (non `exp://`), altrimenti Expo Go mostra "Something went wrong" al rientro; il client converte lo schema quando l'host contiene "ngrok". In più `openAuthSessionAsync` su Android può tornare "dismiss" anche a redirect avvenuto: serve il listener `Linking.addEventListener("url")` come fallback per catturare loginCode/signupToken.
 - id_token Google e identityToken Apple vanno verificati con jose JWKS (firma, issuer, audience); rifiutare email non verificate prima del find-or-create per email.
 - Audience Apple: bundle id `com.familysyncapp.coordinator` (prod); in dev anche `host.exp.Exponent` (Expo Go).
 - Utenti social: `passwordHash` NULL + `authProvider`; login/change-password/delete-account devono gestire passwordHash null (codice `SOCIAL_LOGIN_ONLY`; delete senza password richiede comunque "ELIMINA").
