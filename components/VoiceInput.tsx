@@ -62,6 +62,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
   const { colors } = useTheme();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recording, setRecording] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const idRef = useRef(`mic_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
   const recordingRef = useRef(false);
@@ -69,6 +70,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
   const startingRef = useRef(false);
   const recordStartRef = useRef(0);
   const justStoppedRef = useRef(false);
+  const releasedWhileStartingRef = useRef(false);
 
   const activeMic = useSyncExternalStore(subscribeMic, getActiveMic, getActiveMic);
   const lockedByOther = activeMic !== null && activeMic !== idRef.current;
@@ -106,6 +108,8 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
     if (getActiveMic() !== null) return; // un altro mic sta già registrando
     setActiveMic(idRef.current);
     startingRef.current = true;
+    setStarting(true);
+    releasedWhileStartingRef.current = false;
     try {
       const perm = await AudioModule.requestRecordingPermissionsAsync();
       if (!perm.granted) {
@@ -125,9 +129,14 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       if (Platform.OS !== "web") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
-      // Se l'utente ha già rilasciato mentre stavamo avviando (es. durante la
-      // richiesta di permesso del browser), NON annullare: restiamo in
-      // registrazione e il prossimo tocco fermerà e trascriverà (modalità toggle).
+      // Stile WhatsApp: se l'utente ha già rilasciato mentre stavamo avviando
+      // (es. durante la richiesta di permesso del browser), non lasciare il
+      // microfono acceso: annulla subito in silenzio. L'utente ripremerà.
+      if (releasedWhileStartingRef.current) {
+        releasedWhileStartingRef.current = false;
+        await cancelRecording();
+        return;
+      }
     } catch (err) {
       console.error("Errore avvio registrazione:", err);
       recordingRef.current = false;
@@ -137,6 +146,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       Alert.alert("Dettatura", "Impossibile avviare la registrazione su questo dispositivo.");
     } finally {
       startingRef.current = false;
+      setStarting(false);
     }
   };
 
@@ -197,16 +207,22 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
   // perde il focus, l'onPressOut del Pressable può non arrivare. Questi
   // listener globali garantiscono che la registrazione venga sempre chiusa.
   useEffect(() => {
-    if (Platform.OS !== "web" || !recording) return;
+    if (Platform.OS !== "web" || (!recording && !starting)) return;
     const win = globalThis as any;
     if (!win?.addEventListener) return;
-    // Solo se la pressione è iniziata sul microfono: in modalità toggle un
-    // click altrove non deve fermare la registrazione.
+    // Solo se la pressione è iniziata sul microfono: un click altrove
+    // non deve fermare la registrazione.
     const onPointerUp = () => {
       if (pressedRef.current) handlePressOut();
     };
     const onWindowBlur = () => {
       pressedRef.current = false;
+      if (startingRef.current) {
+        // Perdita di focus durante l'avvio (es. prompt permesso in alcune UI):
+        // segna l'intenzione di annullare appena l'avvio termina.
+        releasedWhileStartingRef.current = true;
+        return;
+      }
       if (recordingRef.current) cancelRecording();
     };
     win.addEventListener("pointerup", onPointerUp);
@@ -216,7 +232,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       win.removeEventListener("blur", onWindowBlur);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recording]);
+  }, [recording, starting]);
 
   const handlePressIn = () => {
     if (transcribing || lockedByOther || disabled) return;
@@ -238,16 +254,21 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       justStoppedRef.current = false;
       return;
     }
-    // Se stiamo ancora avviando (es. permesso in corso), non annullare:
-    // la registrazione resterà attiva in modalità toggle.
-    if (startingRef.current) return;
-    if (!recordingRef.current) return;
-    const elapsed = Date.now() - recordStartRef.current;
-    if (elapsed < 400) {
-      // Tocco breve: resta in registrazione (toggle). Il prossimo tocco
-      // fermerà e trascriverà.
+    // Se stiamo ancora avviando (es. permesso in corso), segna il rilascio:
+    // appena l'avvio termina, la registrazione viene annullata (niente toggle).
+    if (startingRef.current) {
+      releasedWhileStartingRef.current = true;
       return;
     }
+    if (!recordingRef.current) return;
+    const elapsed = Date.now() - recordStartRef.current;
+    if (elapsed < 250) {
+      // Tocco troppo breve per contenere parole: annulla in silenzio,
+      // come WhatsApp. Nessun alert e nessuna registrazione lasciata accesa.
+      cancelRecording();
+      return;
+    }
+    // Stile WhatsApp: al rilascio si ferma SEMPRE e si trascrive.
     stopAndTranscribe();
   };
 
@@ -265,7 +286,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       hitSlop={8}
       style={[styles.button, webHoldStyle]}
       accessibilityLabel={
-        recording ? "Rilascia o tocca per trascrivere" : "Tieni premuto e parla, o tocca per avviare"
+        recording ? "Rilascia per trascrivere" : "Tieni premuto e parla"
       }
       testID="voice-input-button"
     >
