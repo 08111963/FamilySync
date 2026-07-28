@@ -24,6 +24,61 @@ export function toAbsoluteUploadUrl(relativeUrl: string): string {
   return new URL(relativeUrl, getApiUrl()).toString();
 }
 
+// ---- Risoluzione batch delle foto già in cache sul server ----
+// Quando una lista di ricette appare, ogni card chiede la sua foto: invece di
+// N richieste separate, raggruppiamo i titoli per ~40ms e facciamo UNA sola
+// chiamata di lookup. Solo i titoli senza foto in cache passano alla
+// generazione individuale (lenta, AI).
+let resolveQueue: Map<string, ((url: string | null) => void)[]> | null = null;
+let resolveTimer: ReturnType<typeof setTimeout> | null = null;
+let resolveFamilyId: string | null = null;
+
+function resolveCachedUrl(familyId: string, title: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!resolveQueue || resolveFamilyId !== familyId) {
+      // Famiglia diversa (caso raro): svuota subito la coda precedente.
+      if (resolveQueue) flushResolveQueue();
+      resolveQueue = new Map();
+      resolveFamilyId = familyId;
+    }
+    const waiters = resolveQueue.get(title) || [];
+    waiters.push(resolve);
+    resolveQueue.set(title, waiters);
+    if (!resolveTimer) {
+      resolveTimer = setTimeout(flushResolveQueue, 40);
+    }
+  });
+}
+
+async function flushResolveQueue() {
+  const queue = resolveQueue;
+  const familyId = resolveFamilyId;
+  resolveQueue = null;
+  resolveFamilyId = null;
+  if (resolveTimer) {
+    clearTimeout(resolveTimer);
+    resolveTimer = null;
+  }
+  if (!queue || !familyId || queue.size === 0) return;
+
+  const titles = Array.from(queue.keys());
+  let urls: Record<string, string | null> = {};
+  try {
+    const data = await apiFetch<{ urls: Record<string, string | null> }>(
+      `/api/ai/${familyId}/recipe-images/resolve`,
+      { method: "POST", body: { titles } }
+    );
+    urls = data.urls || {};
+  } catch {
+    // Lookup fallito: i chiamanti proseguiranno con la generazione individuale.
+  }
+  for (const [title, waiters] of queue) {
+    const url = urls[title.trim()] ?? urls[title] ?? null;
+    if (url) urlCache.set(cacheKey(title), url);
+    waiters.forEach((w) => w(url));
+  }
+}
+
 async function requestRecipeImage(
   familyId: string,
   title: string,
@@ -33,11 +88,21 @@ async function requestRecipeImage(
   const cached = urlCache.get(key);
   if (cached) return cached;
 
-  const pending = inFlight.get(key);
+  // Dedup per (famiglia, titolo): la stessa foto è un asset condiviso tra
+  // famiglie, ma la richiesta HTTP è autorizzata per famiglia, quindi una
+  // richiesta di un'altra famiglia non deve agganciarsi a quella in corso.
+  const flightKey = `${familyId}:${key}`;
+  const pending = inFlight.get(flightKey);
   if (pending) return pending;
 
   const task = (async () => {
     try {
+      // 1) Lookup batch: se la foto è già in cache sul server, nessuna
+      //    generazione e risposta quasi istantanea.
+      const resolved = await resolveCachedUrl(familyId, title);
+      if (resolved) return resolved;
+
+      // 2) Cache miss: generazione AI individuale (lenta).
       const data = await apiFetch<{ url: string }>(
         `/api/ai/${familyId}/recipe-image`,
         { method: "POST", body: { title, description } }
@@ -46,10 +111,10 @@ async function requestRecipeImage(
       urlCache.set(key, data.url);
       return data.url;
     } finally {
-      inFlight.delete(key);
+      inFlight.delete(flightKey);
     }
   })();
-  inFlight.set(key, task);
+  inFlight.set(flightKey, task);
   return task;
 }
 

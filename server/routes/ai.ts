@@ -1076,6 +1076,30 @@ type RecipeImageRun = Awaited<ReturnType<typeof withAiUsage<Buffer>>>;
 const inFlightRecipeImages = new Map<string, Promise<RecipeImageRun>>();
 
 /**
+ * POST /api/ai/:familyId/recipe-images/resolve
+ * Risolve in batch le foto GIÀ in cache per una lista di titoli.
+ * Nessuna generazione, nessun consumo di quota: solo lookup su disco.
+ * Risposta: { urls: { [titolo]: "/uploads/..." | null } }
+ */
+router.post('/:familyId/recipe-images/resolve', authenticate, requireAiEnabled, requireFamilyMember(), (req: Request, res: Response) => {
+  const raw = req.body?.titles;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 40) {
+    return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Lista titoli non valida' } });
+  }
+  const urls: Record<string, string | null> = {};
+  for (const t of raw) {
+    if (typeof t !== 'string') continue;
+    const title = t.trim();
+    if (title.length < 2 || title.length > 200) continue;
+    const fileName = `${recipeImageCacheKey(title)}.webp`;
+    urls[title] = fs.existsSync(path.join(recipeImagesDir, fileName))
+      ? `/uploads/recipe-images/${fileName}`
+      : null;
+  }
+  res.json({ urls });
+});
+
+/**
  * POST /api/ai/:familyId/recipe-image
  * Genera (o recupera dalla cache) la foto di una ricetta proposta dall'AI.
  * Cache-hit: nessuna chiamata OpenAI e nessun consumo di quota.
