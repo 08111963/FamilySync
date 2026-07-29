@@ -42,7 +42,7 @@ async function requireAppOwner(req: Request, res: Response, next: NextFunction) 
 const feedbackSchema = z.object({
   category: z.enum(['bug', 'suggestion', 'other']),
   rating: z.number().int().min(1).max(5).optional(),
-  message: z.string().trim().min(5, 'Messaggio troppo corto').max(2000),
+  message: z.string().trim().min(2, 'Messaggio troppo corto').max(2000),
   platform: z.string().trim().max(10).optional(),
   appVersion: z.string().trim().max(20).optional(),
 });
@@ -57,14 +57,15 @@ feedbackRouter.post('/', async (req: Request, res: Response) => {
     }
     const userId = req.user!.userId;
 
-    // Anti-spam: max 5 feedback nelle ultime 24 ore per utente.
+    // Anti-spam: max 12 feedback nelle ultime 24 ore per utente
+    // (il modulo può inviare fino a 3 voci per volta).
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const [row] = await db
       .select({ n: count() })
       .from(feedbackEntries)
       .where(and(eq(feedbackEntries.userId, userId), gte(feedbackEntries.createdAt, since)));
-    if ((row?.n ?? 0) >= 5) {
-      return res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Hai già inviato 5 feedback nelle ultime 24 ore. Riprova più tardi, grazie!' } });
+    if ((row?.n ?? 0) >= 12) {
+      return res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Hai già inviato molti feedback nelle ultime 24 ore. Riprova più tardi, grazie!' } });
     }
 
     const { category, rating, message, platform, appVersion } = parsed.data;

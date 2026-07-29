@@ -13,10 +13,30 @@ import { Button } from "@/components/Button";
 import { VoiceInput } from "@/components/VoiceInput";
 import { apiRequest } from "@/lib/query-client";
 
-const CATEGORIES = [
-  { value: "bug", label: "Ho trovato un problema", icon: "bug-outline" as const },
-  { value: "suggestion", label: "Ho un suggerimento", icon: "bulb-outline" as const },
-  { value: "other", label: "Altro", icon: "chatbubble-ellipses-outline" as const },
+type Category = "bug" | "suggestion" | "other";
+
+const SECTIONS: { value: Category; label: string; icon: keyof typeof Ionicons.glyphMap; placeholder: string; voiceContext: string }[] = [
+  {
+    value: "bug",
+    label: "Ho trovato un problema",
+    icon: "bug-outline",
+    placeholder: "Descrivi il problema: cosa stavi facendo e cosa è successo...",
+    voiceContext: "Segnalazione di un problema o errore in un'app per famiglie (calendario, spesa, ricette, chat).",
+  },
+  {
+    value: "suggestion",
+    label: "Ho un suggerimento",
+    icon: "bulb-outline",
+    placeholder: "Racconta la tua idea o la funzione che vorresti...",
+    voiceContext: "Suggerimento di una nuova funzione per un'app per famiglie (calendario, spesa, ricette, chat).",
+  },
+  {
+    value: "other",
+    label: "Altro",
+    icon: "chatbubble-ellipses-outline",
+    placeholder: "Qualsiasi altra cosa tu voglia dirci...",
+    voiceContext: "Commento libero su un'app per famiglie.",
+  },
 ];
 
 export default function FeedbackScreen() {
@@ -24,29 +44,62 @@ export default function FeedbackScreen() {
   const { colors } = useTheme();
   const { currentFamily } = useFamily();
 
-  const [category, setCategory] = useState<string>("suggestion");
+  const [messages, setMessages] = useState<Record<Category, string>>({ bug: "", suggestion: "", other: "" });
   const [rating, setRating] = useState(0);
-  const [message, setMessage] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const setMessage = (cat: Category, text: string) => {
+    setMessages((prev) => ({ ...prev, [cat]: text }));
+  };
+
+  const appendMessage = (cat: Category, text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    setMessages((prev) => ({
+      ...prev,
+      [cat]: (prev[cat].trim() ? `${prev[cat].trim()} ${t}` : t).slice(0, 2000),
+    }));
+  };
+
+  const filled = SECTIONS.filter((s) => messages[s.value].trim().length > 0);
+  const canSend = filled.length > 0 || rating > 0;
+
   const handleSend = async () => {
-    const trimmed = message.trim();
-    if (trimmed.length < 5) {
-      setError("Scrivi qualche dettaglio in più (almeno 5 caratteri)");
+    if (!canSend) {
+      setError("Compila almeno un campo o metti una valutazione a stelle");
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      await apiRequest("POST", "/api/feedback", {
-        category,
-        rating: rating > 0 ? rating : undefined,
-        message: trimmed,
-        platform: Platform.OS,
-        appVersion: Constants.expoConfig?.version || undefined,
-      });
+      const platform = Platform.OS;
+      const appVersion = Constants.expoConfig?.version || undefined;
+
+      if (filled.length > 0) {
+        let first = true;
+        for (const s of filled) {
+          await apiRequest("POST", "/api/feedback", {
+            category: s.value,
+            rating: first && rating > 0 ? rating : undefined,
+            message: messages[s.value].trim(),
+            platform,
+            appVersion,
+          });
+          first = false;
+        }
+      } else {
+        // Solo stelle, nessun testo
+        await apiRequest("POST", "/api/feedback", {
+          category: "other",
+          rating,
+          message: "(Solo valutazione a stelle, nessun commento)",
+          platform,
+          appVersion,
+        });
+      }
+
       setSent(true);
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -55,7 +108,7 @@ export default function FeedbackScreen() {
       const msg = typeof err?.message === "string" ? err.message : "";
       setError(
         msg.includes("429") || msg.includes("RATE_LIMITED")
-          ? "Hai già inviato molti feedback oggi. Riprova domani, grazie!"
+          ? "Hai già inviato molti feedback nelle ultime 24 ore. Riprova più tardi, grazie!"
           : "Impossibile inviare il feedback. Riprova."
       );
     } finally {
@@ -83,37 +136,44 @@ export default function FeedbackScreen() {
         {!sent ? (
           <>
             <Text style={[styles.intro, { color: colors.textSecondary }]}>
-              Stiamo migliorando FamilySync grazie a chi la prova. Raccontaci se hai
-              trovato problemi o hai idee per nuove funzioni.
+              Stiamo migliorando FamilySync grazie a chi la prova. Compila solo le parti
+              che ti interessano: nessun campo è obbligatorio.
             </Text>
 
-            <Text style={[styles.label, { color: colors.text }]}>Di cosa si tratta?</Text>
-            <View style={styles.categoryRow}>
-              {CATEGORIES.map((c) => {
-                const active = category === c.value;
-                return (
-                  <Pressable
-                    key={c.value}
-                    onPress={() => setCategory(c.value)}
-                    style={[
-                      styles.categoryChip,
-                      {
-                        backgroundColor: active ? colors.primary : colors.surface,
-                        borderColor: active ? colors.primary : colors.border,
-                      },
-                    ]}
-                    testID={`feedback-category-${c.value}`}
-                  >
-                    <Ionicons name={c.icon} size={18} color={active ? "#fff" : colors.text} />
-                    <Text style={[styles.categoryText, { color: active ? "#fff" : colors.text }]}>
-                      {c.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            {SECTIONS.map((s) => (
+              <View key={s.value} style={styles.sectionBlock}>
+                <View style={styles.sectionLabelRow}>
+                  <Ionicons name={s.icon} size={18} color={colors.primary} />
+                  <Text style={[styles.label, { color: colors.text }]}>{s.label}</Text>
+                </View>
+                <View style={styles.messageRow}>
+                  <View style={{ flex: 1 }}>
+                    <Input
+                      placeholder={s.placeholder}
+                      value={messages[s.value]}
+                      onChangeText={(t) => setMessage(s.value, t)}
+                      multiline
+                      numberOfLines={3}
+                      maxLength={2000}
+                      style={{ minHeight: 72, textAlignVertical: "top" }}
+                      testID={`feedback-message-${s.value}`}
+                    />
+                  </View>
+                  {currentFamily?.id ? (
+                    <View style={styles.micWrap}>
+                      <VoiceInput
+                        familyId={currentFamily.id}
+                        disabled={loading}
+                        context={s.voiceContext}
+                        onTranscribed={(text) => appendMessage(s.value, text)}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            ))}
 
-            <Text style={[styles.label, { color: colors.text }]}>
+            <Text style={[styles.label, { color: colors.text, marginTop: 4 }]}>
               Quanto ti piace l'app? <Text style={{ color: colors.textSecondary }}>(facoltativo)</Text>
             </Text>
             <View style={styles.starsRow}>
@@ -133,39 +193,9 @@ export default function FeedbackScreen() {
               ))}
             </View>
 
-            <View style={styles.messageRow}>
-              <View style={{ flex: 1 }}>
-                <Input
-                  label="Il tuo messaggio"
-                  placeholder="Descrivi il problema o il suggerimento..."
-                  value={message}
-                  onChangeText={setMessage}
-                  multiline
-                  numberOfLines={5}
-                  maxLength={2000}
-                  style={{ minHeight: 110, textAlignVertical: "top" }}
-                  testID="feedback-message"
-                />
-              </View>
-              {currentFamily?.id ? (
-                <View style={styles.micWrap}>
-                  <VoiceInput
-                    familyId={currentFamily.id}
-                    disabled={loading}
-                    context="Feedback su un'app per famiglie: segnalazione di un problema o suggerimento su calendario, spesa, ricette, chat."
-                    onTranscribed={(text) => {
-                      const t = text.trim();
-                      if (!t) return;
-                      setMessage((prev) => (prev.trim() ? `${prev.trim()} ${t}` : t).slice(0, 2000));
-                    }}
-                  />
-                </View>
-              ) : null}
-            </View>
-
             {error && <Text style={[styles.error, { color: colors.error }]}>{error}</Text>}
 
-            <Button title="Invia feedback" onPress={handleSend} loading={loading} />
+            <Button title="Invia feedback" onPress={handleSend} loading={loading} disabled={!canSend} />
           </>
         ) : (
           <View style={styles.successContainer}>
@@ -195,22 +225,13 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
   placeholder: { width: 32 },
   content: { flex: 1, paddingHorizontal: 20 },
-  intro: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20, marginBottom: 20 },
-  label: { fontSize: 15, fontFamily: "Inter_600SemiBold", marginBottom: 10 },
-  categoryRow: { gap: 8, marginBottom: 20 },
-  categoryChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  categoryText: { fontSize: 15, fontFamily: "Inter_500Medium" },
-  starsRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
-  messageRow: { flexDirection: "row", alignItems: "flex-end", gap: 8, marginBottom: 8 },
+  intro: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20, marginBottom: 18 },
+  sectionBlock: { marginBottom: 16 },
+  sectionLabelRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  label: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  messageRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
   micWrap: { paddingBottom: 14 },
+  starsRow: { flexDirection: "row", gap: 10, marginVertical: 14 },
   error: { fontSize: 14, fontFamily: "Inter_500Medium", marginBottom: 12 },
   successContainer: { alignItems: "center", gap: 16, paddingTop: 40 },
   successTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
