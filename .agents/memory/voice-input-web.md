@@ -3,7 +3,7 @@ name: Mic hold-to-talk su web
 description: Perché il pulsante "tieni premuto per parlare" falliva su web/canvas iframe e come è stato reso robusto
 ---
 
-Regola: un controllo "tieni premuto per parlare" su web deve avere `touchAction: "none"` + `userSelect: "none"` (con prefissi WebKit). Comportamento richiesto dall'utente (luglio 2026): stile WhatsApp puro — al rilascio si ferma SEMPRE e si trascrive; niente modalità toggle che lascia il mic acceso. Tocco troppo breve (<250ms) o rilascio durante il prompt permesso → annulla in silenzio. Mai annullare con un alert "tieni premuto".
+Regola: un controllo "tieni premuto per parlare" su web deve avere `touchAction: "none"` + `userSelect: "none"` (con prefissi WebKit). Comportamento aggiornato (29 lug 2026, dopo bug reale su Android Chrome): su **web** un tap breve NON deve annullare in silenzio — l'utente medio tocca, non tiene premuto, e otteneva zero feedback e zero richieste al server. Su web: tap = avvia, secondo tap = ferma e trascrive; hold >250ms con rilascio = trascrive; solo il blur finestra durante l'avvio annulla. Su nativo resta lo stile WhatsApp puro (rilascio ferma sempre, tocco <250ms annulla in silenzio). Mai annullare con un alert "tieni premuto".
 
 **Why:** il browser annullava la pressione prolungata (scroll/selezione testo, o rilascio per rispondere al prompt permesso microfono), quindi l'app vedeva sempre un "tocco troppo breve" e mostrava in loop l'avviso, anche con il dito fermo sul pulsante.
 

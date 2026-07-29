@@ -269,18 +269,25 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       justStoppedRef.current = false;
       return;
     }
-    // Se stiamo ancora avviando (es. permesso in corso), segna il rilascio:
-    // appena l'avvio termina, la registrazione viene annullata (niente toggle).
+    // Se stiamo ancora avviando (es. permesso in corso):
+    // - su web un tap breve è l'uso normale (modalità toggle): la registrazione
+    //   continua e un secondo tap la fermerà. Solo il blur della finestra annulla.
+    // - su nativo manteniamo lo stile hold-to-talk: il rilascio annulla.
     if (startingRef.current) {
-      releasedWhileStartingRef.current = true;
+      if (Platform.OS !== "web") {
+        releasedWhileStartingRef.current = true;
+      }
       return;
     }
     if (!recordingRef.current) return;
     const elapsed = Date.now() - recordStartRef.current;
     if (elapsed < 250) {
-      // Tocco troppo breve per contenere parole: annulla in silenzio,
-      // come WhatsApp. Nessun alert e nessuna registrazione lasciata accesa.
-      cancelRecording();
+      // Tocco breve: su web entra in modalità toggle (continua a registrare,
+      // un secondo tap ferma e trascrive). Su nativo annulla in silenzio,
+      // come WhatsApp.
+      if (Platform.OS !== "web") {
+        cancelRecording();
+      }
       return;
     }
     // Stile WhatsApp: al rilascio si ferma SEMPRE e si trascrive.
@@ -301,7 +308,13 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       hitSlop={8}
       style={[styles.button, webHoldStyle]}
       accessibilityLabel={
-        recording ? "Rilascia per trascrivere" : "Tieni premuto e parla"
+        recording
+          ? Platform.OS === "web"
+            ? "Tocca di nuovo per trascrivere"
+            : "Rilascia per trascrivere"
+          : Platform.OS === "web"
+            ? "Tocca e parla"
+            : "Tieni premuto e parla"
       }
       testID="voice-input-button"
     >
