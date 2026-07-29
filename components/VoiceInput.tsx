@@ -129,7 +129,9 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
         setActiveMic(null);
         showAlert(
           "Microfono non disponibile",
-          "Per usare la dettatura vocale, consenti l'accesso al microfono nelle impostazioni del dispositivo."
+          Platform.OS === "web"
+            ? "Il browser sta bloccando il microfono per questo sito. Tocca l'icona del lucchetto (o ⓘ) accanto all'indirizzo, apri Autorizzazioni e imposta Microfono su Consenti, poi ricarica la pagina."
+            : "Per usare la dettatura vocale, consenti l'accesso al microfono nelle impostazioni del dispositivo."
         );
         return;
       }
