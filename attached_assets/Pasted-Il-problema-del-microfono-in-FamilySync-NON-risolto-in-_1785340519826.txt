@@ -1,0 +1,181 @@
+Il problema del microfono in FamilySync NON è risolto in produzione.
+
+Dopo la pubblicazione dell’app, il comportamento resta sbagliato: tengo premuto il microfono, registro, rilascio, ma il messaggio vocale NON viene inviato automaticamente. Devo ancora inviarlo manualmente.
+
+Questo significa che una delle seguenti cose è vera:
+
+* la correzione è stata fatta solo in preview/dev e non nella build pubblicata;
+* è stato corretto il componente sbagliato;
+* esistono più componenti microfono e quello usato in produzione non è stato modificato;
+* la build pubblicata contiene codice vecchio;
+* manca bump/versione/build o aggiornamento effettivo del bundle;
+* lo stato React della registrazione viene aggiornato ma l’invio automatico non parte davvero dopo il rilascio.
+
+Non chiudere il task dicendo “funziona” se non hai verificato il comportamento reale della versione pubblicabile/pubblicata.
+
+Obiettivo obbligatorio:
+nella chat di FamilySync il microfono deve funzionare come WhatsApp:
+
+1. Tengo premuto il pulsante microfono.
+2. Parte la registrazione.
+3. Parlo.
+4. Rilascio il pulsante.
+5. La registrazione si ferma.
+6. Il messaggio vocale viene caricato e inviato automaticamente in chat.
+7. NON devo premere nessun secondo pulsante di invio.
+
+Se dopo il rilascio serve ancora premere “Invia”, il lavoro è fallito.
+
+Azioni richieste:
+
+1. Individua il componente realmente usato in produzione
+
+Cerca tutti i microfoni presenti nel progetto:
+
+* chat famiglia;
+* eventuali input vocali;
+* eventuali componenti riutilizzabili;
+* mobile Android/iOS;
+* web, se presente.
+
+Non limitarti al primo componente trovato.
+
+Devi indicare nel riepilogo:
+
+* tutti i componenti microfono trovati;
+* quale componente è realmente usato nella chat pubblicata;
+* quali componenti sono stati modificati;
+* quali componenti non sono usati.
+
+2. Correggi il flusso reale della chat
+
+Nel componente effettivo della chat, il rilascio del pulsante deve chiamare direttamente la sequenza:
+
+* stop registrazione;
+* recupero URI/file audio;
+* upload audio;
+* creazione messaggio chat;
+* refresh/append del messaggio nella conversazione.
+
+Non lasciare il file audio in stato “bozza”.
+Non aspettare un click manuale su “Invia”.
+Non usare un pulsante secondario obbligatorio.
+
+3. Attenzione agli stati asincroni React
+
+Verifica che l’invio automatico non dipenda da uno stato React appena aggiornato ma non ancora disponibile.
+
+Esempio di errore da evitare:
+
+* stop registrazione;
+* setAudioUri(uri);
+* poi sendMessage() legge ancora audioUri vecchio o null.
+
+Il metodo corretto deve usare direttamente l’URI restituito dallo stop della registrazione, senza aspettare setState.
+
+4. Eventi touch corretti
+
+Controlla conflitti tra:
+
+* onPress;
+* onPressIn;
+* onPressOut;
+* onLongPress;
+* onTouchStart;
+* onTouchEnd;
+* gesture handler;
+* Pressable;
+* TouchableOpacity;
+* stato recording.
+
+Il comportamento deve essere:
+
+* onPressIn / touch start → startRecording;
+* onPressOut / touch end → stopRecordingAndAutoSend.
+
+5. Gestione annullamento
+
+Se esiste una gesture di annullamento, va bene, ma deve essere esplicita.
+
+Il rilascio normale deve inviare.
+L’annullamento deve non inviare.
+
+6. Permessi ed errori
+
+Gestisci correttamente:
+
+* permesso microfono negato;
+* registrazione troppo breve;
+* file audio non creato;
+* upload fallito;
+* rete assente;
+* errore API.
+
+In caso di errore mostra un messaggio chiaro, ma non lasciare una bozza audio che richiede invio manuale, salvo solo come fallback esplicito dopo errore.
+
+7. Produzione/build
+
+Verifica che la correzione finisca davvero nella build pubblicabile.
+
+Devi controllare:
+
+* che il file modificato sia incluso nella build;
+* che non ci siano duplicati o vecchie schermate ancora referenziate;
+* che il routing punti al componente corretto;
+* che la build usi il codice aggiornato;
+* che versionCode/build number/versionName vengano incrementati se necessario;
+* che eventuale cache/bundle vecchio non faccia caricare codice precedente.
+
+Se si tratta della versione mobile, prepara una nuova build effettiva.
+Se si tratta della versione web, pubblica realmente il nuovo bundle e verifica che non sia cache vecchia.
+
+8. Test obbligatorio di accettazione
+
+Esegui o prepara una verifica reale con questo scenario:
+
+* apri la chat FamilySync nella build pubblicabile;
+* tieni premuto il microfono;
+* registra almeno 3 secondi;
+* rilascia il microfono;
+* verifica che il messaggio vocale compaia automaticamente nella chat senza premere “Invia”.
+
+Risultato atteso:
+“Messaggio vocale inviato automaticamente al rilascio del pulsante.”
+
+Risultato non accettabile:
+“Audio registrato ma rimane da inviare manualmente.”
+
+9. Non modificare altro
+
+Non modificare:
+
+* Privacy Policy;
+* Termini d’Uso;
+* Premium;
+* bollette;
+* analytics;
+* login;
+* calendario;
+* pagamenti;
+* funzioni non collegate.
+
+Intervieni solo sul flusso microfono/audio/chat e su eventuali file necessari per build/versione.
+
+10. Output finale obbligatorio
+
+Prepara uno ZIP del lavoro effettuato.
+
+Nel riepilogo finale indica chiaramente:
+
+* file modificati;
+* componenti microfono trovati;
+* componente realmente usato dalla chat;
+* causa reale del problema;
+* cosa impediva l’invio automatico in produzione;
+* come è stato corretto;
+* versione/build aggiornata, se modificata;
+* test eseguiti;
+* conferma esplicita che nella build pubblicabile il rilascio del microfono invia automaticamente il messaggio vocale senza invio manuale.
+
+Non chiudere il lavoro con una verifica teorica. Il criterio di successo è solo questo:
+rilascio il microfono → il messaggio vocale parte automaticamente.

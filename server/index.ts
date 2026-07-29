@@ -308,7 +308,20 @@ function configureExpoAndLanding(app: express.Application) {
   });
 
   if (hasWebBuild) {
-    app.use(express.static(webBuildDir));
+    // index.html (e sw.js) NON devono restare in cache sul telefono, altrimenti
+    // dopo una pubblicazione l'utente continua a vedere il bundle vecchio.
+    // I bundle JS in _expo/ hanno hash nel nome: cache lunga e sicura.
+    app.use(
+      express.static(webBuildDir, {
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith(".html") || filePath.endsWith("sw.js")) {
+            res.setHeader("Cache-Control", "no-cache, must-revalidate");
+          } else if (filePath.includes(`${path.sep}_expo${path.sep}`)) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          }
+        },
+      }),
+    );
   }
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
@@ -335,6 +348,7 @@ function setupWebAppFallback(app: express.Application) {
     if (!req.accepts("html")) {
       return next();
     }
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
     res.sendFile(webIndexPath);
   });
 }
