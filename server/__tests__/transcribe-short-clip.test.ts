@@ -1,114 +1,129 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type OpenAI from 'openai';
-import { transcribeAudio, __setOpenAiClientForTests } from '../lib/openai';
 
-// La chiave serve solo a superare assertAiConfigured: il client è mockato,
-// nessuna chiamata reale a OpenAI.
-const ORIGINAL_KEY = process.env.OPENAI_API_KEY;
-process.env.OPENAI_API_KEY = 'test-key-not-real';
+// Chiave finta: serve solo a superare assertAiConfigured(); il client OpenAI
+// vero non viene mai creato perché lo iniettiamo noi con il mock.
+process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-key-not-real';
 
-// Soglia in transcribeAudio: sotto 15KB niente prompt (audio troppo breve).
-const SHORT_BUFFER = Buffer.alloc(1_000, 1);
-const LONG_BUFFER = Buffer.alloc(30_000, 1);
-const CONTEXT = 'Evento del calendario familiare: titolo, luogo, data e orario.';
+import { transcribeAudio, __setOpenAiClientForTest } from '../lib/openai';
 
-type CreateArgs = Record<string, unknown>;
+// Soglia sotto la quale l'audio viene trascritto SENZA prompt di contesto
+// (deve restare allineata a isShortClip in server/lib/openai.ts).
+const SHORT_CLIP_THRESHOLD = 15_000;
 
-function mockClient(responseText: string, captured: CreateArgs[]): OpenAI {
-  return {
+type CreateArgs = { prompt?: string; [k: string]: unknown };
+
+function makeFakeClient(respond: (args: CreateArgs) => string) {
+  const calls: CreateArgs[] = [];
+  const client = {
     audio: {
       transcriptions: {
         create: async (args: CreateArgs) => {
-          captured.push(args);
-          return { text: responseText };
+          calls.push(args);
+          return { text: respond(args) };
         },
       },
     },
-  } as unknown as OpenAI;
+  };
+  return { client, calls };
 }
 
-test.after(() => {
-  __setOpenAiClientForTests(null);
-  if (ORIGINAL_KEY === undefined) delete process.env.OPENAI_API_KEY;
-  else process.env.OPENAI_API_KEY = ORIGINAL_KEY;
-});
+function buffersOf(size: number): Buffer {
+  return Buffer.alloc(size, 1);
+}
 
-test('audio breve: la richiesta NON include alcun prompt (anti-allucinazione)', async () => {
-  const captured: CreateArgs[] = [];
-  __setOpenAiClientForTests(mockClient('cena', captured));
+test('audio corto sotto soglia: la chiamata a OpenAI NON include prompt', async (t) => {
+  const { client, calls } = makeFakeClient(() => 'cena');
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
 
   const result = await transcribeAudio({
-    buffer: SHORT_BUFFER,
-    filename: 'voice.webm',
+    buffer: buffersOf(SHORT_CLIP_THRESHOLD - 1),
+    filename: 'clip.webm',
     mimeType: 'audio/webm',
-    context: CONTEXT,
+    context: 'Evento del calendario familiare: titolo, luogo, data e orario.',
   });
 
-  assert.equal(captured.length, 1);
-  assert.equal('prompt' in captured[0], false, 'il prompt non deve essere inviato per audio brevi');
+  assert.equal(calls.length, 1);
+  assert.equal('prompt' in calls[0], false, 'il prompt NON deve essere inviato per clip brevi');
   assert.equal(result.text, 'cena');
 });
 
-test('audio lungo: la richiesta include il prompt con il contesto', async () => {
-  const captured: CreateArgs[] = [];
-  __setOpenAiClientForTests(mockClient('Cena con Marco venerdì alle 20', captured));
+test('audio sopra soglia: il prompt viene inviato e include il contesto', async (t) => {
+  const { client, calls } = makeFakeClient(() => 'Cena con Marco venerdì alle 20');
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
 
+  const context = 'Evento del calendario familiare: titolo, luogo, data e orario.';
   const result = await transcribeAudio({
-    buffer: LONG_BUFFER,
-    filename: 'voice.webm',
+    buffer: buffersOf(SHORT_CLIP_THRESHOLD),
+    filename: 'clip.webm',
     mimeType: 'audio/webm',
-    context: CONTEXT,
+    context,
   });
 
-  assert.equal(captured.length, 1);
-  const prompt = captured[0].prompt;
-  assert.equal(typeof prompt, 'string', 'il prompt deve essere inviato per audio lunghi');
-  assert.ok((prompt as string).includes(CONTEXT), 'il prompt deve contenere il contesto');
-  assert.ok(!(prompt as string).includes('venerdì alle 20"'), 'il prompt non deve contenere frasi d\'esempio');
+  assert.equal(calls.length, 1);
+  assert.equal(typeof calls[0].prompt, 'string');
+  assert.ok((calls[0].prompt as string).length > 0, 'il prompt deve essere presente sopra soglia');
+  assert.ok(
+    (calls[0].prompt as string).includes(context),
+    'il prompt deve includere il contesto fornito'
+  );
   assert.equal(result.text, 'Cena con Marco venerdì alle 20');
 });
 
-test('audio lungo senza contesto: prompt = solo hint di base', async () => {
-  const captured: CreateArgs[] = [];
-  __setOpenAiClientForTests(mockClient('ciao', captured));
+test('audio sopra soglia senza contesto: prompt = solo hint di base', async (t) => {
+  const { client, calls } = makeFakeClient(() => 'ciao');
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
 
   await transcribeAudio({
-    buffer: LONG_BUFFER,
-    filename: 'voice.webm',
+    buffer: buffersOf(SHORT_CLIP_THRESHOLD + 1),
+    filename: 'clip.webm',
     mimeType: 'audio/webm',
   });
 
-  const prompt = captured[0].prompt as string;
+  const prompt = calls[0].prompt as string;
   assert.equal(typeof prompt, 'string');
-  assert.ok(!prompt.includes(CONTEXT));
+  assert.ok(prompt.length > 0, 'il prompt di base deve esserci anche senza contesto');
+  assert.ok(
+    !prompt.includes('venerdì alle 20"'),
+    'il prompt non deve contenere frasi d\'esempio (rischio eco)'
+  );
 });
 
-test('anti-eco: se il modello restituisce il prompt inviato, il testo è vuoto', async () => {
-  const captured: CreateArgs[] = [];
-  // Primo giro: cattura il prompt reale inviato per un audio lungo.
-  __setOpenAiClientForTests(mockClient('x', captured));
-  await transcribeAudio({ buffer: LONG_BUFFER, filename: 'voice.webm', mimeType: 'audio/webm', context: CONTEXT });
-  const sentPrompt = captured[0].prompt as string;
+test('anti-eco usa il prompt effettivamente inviato: eco del prompt -> testo vuoto', async (t) => {
+  // Il mock risponde restituendo esattamente il prompt che ha ricevuto,
+  // simulando il caso "audio vuoto -> il modello echeggia il prompt".
+  const { client, calls } = makeFakeClient((args) => args.prompt || 'silenzio');
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
 
-  // Secondo giro: il modello "echeggia" quel prompt → deve essere scartato.
-  __setOpenAiClientForTests(mockClient(sentPrompt, []));
   const result = await transcribeAudio({
-    buffer: LONG_BUFFER,
-    filename: 'voice.webm',
+    buffer: buffersOf(SHORT_CLIP_THRESHOLD + 5_000),
+    filename: 'clip.webm',
     mimeType: 'audio/webm',
-    context: CONTEXT,
+    context: 'Lista della spesa della famiglia.',
   });
-  assert.equal(result.text, '');
+
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].prompt, 'sopra soglia il prompt deve esserci');
+  assert.equal(result.text, '', 'l\'eco del prompt inviato deve essere scartata');
 });
 
-test('audio breve: un eventuale eco del vecchio prompt NON viene filtrato (nessun prompt inviato)', async () => {
-  // Con audio breve non c'è prompt: qualunque testo torna così com'è.
-  __setOpenAiClientForTests(mockClient('spesa', []));
+test('audio corto: anche se il modello risponde con testo lungo, nessun filtro anti-eco scatta (nessun prompt inviato)', async (t) => {
+  const echoLike =
+    'Dettatura vocale in italiano per un\'app di famiglia. Trascrivi fedelmente solo le parole pronunciate.';
+  const { client } = makeFakeClient(() => echoLike);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
   const result = await transcribeAudio({
-    buffer: SHORT_BUFFER,
-    filename: 'voice.webm',
+    buffer: buffersOf(1_000),
+    filename: 'clip.webm',
     mimeType: 'audio/webm',
   });
-  assert.equal(result.text, 'spesa');
+
+  // Senza prompt inviato non esiste eco da filtrare: il testo passa com'è.
+  assert.equal(result.text, echoLike);
 });

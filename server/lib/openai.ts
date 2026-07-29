@@ -25,9 +25,12 @@ function getOpenAiClient(): OpenAI {
   return openaiClient;
 }
 
-/** SOLO per i test: inietta un client OpenAI finto (null per ripristinare il lazy init). */
-export function __setOpenAiClientForTests(client: OpenAI | null): void {
-  openaiClient = client;
+/**
+ * SOLO PER I TEST: inietta un client fittizio per evitare chiamate reali
+ * all'API OpenAI. Passare null per ripristinare il comportamento normale.
+ */
+export function __setOpenAiClientForTest(client: unknown): void {
+  openaiClient = client as OpenAI | null;
 }
 
 export type SuggestionCategory = 'food' | 'household_cleaning' | 'personal_care' | 'other';
