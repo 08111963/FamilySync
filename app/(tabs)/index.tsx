@@ -156,6 +156,21 @@ export default function HomeScreen() {
 
       {Platform.OS === "web" && <WebPushBanner />}
 
+      <Pressable
+        onPress={() => router.push("/feedback")}
+        style={({ pressed }) => [
+          styles.feedbackBanner,
+          { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+        ]}
+        testID="home-feedback-banner"
+      >
+        <Ionicons name="star-half-outline" size={18} color="#FFB300" />
+        <Text style={[styles.feedbackBannerText, { color: colors.text }]} numberOfLines={1}>
+          Dacci il tuo parere: segnala bug o suggerisci idee
+        </Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+      </Pressable>
+
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Prossimi Eventi</Text>
@@ -351,6 +366,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Inter_400Regular",
     marginTop: 4,
+  },
+  feedbackBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  feedbackBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
   },
   section: {
     paddingHorizontal: 20,
