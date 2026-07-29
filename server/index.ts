@@ -266,6 +266,24 @@ function configureExpoAndLanding(app: express.Application) {
   const webBuildDir = path.resolve(process.cwd(), "web-build");
   const hasWebBuild = fs.existsSync(path.join(webBuildDir, "index.html"));
 
+  // Versione della build web: il nome del bundle entry-<hash>.js cambia a ogni
+  // build, quindi è un identificatore perfetto. Il client la confronta
+  // periodicamente per proporre l'aggiornamento (PWA con bundle vecchio).
+  let webBuildVersion = "unknown";
+  if (hasWebBuild) {
+    try {
+      const html = fs.readFileSync(path.join(webBuildDir, "index.html"), "utf-8");
+      const m = html.match(/entry-([a-f0-9]+)\.js/);
+      if (m) webBuildVersion = m[1];
+    } catch {
+      // best effort: se fallisce resta "unknown" e il banner non compare mai
+    }
+  }
+  app.get("/api/version", (_req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ version: webBuildVersion });
+  });
+
   log(
     hasWebBuild
       ? "Serving Expo web app from web-build with native manifest routing"
