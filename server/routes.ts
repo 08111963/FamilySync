@@ -30,6 +30,7 @@ import billsRoutes from "./routes/bills";
 import supportRoutes from "./routes/support";
 import profileRoutes from "./routes/profile";
 import { testAnalyticsEventsRouter, testAnalyticsAdminRouter, requireTestAnalyticsFlag } from "./routes/test-analytics";
+import { feedbackRouter, feedbackAdminRouter } from "./routes/feedback";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(helmet({
@@ -85,6 +86,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // rispondono sempre 404 (non esposti), anche a richieste non autenticate.
   app.use('/api/test-analytics', requireTestAnalyticsFlag, authenticate, testAnalyticsEventsRouter);
   app.use('/api/admin/test-analytics', requireTestAnalyticsFlag, authenticate, testAnalyticsAdminRouter);
+
+  // Feedback tester ("Dacci il tuo parere"): invio per tutti gli utenti
+  // verificati, consultazione riservata al proprietario (APP_OWNER_EMAILS).
+  app.use('/api/feedback', authenticate, requireEmailVerified, feedbackRouter);
+  app.use('/api/admin/feedback', authenticate, feedbackAdminRouter);
 
   // Feed ICS del calendario famiglia: PUBBLICO (nessun JWT), protetto da token
   // segreto nell'URL. Permette l'iscrizione da Google/Apple Calendar.

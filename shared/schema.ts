@@ -694,6 +694,25 @@ export const socialSignupTokens = pgTable("social_signup_tokens", {
 
 export type SocialSignupToken = typeof socialSignupTokens.$inferSelect;
 
+// FEEDBACK TESTER — modulo interno "Dacci il tuo parere" (fase di test):
+// bug, suggerimenti e valutazione a stelle. Consultabile solo dal
+// proprietario dell'app (APP_OWNER_EMAILS).
+export const feedbackEntries = pgTable("feedback_entries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  category: varchar("category", { length: 20 }).notNull(), // 'bug' | 'suggestion' | 'other'
+  rating: integer("rating"), // 1-5, facoltativa
+  message: text("message").notNull(),
+  platform: varchar("platform", { length: 10 }),
+  appVersion: varchar("app_version", { length: 20 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("feedback_entries_created_idx").on(table.createdAt),
+  index("feedback_entries_user_idx").on(table.userId),
+]);
+
+export type FeedbackEntry = typeof feedbackEntries.$inferSelect;
+
 // Insert schemas for validation
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,

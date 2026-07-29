@@ -47,6 +47,13 @@ export default function FamilyScreen() {
     retry: false,
   });
 
+  // Pannello feedback tester: visibile SOLO al proprietario dell'app.
+  const { data: feedbackAccess } = useQuery<{ ok: boolean }>({
+    queryKey: ["/api/admin/feedback/access"],
+    enabled: !!user,
+    retry: false,
+  });
+
   const handleToggleAI = async (value: boolean) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
@@ -560,6 +567,36 @@ export default function FamilyScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
           </Card>
+          <Card onPress={() => router.push("/feedback")}>
+            <View style={styles.featureLinkRow}>
+              <View style={[styles.featureLinkIcon, { backgroundColor: "#FFB30020" }]}>
+                <Ionicons name="star-half-outline" size={24} color="#FFB300" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Dacci il tuo parere</Text>
+                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                  Segnala bug, suggerisci funzioni, valuta l'app
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </Card>
+          {feedbackAccess?.ok && (
+            <Card onPress={() => router.push("/admin/feedback")}>
+              <View style={styles.featureLinkRow}>
+                <View style={[styles.featureLinkIcon, { backgroundColor: "#00B89420" }]}>
+                  <Ionicons name="clipboard-outline" size={24} color="#00B894" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Feedback ricevuti</Text>
+                  <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
+                    Pannello riservato: bug e suggerimenti dei tester
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+              </View>
+            </Card>
+          )}
         </View>
       </View>
 
