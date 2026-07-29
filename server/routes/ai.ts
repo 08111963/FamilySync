@@ -590,6 +590,33 @@ router.patch('/:familyId/insights/:insightId/dismiss', authenticate, requireFami
   }
 });
 
+/**
+ * Sessioni in-memory per la generazione incrementale delle ricette: il client
+ * avvia la generazione (POST con incremental:true), riceve subito un
+ * generationId e poi legge le ricette man mano che i batch arrivano (GET).
+ * La quota AI resta invariata: UNA prenotazione per generazione, il polling
+ * non consuma quota. TTL breve perché i dati servono solo durante il polling.
+ */
+interface RecipeGenSession {
+  userId: string;
+  familyId: string;
+  recipes: unknown[];
+  done: boolean;
+  /** Codice errore AI (es. AI_UNAVAILABLE) se la generazione è fallita del tutto. */
+  errorStatus?: number;
+  errorBody?: unknown;
+  createdAt: number;
+}
+const recipeGenSessions = new Map<string, RecipeGenSession>();
+const RECIPE_GEN_TTL_MS = 10 * 60 * 1000;
+
+function sweepRecipeGenSessions() {
+  const now = Date.now();
+  for (const [id, s] of recipeGenSessions) {
+    if (now - s.createdAt > RECIPE_GEN_TTL_MS) recipeGenSessions.delete(id);
+  }
+}
+
 router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
@@ -617,19 +644,68 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
       .limit(60);
     const pantryIngredients = pantryRows.map(p => p.name);
 
+    const genContext = {
+      familySize: members.length || 1,
+      dietaryPreferences,
+      allergies: allowedAllergies,
+      maxTimeMinutes: maxTimeMinutes || null,
+      cuisinePreferences: cuisinePreferences || null,
+      excludedIngredients: excludedIngredients || null,
+      lastRecipeTitles,
+      count: Math.min(count || 8, 20),
+      pantryIngredients,
+    };
+
+    // Modalità incrementale: risponde subito con un generationId e genera in
+    // background; il client legge i batch via GET man mano che arrivano.
+    // Quota identica alla modalità classica: una sola prenotazione.
+    if (req.body?.incremental === true) {
+      sweepRecipeGenSessions();
+      const generationId = crypto.randomUUID();
+      const session: RecipeGenSession = {
+        userId, familyId, recipes: [], done: false, createdAt: Date.now(),
+      };
+      const seenTitles = new Set<string>();
+      const appendDeduped = (batch: { title: string }[]) => {
+        for (const r of batch) {
+          const norm = r.title.toLowerCase().trim();
+          if (seenTitles.has(norm)) continue;
+          seenTitles.add(norm);
+          session.recipes.push(r);
+        }
+      };
+
+      try {
+        const run = await withAiUsage(
+          { userId, familyId, feature: 'recipe-suggestions' },
+          async () => {
+            // Registra la sessione SOLO dopo che la quota è stata prenotata,
+            // poi rispondi subito: la generazione prosegue in background.
+            recipeGenSessions.set(generationId, session);
+            res.status(202).json({ generationId });
+            return generateRecipeSuggestions(genContext, appendDeduped);
+          },
+        );
+        if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
+        if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
+      } catch (error) {
+        // La risposta 202 è già partita: l'errore va comunicato via polling.
+        logger.error('Incremental recipe generation error', { error: String(error) });
+        if (isAiError(error)) {
+          session.errorStatus = error.httpStatus;
+          session.errorBody = { code: error.code, message: error.userMessage };
+        } else {
+          session.errorStatus = 500;
+          session.errorBody = { code: 'AI_ERROR', message: 'Errore nella generazione ricette' };
+        }
+      }
+      session.done = true;
+      return;
+    }
+
     const run = await withAiUsage(
       { userId, familyId, feature: 'recipe-suggestions' },
-      () => generateRecipeSuggestions({
-        familySize: members.length || 1,
-        dietaryPreferences,
-        allergies: allowedAllergies,
-        maxTimeMinutes: maxTimeMinutes || null,
-        cuisinePreferences: cuisinePreferences || null,
-        excludedIngredients: excludedIngredients || null,
-        lastRecipeTitles,
-        count: Math.min(count || 8, 20),
-        pantryIngredients,
-      }),
+      () => generateRecipeSuggestions(genContext),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
@@ -656,6 +732,28 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
     logger.error('Recipe suggestions error', { error: String(error) });
     sendAiError(res, error, "Errore nella generazione ricette");
   }
+});
+
+/**
+ * Polling della generazione incrementale: restituisce le ricette arrivate
+ * finora e il flag done. Non consuma quota AI (la quota è stata prenotata
+ * una sola volta all'avvio della generazione).
+ */
+router.get('/:familyId/recipe-suggestions/:generationId', authenticate, requireAiEnabled, requireFamilyMember(), (req: Request, res: Response) => {
+  const familyId = getParam(req, 'familyId');
+  const generationId = getParam(req, 'generationId');
+  const session = recipeGenSessions.get(generationId);
+  if (!session || session.familyId !== familyId || session.userId !== req.user!.userId) {
+    return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Generazione non trovata o scaduta' } });
+  }
+  // Errore totale (nessuna ricetta): propaga lo stesso errore tipizzato della
+  // modalità classica, così il client mostra il messaggio giusto.
+  if (session.done && session.errorStatus && session.recipes.length === 0) {
+    return res.status(session.errorStatus).json({ error: session.errorBody });
+  }
+  // La sessione resta fino al TTL: ripetere il GET dopo done è idempotente
+  // (nessun rischio di perdere risposte per un errore di rete del client).
+  res.json({ recipes: session.recipes, done: session.done, generatedAt: new Date().toISOString() });
 });
 
 router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {

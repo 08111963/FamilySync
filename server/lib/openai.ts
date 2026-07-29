@@ -304,7 +304,7 @@ export async function generateRecipeSuggestions(context: {
   lastRecipeTitles?: string[];
   count?: number;
   pantryIngredients?: string[];
-}): Promise<{ recipes: RecipeSuggestion[] }> {
+}, onBatch?: (recipes: RecipeSuggestion[]) => void): Promise<{ recipes: RecipeSuggestion[] }> {
   const count = context.count || 8;
   const randomSeed = Math.floor(Math.random() * 100000);
 
@@ -381,7 +381,16 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
       batches.push(selectedCats.slice(i, i + BATCH));
     }
     const settled = await Promise.allSettled(
-      batches.map((cats, idx) => fetchRecipeBatch(cats, randomSeed + idx * 7919))
+      batches.map(async (cats, idx) => {
+        const batchRecipes = await fetchRecipeBatch(cats, randomSeed + idx * 7919);
+        // Notifica incrementale: il chiamante può mostrare ogni batch appena
+        // pronto invece di aspettare tutti i batch. Errori del callback non
+        // devono far fallire il batch.
+        if (onBatch && batchRecipes.length > 0) {
+          try { onBatch(batchRecipes); } catch (e) { console.error('onBatch callback error:', String(e)); }
+        }
+        return batchRecipes;
+      })
     );
     const allRecipes: RecipeSuggestion[] = [];
     let firstReason: unknown = null;

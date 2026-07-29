@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -366,7 +366,7 @@ export default function RecipePreviewScreen() {
   const { colors } = useTheme();
   const { currentFamily } = useFamily();
   const qc = useQueryClient();
-  const params = useLocalSearchParams<{ recipesJson: string; query?: string }>();
+  const params = useLocalSearchParams<{ recipesJson: string; query?: string; generationId?: string }>();
   const searchQuery = (params.query || "").trim();
 
   const initialRecipes = useMemo<AiRecipe[]>(() => {
@@ -385,6 +385,54 @@ export default function RecipePreviewScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [seenTitles, setSeenTitles] = useState<string[]>(() => initialRecipes.map(r => r.title));
+  // Generazione incrementale: id della generazione in corso da cui leggere
+  // le ricette man mano che i batch arrivano dal server.
+  const [activeGenerationId, setActiveGenerationId] = useState<string | null>(params.generationId || null);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!activeGenerationId || !currentFamily) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const data = await apiFetch<{ recipes?: AiRecipe[]; done?: boolean }>(
+          `/api/ai/${currentFamily.id}/recipe-suggestions/${activeGenerationId}`,
+          { method: "GET" }
+        );
+        if (cancelled) return;
+        const incoming = data.recipes || [];
+        // Il server restituisce la lista cumulativa: aggiungi solo i titoli nuovi.
+        setAllRecipes(prev => {
+          const known = new Set(prev.map(r => r.title.toLowerCase().trim()));
+          const fresh = incoming.filter(r => !known.has(r.title.toLowerCase().trim()));
+          if (fresh.length === 0) return prev;
+          setSeenTitles(st => [...st, ...fresh.map(r => r.title)]);
+          return [...prev, ...fresh];
+        });
+        if (data.done) {
+          if (incoming.length === 0) {
+            setSaveError("Nessuna ricetta generata. Riprova.");
+          }
+          setActiveGenerationId(null);
+          setRefreshing(false);
+          return;
+        }
+        pollTimerRef.current = setTimeout(poll, 1200);
+      } catch {
+        if (cancelled) return;
+        setSaveError("Errore nella generazione. Riprova.");
+        setActiveGenerationId(null);
+        setRefreshing(false);
+      }
+    };
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+  }, [activeGenerationId, currentFamily?.id]);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
@@ -413,11 +461,28 @@ export default function RecipePreviewScreen() {
   }, [allRecipes.length]);
 
   const handleRefresh = async () => {
-    if (!currentFamily || refreshing) return;
+    if (!currentFamily || refreshing || activeGenerationId) return;
     setRefreshing(true);
     setSaveError(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      if (!searchQuery) {
+        // Suggerimenti: modalità incrementale — le nuove ricette appaiono
+        // man mano che i batch arrivano (il polling azzera "refreshing").
+        const body: any = { count: 8, incremental: true };
+        if (seenTitles.length > 0) body.excludeTitles = seenTitles;
+        const data = await apiFetch<{ generationId?: string }>(
+          `/api/ai/${currentFamily.id}/recipe-suggestions`,
+          { method: "POST", body }
+        );
+        if (!data.generationId) {
+          setSaveError("Nessuna ricetta generata. Riprova.");
+          setRefreshing(false);
+        } else {
+          setActiveGenerationId(data.generationId);
+        }
+        return;
+      }
       const newRecipes = await fetchAiRecipes(currentFamily.id, seenTitles, searchQuery);
       if (newRecipes.length === 0) {
         setSaveError(
@@ -425,13 +490,14 @@ export default function RecipePreviewScreen() {
             ? `Nessuna altra ricetta trovata per "${searchQuery}".`
             : "Nessuna ricetta generata. Riprova."
         );
+        setRefreshing(false);
         return;
       }
       setSeenTitles(prev => [...prev, ...newRecipes.map(r => r.title)]);
       setAllRecipes(prev => [...prev, ...newRecipes]);
+      setRefreshing(false);
     } catch {
       setSaveError("Errore nella generazione. Riprova.");
-    } finally {
       setRefreshing(false);
     }
   };
@@ -536,28 +602,38 @@ export default function RecipePreviewScreen() {
         renderItem={renderItem}
         contentContainerStyle={[styles.listContent, { paddingBottom: bottomInset + 80 }]}
         scrollEnabled={allRecipes.length > 0}
+        ListFooterComponent={activeGenerationId ? (
+          <View style={styles.generatingFooter}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[styles.generatingText, { color: colors.textSecondary }]}>
+              {allRecipes.length === 0
+                ? "Sto generando le ricette..."
+                : "Altre ricette in arrivo..."}
+            </Text>
+          </View>
+        ) : null}
       />
 
       <View style={[styles.bottomBar, { paddingBottom: bottomInset + 12, backgroundColor: colors.background }]}>
         <View style={styles.bottomButtons}>
           <Pressable
             onPress={handleRefresh}
-            disabled={refreshing || saving}
+            disabled={refreshing || saving || !!activeGenerationId}
             style={({ pressed }) => [
               styles.refreshButton,
               {
                 borderColor: colors.secondary,
-                opacity: pressed || refreshing ? 0.7 : 1,
+                opacity: pressed || refreshing || activeGenerationId ? 0.7 : 1,
               },
             ]}
           >
-            {refreshing ? (
+            {refreshing || activeGenerationId ? (
               <ActivityIndicator size="small" color={colors.secondary} />
             ) : (
               <Ionicons name="refresh" size={20} color={colors.secondary} />
             )}
             <Text style={[styles.refreshButtonText, { color: colors.secondary }]}>
-              {refreshing ? "Caricamento..." : "Altre Ricette"}
+              {refreshing || activeGenerationId ? "Caricamento..." : "Altre Ricette"}
             </Text>
           </Pressable>
 
@@ -653,6 +729,17 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 10,
+  },
+  generatingFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 16,
+  },
+  generatingText: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
   },
   errorText: {
     flex: 1,

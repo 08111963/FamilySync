@@ -109,26 +109,35 @@ export default function RecipesScreen() {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       if (useQuery) Keyboard.dismiss();
-      const endpoint = useQuery
-        ? `/api/ai/${currentFamily.id}/recipe-search`
-        : `/api/ai/${currentFamily.id}/recipe-suggestions`;
-      const body = useQuery ? { query: q } : { count: 8 };
-      const data = await apiFetch<{ recipes?: any[]; generatedAt?: string }>(
-        endpoint,
-        { method: "POST", body }
+      if (!useQuery) {
+        // Generazione incrementale: avvia sul server e apri subito la preview,
+        // che mostra le ricette man mano che i batch arrivano.
+        const data = await apiFetch<{ generationId?: string }>(
+          `/api/ai/${currentFamily.id}/recipe-suggestions`,
+          { method: "POST", body: { count: 8, incremental: true } }
+        );
+        if (!data.generationId) {
+          setAiError("Nessuna ricetta generata. Riprova.");
+          return;
+        }
+        router.push({
+          pathname: "/recipes/preview" as any,
+          params: { recipesJson: "[]", generationId: data.generationId, query: "" },
+        });
+        return;
+      }
+      const data = await apiFetch<{ recipes?: any[] }>(
+        `/api/ai/${currentFamily.id}/recipe-search`,
+        { method: "POST", body: { query: q } }
       );
       const list = data.recipes || [];
       if (list.length === 0) {
-        setAiError(
-          useQuery
-            ? "Nessuna ricetta trovata. Prova con altri termini."
-            : "Nessuna ricetta generata. Riprova."
-        );
+        setAiError("Nessuna ricetta trovata. Prova con altri termini.");
         return;
       }
       router.push({
         pathname: "/recipes/preview" as any,
-        params: { recipesJson: JSON.stringify(list), query: useQuery ? q : "" },
+        params: { recipesJson: JSON.stringify(list), query: q },
       });
     } catch (error: any) {
       if (isAiDisabled(error)) {
