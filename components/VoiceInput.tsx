@@ -36,6 +36,19 @@ function getActiveMic() {
   return activeMicId;
 }
 
+// Su web Alert.alert di react-native-web NON mostra nulla: usa window.alert
+// come fallback, altrimenti gli errori di dettatura restano invisibili.
+function showAlert(title: string, message: string) {
+  if (Platform.OS === "web") {
+    const win = globalThis as any;
+    if (typeof win?.alert === "function") {
+      win.alert(`${title}\n\n${message}`);
+      return;
+    }
+  }
+  Alert.alert(title, message);
+}
+
 async function resetAudioMode() {
   try {
     await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
@@ -114,7 +127,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       const perm = await AudioModule.requestRecordingPermissionsAsync();
       if (!perm.granted) {
         setActiveMic(null);
-        Alert.alert(
+        showAlert(
           "Microfono non disponibile",
           "Per usare la dettatura vocale, consenti l'accesso al microfono nelle impostazioni del dispositivo."
         );
@@ -143,7 +156,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       setRecording(false);
       setActiveMic(null);
       await resetAudioMode();
-      Alert.alert("Dettatura", "Impossibile avviare la registrazione su questo dispositivo.");
+      showAlert("Dettatura", "Impossibile avviare la registrazione su questo dispositivo.");
     } finally {
       startingRef.current = false;
       setStarting(false);
@@ -192,11 +205,11 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
         }
         onTranscribed(text);
       } else {
-        Alert.alert("Dettatura", "Non ho sentito nulla. Riprova parlando più vicino al microfono.");
+        showAlert("Dettatura", "Non ho sentito nulla. Riprova parlando più vicino al microfono.");
       }
     } catch (err) {
       console.error("Errore trascrizione:", err);
-      Alert.alert("Dettatura", aiErrorMessage(err, "Impossibile trascrivere l'audio. Riprova."));
+      showAlert("Dettatura", aiErrorMessage(err, "Impossibile trascrivere l'audio. Riprova."));
     } finally {
       setTranscribing(false);
       setActiveMic(null);

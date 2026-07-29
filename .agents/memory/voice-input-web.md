@@ -8,3 +8,6 @@ Regola: un controllo "tieni premuto per parlare" su web deve avere `touchAction:
 **Why:** il browser annullava la pressione prolungata (scroll/selezione testo, o rilascio per rispondere al prompt permesso microfono), quindi l'app vedeva sempre un "tocco troppo breve" e mostrava in loop l'avviso, anche con il dito fermo sul pulsante.
 
 **How to apply:** VoiceInput gestisce hold e toggle insieme (justStoppedRef evita che il pressOut del tap di stop rifermi; il listener globale pointerup agisce solo se la pressione è partita dal pulsante). Qualsiasi nuovo controllo press-and-hold su web deve seguire lo stesso schema.
+
+- Alert.alert di react-native-web è un NO-OP: su web ogni errore mostrato via Alert è invisibile. Usare un helper (window.alert o toast) per i messaggi d'errore utente su web (fatto in VoiceInput con showAlert).
+- Le PWA installate da familysync.eu conservano a lungo il bundle vecchio: dopo un Republish serve chiudere l'app e riaprirla (o reinstallarla) per vedere la versione nuova.
