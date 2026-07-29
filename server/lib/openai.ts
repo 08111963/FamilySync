@@ -25,6 +25,11 @@ function getOpenAiClient(): OpenAI {
   return openaiClient;
 }
 
+/** SOLO per i test: inietta un client OpenAI finto (null per ripristinare il lazy init). */
+export function __setOpenAiClientForTests(client: OpenAI | null): void {
+  openaiClient = client;
+}
+
 export type SuggestionCategory = 'food' | 'household_cleaning' | 'personal_care' | 'other';
 
 export interface ShoppingSuggestionItem {
