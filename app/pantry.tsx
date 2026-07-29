@@ -22,6 +22,7 @@ import { useFamily } from "@/context/FamilyContext";
 import { apiRequest } from "@/lib/query-client";
 import { EmptyState } from "@/components/EmptyState";
 import { Card } from "@/components/Card";
+import { VoiceInput } from "@/components/VoiceInput";
 
 interface PantryItem {
   id: string;
@@ -266,15 +267,27 @@ export default function PantryScreen() {
         {showForm && (
           <Card style={styles.formCard}>
             <Text style={[styles.formTitle, { color: colors.text }]}>Aggiungi alla dispensa</Text>
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
-              placeholder="Nome prodotto (es. Passata di pomodoro)"
-              placeholderTextColor={colors.textSecondary}
-              value={name}
-              onChangeText={setName}
-              maxLength={255}
-              testID="pantry-name-input"
-            />
+            <View style={styles.nameRow}>
+              <TextInput
+                style={[styles.input, styles.nameInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
+                placeholder="Nome prodotto (es. Passata di pomodoro)"
+                placeholderTextColor={colors.textSecondary}
+                value={name}
+                onChangeText={setName}
+                maxLength={255}
+                testID="pantry-name-input"
+              />
+              <VoiceInput
+                familyId={familyId}
+                disabled={saving}
+                context="Nome di un prodotto della dispensa di casa, es. passata di pomodoro, detersivo piatti, shampoo."
+                onTranscribed={(text) => {
+                  const t = text.trim();
+                  if (!t) return;
+                  setName((prev) => (prev.trim() ? `${prev.trim()} ${t}` : t).slice(0, 255));
+                }}
+              />
+            </View>
             <View style={styles.formRow}>
               <TextInput
                 style={[styles.input, styles.qtyInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
@@ -441,6 +454,8 @@ const styles = StyleSheet.create({
   formCard: { marginHorizontal: 20, marginBottom: 12, padding: 16, gap: 10 },
   formTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   formRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  nameInput: { flex: 1 },
   qtyInput: { width: 90 },
   unitPicker: { flexDirection: "row", gap: 4, flex: 1, flexWrap: "wrap" },
   unitOption: {
