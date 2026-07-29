@@ -14,3 +14,4 @@ description: Convenzioni per le immagini generate dall'AI per le ricette (cache 
 - Le immagini vengono ottimizzate con sharp (512px, WebP q80, ~35KB da un PNG 1024px da 1.5MB) prima della scrittura atomica (tmp+rename).
 - Gli imageUrl salvati in DB sono validati con regex whitelist sul path relativo `/uploads/recipe-images/…` — mai URL arbitrari.
 - Lezione IDOR: ogni rotta che accetta `familyId` nel body DEVE avere `requireFamilyMember()` (supporta già il fallback body oltre al param di path).
+- Prewarm in background: dopo i suggerimenti ricette il server pre-genera le foto mancanti (concorrenza 2, fire-and-forget dopo `res.json`). Riusa la stessa Map in-flight (nessun doppio consumo quota) e si FERMA al primo esito limited/unavailable — la quota famiglia vale anche per il prewarm.

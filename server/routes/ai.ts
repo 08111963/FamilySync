@@ -644,6 +644,14 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
     });
 
     res.json({ recipes: dedupedRecipes, generatedAt: new Date().toISOString() });
+
+    // Prewarm in background: le foto mancanti vengono generate subito
+    // (titoli già noti), così quando l'utente apre la lista sono in cache.
+    prewarmRecipeImages(
+      dedupedRecipes.map(r => ({ title: r.title, description: (r as any).description })),
+      userId,
+      familyId,
+    );
   } catch (error) {
     logger.error('Recipe suggestions error', { error: String(error) });
     sendAiError(res, error, "Errore nella generazione ricette");
@@ -1076,6 +1084,102 @@ type RecipeImageRun = Awaited<ReturnType<typeof withAiUsage<Buffer>>>;
 const inFlightRecipeImages = new Map<string, Promise<RecipeImageRun>>();
 
 /**
+ * Avvia (o si aggancia a) la generazione della foto per una ricetta.
+ * Condivisa tra la rotta on-demand e il prewarm in background: il dedup
+ * in-flight garantisce un solo run (e un solo slot di quota) per titolo.
+ * Ritorna { run, isLeader }: isLeader=false se un run era già in corso.
+ */
+function startRecipeImageGeneration(params: {
+  key: string;
+  filePath: string;
+  title: string;
+  description?: string;
+  userId: string;
+  familyId: string;
+}): { run: Promise<RecipeImageRun>; isLeader: boolean } {
+  const { key, filePath, title, description, userId, familyId } = params;
+  let task = inFlightRecipeImages.get(key);
+  const isLeader = !task;
+  if (!task) {
+    task = (async () => {
+      const run = await withAiUsage(
+        { userId, familyId, feature: 'recipe-image' as const },
+        () => generateRecipeImage({ title, description }),
+      );
+      if (run.outcome === 'ok') {
+        // Ridimensiona e comprime (1024px PNG ~1.5MB -> 512px WebP ~35KB).
+        const optimized = await sharp(run.value)
+          .resize(512, 512, { fit: 'cover' })
+          .webp({ quality: 80 })
+          .toBuffer();
+        // Scrittura atomica: prima file temporaneo, poi rename.
+        const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+        await fs.promises.writeFile(tmpPath, optimized);
+        await fs.promises.rename(tmpPath, filePath);
+      }
+      return run;
+    })();
+    inFlightRecipeImages.set(key, task);
+    // Rimuovi la entry quando il run termina (successo o errore).
+    task.catch(() => undefined).finally(() => inFlightRecipeImages.delete(key));
+  }
+  return { run: task, isLeader };
+}
+
+// Prewarm foto ricette: dopo i suggerimenti, genera in background le foto
+// mancanti così l'utente le trova già in cache. Limite di concorrenza basso
+// per non saturare l'API immagini; si ferma subito se la quota famiglia è
+// esaurita (limited) o il tracking non è disponibile (unavailable).
+const RECIPE_IMAGE_PREWARM_CONCURRENCY = 2;
+
+function prewarmRecipeImages(
+  items: Array<{ title: string; description?: string }>,
+  userId: string,
+  familyId: string,
+): void {
+  // Solo titoli validi e non già in cache su disco.
+  const pending = items
+    .map(r => ({
+      title: typeof r.title === 'string' ? r.title.trim() : '',
+      description: typeof r.description === 'string' ? r.description.trim().slice(0, 300) : undefined,
+    }))
+    .filter(r => r.title.length >= 2 && r.title.length <= 200)
+    .map(r => {
+      const key = recipeImageCacheKey(r.title);
+      return { ...r, key, filePath: path.join(recipeImagesDir, `${key}.webp`) };
+    })
+    .filter(r => !fs.existsSync(r.filePath));
+  if (pending.length === 0) return;
+
+  let index = 0;
+  let stopped = false;
+
+  const worker = async () => {
+    while (!stopped && index < pending.length) {
+      const item = pending[index++];
+      try {
+        const { run } = startRecipeImageGeneration({ ...item, userId, familyId });
+        const result = await run;
+        if (result.outcome === 'limited' || result.outcome === 'unavailable') {
+          // Quota esaurita o tracking KO: inutile insistere sugli altri titoli.
+          stopped = true;
+        }
+      } catch (error) {
+        // Errore AI su un titolo: logga e continua con i successivi.
+        logger.warn('Recipe image prewarm error', { error: String(error), familyId, title: item.title });
+      }
+    }
+  };
+
+  const workers = Array.from(
+    { length: Math.min(RECIPE_IMAGE_PREWARM_CONCURRENCY, pending.length) },
+    () => worker(),
+  );
+  // Fire-and-forget: nessun await dal chiamante, ma niente unhandled rejection.
+  void Promise.allSettled(workers);
+}
+
+/**
  * POST /api/ai/:familyId/recipe-images/resolve
  * Risolve in batch le foto GIÀ in cache per una lista di titoli.
  * Nessuna generazione, nessun consumo di quota: solo lookup su disco.
@@ -1124,33 +1228,10 @@ router.post('/:familyId/recipe-image', authenticate, requireAiEnabled, requireFa
       return res.json({ url, cached: true });
     }
 
-    // Se una generazione per la stessa ricetta è già in corso, condividila
-    // (i follower ricevono lo stesso esito reale del leader, senza consumare quota).
-    let task = inFlightRecipeImages.get(key);
-    const isLeader = !task;
-    if (!task) {
-      task = (async () => {
-        const run = await withAiUsage(
-          { userId, familyId, feature: 'recipe-image' as const },
-          () => generateRecipeImage({ title, description }),
-        );
-        if (run.outcome === 'ok') {
-          // Ridimensiona e comprime (1024px PNG ~1.5MB -> 512px WebP ~35KB).
-          const optimized = await sharp(run.value)
-            .resize(512, 512, { fit: 'cover' })
-            .webp({ quality: 80 })
-            .toBuffer();
-          // Scrittura atomica: prima file temporaneo, poi rename.
-          const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-          await fs.promises.writeFile(tmpPath, optimized);
-          await fs.promises.rename(tmpPath, filePath);
-        }
-        return run;
-      })();
-      inFlightRecipeImages.set(key, task);
-      // Rimuovi la entry quando il run termina (successo o errore).
-      task.catch(() => undefined).finally(() => inFlightRecipeImages.delete(key));
-    }
+    // Se una generazione per la stessa ricetta è già in corso (anche dal
+    // prewarm in background), condividila: i follower ricevono lo stesso
+    // esito reale del leader, senza consumare quota.
+    const { run: task, isLeader } = startRecipeImageGeneration({ key, filePath, title, description, userId, familyId });
 
     const run = await task;
 
