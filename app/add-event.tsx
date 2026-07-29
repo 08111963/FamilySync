@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
+import { useAuth } from "@/context/AuthContext";
 import { VoiceInput } from "@/components/VoiceInput";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
@@ -31,6 +32,7 @@ export default function AddEventScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { data, addEvent, currentFamily } = useFamily();
+  const { user } = useAuth();
   const params = useLocalSearchParams<{ date?: string }>();
 
   const isRealIso = (iso: string) => {
@@ -57,7 +59,11 @@ export default function AddEventScreen() {
   const [time, setTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [isAllDay, setIsAllDay] = useState(true);
-  const [selectedMember, setSelectedMember] = useState(data.members[0]?.id || "");
+  // Preseleziona il membro corrispondente a CHI sta creando l'evento (non il
+  // primo della lista): altrimenti gli eventi finiscono assegnati a un altro.
+  const [selectedMember, setSelectedMember] = useState(
+    () => data.members.find((m) => m.userId === user?.id)?.id || data.members[0]?.id || ""
+  );
   const [selectedColor, setSelectedColor] = useState(EVENT_COLORS[0]);
   const [repeat, setRepeat] = useState<RepeatValue>("none");
   const [dailyWeekdays, setDailyWeekdays] = useState<number[]>([]);

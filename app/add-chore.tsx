@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
+import { useAuth } from "@/context/AuthContext";
 import { VoiceInput } from "@/components/VoiceInput";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
@@ -36,6 +37,7 @@ export default function AddChoreScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { data, currentFamily } = useFamily();
+  const { user } = useAuth();
 
   const [aiText, setAiText] = useState("");
   const [isCompiling, setIsCompiling] = useState(false);
@@ -53,7 +55,11 @@ export default function AddChoreScreen() {
     return [d === 0 ? 7 : d];
   });
   const [monthDays, setMonthDays] = useState<number[]>(() => [new Date().getDate()]);
-  const [selectedMember, setSelectedMember] = useState(data.members[0]?.id || "");
+  // Preseleziona il membro corrispondente a CHI sta creando la faccenda (non
+  // il primo della lista): altrimenti finisce assegnata a un altro.
+  const [selectedMember, setSelectedMember] = useState(
+    () => data.members.find((m) => m.userId === user?.id)?.id || data.members[0]?.id || ""
+  );
 
   const familyId = currentFamily?.id;
 
