@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -74,9 +75,11 @@ export default function ResetPasswordScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.logoContainer}>
-            <View style={[styles.logoCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.3)' }]}>
-              <Ionicons name="key" size={44} color="#fff" />
-            </View>
+            <Image
+              source={require('@/assets/images/icon.png')}
+              style={styles.logoImage}
+              contentFit="cover"
+            />
             <Text style={styles.appName}>Nuova password</Text>
           </View>
 
@@ -185,7 +188,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24 },
   logoContainer: { alignItems: 'center', marginBottom: 32 },
-  logoCircle: { width: 88, height: 88, borderRadius: 44, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  logoImage: { width: 88, height: 88, borderRadius: 24, marginBottom: 16 },
   appName: { fontSize: 28, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: -0.5, textAlign: 'center' },
   formCard: {
     borderRadius: 24,
