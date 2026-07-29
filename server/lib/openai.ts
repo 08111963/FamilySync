@@ -754,19 +754,24 @@ export async function transcribeAudio(input: {
   try {
     const file = await toFile(input.buffer, input.filename, { type: input.mimeType });
     // Il prompt orienta il modello sul lessico atteso (italiano, dominio famiglia)
-    // e riduce gli errori di trascrizione su nomi, date e orari.
+    // e riduce gli errori su nomi, date e orari. NIENTE frasi d'esempio: il
+    // modello le "echeggia" o ne inventa di simili sugli audio brevi.
     const baseHint =
-      'Dettatura vocale in italiano per un\'app di famiglia (eventi, spesa, faccende, ricette, budget). ' +
-      'Date, giorni della settimana e orari come "venerdì alle 20", "domani alle 14:30".';
+      'Dettatura vocale in italiano per un\'app di famiglia. Trascrivi fedelmente solo le parole pronunciate.';
     const extra = (input.context || '').trim().slice(0, 300);
+    // Audio molto brevi (1-2 parole): il contesto fa più danni che benefici,
+    // il modello tende ad allucinare parole del dominio ("incontro" al posto
+    // di "cena"). Sotto la soglia si trascrive senza alcun prompt.
+    const isShortClip = input.buffer.length < 15_000; // ~2-3s di voce compressa
+    const sentPrompt = isShortClip ? '' : (extra ? `${baseHint} ${extra}` : baseHint);
     const response = await getOpenAiClient().audio.transcriptions.create({
       file,
       model: 'gpt-4o-mini-transcribe',
       language: 'it',
-      prompt: extra ? `${baseHint} ${extra}` : baseHint,
+      ...(sentPrompt ? { prompt: sentPrompt } : {}),
     });
     const text = (response.text || '').trim();
-    if (isPromptEcho(text, extra ? `${baseHint} ${extra}` : baseHint)) {
+    if (sentPrompt && isPromptEcho(text, sentPrompt)) {
       return { text: '' };
     }
     return { text };
