@@ -15,7 +15,7 @@ import {
   billAttachments,
   testAnalyticsEvents,
 } from "../../shared/schema";
-import { deleteUploadFiles } from "./uploads-cleanup";
+import { deleteStoredUploads } from "./upload-storage";
 
 export interface AccountDeletionSummary {
   familiesDeleted: number;
@@ -192,7 +192,7 @@ export async function deleteUserAccount(
   // Cancellazione file fisici SOLO dopo il commit riuscito della transazione:
   // le operazioni su filesystem non sono transazionali e non vanno eseguite se
   // il DB fa rollback. La funzione e sicura (solo /uploads, ignora i mancanti).
-  const cleanup = await deleteUploadFiles(filesToDelete);
+  const cleanup = await deleteStoredUploads(filesToDelete);
 
   return { ...summary, filesDeleted: cleanup.deleted };
 }

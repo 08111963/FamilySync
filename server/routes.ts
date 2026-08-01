@@ -4,6 +4,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { setupWebSocket } from "./lib/websocket";
 import { authenticate, authenticateMedia, requireEmailVerified } from "./middleware/auth";
+import { createUploadsObjectHandler } from "./lib/upload-storage";
 
 import authRoutes from "./routes/auth";
 import familiesRoutes from "./routes/families";
@@ -104,9 +105,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Foto profilo (avatar): immagini di profilo mostrate ovunque nell'app, senza
   // dati sensibili. Servite pubblicamente (come le foto ricette) per non dover
   // propagare il media-token in ogni Avatar. Montate PRIMA di /uploads autenticato.
-  app.use('/uploads/avatars', express.static('uploads/avatars', { maxAge: '7d' }));
+  // In modalità STORAGE_MODE=object-storage i file /uploads vengono serviti dal
+  // bucket Replit Object Storage (persistente su autoscale); express.static resta
+  // come fallback per eventuali file legacy ancora su disco locale.
+  app.use('/uploads/avatars', createUploadsObjectHandler('/uploads/avatars'), express.static('uploads/avatars', { maxAge: '7d' }));
 
-  app.use('/uploads', authenticateMedia, requireEmailVerified, express.static('uploads'));
+  app.use('/uploads', authenticateMedia, requireEmailVerified, createUploadsObjectHandler('/uploads'), express.static('uploads'));
 
   app.use('/legal', legalRoutes);
   app.use('/privacy', (req, res, next) => { req.url = '/privacy'; legalRoutes(req, res, next); });

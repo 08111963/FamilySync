@@ -25,6 +25,7 @@
     "@nkzw/create-context-hook": "^1.1.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@replit/connectors-sdk": "^0.4.1",
+    "@replit/object-storage": "^1.0.0",
     "@replit/revenuecat-sdk": "^4.2.0",
     "@sendgrid/mail": "^8.1.6",
     "@stardazed/streams-text-encoding": "^1.0.2",

@@ -31,9 +31,9 @@ import {
   buildStoredFilename,
   verifyMagicBytes,
   readMagicBytes,
-  resolveSafeUploadPath,
   MAX_UPLOAD_BYTES,
 } from './chat';
+import { persistUploadedFile, deleteStoredUploads } from '../lib/upload-storage';
 
 const router = Router();
 
@@ -675,10 +675,8 @@ router.delete('/:familyId/:billId', requireFamilyMember(), async (req: Request, 
       .from(billAttachments)
       .where(eq(billAttachments.billId, billId));
 
-    for (const att of attachments) {
-      const safePath = resolveSafeUploadPath(att.fileUrl);
-      if (safePath) fs.unlink(safePath, () => {});
-    }
+    // Cancella da tutti gli storage (disco locale + bucket in object mode).
+    void deleteStoredUploads(attachments.map((att) => att.fileUrl));
 
     await db.delete(bills).where(and(eq(bills.id, billId), eq(bills.familyId, familyId)));
 
@@ -818,13 +816,17 @@ router.post(
         return res.status(415).json({ error: { code: 'CONTENT_MISMATCH', message: 'Il contenuto del file non corrisponde al tipo dichiarato' } });
       }
 
+      // Rende persistente il file (upload sul bucket in modalità object-storage).
+      const fileUrl = `/uploads/${req.file.filename}`;
+      await persistUploadedFile(req.file.path, fileUrl);
+
       const [attachment] = await db
         .insert(billAttachments)
         .values({
           billId,
           familyId,
           kind,
-          fileUrl: `/uploads/${req.file.filename}`,
+          fileUrl,
           fileName: req.file.originalname,
           fileMimeType: req.file.mimetype,
           fileSize: req.file.size,
@@ -836,7 +838,10 @@ router.post(
       res.status(201).json(attachment);
     } catch (error) {
       logger.error('Upload bill attachment error', { error: String(error) });
-      if (req.file) fs.unlink(req.file.path, () => {});
+      if (req.file) {
+        fs.unlink(req.file.path, () => {});
+        void deleteStoredUploads([`/uploads/${req.file.filename}`]);
+      }
       res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Errore nel caricamento del file' } });
     }
   },
@@ -859,8 +864,7 @@ router.delete('/:familyId/:billId/attachments/:attachmentId', requireFamilyMembe
       return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Allegato non trovato' } });
     }
 
-    const safePath = resolveSafeUploadPath(attachment.fileUrl);
-    if (safePath) fs.unlink(safePath, () => {});
+    void deleteStoredUploads([attachment.fileUrl]);
 
     await db.delete(billAttachments).where(eq(billAttachments.id, attachmentId));
 

@@ -11,6 +11,7 @@ import { broadcastChatMessageToFamily } from "../lib/websocket";
 import { sendPushToFamily } from "../lib/push";
 import { logger } from "../lib/logger";
 import { reserveBaseSlot, baseLimitBody } from "../lib/base-usage";
+import { persistUploadedFile, deleteStoredUploads, logUploadStorageStatus } from "../lib/upload-storage";
 
 const router = Router();
 
@@ -46,9 +47,14 @@ function withAbsoluteFileUrl<T extends { fileUrl?: string | null }>(msg: T, req:
   return msg;
 }
 
-const localDiskStorage: ChatStorage = {
-  async save(file, req) {
+// Lo storage effettivo (disco locale in dev, Replit Object Storage in
+// produzione con STORAGE_MODE=object-storage) è gestito da
+// server/lib/upload-storage.ts: multer scrive sempre un file temporaneo locale,
+// poi persistUploadedFile() lo rende persistente secondo la modalità attiva.
+const uploadFileStorage: ChatStorage = {
+  async save(file, _req) {
     const relativeUrl = `/uploads/${file.filename}`;
+    await persistUploadedFile(file.path, relativeUrl);
     return {
       url: relativeUrl,
       mime: file.mimetype,
@@ -58,31 +64,9 @@ const localDiskStorage: ChatStorage = {
   },
 };
 
-// TODO: Future storage implementations (no new dependencies needed to add):
-// - S3Storage: implements ChatStorage using AWS SDK
-// - R2Storage: implements ChatStorage using Cloudflare R2
-// - SupabaseStorage: implements ChatStorage using Supabase Storage
+const chatFileStorage = uploadFileStorage;
 
-function getChatStorage(): ChatStorage {
-  // const mode = process.env.STORAGE_MODE || "local";
-  // switch (mode) {
-  //   case "s3": return s3Storage;
-  //   case "r2": return r2Storage;
-  //   default: return localDiskStorage;
-  // }
-  return localDiskStorage;
-}
-
-const chatFileStorage = getChatStorage();
-
-let uploadWarningLogged = false;
-if (process.env.NODE_ENV === "production" && !process.env.STORAGE_MODE) {
-  logger.warn("UPLOAD_STORAGE_WARNING", {
-    tag: "UPLOAD_STORAGE_WARNING",
-    msg: "Using local disk uploads in production is fragile. Consider S3/R2/Supabase by setting STORAGE_MODE env var.",
-  });
-  uploadWarningLogged = true;
-}
+logUploadStorageStatus();
 
 const uploadsDir = path.resolve("uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -434,14 +418,6 @@ router.post("/:familyId/upload", requireFamilyMembership, upload.single("file"),
 
     const [user] = await db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);
 
-    if (process.env.NODE_ENV === "production" && !process.env.STORAGE_MODE && !uploadWarningLogged) {
-      logger.warn("UPLOAD_STORAGE_WARNING", {
-        tag: "UPLOAD_STORAGE_WARNING",
-        msg: "Using local disk uploads in production is fragile. Consider S3/R2/Supabase by setting STORAGE_MODE env var.",
-      });
-      uploadWarningLogged = true;
-    }
-
     const stored = await chatFileStorage.save(req.file, req);
     const isImage = stored.mime.startsWith("image/");
 
@@ -484,7 +460,10 @@ router.post("/:familyId/upload", requireFamilyMembership, upload.single("file"),
   } catch (error) {
     logger.error("Errore POST upload chat", { error: String(error) });
     if (req.file) {
+      // Pulizia sia del temporaneo locale sia dell'eventuale oggetto già
+      // caricato nel bucket (se l'errore è avvenuto dopo il persist).
       fs.unlink(req.file.path, () => {});
+      void deleteStoredUploads([`/uploads/${req.file.filename}`]);
     }
     res.status(500).json({ error: "Errore nel caricamento del file" });
   }
@@ -511,15 +490,8 @@ router.delete("/:familyId/messages/:messageId", async (req: Request, res: Respon
     }
 
     if (message.fileUrl) {
-      const safePath = resolveSafeUploadPath(message.fileUrl);
-      if (safePath) {
-        fs.unlink(safePath, () => {});
-      } else {
-        logger.warn("Chat delete: file path fuori da uploadsDir, skip unlink", {
-          messageId,
-          fileUrl: message.fileUrl,
-        });
-      }
+      // Cancella da tutti gli storage (disco locale + bucket in object mode).
+      void deleteStoredUploads([message.fileUrl]);
     }
 
     await db.delete(chatMessages).where(eq(chatMessages.id, messageId));

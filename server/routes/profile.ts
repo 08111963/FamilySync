@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { users } from "../../shared/schema";
 import { logger } from "../lib/logger";
-import { deleteUploadFiles } from "../lib/uploads-cleanup";
+import { persistUploadedFile, deleteStoredUploads } from "../lib/upload-storage";
 import { isAllowedUploadMime, buildStoredFilename, verifyMagicBytes, readMagicBytes } from "./chat";
 
 const router = Router();
@@ -70,11 +70,13 @@ router.post(
       // Verifica del contenuto reale (magic bytes), non del solo MIME dichiarato.
       const magic = readMagicBytes(file.path);
       if (!verifyMagicBytes(magic, file.mimetype)) {
-        await deleteUploadFiles([`/uploads/avatars/${file.filename}`]);
+        await deleteStoredUploads([`/uploads/avatars/${file.filename}`]);
         return res.status(415).json({ error: { code: "INVALID_IMAGE", message: "Il file non è un'immagine valida" } });
       }
 
       const newUrl = `/uploads/avatars/${file.filename}`;
+      // Rende persistente l'avatar (upload sul bucket in modalità object-storage).
+      await persistUploadedFile(file.path, newUrl);
       const [prev] = await db
         .select({ avatarUrl: users.avatarUrl })
         .from(users)
@@ -85,13 +87,13 @@ router.post(
 
       // Rimuove la vecchia foto dal disco (solo se era un nostro avatar locale).
       if (prev?.avatarUrl && prev.avatarUrl.startsWith("/uploads/avatars/")) {
-        await deleteUploadFiles([prev.avatarUrl]);
+        await deleteStoredUploads([prev.avatarUrl]);
       }
 
       res.json({ avatarUrl: newUrl });
     } catch (error) {
       // In caso di errore imprevisto non lasciamo file orfani sul disco.
-      if (file) await deleteUploadFiles([`/uploads/avatars/${file.filename}`]);
+      if (file) await deleteStoredUploads([`/uploads/avatars/${file.filename}`]);
       logger.error("Avatar upload error", { error: String(error) });
       res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel salvataggio della foto" } });
     }
@@ -110,7 +112,7 @@ router.delete("/avatar", async (req: Request, res: Response) => {
     await db.update(users).set({ avatarUrl: null }).where(eq(users.id, req.user!.userId));
 
     if (prev?.avatarUrl && prev.avatarUrl.startsWith("/uploads/avatars/")) {
-      await deleteUploadFiles([prev.avatarUrl]);
+      await deleteStoredUploads([prev.avatarUrl]);
     }
 
     res.json({ ok: true });

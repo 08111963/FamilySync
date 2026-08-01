@@ -124,6 +124,7 @@ VAPID_SUBJECT = "mailto:assistenza@familysync.it"
 [userenv.production]
 EXPO_PUBLIC_DOMAIN = "familysync.eu"
 VIP_ACCOUNT_EMAIL = "fra.pizzuti02@gmail.com"
+STORAGE_MODE = "object-storage"
 
 [userenv.development]
 

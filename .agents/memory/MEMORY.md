@@ -9,6 +9,7 @@
 - [Stripe payments conventions](stripe-payments-conventions.md) — subscriptions are family-scoped; never trust client priceId (resolve server-side); webhooks must reconcile the families table; Stripe stays dormant and must NOT unlock mobile premium (entitlements do).
 - [RevenueCat Premium (FamilySync)](revenuecat-premium.md) — Premium store-native via RevenueCat: client non decide, backend sync /api/purchases/sync -> tabella entitlements; ruolo admin; webhook fail-closed in prod.
 - [Recipe gen sessions](recipe-gen-sessions.md) — generazione incrementale ricette persistita su DB con heartbeat updatedAt; GET chiude sessioni stantie (interrupted), quota mai riconsumata dal polling.
+- [Upload su Object Storage](upload-object-storage.md) — /uploads persistenti via bucket Replit con STORAGE_MODE=object-storage (solo prod); Client sempre con bucketId esplicito; delete disco+bucket.
 - [Foto ricette AI](recipe-images.md) — foto AI = asset pubblici cache cross-family per titolo; cache-hit senza quota; sharp 512px WebP; rotte con familyId nel body richiedono requireFamilyMember().
 - [Demo account seed](demo-account-seed.md) — scripts/seed-demo-account.ts per revisori store: demo DEVE avere emailVerified=true (tutte le /api lo richiedono) + entitlements active per Premium; cleanup solo famiglia marker, in transazione.
 - [Resend email (FamilySync)](resend-email.md) — email via Resend (RESEND_API_KEY); from noreply@familysync.eu, reply-to assistenza@familysync.it; dominio .eu verificato; redeploy prod per caricare nuove env/secret.
