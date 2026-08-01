@@ -202,6 +202,70 @@ export async function sendBillReminderEmail(params: {
 }
 
 /**
+ * Notifica il proprietario dell'app (indirizzi in APP_OWNER_EMAILS) che un
+ * tester ha inviato un nuovo feedback dal modulo "Dacci il tuo parere".
+ * Fire-and-forget lato chiamante: eventuali errori vanno solo loggati e non
+ * devono mai bloccare il salvataggio del feedback.
+ */
+export async function sendFeedbackNotificationEmail(params: {
+  userName: string;
+  userEmail: string;
+  category: string;
+  rating: number | null;
+  message: string;
+  platform: string | null;
+  appVersion: string | null;
+}) {
+  const raw = process.env.APP_OWNER_EMAILS || '';
+  const recipients = raw.split(',').map((e) => e.trim()).filter(Boolean);
+
+  if (recipients.length === 0) {
+    console.log('[feedback] APP_OWNER_EMAILS non configurata: nessuna email di notifica inviata');
+    return;
+  }
+  if (!isEmailConfigured()) {
+    console.log(`[DEV] Nuovo feedback (${params.category}) da ${params.userEmail}: ${params.message.slice(0, 80)}`);
+    return;
+  }
+
+  const categoryLabels: Record<string, string> = {
+    bug: 'Bug',
+    suggestion: 'Suggerimento',
+    other: 'Altro',
+  };
+  const categoryLabel = categoryLabels[params.category] ?? params.category;
+
+  const name = escapeHtml(params.userName);
+  const userEmail = escapeHtml(params.userEmail);
+  const messageHtml = escapeHtml(params.message).replace(/\n/g, '<br/>');
+  const ratingLine = params.rating
+    ? `<p><strong>Valutazione:</strong> ${'★'.repeat(params.rating)}${'☆'.repeat(5 - params.rating)} (${params.rating}/5)</p>`
+    : '';
+  const details = [params.platform, params.appVersion].filter(Boolean).map((v) => escapeHtml(v as string)).join(' · ');
+  const detailsLine = details ? `<p style="color:#888;font-size:12px;">${details}</p>` : '';
+
+  await Promise.all(
+    recipients.map((to) =>
+      sendEmail({
+        to,
+        replyTo: params.userEmail,
+        subject: `[Feedback tester] ${categoryLabel} da ${params.userName.replace(/[\r\n]+/g, ' ').trim()}`,
+        html: `
+          <h2>Nuovo feedback tester (${escapeHtml(categoryLabel)})</h2>
+          <p><strong>Da:</strong> ${name} &lt;${userEmail}&gt;</p>
+          ${ratingLine}
+          <hr/>
+          <p>${messageHtml}</p>
+          <hr/>
+          ${detailsLine}
+          <p style="color:#888;font-size:12px;">Rispondi a questa email per contattare direttamente il tester.</p>
+        `,
+      })
+    )
+  );
+}
+
+/**
  * Invia alla casella di assistenza una richiesta inviata da un utente dall'app.
  * Il Reply-To è impostato sull'email dell'utente, così l'assistenza può
  * rispondere direttamente con un semplice "Rispondi". Il chiamante deve aver già

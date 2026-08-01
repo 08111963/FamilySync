@@ -4,6 +4,7 @@ import { feedbackEntries, users } from '../../shared/schema';
 import { desc, eq, gte, sql, count, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { isAppOwner } from '../lib/test-analytics';
+import { sendFeedbackNotificationEmail } from '../lib/email';
 import { logger } from '../lib/logger';
 
 /**
@@ -78,6 +79,27 @@ feedbackRouter.post('/', async (req: Request, res: Response) => {
       appVersion: appVersion || null,
     });
     res.status(201).json({ ok: true });
+
+    // Notifica il proprietario via email (fire-and-forget: non deve mai
+    // bloccare né far fallire il salvataggio del feedback appena confermato).
+    void (async () => {
+      const [author] = await db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      await sendFeedbackNotificationEmail({
+        userName: author?.name ?? 'Tester',
+        userEmail: author?.email ?? 'sconosciuto',
+        category,
+        rating: rating ?? null,
+        message,
+        platform: platform || null,
+        appVersion: appVersion || null,
+      });
+    })().catch((error) => {
+      logger.error('Feedback notification email failed', { error: String(error) });
+    });
   } catch (error) {
     logger.error('Feedback insert error', { error: String(error) });
     res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Impossibile salvare il feedback' } });
