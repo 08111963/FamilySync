@@ -857,6 +857,14 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
     }));
 
     res.json({ plans: resultPlans });
+
+    // Prewarm in background: le foto dei pasti sono già note, così l'utente
+    // le trova in cache aprendo il piano (stessa quota/dedup dei suggerimenti).
+    prewarmRecipeImages(
+      (plan.items || []).map((it: any) => ({ title: it.title, description: it.description })),
+      userId,
+      familyId,
+    );
   } catch (error) {
     const durationMs = Date.now() - startTime;
     logger.error('Weekly meal plan error', { error: String(error), durationMs });
@@ -938,6 +946,13 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       itemsCount: plan.items.length,
     }) + '\n');
     res.end();
+
+    // Prewarm in background anche per lo stream: titoli già noti a fine piano.
+    prewarmRecipeImages(
+      (plan.items || []).map((it: any) => ({ title: it.title, description: it.description })),
+      userId,
+      familyId,
+    );
   } catch (error) {
     const durationMs = Date.now() - startTime;
     logger.error('Weekly meal plan stream error', { error: String(error), durationMs });
@@ -992,6 +1007,13 @@ router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireF
     });
 
     res.json({ recipes: dedupedRecipes, query: query.trim() });
+
+    // Prewarm in background: stessa logica dei suggerimenti ricette.
+    prewarmRecipeImages(
+      dedupedRecipes.map(r => ({ title: r.title, description: (r as any).description })),
+      userId,
+      familyId,
+    );
   } catch (error) {
     logger.error('Recipe search error', { error: String(error) });
     sendAiError(res, error, "Errore nella ricerca ricette");
