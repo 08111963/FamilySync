@@ -202,6 +202,46 @@ export async function sendBillReminderEmail(params: {
 }
 
 /**
+ * Promemoria evento del calendario. Inviata dal server (scheduler) ai membri
+ * della famiglia con email verificata. `kind` distingue "domani" da "oggi".
+ */
+export async function sendEventReminderEmail(params: {
+  to: string;
+  recipientName: string;
+  eventTitle: string;
+  eventDate: string; // già formattata (es. "23 luglio 2026")
+  eventTime?: string | null; // es. "15:30"
+  location?: string | null;
+  kind: 'event_tomorrow' | 'event_today';
+}) {
+  const when = params.kind === 'event_today' ? 'è OGGI' : 'è DOMANI';
+
+  if (!isEmailConfigured()) {
+    console.log(`[DEV] Promemoria evento "${params.eventTitle}" (${when}) per ${params.to}`);
+    return;
+  }
+
+  const name = escapeHtml(params.recipientName);
+  const title = escapeHtml(params.eventTitle);
+  const eventDate = escapeHtml(params.eventDate);
+  const time = params.eventTime ? escapeHtml(params.eventTime) : '';
+  const location = params.location ? escapeHtml(params.location) : '';
+  const appLink = clientBaseUrl();
+
+  await sendEmail({
+    to: params.to,
+    subject: `Promemoria: l'evento "${params.eventTitle.replace(/[\r\n]+/g, ' ').trim()}" ${when.toLowerCase()}`,
+    html: `
+      <h2>Ciao ${name}!</h2>
+      <p>L'evento <strong>${title}</strong> ${when.toLowerCase()} (${eventDate}${time ? ` alle ${time}` : ''}).</p>
+      ${location ? `<p>Luogo: <strong>${location}</strong></p>` : ''}
+      ${appLink ? `<p><a href="${appLink}">Apri FamilySync</a></p>` : ''}
+      <p style="color:#888;font-size:12px;">Ricevi questa email perché fai parte della famiglia su FamilySync.</p>
+    `,
+  });
+}
+
+/**
  * Notifica il proprietario dell'app (indirizzi in APP_OWNER_EMAILS) che un
  * tester ha inviato un nuovo feedback dal modulo "Dacci il tuo parere".
  * Fire-and-forget lato chiamante: eventuali errori vanno solo loggati e non

@@ -531,6 +531,17 @@ export const billReminderLog = pgTable("bill_reminder_log", {
   unique("bill_reminder_log_unique").on(table.billId, table.kind),
 ]);
 
+// EVENT REMINDER LOG — deduplica dei promemoria eventi calendario inviati dal
+// server (email + push). Una riga per (evento, tipo promemoria).
+export const eventReminderLog = pgTable("event_reminder_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventId: uuid("event_id").notNull().references(() => calendarEvents.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 20 }).notNull(), // 'event_tomorrow' | 'event_today'
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+}, (table) => [
+  unique("event_reminder_log_unique").on(table.eventId, table.kind),
+]);
+
 // ENTITLEMENTS — Premium acquistato tramite store nativi (Google Play / Apple).
 // Premium è UNICO per famiglia: una sola riga per familyId (unique).
 // La verifica server-side aggiorna status/expiresAt; isPremium(familyId) legge qui.

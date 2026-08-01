@@ -11,6 +11,7 @@ import { ensureDemoAccount } from './lib/demo-account';
 import { ensureTesterAccounts } from './lib/tester-accounts';
 import { ensureVipAccount } from './lib/vip-account';
 import { startBillReminderScheduler } from './lib/bill-reminders';
+import { startEventReminderScheduler } from './lib/event-reminders';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -476,6 +477,8 @@ function setupErrorHandler(app: express.Application) {
         .catch((err) => log(`vip account seed failed: ${String(err)}`));
       // Promemoria bollette lato server (email + push, dedup su DB).
       startBillReminderScheduler();
+      // Promemoria eventi calendario lato server (email + push, dedup su DB).
+      startEventReminderScheduler();
     },
   );
 })();

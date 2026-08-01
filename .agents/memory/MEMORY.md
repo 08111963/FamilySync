@@ -24,6 +24,7 @@
 - [Event auto-fill AI](event-autofill.md) — parse-event: zod `.catch()` accetta `{}` → server deve lanciare AI_BAD_RESPONSE se nessun campo utile, client mostra successo solo se compila qualcosa.
 - [Tester trial accounts](tester-trial-accounts.md) — 15 Google Play tester accounts; entitlement trial_days flips pending→active atomically on first login then falls to free; passwords HMAC-derived; PDF gitignored.
 - [Push notifications](push-notifications.md) — native solo build store + web push VAPID con allow-list anti-SSRF; blocchi via getBlockRelatedUserIds; promemoria bollette server-side con dedup a claim rilasciabile.
+- [Promemoria eventi calendario](event-reminders.md) — email+push per eventi oggi/domani, dedup event_reminder_log con claim rilasciabile; esclusi block-related dell'autore; migrazione 0019 da portare in prod.
 - [Premi riscattabili](rewards-redemptions.md) — riscatto punti con UPDATE atomico (WHERE points>=cost) in transazione; delete premio soft; gestione solo admin/adult.
 - [Dispensa (pantry)](pantry-inventory.md) — dedup atomico ON CONFLICT su (family,normalized_name,COALESCE(unit,'')); 23505→409; AI spesa/ricette usano la dispensa; migrazioni 0009+0010 da portare in prod.
 - [Budget familiare](family-budget.md) — bollette pagate sommate read-only nel summary (mai doppie); memberId mai dal client; tetto budget upsert atomico; quota AI budget-insights.
