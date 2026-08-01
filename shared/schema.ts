@@ -366,6 +366,27 @@ export const aiUsage = pgTable("ai_usage", {
 
 export type AiUsage = typeof aiUsage.$inferSelect;
 
+// RECIPE GEN SESSIONS — sessioni della generazione incrementale delle ricette.
+// Persistite su DB (non in-memory) così il polling del client sopravvive a
+// riavvii del backend e funziona anche con più istanze in produzione.
+// updatedAt fa da heartbeat: se una sessione non-done non viene aggiornata da
+// troppo tempo, la generazione è stata interrotta (es. riavvio a metà).
+export const recipeGenSessions = pgTable("recipe_gen_sessions", {
+  id: uuid("id").primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  recipes: jsonb("recipes").$type<unknown[]>().default(sql`'[]'::jsonb`).notNull(),
+  done: boolean("done").default(false).notNull(),
+  errorStatus: integer("error_status"),
+  errorBody: jsonb("error_body"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("recipe_gen_sessions_created_idx").on(table.createdAt),
+]);
+
+export type RecipeGenSession = typeof recipeGenSessions.$inferSelect;
+
 // REWARDS (premi riscattabili con i punti delle faccende)
 export const rewards = pgTable("rewards", {
   id: uuid("id").primaryKey().defaultRandom(),

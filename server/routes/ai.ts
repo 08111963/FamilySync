@@ -7,8 +7,8 @@ import sharp from 'sharp';
 import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { db } from '../db';
-import { familyMembers, shoppingHistory, shoppingLists, shoppingItems, calendarEvents, chores, aiInsights, pantryItems, users } from '../../shared/schema';
-import { eq, and, gte, desc, inArray } from 'drizzle-orm';
+import { familyMembers, shoppingHistory, shoppingLists, shoppingItems, calendarEvents, chores, aiInsights, pantryItems, users, recipeGenSessions } from '../../shared/schema';
+import { eq, and, gte, desc, inArray, lt } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
@@ -591,29 +591,29 @@ router.patch('/:familyId/insights/:insightId/dismiss', authenticate, requireFami
 });
 
 /**
- * Sessioni in-memory per la generazione incrementale delle ricette: il client
- * avvia la generazione (POST con incremental:true), riceve subito un
- * generationId e poi legge le ricette man mano che i batch arrivano (GET).
+ * Sessioni per la generazione incrementale delle ricette: il client avvia la
+ * generazione (POST con incremental:true), riceve subito un generationId e poi
+ * legge le ricette man mano che i batch arrivano (GET).
+ * Persistite su DB (tabella recipe_gen_sessions) così il polling sopravvive a
+ * riavvii del backend e funziona anche con più istanze in produzione.
  * La quota AI resta invariata: UNA prenotazione per generazione, il polling
  * non consuma quota. TTL breve perché i dati servono solo durante il polling.
+ * updatedAt fa da heartbeat: se una sessione non-done non viene aggiornata da
+ * troppo tempo, il processo che la generava è morto (es. riavvio a metà) e il
+ * GET la chiude restituendo le ricette parziali già salvate.
  */
-interface RecipeGenSession {
-  userId: string;
-  familyId: string;
-  recipes: unknown[];
-  done: boolean;
-  /** Codice errore AI (es. AI_UNAVAILABLE) se la generazione è fallita del tutto. */
-  errorStatus?: number;
-  errorBody?: unknown;
-  createdAt: number;
-}
-const recipeGenSessions = new Map<string, RecipeGenSession>();
 const RECIPE_GEN_TTL_MS = 10 * 60 * 1000;
+// Ben oltre l'intervallo tra due batch OpenAI: scaduto questo, la generazione
+// è considerata interrotta (il processo che scriveva i batch non esiste più).
+const RECIPE_GEN_STALE_MS = 90 * 1000;
 
-function sweepRecipeGenSessions() {
-  const now = Date.now();
-  for (const [id, s] of recipeGenSessions) {
-    if (now - s.createdAt > RECIPE_GEN_TTL_MS) recipeGenSessions.delete(id);
+async function sweepRecipeGenSessions() {
+  try {
+    const cutoff = new Date(Date.now() - RECIPE_GEN_TTL_MS);
+    await db.delete(recipeGenSessions).where(lt(recipeGenSessions.createdAt, cutoff));
+  } catch (error) {
+    // Best-effort: una sweep fallita non deve bloccare la generazione.
+    logger.error('Recipe gen sessions sweep error', { error: String(error) });
   }
 }
 
@@ -660,28 +660,46 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
     // background; il client legge i batch via GET man mano che arrivano.
     // Quota identica alla modalità classica: una sola prenotazione.
     if (req.body?.incremental === true) {
-      sweepRecipeGenSessions();
+      void sweepRecipeGenSessions();
       const generationId = crypto.randomUUID();
-      const session: RecipeGenSession = {
-        userId, familyId, recipes: [], done: false, createdAt: Date.now(),
-      };
+      // Lista cumulativa in-memory (per dedup) + scritture DB serializzate:
+      // ogni batch riscrive la lista completa e aggiorna updatedAt (heartbeat).
+      const sessionRecipes: unknown[] = [];
       const seenTitles = new Set<string>();
+      let writeChain: Promise<unknown> = Promise.resolve();
+      const persistSession = (fields: { done?: boolean; errorStatus?: number; errorBody?: unknown }) => {
+        const snapshot = sessionRecipes.slice();
+        writeChain = writeChain.then(() =>
+          db.update(recipeGenSessions)
+            .set({ recipes: snapshot, updatedAt: new Date(), ...fields })
+            .where(eq(recipeGenSessions.id, generationId))
+        ).catch((error) => {
+          logger.error('Recipe gen session persist error', { generationId, error: String(error) });
+        });
+        return writeChain;
+      };
       const appendDeduped = (batch: { title: string }[]) => {
+        let added = false;
         for (const r of batch) {
           const norm = r.title.toLowerCase().trim();
           if (seenTitles.has(norm)) continue;
           seenTitles.add(norm);
-          session.recipes.push(r);
+          sessionRecipes.push(r);
+          added = true;
         }
+        if (added) void persistSession({});
       };
 
+      let errorFields: { errorStatus?: number; errorBody?: unknown } = {};
       try {
         const run = await withAiUsage(
           { userId, familyId, feature: 'recipe-suggestions' },
           async () => {
             // Registra la sessione SOLO dopo che la quota è stata prenotata,
             // poi rispondi subito: la generazione prosegue in background.
-            recipeGenSessions.set(generationId, session);
+            await db.insert(recipeGenSessions).values({
+              id: generationId, userId, familyId, recipes: [], done: false,
+            });
             res.status(202).json({ generationId });
             return generateRecipeSuggestions(genContext, appendDeduped);
           },
@@ -692,14 +710,12 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
         // La risposta 202 è già partita: l'errore va comunicato via polling.
         logger.error('Incremental recipe generation error', { error: String(error) });
         if (isAiError(error)) {
-          session.errorStatus = error.httpStatus;
-          session.errorBody = { code: error.code, message: error.userMessage };
+          errorFields = { errorStatus: error.httpStatus, errorBody: { code: error.code, message: error.userMessage } };
         } else {
-          session.errorStatus = 500;
-          session.errorBody = { code: 'AI_ERROR', message: 'Errore nella generazione ricette' };
+          errorFields = { errorStatus: 500, errorBody: { code: 'AI_ERROR', message: 'Errore nella generazione ricette' } };
         }
       }
-      session.done = true;
+      await persistSession({ done: true, ...errorFields });
       return;
     }
 
@@ -739,21 +755,64 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
  * finora e il flag done. Non consuma quota AI (la quota è stata prenotata
  * una sola volta all'avvio della generazione).
  */
-router.get('/:familyId/recipe-suggestions/:generationId', authenticate, requireAiEnabled, requireFamilyMember(), (req: Request, res: Response) => {
+router.get('/:familyId/recipe-suggestions/:generationId', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const generationId = getParam(req, 'generationId');
-  const session = recipeGenSessions.get(generationId);
-  if (!session || session.familyId !== familyId || session.userId !== req.user!.userId) {
+  if (!/^[0-9a-f-]{36}$/i.test(generationId)) {
     return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Generazione non trovata o scaduta' } });
   }
-  // Errore totale (nessuna ricetta): propaga lo stesso errore tipizzato della
-  // modalità classica, così il client mostra il messaggio giusto.
-  if (session.done && session.errorStatus && session.recipes.length === 0) {
-    return res.status(session.errorStatus).json({ error: session.errorBody });
+  try {
+    const [session] = await db.select().from(recipeGenSessions)
+      .where(eq(recipeGenSessions.id, generationId))
+      .limit(1);
+    if (!session || session.familyId !== familyId || session.userId !== req.user!.userId) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Generazione non trovata o scaduta' } });
+    }
+    let { done, recipes: sessionRecipes, errorStatus, errorBody } = session;
+    let interrupted = false;
+    // Heartbeat scaduto su sessione non conclusa: il processo che generava è
+    // morto (riavvio/deploy a metà). Chiudi la sessione in modo atomico
+    // (solo se ancora non-done, così non sovrascrive un finale legittimo) e
+    // restituisci le ricette parziali già salvate: la quota NON viene
+    // riconsumata e l'utente non vede un 404 ambiguo.
+    if (!done && Date.now() - session.updatedAt.getTime() > RECIPE_GEN_STALE_MS) {
+      // UPDATE condizionato su done=false: se un'altra istanza ha concluso nel
+      // frattempo, non sovrascrive il finale legittimo (returning vuoto).
+      const closed = await db.update(recipeGenSessions)
+        .set({
+          done: true,
+          errorStatus: sessionRecipes.length === 0 ? 503 : null,
+          errorBody: sessionRecipes.length === 0
+            ? { code: 'AI_INTERRUPTED', message: 'La generazione si è interrotta per un riavvio del servizio. Riprova più tardi.' }
+            : null,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(recipeGenSessions.id, generationId), eq(recipeGenSessions.done, false)))
+        .returning({ id: recipeGenSessions.id });
+      // Rileggi lo stato finale (nostro o dell'altra istanza).
+      const [final] = await db.select().from(recipeGenSessions)
+        .where(eq(recipeGenSessions.id, generationId))
+        .limit(1);
+      if (final) {
+        done = final.done;
+        sessionRecipes = final.recipes;
+        errorStatus = final.errorStatus;
+        errorBody = final.errorBody;
+      }
+      interrupted = closed.length > 0;
+    }
+    // Errore totale (nessuna ricetta): propaga lo stesso errore tipizzato della
+    // modalità classica, così il client mostra il messaggio giusto.
+    if (done && errorStatus && sessionRecipes.length === 0) {
+      return res.status(errorStatus).json({ error: errorBody });
+    }
+    // La sessione resta fino al TTL: ripetere il GET dopo done è idempotente
+    // (nessun rischio di perdere risposte per un errore di rete del client).
+    res.json({ recipes: sessionRecipes, done, interrupted, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    logger.error('Recipe gen polling error', { generationId, error: String(error) });
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Errore nella lettura della generazione' } });
   }
-  // La sessione resta fino al TTL: ripetere il GET dopo done è idempotente
-  // (nessun rischio di perdere risposte per un errore di rete del client).
-  res.json({ recipes: session.recipes, done: session.done, generatedAt: new Date().toISOString() });
 });
 
 router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {

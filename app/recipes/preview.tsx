@@ -22,6 +22,7 @@ import { SpeakButton } from "@/components/VoiceInput";
 import { RecipeAiImage, getCachedRecipeImage } from "@/components/RecipeImage";
 import { useFamily } from "@/context/FamilyContext";
 import { apiFetch, getApiUrl } from "@/lib/query-client";
+import { aiErrorMessage } from "@/lib/ai-error-message";
 
 interface AiIngredient {
   name: string;
@@ -396,7 +397,7 @@ export default function RecipePreviewScreen() {
 
     const poll = async () => {
       try {
-        const data = await apiFetch<{ recipes?: AiRecipe[]; done?: boolean }>(
+        const data = await apiFetch<{ recipes?: AiRecipe[]; done?: boolean; interrupted?: boolean }>(
           `/api/ai/${currentFamily.id}/recipe-suggestions/${activeGenerationId}`,
           { method: "GET" }
         );
@@ -413,15 +414,25 @@ export default function RecipePreviewScreen() {
         if (data.done) {
           if (incoming.length === 0) {
             setSaveError("Nessuna ricetta generata. Riprova.");
+          } else if (data.interrupted) {
+            // Generazione interrotta a metà (es. riavvio del server): le
+            // ricette già arrivate restano, la quota non viene riconsumata.
+            setSaveError("Generazione interrotta: queste sono le ricette arrivate finora. Riprova per generarne altre.");
           }
           setActiveGenerationId(null);
           setRefreshing(false);
           return;
         }
         pollTimerRef.current = setTimeout(poll, 1200);
-      } catch {
+      } catch (err: any) {
         if (cancelled) return;
-        setSaveError("Errore nella generazione. Riprova.");
+        // 404 = sessione persa/scaduta (es. riavvio prima che la generazione
+        // venisse registrata): messaggio chiaro, senza riconsumare quota da soli.
+        if (err?.status === 404) {
+          setSaveError("La generazione si è interrotta (sessione scaduta). Riprova per generare nuove ricette.");
+        } else {
+          setSaveError(aiErrorMessage(err, "Errore nella generazione. Riprova."));
+        }
         setActiveGenerationId(null);
         setRefreshing(false);
       }
