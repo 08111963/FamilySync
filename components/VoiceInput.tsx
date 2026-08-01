@@ -11,6 +11,12 @@ import {
 } from "expo-audio";
 
 import { useTheme } from "@/hooks/useTheme";
+import {
+  decidePressIn,
+  decidePressOut,
+  decideStartCompleted,
+  decideWindowBlur,
+} from "@/components/voice-input-press-logic";
 import { apiUpload } from "@/lib/query-client";
 import { aiErrorMessage } from "@/lib/ai-error-message";
 
@@ -147,7 +153,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       // Stile WhatsApp: se l'utente ha già rilasciato mentre stavamo avviando
       // (es. durante la richiesta di permesso del browser), non lasciare il
       // microfono acceso: annulla subito in silenzio. L'utente ripremerà.
-      if (releasedWhileStartingRef.current) {
+      if (decideStartCompleted({ releasedWhileStarting: releasedWhileStartingRef.current }) === "cancelRecording") {
         releasedWhileStartingRef.current = false;
         await cancelRecording();
         return;
@@ -236,13 +242,17 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
     };
     const onWindowBlur = () => {
       pressedRef.current = false;
-      if (startingRef.current) {
+      const action = decideWindowBlur({
+        starting: startingRef.current,
+        recording: recordingRef.current,
+      });
+      if (action === "markReleasedWhileStarting") {
         // Perdita di focus durante l'avvio (es. prompt permesso in alcune UI):
         // segna l'intenzione di annullare appena l'avvio termina.
         releasedWhileStartingRef.current = true;
-        return;
+      } else if (action === "cancelRecording") {
+        cancelRecording();
       }
-      if (recordingRef.current) cancelRecording();
     };
     win.addEventListener("pointerup", onPointerUp);
     win.addEventListener("blur", onWindowBlur);
@@ -254,9 +264,15 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
   }, [recording, starting]);
 
   const handlePressIn = () => {
-    if (transcribing || lockedByOther || disabled) return;
-    if (startingRef.current) return;
-    if (recordingRef.current) {
+    const action = decidePressIn({
+      transcribing,
+      lockedByOther,
+      disabled: !!disabled,
+      starting: startingRef.current,
+      recording: recordingRef.current,
+    });
+    if (action === "ignore") return;
+    if (action === "stopAndTranscribe") {
       // Modalità toggle: un nuovo tocco mentre registra ferma e trascrive
       justStoppedRef.current = true;
       stopAndTranscribe();
@@ -268,34 +284,37 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
 
   const handlePressOut = () => {
     pressedRef.current = false;
-    if (justStoppedRef.current) {
-      // Rilascio del tocco che ha appena fermato la registrazione: ignora
-      justStoppedRef.current = false;
-      return;
-    }
-    // Se stiamo ancora avviando (es. permesso in corso):
-    // - su web un tap breve è l'uso normale (modalità toggle): la registrazione
-    //   continua e un secondo tap la fermerà. Solo il blur della finestra annulla.
-    // - su nativo manteniamo lo stile hold-to-talk: il rilascio annulla.
-    if (startingRef.current) {
-      if (Platform.OS !== "web") {
+    const action = decidePressOut({
+      isWeb: Platform.OS === "web",
+      justStopped: justStoppedRef.current,
+      starting: startingRef.current,
+      recording: recordingRef.current,
+      elapsedMs: Date.now() - recordStartRef.current,
+    });
+    switch (action) {
+      case "clearJustStopped":
+        // Rilascio del tocco che ha appena fermato la registrazione: ignora
+        justStoppedRef.current = false;
+        return;
+      case "markReleasedWhileStarting":
+        // Nativo, hold-to-talk: il rilascio durante l'avvio annulla appena pronto
         releasedWhileStartingRef.current = true;
-      }
-      return;
-    }
-    if (!recordingRef.current) return;
-    const elapsed = Date.now() - recordStartRef.current;
-    if (elapsed < 250) {
-      // Tocco breve: su web entra in modalità toggle (continua a registrare,
-      // un secondo tap ferma e trascrive). Su nativo annulla in silenzio,
-      // come WhatsApp.
-      if (Platform.OS !== "web") {
+        return;
+      case "keepRecording":
+        // Web, modalità toggle: tap breve → la registrazione continua,
+        // un secondo tap la fermerà. Solo il blur della finestra annulla.
+        return;
+      case "cancelRecording":
+        // Nativo: tocco troppo breve → annulla in silenzio, come WhatsApp.
         cancelRecording();
-      }
-      return;
+        return;
+      case "stopAndTranscribe":
+        // Stile WhatsApp: al rilascio si ferma SEMPRE e si trascrive.
+        stopAndTranscribe();
+        return;
+      case "ignore":
+        return;
     }
-    // Stile WhatsApp: al rilascio si ferma SEMPRE e si trascrive.
-    stopAndTranscribe();
   };
 
   if (transcribing) {
