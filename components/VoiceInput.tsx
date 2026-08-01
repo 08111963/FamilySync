@@ -166,6 +166,9 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
   };
 
   const stopAndTranscribe = async () => {
+    // Durata reale della registrazione: aiuta il server a distinguere i clip
+    // quasi vuoti (trascritti senza prompt) dalle frasi normali.
+    const durationMs = recordStartRef.current > 0 ? Date.now() - recordStartRef.current : 0;
     recordingRef.current = false;
     setRecording(false);
     setTranscribing(true);
@@ -198,6 +201,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       }
 
       if (context) formData.append("context", context);
+      if (durationMs > 0) formData.append("durationMs", String(Math.round(durationMs)));
 
       const res = await apiUpload<{ text: string }>(`/api/ai/${familyId}/transcribe`, formData);
       const text = (res.text || "").trim();
@@ -318,11 +322,18 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       }
       testID="voice-input-button"
     >
-      <Ionicons
-        name={recording ? "radio-button-on" : "mic-outline"}
-        size={recording ? size + 4 : size}
-        color={recording ? "#FF6B6B" : isDisabled ? colors.textSecondary : colors.primary}
-      />
+      {starting && !recording ? (
+        // Avvio in corso (permessi/preparazione): il microfono NON sta ancora
+        // registrando. Lo spinner dice all'utente di aspettare l'icona rossa
+        // prima di parlare, così la prima parola non viene tagliata.
+        <ActivityIndicator size="small" color={colors.primary} testID="voice-starting" />
+      ) : (
+        <Ionicons
+          name={recording ? "radio-button-on" : "mic-outline"}
+          size={recording ? size + 4 : size}
+          color={recording ? "#FF6B6B" : isDisabled ? colors.textSecondary : colors.primary}
+        />
+      )}
     </Pressable>
   );
 }

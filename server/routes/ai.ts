@@ -1026,6 +1026,11 @@ router.post('/:familyId/transcribe', authenticate, requireAiEnabled, requireFami
           filename: `voice.${audioExtension(mime)}`,
           mimeType: mime,
           context: typeof req.body?.context === 'string' ? req.body.context : undefined,
+          durationMs: (() => {
+            const raw = req.body?.durationMs;
+            const n = typeof raw === 'string' ? Number(raw) : typeof raw === 'number' ? raw : NaN;
+            return Number.isFinite(n) && n > 0 && n < 10 * 60_000 ? n : undefined;
+          })(),
         }),
       );
       if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window);

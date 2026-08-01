@@ -752,11 +752,17 @@ export function isPromptEcho(text: string, prompt: string): boolean {
  * Usa l'API audio di OpenAI (gpt-4o-mini-transcribe). Errori sempre tipizzati
  * via mapOpenAiError; la quota è gestita dalla rotta con withAiUsage.
  */
+// Soglie "clip breve" per la trascrizione senza prompt (anti-allucinazione).
+export const SHORT_CLIP_MAX_DURATION_MS = 2_500;
+export const SHORT_CLIP_MAX_BYTES = 15_000;
+
 export async function transcribeAudio(input: {
   buffer: Buffer;
   filename: string;
   mimeType: string;
   context?: string;
+  /** Durata della registrazione in millisecondi, misurata dal client. */
+  durationMs?: number;
 }): Promise<{ text: string }> {
   assertAiConfigured();
   try {
@@ -770,7 +776,13 @@ export async function transcribeAudio(input: {
     // Audio molto brevi (1-2 parole): il contesto fa più danni che benefici,
     // il modello tende ad allucinare parole del dominio ("incontro" al posto
     // di "cena"). Sotto la soglia si trascrive senza alcun prompt.
-    const isShortClip = input.buffer.length < 15_000; // ~2-3s di voce compressa
+    // La durata (se il client la fornisce) è il criterio più affidabile: la
+    // soglia in byte varia troppo col bitrate del codec (webm/opus vs m4a) e
+    // rischia di togliere il contesto anche a frasi normali di 5-10 secondi.
+    const hasDuration = typeof input.durationMs === 'number' && Number.isFinite(input.durationMs) && input.durationMs > 0;
+    const isShortClip = hasDuration
+      ? (input.durationMs as number) < SHORT_CLIP_MAX_DURATION_MS
+      : input.buffer.length < SHORT_CLIP_MAX_BYTES; // fallback: ~2-3s di voce compressa
     const sentPrompt = isShortClip ? '' : (extra ? `${baseHint} ${extra}` : baseHint);
     const response = await getOpenAiClient().audio.transcriptions.create({
       file,
