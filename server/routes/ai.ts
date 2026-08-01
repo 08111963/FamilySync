@@ -19,6 +19,7 @@ import { recipes, recipeIngredients } from '../../shared/schema';
 import { reserveAiSlot, finalizeAiUsage, withAiUsage } from '../lib/ai-usage';
 import { resolveMealPlanVariants } from '../lib/ai-policy';
 import { isAiError } from '../lib/ai-errors';
+import { recipeImageCacheKey, createRecipeImagePrewarm } from '../lib/recipe-image-prewarm';
 
 const router = Router();
 
@@ -1249,17 +1250,6 @@ if (!fs.existsSync(recipeImagesDir)) {
   fs.mkdirSync(recipeImagesDir, { recursive: true });
 }
 
-/** Chiave di cache: hash del titolo normalizzato (accenti/maiuscole ignorati). */
-function recipeImageCacheKey(title: string): string {
-  const normalized = title
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-  return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 32);
-}
-
 // Dedup richieste concorrenti sulla stessa ricetta: una sola generazione
 // (e un solo slot di quota) anche se più client chiedono la stessa foto insieme.
 // Il valore è la promise del run del "leader", condivisa con i follower
@@ -1311,57 +1301,14 @@ function startRecipeImageGeneration(params: {
 }
 
 // Prewarm foto ricette: dopo i suggerimenti, genera in background le foto
-// mancanti così l'utente le trova già in cache. Limite di concorrenza basso
-// per non saturare l'API immagini; si ferma subito se la quota famiglia è
-// esaurita (limited) o il tracking non è disponibile (unavailable).
-const RECIPE_IMAGE_PREWARM_CONCURRENCY = 2;
-
-function prewarmRecipeImages(
-  items: Array<{ title: string; description?: string }>,
-  userId: string,
-  familyId: string,
-): void {
-  // Solo titoli validi e non già in cache su disco.
-  const pending = items
-    .map(r => ({
-      title: typeof r.title === 'string' ? r.title.trim() : '',
-      description: typeof r.description === 'string' ? r.description.trim().slice(0, 300) : undefined,
-    }))
-    .filter(r => r.title.length >= 2 && r.title.length <= 200)
-    .map(r => {
-      const key = recipeImageCacheKey(r.title);
-      return { ...r, key, filePath: path.join(recipeImagesDir, `${key}.webp`) };
-    })
-    .filter(r => !fs.existsSync(r.filePath));
-  if (pending.length === 0) return;
-
-  let index = 0;
-  let stopped = false;
-
-  const worker = async () => {
-    while (!stopped && index < pending.length) {
-      const item = pending[index++];
-      try {
-        const { run } = startRecipeImageGeneration({ ...item, userId, familyId });
-        const result = await run;
-        if (result.outcome === 'limited' || result.outcome === 'unavailable') {
-          // Quota esaurita o tracking KO: inutile insistere sugli altri titoli.
-          stopped = true;
-        }
-      } catch (error) {
-        // Errore AI su un titolo: logga e continua con i successivi.
-        logger.warn('Recipe image prewarm error', { error: String(error), familyId, title: item.title });
-      }
-    }
-  };
-
-  const workers = Array.from(
-    { length: Math.min(RECIPE_IMAGE_PREWARM_CONCURRENCY, pending.length) },
-    () => worker(),
-  );
-  // Fire-and-forget: nessun await dal chiamante, ma niente unhandled rejection.
-  void Promise.allSettled(workers);
-}
+// mancanti così l'utente le trova già in cache. Logica pura testata in
+// server/lib/recipe-image-prewarm.ts (dipendenze reali iniettate qui).
+const prewarmRecipeImages = createRecipeImagePrewarm({
+  imagesDir: recipeImagesDir,
+  fileExists: (filePath) => fs.existsSync(filePath),
+  startGeneration: startRecipeImageGeneration,
+  logWarn: (message, meta) => logger.warn(message, meta),
+});
 
 /**
  * POST /api/ai/:familyId/recipe-images/resolve
