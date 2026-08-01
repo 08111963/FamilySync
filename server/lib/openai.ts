@@ -756,6 +756,27 @@ export function isPromptEcho(text: string, prompt: string): boolean {
 export const SHORT_CLIP_MAX_DURATION_MS = 2_500;
 export const SHORT_CLIP_MAX_BYTES = 15_000;
 
+// Limiti di plausibilità per la durata dichiarata dal client rispetto ai byte
+// effettivi del file. La durata arriva dal client e può essere falsa (bug o
+// abuso): se il "bitrate implicito" è assurdo, la durata viene ignorata e si
+// torna al fallback in byte. I limiti sono volutamente larghi per coprire dal
+// webm/opus a basso bitrate (~1 KB/s) fino al WAV stereo non compresso
+// (~176 KB/s), senza accettare coppie palesemente impossibili.
+export const PLAUSIBLE_MIN_BYTES_PER_SEC = 100;
+export const PLAUSIBLE_MAX_BYTES_PER_SEC = 250_000;
+
+/**
+ * True se la durata dichiarata è coerente (in senso lato) con la dimensione
+ * del file. Durate non finite, nulle o negative sono sempre implausibili.
+ */
+export function isDurationPlausible(durationMs: unknown, byteLength: number): boolean {
+  if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) {
+    return false;
+  }
+  const bytesPerSec = byteLength / (durationMs / 1000);
+  return bytesPerSec >= PLAUSIBLE_MIN_BYTES_PER_SEC && bytesPerSec <= PLAUSIBLE_MAX_BYTES_PER_SEC;
+}
+
 export async function transcribeAudio(input: {
   buffer: Buffer;
   filename: string;
@@ -779,7 +800,11 @@ export async function transcribeAudio(input: {
     // La durata (se il client la fornisce) è il criterio più affidabile: la
     // soglia in byte varia troppo col bitrate del codec (webm/opus vs m4a) e
     // rischia di togliere il contesto anche a frasi normali di 5-10 secondi.
-    const hasDuration = typeof input.durationMs === 'number' && Number.isFinite(input.durationMs) && input.durationMs > 0;
+    // La durata viene usata solo se plausibile rispetto ai byte ricevuti:
+    // un client malevolo/buggato potrebbe dichiarare durate false per
+    // togliere/forzare il contesto. In caso di incoerenza estrema si ignora
+    // la durata e si usa il fallback in byte, senza errori per l'utente.
+    const hasDuration = isDurationPlausible(input.durationMs, input.buffer.length);
     const isShortClip = hasDuration
       ? (input.durationMs as number) < SHORT_CLIP_MAX_DURATION_MS
       : input.buffer.length < SHORT_CLIP_MAX_BYTES; // fallback: ~2-3s di voce compressa

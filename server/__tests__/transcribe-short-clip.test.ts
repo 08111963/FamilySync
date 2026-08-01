@@ -7,7 +7,13 @@ process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-key-not-real';
 
 import { transcribeAudio, __setOpenAiClientForTest } from '../lib/openai';
 
-import { SHORT_CLIP_MAX_BYTES, SHORT_CLIP_MAX_DURATION_MS } from '../lib/openai';
+import {
+  SHORT_CLIP_MAX_BYTES,
+  SHORT_CLIP_MAX_DURATION_MS,
+  isDurationPlausible,
+  PLAUSIBLE_MIN_BYTES_PER_SEC,
+  PLAUSIBLE_MAX_BYTES_PER_SEC,
+} from '../lib/openai';
 
 // Soglia in byte sotto la quale l'audio viene trascritto SENZA prompt di
 // contesto quando il client non fornisce la durata.
@@ -167,4 +173,93 @@ test('audio corto: anche se il modello risponde con testo lungo, nessun filtro a
 
   // Senza prompt inviato non esiste eco da filtrare: il testo passa com'è.
   assert.equal(result.text, echoLike);
+});
+
+// ===== Plausibilità durata dichiarata vs dimensione file =====
+
+test('isDurationPlausible: matrice di casi invalidi/incoerenti', () => {
+  const cases: Array<[unknown, number, boolean, string]> = [
+    [undefined, 10_000, false, 'durata assente'],
+    [NaN, 10_000, false, 'durata NaN'],
+    [Infinity, 10_000, false, 'durata infinita'],
+    [-5_000, 10_000, false, 'durata negativa'],
+    [0, 10_000, false, 'durata zero'],
+    [1_000, 500_000, false, '1s dichiarato per 500KB (bitrate assurdo)'],
+    [5 * 60_000, 5_000, false, '5 minuti dichiarati per 5KB'],
+    [7_000, 10_000, true, '~7s per 10KB (opus basso bitrate)'],
+    [2_000, 30_000, true, '2s per 30KB (m4a)'],
+    [10_000, 1_760_000, true, '10s WAV stereo non compresso'],
+  ];
+  for (const [durationMs, bytes, expected, label] of cases) {
+    assert.equal(isDurationPlausible(durationMs, bytes), expected, label);
+  }
+});
+
+test('durata palesemente falsa (corta) viene ignorata: fallback in byte -> prompt inviato', async (t) => {
+  // Client dichiara 1s ma invia 500KB: la durata "corta" farebbe togliere il
+  // contesto. Il server deve ignorarla e, con 500KB > soglia byte, inviare il prompt.
+  const { client, calls } = makeFakeClient(() => 'Cena venerdì alle 20');
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const context = 'Evento del calendario familiare.';
+  const result = await transcribeAudio({
+    buffer: buffersOf(500_000),
+    filename: 'clip.webm',
+    mimeType: 'audio/webm',
+    context,
+    durationMs: 1_000,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(typeof calls[0].prompt, 'string');
+  assert.ok((calls[0].prompt as string).includes(context), 'durata implausibile -> fallback byte -> prompt');
+  assert.equal(result.text, 'Cena venerdì alle 20', 'nessun errore per l\'utente');
+});
+
+test('durata palesemente falsa (lunga) viene ignorata: fallback in byte -> nessun prompt', async (t) => {
+  // Client dichiara 5 minuti ma invia 5KB: la durata "lunga" forzerebbe il
+  // contesto su un clip in realtà brevissimo. Fallback byte: niente prompt.
+  const { client, calls } = makeFakeClient(() => 'cena');
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const result = await transcribeAudio({
+    buffer: buffersOf(5_000),
+    filename: 'clip.webm',
+    mimeType: 'audio/webm',
+    context: 'Lista della spesa della famiglia.',
+    durationMs: 5 * 60_000,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal('prompt' in calls[0], false, 'durata implausibile -> fallback byte -> niente prompt');
+  assert.equal(result.text, 'cena');
+});
+
+test('durata negativa/invalida: fallback in byte senza errori', async (t) => {
+  const { client, calls } = makeFakeClient(() => 'ok');
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const result = await transcribeAudio({
+    buffer: buffersOf(SHORT_CLIP_MAX_BYTES + 10_000),
+    filename: 'clip.webm',
+    mimeType: 'audio/webm',
+    context: 'Contesto.',
+    durationMs: -1_000,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(typeof calls[0].prompt, 'string', 'sopra soglia byte il prompt va inviato');
+  assert.equal(result.text, 'ok');
+});
+
+test('i limiti di plausibilità coprono i codec reali senza accettare gli estremi', () => {
+  // Opus a basso bitrate (~1 KB/s) e WAV stereo (~176 KB/s) devono passare.
+  assert.ok(PLAUSIBLE_MIN_BYTES_PER_SEC <= 1_000);
+  assert.ok(PLAUSIBLE_MAX_BYTES_PER_SEC >= 176_400);
+  // Gli estremi assurdi restano fuori.
+  assert.ok(500_000 > PLAUSIBLE_MAX_BYTES_PER_SEC);
+  assert.ok(5_000 / 300 < PLAUSIBLE_MIN_BYTES_PER_SEC);
 });
