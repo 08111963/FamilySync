@@ -1,12 +1,18 @@
 import { Router } from 'express';
-import type { Request, Response } from 'express';
+import type { Request, Response, NextFunction } from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { db } from '../db';
-import { pushTokens, webPushSubscriptions } from '../../shared/schema';
+import { pushTokens, users, webPushSubscriptions } from '../../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { logger } from '../lib/logger';
-import { getVapidPublicKey, isWebPushConfigured } from '../lib/web-push';
+import { isAppOwner } from '../lib/test-analytics';
+import {
+  getVapidPublicKey,
+  isWebPushConfigured,
+  sendWebPushToSingleSubscription,
+} from '../lib/web-push';
 
 const router = Router();
 
@@ -151,6 +157,98 @@ router.post('/web/unsubscribe', authenticate, async (req: Request, res: Response
   } catch (error) {
     logger.error('Web push unsubscribe error', { error: String(error) });
     res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Errore nella rimozione' } });
+  }
+});
+
+// ————— Notifica di prova (SOLO proprietario app) —————
+
+// Stesso gating owner-only del pannello analytics/feedback (APP_OWNER_EMAILS,
+// email riletta dal DB). Ai non proprietari risponde 404 per non rivelare
+// l'esistenza dell'endpoint (pattern esistente di test-analytics).
+async function requireAppOwner404(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (!req.user) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Non trovato' } });
+    }
+    const [record] = await db
+      .select({ email: users.email, emailVerified: users.emailVerified })
+      .from(users)
+      .where(eq(users.id, req.user.userId))
+      .limit(1);
+    if (!record || !record.emailVerified || !isAppOwner(record.email)) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Non trovato' } });
+    }
+    next();
+  } catch {
+    return res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Errore durante la verifica dei permessi' } });
+  }
+}
+
+// Rate limiter dedicato: la notifica di prova serve per diagnosi, non per spam.
+// Route sempre autenticata: limitiamo per utente, non per IP (deployment autoscale).
+const webTestLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.userId ?? 'unauthenticated',
+  message: { error: { code: 'RATE_LIMITED', message: 'Troppe notifiche di prova. Attendi un minuto e riprova.' } },
+});
+
+// GET /api/notifications/web/test/access — il client mostra il pulsante solo se 200.
+router.get('/web/test/access', requireAppOwner404, (_req: Request, res: Response) => {
+  res.json({ ok: true });
+});
+
+const webTestSchema = z.object({ endpoint: z.string().min(1).max(2000) });
+
+// POST /api/notifications/web/test — invia una web push di prova SOLO alla
+// sottoscrizione del dispositivo/browser corrente (endpoint passato dal client,
+// verificato che appartenga all'utente autenticato).
+router.post('/web/test', requireAppOwner404, webTestLimiter, async (req: Request, res: Response) => {
+  try {
+    if (!isWebPushConfigured()) {
+      return res.status(503).json({ error: { code: 'WEB_PUSH_NOT_CONFIGURED', message: 'Notifiche web non configurate sul server' } });
+    }
+    const parsed = webTestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Dati non validi' } });
+    }
+
+    // La sottoscrizione deve esistere ED essere associata all'utente corrente:
+    // niente invii verso endpoint arbitrari o di altri account.
+    const [sub] = await db
+      .select({
+        endpoint: webPushSubscriptions.endpoint,
+        p256dh: webPushSubscriptions.p256dh,
+        auth: webPushSubscriptions.auth,
+      })
+      .from(webPushSubscriptions)
+      .where(and(
+        eq(webPushSubscriptions.endpoint, parsed.data.endpoint),
+        eq(webPushSubscriptions.userId, req.user!.userId),
+      ))
+      .limit(1);
+    if (!sub) {
+      return res.status(404).json({ error: { code: 'SUBSCRIPTION_NOT_FOUND', message: 'Questo dispositivo non risulta registrato per le notifiche. Attiva prima le notifiche dal banner.' } });
+    }
+
+    const result = await sendWebPushToSingleSubscription(sub, {
+      title: 'Notifica di prova',
+      body: 'Se leggi questo messaggio, le notifiche web funzionano su questo dispositivo. ✅',
+      data: { type: 'web_push_test' },
+    });
+
+    if (result.ok) {
+      return res.json({ ok: true, message: 'Notifica inviata al servizio push' });
+    }
+    if (result.code === 'EXPIRED') {
+      return res.status(410).json({ error: { code: 'SUBSCRIPTION_EXPIRED', message: 'La sottoscrizione di questo browser è scaduta ed è stata rimossa. Riattiva le notifiche e riprova.' } });
+    }
+    return res.status(502).json({ error: { code: 'PUSH_SEND_FAILED', message: `Il servizio push ha rifiutato l'invio${result.status ? ` (HTTP ${result.status})` : ''}. Riprova più tardi.` } });
+  } catch (error) {
+    logger.error('Web push test error', { error: String(error) });
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: "Errore durante l'invio della notifica di prova" } });
   }
 });
 

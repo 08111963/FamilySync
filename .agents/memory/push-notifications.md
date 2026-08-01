@@ -11,3 +11,6 @@ description: Convenzioni push Expo + web push VAPID, esclusione blocchi, rebind 
 - projectId EAS: fallback `Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.eas?.projectId`.
 - **Promemoria bollette server-side:** scheduler orario (`server/lib/bill-reminders.ts`) per email (membri con email verificata) + push a bollette non pagate in scadenza oggi/domani (Europe/Rome). Dedup con claim atomico ON CONFLICT su `bill_reminder_log`; se l'invio fallisce del tutto il claim viene RILASCIATO per ritentare. **Why:** claim-prima-dell'invio senza rilascio perde promemoria per sempre (rilevato in review). Le notifiche locali client restano come complemento.
 - Migrazione 0013 (web_push_subscriptions + bill_reminder_log) da applicare in PROD dopo il deploy.
+
+## Notifica di prova (owner-only)
+- Pulsante web "Invia notifica di prova" gated via endpoint /access + APP_OWNER_EMAILS (404 ai non owner, come test-analytics); invia SOLO all'endpoint del browser corrente verificando che appartenga all'utente; rate limit per-utente dedicato.
