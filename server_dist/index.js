@@ -100,6 +100,7 @@ __export(schema_exports, {
   billAttachments: () => billAttachments,
   billCategoryEnum: () => billCategoryEnum,
   billPaymentHistory: () => billPaymentHistory,
+  billReminderLog: () => billReminderLog,
   billSplitTypeEnum: () => billSplitTypeEnum,
   billSplits: () => billSplits,
   billStatusEnum: () => billStatusEnum,
@@ -108,15 +109,19 @@ __export(schema_exports, {
   calendarEvents: () => calendarEvents,
   chatMessages: () => chatMessages,
   chores: () => chores,
+  consentRecords: () => consentRecords,
+  consentTypeEnum: () => consentTypeEnum,
   emailVerificationTokens: () => emailVerificationTokens,
   entitlementStatusEnum: () => entitlementStatusEnum,
   entitlements: () => entitlements,
   eventCategoryEnum: () => eventCategoryEnum,
+  eventReminderLog: () => eventReminderLog,
   expenses: () => expenses,
   families: () => families,
   familyBudgets: () => familyBudgets,
   familyInvites: () => familyInvites,
   familyMembers: () => familyMembers,
+  feedbackEntries: () => feedbackEntries,
   ingredientUnitEnum: () => ingredientUnitEnum,
   insertUserSchema: () => insertUserSchema,
   mealPlanItems: () => mealPlanItems,
@@ -127,6 +132,7 @@ __export(schema_exports, {
   passwordResetTokens: () => passwordResetTokens,
   purchasePlatformEnum: () => purchasePlatformEnum,
   pushTokens: () => pushTokens,
+  recipeGenSessions: () => recipeGenSessions,
   recipeIngredients: () => recipeIngredients,
   recipeSourceEnum: () => recipeSourceEnum,
   recipes: () => recipes,
@@ -140,9 +146,11 @@ __export(schema_exports, {
   shoppingHistory: () => shoppingHistory,
   shoppingItems: () => shoppingItems,
   shoppingLists: () => shoppingLists,
+  socialSignupTokens: () => socialSignupTokens,
   subscriptionStatusEnum: () => subscriptionStatusEnum,
   testAnalyticsEvents: () => testAnalyticsEvents,
-  users: () => users
+  users: () => users,
+  webPushSubscriptions: () => webPushSubscriptions
 });
 import { sql } from "drizzle-orm";
 import {
@@ -161,7 +169,7 @@ import {
   date
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-var roleEnum, subscriptionStatusEnum, eventCategoryEnum, reportTargetTypeEnum, reportReasonEnum, reportStatusEnum, mealTypeEnum, recipeSourceEnum, ingredientUnitEnum, purchasePlatformEnum, entitlementStatusEnum, billCategoryEnum, billStatusEnum, billSplitTypeEnum, billAttachmentKindEnum, users, families, familyMembers, familyInvites, calendarEvents, shoppingLists, shoppingItems, shoppingHistory, chores, aiInsights, emailVerificationTokens, passwordResetTokens, reports, blocks, recipes, recipeIngredients, mealPlans, mealPlanItems, aiUsageStatusEnum, aiUsage, rewards, rewardRedemptions, pantryItems, expenses, familyBudgets, messageTypeEnum, chatMessages, pushTokens, entitlements, bills, billSplits, billAttachments, billPaymentHistory, testAnalyticsEvents, insertUserSchema;
+var roleEnum, subscriptionStatusEnum, eventCategoryEnum, reportTargetTypeEnum, reportReasonEnum, reportStatusEnum, mealTypeEnum, recipeSourceEnum, ingredientUnitEnum, purchasePlatformEnum, entitlementStatusEnum, billCategoryEnum, billStatusEnum, billSplitTypeEnum, billAttachmentKindEnum, users, families, familyMembers, familyInvites, calendarEvents, shoppingLists, shoppingItems, shoppingHistory, chores, aiInsights, emailVerificationTokens, passwordResetTokens, reports, blocks, recipes, recipeIngredients, mealPlans, mealPlanItems, aiUsageStatusEnum, aiUsage, recipeGenSessions, rewards, rewardRedemptions, pantryItems, expenses, familyBudgets, messageTypeEnum, chatMessages, pushTokens, webPushSubscriptions, billReminderLog, eventReminderLog, entitlements, bills, billSplits, billAttachments, billPaymentHistory, testAnalyticsEvents, consentTypeEnum, consentRecords, socialSignupTokens, feedbackEntries, insertUserSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -191,7 +199,17 @@ var init_schema = __esm({
       avatarUrl: text("avatar_url"),
       emailVerified: boolean("email_verified").default(false),
       termsAcceptedAt: timestamp("terms_accepted_at"),
-      aiFeaturesEnabled: boolean("ai_features_enabled").default(true).notNull(),
+      aiFeaturesEnabled: boolean("ai_features_enabled").default(false).notNull(),
+      // Fascia d'età dichiarata in registrazione: 'under14' | '14_17' | 'adult'.
+      // NULL per gli account creati prima dell'introduzione (trattati come adulti,
+      // vedi Privacy Policy). Nessuna data di nascita completa: minimizzazione.
+      ageBand: varchar("age_band", { length: 10 }),
+      // Consenso SPECIFICO e separato per l'invio all'AI di allergie/intolleranze
+      // (possibili dati relativi alla salute, art. 9 GDPR). Opt-in, mai preselezionato.
+      aiHealthConsent: boolean("ai_health_consent").default(false).notNull(),
+      // Versione della Privacy Policy di cui l'utente ha dichiarato presa visione
+      // (informativa, NON consenso contrattuale). NULL = mai registrata.
+      privacyPolicySeenVersion: varchar("privacy_policy_seen_version", { length: 20 }),
       deletedAt: timestamp("deleted_at"),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
@@ -249,6 +267,9 @@ var init_schema = __esm({
       color: varchar("color", { length: 7 }).notNull(),
       memberId: uuid("member_id").references(() => familyMembers.id, { onDelete: "set null" }),
       recurrenceRule: text("recurrence_rule"),
+      // Identificatore condiviso dalle occorrenze materializzate della stessa serie
+      // ricorrente: permette di eliminare "tutta la serie" senza ambiguità.
+      seriesId: uuid("series_id"),
       createdBy: uuid("created_by").notNull().references(() => users.id),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
@@ -417,6 +438,19 @@ var init_schema = __esm({
     }, (table) => [
       index("ai_usage_family_feature_created_idx").on(table.familyId, table.feature, table.createdAt)
     ]);
+    recipeGenSessions = pgTable("recipe_gen_sessions", {
+      id: uuid("id").primaryKey(),
+      userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+      familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+      recipes: jsonb("recipes").$type().default(sql`'[]'::jsonb`).notNull(),
+      done: boolean("done").default(false).notNull(),
+      errorStatus: integer("error_status"),
+      errorBody: jsonb("error_body"),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    }, (table) => [
+      index("recipe_gen_sessions_created_idx").on(table.createdAt)
+    ]);
     rewards = pgTable("rewards", {
       id: uuid("id").primaryKey().defaultRandom(),
       familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
@@ -504,6 +538,35 @@ var init_schema = __esm({
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     }, (table) => [
       index("push_tokens_user_idx").on(table.userId)
+    ]);
+    webPushSubscriptions = pgTable("web_push_subscriptions", {
+      id: uuid("id").primaryKey().defaultRandom(),
+      userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+      endpoint: text("endpoint").notNull().unique(),
+      p256dh: text("p256dh").notNull(),
+      auth: text("auth").notNull(),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    }, (table) => [
+      index("web_push_subs_user_idx").on(table.userId)
+    ]);
+    billReminderLog = pgTable("bill_reminder_log", {
+      id: uuid("id").primaryKey().defaultRandom(),
+      billId: uuid("bill_id").notNull().references(() => bills.id, { onDelete: "cascade" }),
+      kind: varchar("kind", { length: 20 }).notNull(),
+      // 'due_tomorrow' | 'due_today'
+      sentAt: timestamp("sent_at").defaultNow().notNull()
+    }, (table) => [
+      unique("bill_reminder_log_unique").on(table.billId, table.kind)
+    ]);
+    eventReminderLog = pgTable("event_reminder_log", {
+      id: uuid("id").primaryKey().defaultRandom(),
+      eventId: uuid("event_id").notNull().references(() => calendarEvents.id, { onDelete: "cascade" }),
+      kind: varchar("kind", { length: 20 }).notNull(),
+      // 'event_tomorrow' | 'event_today'
+      sentAt: timestamp("sent_at").defaultNow().notNull()
+    }, (table) => [
+      unique("event_reminder_log_unique").on(table.eventId, table.kind)
     ]);
     entitlements = pgTable("entitlements", {
       id: uuid("id").primaryKey().defaultRandom(),
@@ -617,6 +680,46 @@ var init_schema = __esm({
       index("test_analytics_event_idx").on(table.eventName),
       index("test_analytics_user_idx").on(table.userId),
       index("test_analytics_platform_idx").on(table.platform)
+    ]);
+    consentTypeEnum = pgEnum("consent_type", ["terms", "ai_features", "ai_health"]);
+    consentRecords = pgTable("consent_records", {
+      id: uuid("id").primaryKey().defaultRandom(),
+      userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+      consentType: consentTypeEnum("consent_type").notNull(),
+      granted: boolean("granted").notNull(),
+      policyVersion: varchar("policy_version", { length: 20 }).notNull(),
+      grantedAt: timestamp("granted_at"),
+      revokedAt: timestamp("revoked_at"),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    }, (table) => [
+      index("consent_records_user_idx").on(table.userId, table.consentType, table.createdAt)
+    ]);
+    socialSignupTokens = pgTable("social_signup_tokens", {
+      id: uuid("id").primaryKey().defaultRandom(),
+      tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+      provider: varchar("provider", { length: 20 }).notNull(),
+      // 'google' | 'apple'
+      email: varchar("email", { length: 255 }).notNull(),
+      suggestedName: varchar("suggested_name", { length: 100 }),
+      expiresAt: timestamp("expires_at").notNull(),
+      usedAt: timestamp("used_at"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    feedbackEntries = pgTable("feedback_entries", {
+      id: uuid("id").primaryKey().defaultRandom(),
+      userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+      category: varchar("category", { length: 20 }).notNull(),
+      // 'bug' | 'suggestion' | 'other'
+      rating: integer("rating"),
+      // 1-5, facoltativa
+      message: text("message").notNull(),
+      platform: varchar("platform", { length: 10 }),
+      appVersion: varchar("app_version", { length: 20 }),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    }, (table) => [
+      index("feedback_entries_created_idx").on(table.createdAt),
+      index("feedback_entries_user_idx").on(table.userId)
     ]);
     insertUserSchema = createInsertSchema(users).pick({
       email: true,
@@ -1163,12 +1266,12 @@ var init_entitlements = __esm({
 
 // server/lib/media-auth.ts
 import { eq as eq4, and as and4, or as or2 } from "drizzle-orm";
-function normalizeUploadFileUrl(p) {
-  let decoded = p;
+function normalizeUploadFileUrl(p2) {
+  let decoded = p2;
   try {
-    decoded = decodeURIComponent(p);
+    decoded = decodeURIComponent(p2);
   } catch {
-    decoded = p;
+    decoded = p2;
   }
   const filename = decoded.replace(/^\/+/, "").replace(/^uploads\/+/, "");
   return `/uploads/${filename}`;
@@ -1353,7 +1456,7 @@ var init_http_params = __esm({
 });
 
 // server/middleware/family.ts
-import { eq as eq8, and as and6 } from "drizzle-orm";
+import { eq as eq8, and as and7 } from "drizzle-orm";
 function requireFamilyMember(paramName = "familyId") {
   return async (req, res, next) => {
     const familyId = req.params[paramName] || req.body?.familyId;
@@ -1363,7 +1466,7 @@ function requireFamilyMember(paramName = "familyId") {
       });
     }
     const [membership] = await db.select().from(familyMembers).where(
-      and6(
+      and7(
         eq8(familyMembers.userId, req.user.userId),
         eq8(familyMembers.familyId, familyId)
       )
@@ -1386,7 +1489,7 @@ function requireFamilyAdmin(paramName = "familyId") {
       });
     }
     const [membership] = await db.select().from(familyMembers).where(
-      and6(
+      and7(
         eq8(familyMembers.userId, req.user.userId),
         eq8(familyMembers.familyId, familyId)
       )
@@ -1422,7 +1525,7 @@ __export(expenses_exports, {
 });
 import { Router as Router11 } from "express";
 import { z as z10 } from "zod";
-import { eq as eq20, and as and17, sql as sql8, desc as desc2, gte as gte4, lt as lt2 } from "drizzle-orm";
+import { eq as eq20, and as and18, sql as sql8, desc as desc2, gte as gte4, lt as lt2 } from "drizzle-orm";
 function isRealDate2(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [y, m, d] = value.split("-").map(Number);
@@ -1451,7 +1554,7 @@ async function getBudgetSummary(familyId, month) {
     category: expenses.category,
     total: sql8`SUM(${expenses.amount})`,
     count: sql8`COUNT(*)::int`
-  }).from(expenses).where(and17(
+  }).from(expenses).where(and18(
     eq20(expenses.familyId, familyId),
     gte4(expenses.date, range.start),
     lt2(expenses.date, range.end)
@@ -1459,7 +1562,7 @@ async function getBudgetSummary(familyId, month) {
   const [billsRow] = await db.select({
     total: sql8`SUM(${billPaymentHistory.amount})`,
     count: sql8`COUNT(*)::int`
-  }).from(billPaymentHistory).where(and17(
+  }).from(billPaymentHistory).where(and18(
     eq20(billPaymentHistory.familyId, familyId),
     gte4(billPaymentHistory.paidAt, /* @__PURE__ */ new Date(range.start + "T00:00:00Z")),
     lt2(billPaymentHistory.paidAt, /* @__PURE__ */ new Date(range.end + "T00:00:00Z"))
@@ -1480,7 +1583,7 @@ async function getBudgetSummary(familyId, month) {
   const expenseTrend = await db.select({
     month: sql8`to_char(${expenses.date}, 'YYYY-MM')`,
     total: sql8`SUM(${expenses.amount})`
-  }).from(expenses).where(and17(
+  }).from(expenses).where(and18(
     eq20(expenses.familyId, familyId),
     gte4(expenses.date, trendStart),
     lt2(expenses.date, range.end)
@@ -1488,7 +1591,7 @@ async function getBudgetSummary(familyId, month) {
   const billsTrend = await db.select({
     month: sql8`to_char(${billPaymentHistory.paidAt}, 'YYYY-MM')`,
     total: sql8`SUM(${billPaymentHistory.amount})`
-  }).from(billPaymentHistory).where(and17(
+  }).from(billPaymentHistory).where(and18(
     eq20(billPaymentHistory.familyId, familyId),
     gte4(billPaymentHistory.paidAt, /* @__PURE__ */ new Date(trendStart + "T00:00:00Z")),
     lt2(billPaymentHistory.paidAt, /* @__PURE__ */ new Date(range.end + "T00:00:00Z"))
@@ -1570,7 +1673,7 @@ var init_expenses = __esm({
         if (!range) {
           return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Mese non valido (YYYY-MM)" } });
         }
-        const items = await db.select().from(expenses).where(and17(
+        const items = await db.select().from(expenses).where(and18(
           eq20(expenses.familyId, familyId),
           gte4(expenses.date, range.start),
           lt2(expenses.date, range.end)
@@ -1622,7 +1725,7 @@ var init_expenses = __esm({
         if (parsed.data.category !== void 0) updateData.category = parsed.data.category;
         if (parsed.data.description !== void 0) updateData.description = parsed.data.description?.trim() || null;
         if (parsed.data.date !== void 0) updateData.date = parsed.data.date;
-        const [item] = await db.update(expenses).set(updateData).where(and17(eq20(expenses.id, expenseId), eq20(expenses.familyId, familyId))).returning();
+        const [item] = await db.update(expenses).set(updateData).where(and18(eq20(expenses.id, expenseId), eq20(expenses.familyId, familyId))).returning();
         if (!item) {
           return res.status(404).json({ error: { code: "NOT_FOUND", message: "Spesa non trovata" } });
         }
@@ -1637,7 +1740,7 @@ var init_expenses = __esm({
       try {
         const familyId = getParam(req, "familyId");
         const expenseId = getParam(req, "expenseId");
-        const [deleted] = await db.delete(expenses).where(and17(eq20(expenses.id, expenseId), eq20(expenses.familyId, familyId))).returning();
+        const [deleted] = await db.delete(expenses).where(and18(eq20(expenses.id, expenseId), eq20(expenses.familyId, familyId))).returning();
         if (!deleted) {
           return res.status(404).json({ error: { code: "NOT_FOUND", message: "Spesa non trovata" } });
         }
@@ -1664,7 +1767,7 @@ var init_expenses = __esm({
           });
         }
         if (parsed.data.monthlyLimit == null || parsed.data.monthlyLimit <= 0) {
-          await db.delete(familyBudgets).where(and17(eq20(familyBudgets.familyId, familyId), eq20(familyBudgets.category, parsed.data.category)));
+          await db.delete(familyBudgets).where(and18(eq20(familyBudgets.familyId, familyId), eq20(familyBudgets.category, parsed.data.category)));
           broadcastToFamily(familyId, "expenses_updated", { budgetRemoved: parsed.data.category });
           return res.json({ success: true, removed: true });
         }
@@ -1814,13 +1917,13 @@ async function resolvePriceIdForPlan(plan, stripe) {
     const search = await stripe.products.search({
       query: "name:'FamilySync Premium' AND active:'true'"
     });
-    product = search.data.find((p) => p.metadata?.tier === "premium") || search.data[0];
+    product = search.data.find((p2) => p2.metadata?.tier === "premium") || search.data[0];
   } catch {
   }
   if (!product) {
     const list = await stripe.products.list({ active: true, limit: 100 });
     product = list.data.find(
-      (p) => p.metadata?.tier === "premium" || p.name === "FamilySync Premium"
+      (p2) => p2.metadata?.tier === "premium" || p2.name === "FamilySync Premium"
     );
   }
   if (!product) {
@@ -2081,17 +2184,220 @@ init_auth();
 import express from "express";
 import { createServer } from "node:http";
 import helmet from "helmet";
-import rateLimit6 from "express-rate-limit";
+import rateLimit7 from "express-rate-limit";
+
+// server/lib/upload-storage.ts
+init_logger();
+import fs2 from "fs/promises";
+import path2 from "path";
+import { Client } from "@replit/object-storage";
+
+// server/lib/uploads-cleanup.ts
+import fs from "fs/promises";
+import path from "path";
+var uploadsDir = path.resolve("uploads");
+function resolveSafeUploadPath(fileUrl, baseDir = uploadsDir) {
+  if (!fileUrl) return null;
+  if (/^https?:\/\//i.test(fileUrl)) {
+    return null;
+  }
+  const filePath = path.resolve(fileUrl.replace(/^\/+/, ""));
+  if (filePath === baseDir) return null;
+  if (filePath.startsWith(baseDir + path.sep)) {
+    return filePath;
+  }
+  return null;
+}
+async function deleteUploadFiles(fileUrls) {
+  const result = { deleted: 0, missing: 0, failed: 0 };
+  const safePaths = /* @__PURE__ */ new Set();
+  for (const url of fileUrls) {
+    if (!url) continue;
+    const safe = resolveSafeUploadPath(url);
+    if (safe) safePaths.add(safe);
+  }
+  for (const filePath of safePaths) {
+    try {
+      await fs.unlink(filePath);
+      result.deleted++;
+    } catch (error) {
+      const code = error?.code;
+      if (code === "ENOENT") {
+        result.missing++;
+      } else {
+        result.failed++;
+        console.error("Eliminazione file upload fallita", { code: code ?? "UNKNOWN" });
+      }
+    }
+  }
+  return result;
+}
+
+// server/lib/upload-storage.ts
+var RAW_MODE = (process.env.STORAGE_MODE || "local").trim().toLowerCase();
+if (RAW_MODE !== "local" && RAW_MODE !== "object-storage") {
+  throw new Error(
+    `STORAGE_MODE non valido: "${process.env.STORAGE_MODE}". Valori ammessi: "local", "object-storage".`
+  );
+}
+var storageMode = RAW_MODE;
+function isObjectStorageMode() {
+  return storageMode === "object-storage";
+}
+var client = null;
+function getClient() {
+  if (!client) {
+    const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+    client = new Client(bucketId ? { bucketId } : void 0);
+  }
+  return client;
+}
+function objectKeyFromUrl(fileUrl) {
+  if (!fileUrl) return null;
+  if (/^https?:\/\//i.test(fileUrl)) return null;
+  const normalized = fileUrl.replace(/^\/+/, "");
+  if (!/^uploads\/[A-Za-z0-9_\-./]+$/.test(normalized)) return null;
+  if (normalized.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) {
+    return null;
+  }
+  return normalized;
+}
+async function persistUploadedFile(localPath, fileUrl) {
+  if (!isObjectStorageMode()) return;
+  const key = objectKeyFromUrl(fileUrl);
+  if (!key) {
+    throw new Error(`persistUploadedFile: fileUrl non valido (${fileUrl})`);
+  }
+  const { ok, error } = await getClient().uploadFromFilename(key, localPath, {
+    compress: false
+  });
+  if (!ok) {
+    throw new Error(`Upload su object storage fallito: ${String(error)}`);
+  }
+  await fs2.unlink(localPath).catch(() => {
+  });
+}
+async function uploadObjectExists(fileUrl) {
+  if (!isObjectStorageMode()) return false;
+  const key = objectKeyFromUrl(fileUrl);
+  if (!key) return false;
+  const { ok, error, value } = await getClient().exists(key);
+  if (!ok) {
+    throw new Error(`Object storage exists fallito (${key}): ${String(error)}`);
+  }
+  return value;
+}
+async function deleteStoredUploads(fileUrls) {
+  const localResult = await deleteUploadFiles(fileUrls);
+  if (isObjectStorageMode()) {
+    for (const url of fileUrls) {
+      const key = objectKeyFromUrl(url);
+      if (!key) continue;
+      try {
+        const { ok, error } = await getClient().delete(key, { ignoreNotFound: true });
+        if (!ok) {
+          localResult.failed++;
+          logger.warn("Object storage delete fallita", { key, error: String(error) });
+        }
+      } catch (error) {
+        localResult.failed++;
+        logger.warn("Object storage delete fallita", { key, error: String(error) });
+      }
+    }
+  }
+  return localResult;
+}
+var EXTENSION_MIMES = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".pdf": "application/pdf"
+};
+function createUploadsObjectHandler(mountPrefix, options) {
+  const cacheControl = options?.cacheControl ?? "private, max-age=3600";
+  return async function uploadsObjectHandler(req, res, next) {
+    if (!isObjectStorageMode()) return next();
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    let decodedPath;
+    try {
+      decodedPath = decodeURIComponent(req.path);
+    } catch {
+      return next();
+    }
+    if (decodedPath.includes("\\") || decodedPath.split("/").some((seg) => seg === "." || seg === "..")) {
+      return next();
+    }
+    const fileUrl = path2.posix.join(mountPrefix, decodedPath);
+    const key = objectKeyFromUrl(fileUrl);
+    if (!key) return next();
+    const mountKeyPrefix = mountPrefix.replace(/^\/+/, "").replace(/\/+$/, "") + "/";
+    if (!key.startsWith(mountKeyPrefix)) {
+      return next();
+    }
+    try {
+      const exists = await getClient().exists(key);
+      if (!exists.ok || !exists.value) return next();
+      const ext = path2.posix.extname(key).toLowerCase();
+      const mime = EXTENSION_MIMES[ext] || "application/octet-stream";
+      res.setHeader("Content-Type", mime);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", cacheControl);
+      if (req.method === "HEAD") {
+        return res.status(200).end();
+      }
+      const stream = getClient().downloadAsStream(key, { decompress: false });
+      stream.on("error", (error) => {
+        logger.error("Object storage stream error", { key, error: String(error) });
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Errore nel download del file" });
+        } else {
+          res.destroy();
+        }
+      });
+      stream.pipe(res);
+    } catch (error) {
+      logger.error("Object storage download error", { key, error: String(error) });
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Errore nel download del file" });
+      }
+    }
+  };
+}
+function logUploadStorageStatus() {
+  if (isObjectStorageMode()) {
+    logger.info("Upload storage: Replit Object Storage attivo", {
+      tag: "UPLOAD_STORAGE",
+      bucketId: process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID ? "custom" : "default"
+    });
+    return;
+  }
+  if (process.env.NODE_ENV === "production") {
+    logger.warn("UPLOAD_STORAGE_WARNING", {
+      tag: "UPLOAD_STORAGE_WARNING",
+      msg: "Using local disk uploads in production is fragile. Set STORAGE_MODE=object-storage to use persistent Replit Object Storage."
+    });
+  }
+}
 
 // server/routes/auth.ts
 init_db();
 init_schema();
-init_jwt();
-init_media_auth();
 import { Router } from "express";
 import { z } from "zod";
 import bcrypt2 from "bcryptjs";
-import { eq as eq7 } from "drizzle-orm";
+import { eq as eq7, and as and6, isNull as isNull2, gt } from "drizzle-orm";
+import nodeCrypto from "crypto";
+
+// shared/policy-version.ts
+var PRIVACY_POLICY_VERSION = "2.1";
+var PRIVACY_POLICY_DATE = "24 luglio 2026";
+var TERMS_VERSION = "1.1";
+
+// server/routes/auth.ts
+init_jwt();
+init_media_auth();
 
 // server/lib/email.ts
 import { Resend } from "resend";
@@ -2182,6 +2488,122 @@ async function sendFamilyInviteEmail(email, familyName, inviterName, link, invit
     `
   });
 }
+async function sendBillReminderEmail(params) {
+  const when = params.kind === "due_today" ? "scade OGGI" : "scade DOMANI";
+  if (!isEmailConfigured()) {
+    console.log(`[DEV] Promemoria bolletta "${params.billTitle}" (${when}) per ${params.to}`);
+    return;
+  }
+  const name = escapeHtml(params.recipientName);
+  const title = escapeHtml(params.billTitle);
+  const amount = escapeHtml(params.amount);
+  const dueDate = escapeHtml(params.dueDate);
+  const appLink = clientBaseUrl();
+  await sendEmail({
+    to: params.to,
+    subject: `Promemoria: la bolletta "${params.billTitle.replace(/[\r\n]+/g, " ").trim()}" ${when.toLowerCase()}`,
+    html: `
+      <h2>Ciao ${name}!</h2>
+      <p>La bolletta <strong>${title}</strong> di <strong>\u20AC ${amount}</strong> ${when.toLowerCase()} (${dueDate}).</p>
+      <p>Ricordati di pagarla e di segnarla come pagata nell'app.</p>
+      ${appLink ? `<p><a href="${appLink}">Apri FamilySync</a></p>` : ""}
+      <p style="color:#888;font-size:12px;">Ricevi questa email perch\xE9 i promemoria sono attivi per questa bolletta.</p>
+    `
+  });
+}
+async function sendEventReminderEmail(params) {
+  const when = params.kind === "event_today" ? "\xE8 OGGI" : "\xE8 DOMANI";
+  if (!isEmailConfigured()) {
+    console.log(`[DEV] Promemoria evento "${params.eventTitle}" (${when}) per ${params.to}`);
+    return;
+  }
+  const name = escapeHtml(params.recipientName);
+  const title = escapeHtml(params.eventTitle);
+  const eventDate = escapeHtml(params.eventDate);
+  const time = params.eventTime ? escapeHtml(params.eventTime) : "";
+  const location = params.location ? escapeHtml(params.location) : "";
+  const appLink = clientBaseUrl();
+  await sendEmail({
+    to: params.to,
+    subject: `Promemoria: l'evento "${params.eventTitle.replace(/[\r\n]+/g, " ").trim()}" ${when.toLowerCase()}`,
+    html: `
+      <h2>Ciao ${name}!</h2>
+      <p>L'evento <strong>${title}</strong> ${when.toLowerCase()} (${eventDate}${time ? ` alle ${time}` : ""}).</p>
+      ${location ? `<p>Luogo: <strong>${location}</strong></p>` : ""}
+      ${appLink ? `<p><a href="${appLink}">Apri FamilySync</a></p>` : ""}
+      <p style="color:#888;font-size:12px;">Ricevi questa email perch\xE9 fai parte della famiglia su FamilySync.</p>
+    `
+  });
+}
+async function sendNewEventEmail(params) {
+  if (!isEmailConfigured()) {
+    console.log(`[DEV] Nuovo evento "${params.eventTitle}" \u2014 email per ${params.to}`);
+    return;
+  }
+  const name = escapeHtml(params.recipientName);
+  const creator = escapeHtml(params.creatorName);
+  const title = escapeHtml(params.eventTitle);
+  const eventDate = escapeHtml(params.eventDate);
+  const time = params.eventTime ? escapeHtml(params.eventTime) : "";
+  const location = params.location ? escapeHtml(params.location) : "";
+  const appLink = clientBaseUrl();
+  const seriesNote = params.isRecurring ? `<p>Si tratta di un evento ricorrente: la prima occorrenza \xE8 il ${eventDate}${time ? ` alle ${time}` : ""}.</p>` : `<p>Quando: <strong>${eventDate}${time ? ` alle ${time}` : ""}</strong></p>`;
+  await sendEmail({
+    to: params.to,
+    subject: `Nuovo evento in famiglia: "${params.eventTitle.replace(/[\r\n]+/g, " ").trim()}"`,
+    html: `
+      <h2>Ciao ${name}!</h2>
+      <p><strong>${creator}</strong> ha aggiunto l'evento <strong>${title}</strong> al calendario della famiglia.</p>
+      ${seriesNote}
+      ${location ? `<p>Luogo: <strong>${location}</strong></p>` : ""}
+      ${appLink ? `<p><a href="${appLink}">Apri FamilySync</a></p>` : ""}
+      <p style="color:#888;font-size:12px;">Ricevi questa email perch\xE9 fai parte della famiglia su FamilySync.</p>
+    `
+  });
+}
+async function sendFeedbackNotificationEmail(params) {
+  const raw = process.env.APP_OWNER_EMAILS || "";
+  const recipients = raw.split(",").map((e) => e.trim()).filter(Boolean);
+  if (recipients.length === 0) {
+    console.log("[feedback] APP_OWNER_EMAILS non configurata: nessuna email di notifica inviata");
+    return;
+  }
+  if (!isEmailConfigured()) {
+    console.log(`[DEV] Nuovo feedback (${params.category}) da ${params.userEmail}: ${params.message.slice(0, 80)}`);
+    return;
+  }
+  const categoryLabels = {
+    bug: "Bug",
+    suggestion: "Suggerimento",
+    other: "Altro"
+  };
+  const categoryLabel = categoryLabels[params.category] ?? params.category;
+  const name = escapeHtml(params.userName);
+  const userEmail = escapeHtml(params.userEmail);
+  const messageHtml = escapeHtml(params.message).replace(/\n/g, "<br/>");
+  const ratingLine = params.rating ? `<p><strong>Valutazione:</strong> ${"\u2605".repeat(params.rating)}${"\u2606".repeat(5 - params.rating)} (${params.rating}/5)</p>` : "";
+  const details = [params.platform, params.appVersion].filter(Boolean).map((v) => escapeHtml(v)).join(" \xB7 ");
+  const detailsLine = details ? `<p style="color:#888;font-size:12px;">${details}</p>` : "";
+  await Promise.all(
+    recipients.map(
+      (to) => sendEmail({
+        to,
+        replyTo: params.userEmail,
+        subject: `[Feedback tester] ${categoryLabel} da ${params.userName.replace(/[\r\n]+/g, " ").trim()}`,
+        html: `
+          <h2>Nuovo feedback tester (${escapeHtml(categoryLabel)})</h2>
+          <p><strong>Da:</strong> ${name} &lt;${userEmail}&gt;</p>
+          ${ratingLine}
+          <hr/>
+          <p>${messageHtml}</p>
+          <hr/>
+          ${detailsLine}
+          <p style="color:#888;font-size:12px;">Rispondi a questa email per contattare direttamente il tester.</p>
+        `
+      })
+    )
+  );
+}
 async function sendSupportRequestEmail(params) {
   const support = supportAddress();
   if (!isSupportEmailConfigured()) {
@@ -2230,49 +2652,6 @@ init_db();
 init_schema();
 import { eq as eq6, and as and5, ne, or as or3 } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-
-// server/lib/uploads-cleanup.ts
-import fs from "fs/promises";
-import path from "path";
-var uploadsDir = path.resolve("uploads");
-function resolveSafeUploadPath(fileUrl, baseDir = uploadsDir) {
-  if (!fileUrl) return null;
-  if (/^https?:\/\//i.test(fileUrl)) {
-    return null;
-  }
-  const filePath = path.resolve(fileUrl.replace(/^\/+/, ""));
-  if (filePath === baseDir) return null;
-  if (filePath.startsWith(baseDir + path.sep)) {
-    return filePath;
-  }
-  return null;
-}
-async function deleteUploadFiles(fileUrls) {
-  const result = { deleted: 0, missing: 0, failed: 0 };
-  const safePaths = /* @__PURE__ */ new Set();
-  for (const url of fileUrls) {
-    if (!url) continue;
-    const safe = resolveSafeUploadPath(url);
-    if (safe) safePaths.add(safe);
-  }
-  for (const filePath of safePaths) {
-    try {
-      await fs.unlink(filePath);
-      result.deleted++;
-    } catch (error) {
-      const code = error?.code;
-      if (code === "ENOENT") {
-        result.missing++;
-      } else {
-        result.failed++;
-        console.error("Eliminazione file upload fallita", { code: code ?? "UNKNOWN" });
-      }
-    }
-  }
-  return result;
-}
-
-// server/lib/account-deletion.ts
 async function deleteUserAccount(userId) {
   const filesToDelete = [];
   const summary = await db.transaction(async (tx) => {
@@ -2329,6 +2708,7 @@ async function deleteUserAccount(userId) {
     );
     await tx.delete(emailVerificationTokens).where(eq6(emailVerificationTokens.userId, userId));
     await tx.delete(passwordResetTokens).where(eq6(passwordResetTokens.userId, userId));
+    await tx.delete(testAnalyticsEvents).where(eq6(testAnalyticsEvents.userId, userId));
     await tx.update(entitlements).set({ userId: null }).where(eq6(entitlements.userId, userId));
     const scrambledHash = await bcrypt.hash(
       `deleted-${userId}-${Date.now()}-${Math.random()}`,
@@ -2346,12 +2726,34 @@ async function deleteUserAccount(userId) {
     }).where(eq6(users.id, userId));
     return { familiesDeleted, membershipsRemoved, ownershipTransfers };
   });
-  const cleanup3 = await deleteUploadFiles(filesToDelete);
+  const cleanup3 = await deleteStoredUploads(filesToDelete);
   return { ...summary, filesDeleted: cleanup3.deleted };
 }
 
 // server/routes/auth.ts
 init_entitlements();
+
+// server/lib/consents.ts
+init_db();
+init_schema();
+init_logger();
+async function recordConsent(userId, consentType, granted, tx, options) {
+  const now = /* @__PURE__ */ new Date();
+  const policyVersion = consentType === "terms" ? TERMS_VERSION : PRIVACY_POLICY_VERSION;
+  try {
+    await (tx ?? db).insert(consentRecords).values({
+      userId,
+      consentType,
+      granted,
+      policyVersion,
+      grantedAt: granted ? now : null,
+      revokedAt: granted ? null : now
+    });
+  } catch (error) {
+    logger.error("Consent record insert failed", { userId, consentType, error: String(error) });
+    if (options?.strict) throw error;
+  }
+}
 
 // server/lib/oauth.ts
 init_logger();
@@ -2381,7 +2783,7 @@ function isGoogleLoginConfigured() {
 }
 function getPublicBaseUrl() {
   if (isProduction2 && process.env.CLIENT_URL) return process.env.CLIENT_URL.replace(/\/$/, "");
-  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}:5000`;
   if (process.env.CLIENT_URL) return process.env.CLIENT_URL.replace(/\/$/, "");
   return "http://localhost:5000";
 }
@@ -2391,7 +2793,7 @@ function getGoogleRedirectUri() {
 function isAllowedReturnUrl(returnUrl) {
   if (!returnUrl || returnUrl.length > 2e3) return false;
   if (returnUrl.startsWith("myapp://")) return true;
-  if (!isProduction2 && /^exp(\+[a-z0-9-]+)?:\/\//i.test(returnUrl)) return true;
+  if (!isProduction2 && /^exps?(\+[a-z0-9-]+)?:\/\//i.test(returnUrl)) return true;
   let parsed;
   try {
     parsed = new URL(returnUrl);
@@ -2528,7 +2930,16 @@ var signupSchema = z.object({
   email: emailSchema,
   password: strongPasswordSchema,
   name: z.string().min(1, "Il nome \xE8 obbligatorio").max(100),
-  acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare Privacy Policy e Termini d'Uso" }) })
+  acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare i Termini d'Uso" }) }),
+  // Fascia d'età dichiarata (minimizzazione: niente data di nascita completa).
+  // 'under14' viene rifiutata: sotto i 14 anni il profilo deve essere creato
+  // e gestito da un genitore/tutore (vedi Privacy Policy §minori).
+  // OBBLIGATORIA per ogni nuovo account: nessun default "adulto".
+  ageBand: z.enum(["under14", "14_17", "adult"], {
+    errorMap: () => ({ message: "La fascia d'et\xE0 \xE8 obbligatoria" })
+  }),
+  // Consenso AI facoltativo e MAI preselezionato lato client.
+  aiConsent: z.boolean().optional()
 });
 var loginSchema = z.object({
   email: emailSchema,
@@ -2557,7 +2968,15 @@ router.post("/signup", async (req, res) => {
         error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors }
       });
     }
-    const { email, password, name } = parsed.data;
+    const { email, password, name, ageBand, aiConsent } = parsed.data;
+    if (ageBand === "under14") {
+      return res.status(403).json({
+        error: {
+          code: "UNDER_AGE",
+          message: "Sotto i 14 anni non \xE8 possibile creare un account autonomamente: chiedi a un genitore o tutore di creare e gestire il profilo per te."
+        }
+      });
+    }
     const existing = await db.select().from(users).where(eq7(users.email, email)).limit(1);
     if (existing.length > 0) {
       return res.status(400).json({ error: { code: "EMAIL_EXISTS", message: "Email gi\xE0 registrata" } });
@@ -2568,8 +2987,15 @@ router.post("/signup", async (req, res) => {
       passwordHash,
       name,
       emailVerified: false,
-      termsAcceptedAt: /* @__PURE__ */ new Date()
+      termsAcceptedAt: /* @__PURE__ */ new Date(),
+      privacyPolicySeenVersion: PRIVACY_POLICY_VERSION,
+      ageBand,
+      // Consenso AI esplicito e facoltativo: se non espresso resta disattivo
+      // (opt-in, mai preselezionato). Riattivabile dalle impostazioni.
+      aiFeaturesEnabled: aiConsent === true
     }).returning();
+    await recordConsent(newUser.id, "terms", true);
+    await recordConsent(newUser.id, "ai_features", aiConsent === true);
     const verificationToken = uuidv4();
     const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1e3);
     await db.insert(emailVerificationTokens).values({
@@ -2657,10 +3083,53 @@ router.get("/me", authenticate, async (req, res) => {
       email: user.email,
       name: user.name,
       avatarUrl: user.avatarUrl,
-      emailVerified: user.emailVerified
+      emailVerified: user.emailVerified,
+      ageBand: user.ageBand,
+      // Onboarding richiesto per account creati prima delle nuove regole:
+      // fascia d'età mancante o Termini mai accettati esplicitamente.
+      needsOnboarding: !user.ageBand || !user.termsAcceptedAt
     });
   } catch (error) {
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero utente" } });
+  }
+});
+var onboardingSchema = z.object({
+  ageBand: z.enum(["under14", "14_17", "adult"], {
+    errorMap: () => ({ message: "La fascia d'et\xE0 \xE8 obbligatoria" })
+  }),
+  acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare i Termini d'Uso" }) }),
+  aiConsent: z.boolean().optional()
+});
+router.post("/onboarding", authenticate, async (req, res) => {
+  try {
+    const parsed = onboardingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: parsed.error.errors[0]?.message || "Dati non validi" } });
+    }
+    const { ageBand, aiConsent } = parsed.data;
+    if (ageBand === "under14") {
+      return res.status(403).json({ error: { code: "AGE_RESTRICTED", message: "Sotto i 14 anni l'account deve essere gestito da un genitore o tutore." } });
+    }
+    const updated = await db.transaction(async (tx) => {
+      const setValues = {
+        ageBand,
+        termsAcceptedAt: /* @__PURE__ */ new Date(),
+        privacyPolicySeenVersion: PRIVACY_POLICY_VERSION,
+        updatedAt: /* @__PURE__ */ new Date()
+      };
+      if (typeof aiConsent === "boolean") setValues.aiFeaturesEnabled = aiConsent;
+      const [row] = await tx.update(users).set(setValues).where(eq7(users.id, req.user.userId)).returning({ id: users.id, ageBand: users.ageBand });
+      if (!row) throw new Error("USER_NOT_FOUND");
+      await recordConsent(req.user.userId, "terms", true, tx, { strict: true });
+      if (typeof aiConsent === "boolean") {
+        await recordConsent(req.user.userId, "ai_features", aiConsent, tx, { strict: true });
+      }
+      return row;
+    });
+    res.json({ ok: true, ageBand: updated.ageBand });
+  } catch (error) {
+    logger.error("Onboarding error", { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante il completamento del profilo" } });
   }
 });
 router.post("/change-password", authenticate, async (req, res) => {
@@ -2878,28 +3347,95 @@ var socialLoginLimiter = rateLimit({
   legacyHeaders: false,
   skip: () => process.env.NODE_ENV === "test"
 });
-async function upsertSocialUser(profile, provider) {
+async function findSocialUser(profile) {
   const [existing] = await db.select().from(users).where(eq7(users.email, profile.email)).limit(1);
-  if (existing) {
-    if (existing.deletedAt) {
-      throw Object.assign(new Error("ACCOUNT_DELETED"), { code: "ACCOUNT_DELETED" });
-    }
-    if (!existing.emailVerified) {
-      await db.update(users).set({ emailVerified: true }).where(eq7(users.id, existing.id));
-      existing.emailVerified = true;
-    }
-    return existing;
+  if (!existing) return null;
+  if (existing.deletedAt) {
+    throw Object.assign(new Error("ACCOUNT_DELETED"), { code: "ACCOUNT_DELETED" });
   }
-  const [created] = await db.insert(users).values({
-    email: profile.email,
-    passwordHash: null,
-    authProvider: provider,
-    name: profile.name || profile.email.split("@")[0],
-    emailVerified: true,
-    termsAcceptedAt: /* @__PURE__ */ new Date()
-  }).returning();
-  return created;
+  if (!existing.emailVerified) {
+    await db.update(users).set({ emailVerified: true }).where(eq7(users.id, existing.id));
+    existing.emailVerified = true;
+  }
+  return existing;
 }
+var SOCIAL_SIGNUP_TTL_MS = 15 * 60 * 1e3;
+async function createSocialSignupToken(profile, provider) {
+  const token = nodeCrypto.randomBytes(32).toString("hex");
+  const tokenHash = nodeCrypto.createHash("sha256").update(token).digest("hex");
+  await db.insert(socialSignupTokens).values({
+    tokenHash,
+    provider,
+    email: profile.email,
+    suggestedName: (profile.name || "").slice(0, 100) || null,
+    expiresAt: new Date(Date.now() + SOCIAL_SIGNUP_TTL_MS)
+  });
+  return token;
+}
+var socialCompleteSchema = z.object({
+  signupToken: z.string().min(32).max(200),
+  name: z.string().min(1, "Il nome \xE8 obbligatorio").max(100),
+  ageBand: z.enum(["under14", "14_17", "adult"], {
+    errorMap: () => ({ message: "La fascia d'et\xE0 \xE8 obbligatoria" })
+  }),
+  acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare i Termini d'Uso" }) }),
+  aiConsent: z.boolean().optional()
+});
+router.post("/social/complete", socialLoginLimiter, async (req, res) => {
+  const parsed = socialCompleteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: parsed.error.errors[0]?.message || "Dati non validi" } });
+  }
+  const { signupToken, name, ageBand, aiConsent } = parsed.data;
+  if (ageBand === "under14") {
+    return res.status(403).json({ error: { code: "AGE_RESTRICTED", message: "Sotto i 14 anni l'account deve essere creato da un genitore o tutore." } });
+  }
+  const tokenHash = nodeCrypto.createHash("sha256").update(signupToken).digest("hex");
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [pending] = await tx.update(socialSignupTokens).set({ usedAt: /* @__PURE__ */ new Date() }).where(and6(
+        eq7(socialSignupTokens.tokenHash, tokenHash),
+        isNull2(socialSignupTokens.usedAt),
+        gt(socialSignupTokens.expiresAt, /* @__PURE__ */ new Date())
+      )).returning();
+      if (!pending) return null;
+      const [existing] = await tx.select().from(users).where(eq7(users.email, pending.email)).limit(1);
+      if (existing) {
+        if (existing.deletedAt) {
+          throw Object.assign(new Error("ACCOUNT_DELETED"), { code: "ACCOUNT_DELETED" });
+        }
+        return existing;
+      }
+      const [created] = await tx.insert(users).values({
+        email: pending.email,
+        passwordHash: null,
+        authProvider: pending.provider,
+        name,
+        emailVerified: true,
+        termsAcceptedAt: /* @__PURE__ */ new Date(),
+        privacyPolicySeenVersion: PRIVACY_POLICY_VERSION,
+        ageBand,
+        // Opt-in esplicito: attivo SOLO se l'utente ha spuntato la casella.
+        aiFeaturesEnabled: aiConsent === true,
+        aiHealthConsent: false
+      }).returning();
+      return created;
+    });
+    if (!result) {
+      return res.status(401).json({ error: { code: "INVALID_SIGNUP_TOKEN", message: "Registrazione scaduta o gi\xE0 completata. Riprova ad accedere." } });
+    }
+    await recordConsent(result.id, "terms", true);
+    await recordConsent(result.id, "ai_features", aiConsent === true);
+    await activatePendingTrialsForUser(result.id);
+    res.status(201).json(issueSessionResponse(result));
+  } catch (error) {
+    if (error?.code === "ACCOUNT_DELETED") {
+      return res.status(403).json({ error: { code: "ACCOUNT_DELETED", message: "Questo account \xE8 stato eliminato" } });
+    }
+    logger.error("Social signup completion error", { error: String(error) });
+    res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Errore durante il completamento della registrazione" } });
+  }
+});
 function issueSessionResponse(user) {
   return {
     user: { id: user.id, email: user.email, name: user.name, emailVerified: user.emailVerified },
@@ -2937,11 +3473,16 @@ router.get("/google/callback", socialLoginLimiter, async (req, res) => {
       return res.status(400).send("returnUrl non valido.");
     }
     const profile = await exchangeGoogleCode(code);
-    const user = await upsertSocialUser(profile, "google");
+    const user = await findSocialUser(profile);
+    const sep2 = returnUrl.includes("?") ? "&" : "?";
+    if (!user) {
+      const signupToken = await createSocialSignupToken(profile, "google");
+      const nameParam = profile.name ? `&suggestedName=${encodeURIComponent(profile.name.slice(0, 100))}` : "";
+      return res.redirect(`${returnUrl}${sep2}signupToken=${encodeURIComponent(signupToken)}${nameParam}`);
+    }
     await activatePendingTrialsForUser(user.id);
     const loginCode = signLoginCode(user.id);
-    const sep = returnUrl.includes("?") ? "&" : "?";
-    res.redirect(`${returnUrl}${sep}loginCode=${encodeURIComponent(loginCode)}`);
+    res.redirect(`${returnUrl}${sep2}loginCode=${encodeURIComponent(loginCode)}`);
   } catch (error) {
     if (error?.code === "ACCOUNT_DELETED") {
       return res.status(403).send("Questo account \xE8 stato eliminato.");
@@ -2976,7 +3517,15 @@ router.post("/apple", socialLoginLimiter, async (req, res) => {
     const fullName = typeof req.body?.fullName === "string" ? req.body.fullName.trim().slice(0, 100) : "";
     const profile = await verifyAppleIdentityToken(identityToken);
     if (fullName) profile.name = fullName;
-    const user = await upsertSocialUser(profile, "apple");
+    const user = await findSocialUser(profile);
+    if (!user) {
+      const signupToken = await createSocialSignupToken(profile, "apple");
+      return res.status(200).json({
+        needsCompletion: true,
+        signupToken,
+        suggestedName: profile.name || null
+      });
+    }
     await activatePendingTrialsForUser(user.id);
     res.json(issueSessionResponse(user));
   } catch (error) {
@@ -3001,7 +3550,7 @@ init_family();
 import { Router as Router2 } from "express";
 import rateLimit2 from "express-rate-limit";
 import { z as z2 } from "zod";
-import { eq as eq9, and as and7, isNull as isNull2, sql as sql3 } from "drizzle-orm";
+import { eq as eq9, and as and8, isNull as isNull3, sql as sql3 } from "drizzle-orm";
 init_websocket();
 init_config();
 init_logger();
@@ -3084,9 +3633,9 @@ router2.get("/:familyId", authenticate, requireFamilyMember(), async (req, res) 
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Famiglia non trovata" } });
     }
     const members = await db.select({ member: familyMembers, user: users }).from(familyMembers).innerJoin(users, eq9(familyMembers.userId, users.id)).where(eq9(familyMembers.familyId, familyId));
-    const [eventsCount] = await db.select({ count: sql3`count(*)::int` }).from(calendarEvents).where(and7(eq9(calendarEvents.familyId, familyId), isNull2(calendarEvents.createdBy)));
-    const [itemsCount] = await db.select({ count: sql3`count(*)::int` }).from(shoppingItems).innerJoin(shoppingLists, eq9(shoppingItems.listId, shoppingLists.id)).where(and7(eq9(shoppingLists.familyId, familyId), isNull2(shoppingItems.createdBy)));
-    const [choresCount] = await db.select({ count: sql3`count(*)::int` }).from(chores).where(and7(eq9(chores.familyId, familyId), isNull2(chores.createdBy)));
+    const [eventsCount] = await db.select({ count: sql3`count(*)::int` }).from(calendarEvents).where(and8(eq9(calendarEvents.familyId, familyId), isNull3(calendarEvents.createdBy)));
+    const [itemsCount] = await db.select({ count: sql3`count(*)::int` }).from(shoppingItems).innerJoin(shoppingLists, eq9(shoppingItems.listId, shoppingLists.id)).where(and8(eq9(shoppingLists.familyId, familyId), isNull3(shoppingItems.createdBy)));
+    const [choresCount] = await db.select({ count: sql3`count(*)::int` }).from(chores).where(and8(eq9(chores.familyId, familyId), isNull3(chores.createdBy)));
     console.log(JSON.stringify({
       tag: "LEGACY_NULL_CREATED_BY",
       familyId,
@@ -3148,7 +3697,7 @@ router2.post("/:familyId/invite", createInviteLimiter, authenticate, requireFami
     const [inviter] = await db.select().from(users).where(eq9(users.id, req.user.userId)).limit(1);
     const [existingUser] = await db.select().from(users).where(eq9(users.email, email)).limit(1);
     if (existingUser) {
-      const [alreadyMember] = await db.select().from(familyMembers).where(and7(eq9(familyMembers.familyId, familyId), eq9(familyMembers.userId, existingUser.id))).limit(1);
+      const [alreadyMember] = await db.select().from(familyMembers).where(and8(eq9(familyMembers.familyId, familyId), eq9(familyMembers.userId, existingUser.id))).limit(1);
       if (alreadyMember) {
         return res.status(409).json({ error: { code: "ALREADY_MEMBER", message: "Questa persona fa gi\xE0 parte della famiglia" } });
       }
@@ -3206,7 +3755,7 @@ router2.post("/:familyId/invite-link", authenticate, requireFamilyMember(), crea
       for (let attempt = 0; attempt < 5 && !code; attempt++) {
         const candidate = generateJoinCode();
         try {
-          const [updated] = await db.update(families).set({ inviteCode: candidate }).where(and7(eq9(families.id, familyId), isNull2(families.inviteCode))).returning();
+          const [updated] = await db.update(families).set({ inviteCode: candidate }).where(and8(eq9(families.id, familyId), isNull3(families.inviteCode))).returning();
           if (updated?.inviteCode) {
             code = updated.inviteCode;
           } else {
@@ -3241,7 +3790,7 @@ router2.post("/join-link/:code", authenticate, async (req, res) => {
     if (!currentUser) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Utente non trovato" } });
     }
-    const existing = await db.select().from(familyMembers).where(and7(eq9(familyMembers.familyId, family.id), eq9(familyMembers.userId, req.user.userId))).limit(1);
+    const existing = await db.select().from(familyMembers).where(and8(eq9(familyMembers.familyId, family.id), eq9(familyMembers.userId, req.user.userId))).limit(1);
     if (existing.length > 0) {
       return res.status(409).json({ error: { code: "ALREADY_MEMBER", message: "Fai gi\xE0 parte di questa famiglia" } });
     }
@@ -3303,7 +3852,7 @@ router2.post("/join/:token", authenticate, async (req, res) => {
         error: { code: "EMAIL_MISMATCH", message: "Questo invito \xE8 destinato a un altro indirizzo email" }
       });
     }
-    const existing = await db.select().from(familyMembers).where(and7(eq9(familyMembers.familyId, invite.familyId), eq9(familyMembers.userId, req.user.userId))).limit(1);
+    const existing = await db.select().from(familyMembers).where(and8(eq9(familyMembers.familyId, invite.familyId), eq9(familyMembers.userId, req.user.userId))).limit(1);
     if (existing.length > 0) {
       return res.status(409).json({ error: { code: "ALREADY_MEMBER", message: "Fai gi\xE0 parte di questa famiglia" } });
     }
@@ -3319,7 +3868,7 @@ router2.post("/join/:token", authenticate, async (req, res) => {
       if (await isFamilyMemberLimitReachedTx(tx, invite.familyId)) {
         return { limitReached: true };
       }
-      const claimed = await tx.update(familyInvites).set({ acceptedAt: /* @__PURE__ */ new Date(), acceptedByUserId: req.user.userId }).where(and7(eq9(familyInvites.id, invite.id), isNull2(familyInvites.acceptedAt))).returning();
+      const claimed = await tx.update(familyInvites).set({ acceptedAt: /* @__PURE__ */ new Date(), acceptedByUserId: req.user.userId }).where(and8(eq9(familyInvites.id, invite.id), isNull3(familyInvites.acceptedAt))).returning();
       if (claimed.length === 0) {
         return { conflict: true };
       }
@@ -3359,7 +3908,7 @@ router2.put("/:familyId/members/:memberId", authenticate, requireFamilyMember(),
     const memberId = getParam(req, "memberId");
     const { nickname, color, role } = req.body;
     const membership = req.membership;
-    const [target] = await db.select().from(familyMembers).where(and7(eq9(familyMembers.id, memberId), eq9(familyMembers.familyId, familyId))).limit(1);
+    const [target] = await db.select().from(familyMembers).where(and8(eq9(familyMembers.id, memberId), eq9(familyMembers.familyId, familyId))).limit(1);
     if (!target) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Membro non trovato" } });
     }
@@ -3376,7 +3925,7 @@ router2.put("/:familyId/members/:memberId", authenticate, requireFamilyMember(),
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ error: { code: "NO_CHANGES", message: "Nessuna modifica fornita" } });
     }
-    const [updated] = await db.update(familyMembers).set(updateData).where(and7(eq9(familyMembers.id, memberId), eq9(familyMembers.familyId, familyId))).returning();
+    const [updated] = await db.update(familyMembers).set(updateData).where(and8(eq9(familyMembers.id, memberId), eq9(familyMembers.familyId, familyId))).returning();
     broadcastToFamily(familyId, "member_updated", updated);
     res.json(updated);
   } catch (error) {
@@ -3388,7 +3937,7 @@ router2.delete("/:familyId/members/:memberId", authenticate, requireFamilyAdmin(
   try {
     const familyId = getParam(req, "familyId");
     const memberId = getParam(req, "memberId");
-    await db.delete(familyMembers).where(and7(eq9(familyMembers.id, memberId), eq9(familyMembers.familyId, familyId)));
+    await db.delete(familyMembers).where(and8(eq9(familyMembers.id, memberId), eq9(familyMembers.familyId, familyId)));
     broadcastToFamily(familyId, "member_removed", { memberId });
     res.json({ message: "Membro rimosso" });
   } catch (error) {
@@ -3407,7 +3956,7 @@ import { Router as Router3 } from "express";
 import { z as z3 } from "zod";
 import bcrypt3 from "bcryptjs";
 import rateLimit3 from "express-rate-limit";
-import { eq as eq10, and as and8, isNull as isNull3 } from "drizzle-orm";
+import { eq as eq10, and as and9, isNull as isNull4 } from "drizzle-orm";
 init_entitlements();
 init_websocket();
 init_logger();
@@ -3502,7 +4051,7 @@ router3.post("/:token/accept", async (req, res) => {
         if (await isFamilyMemberLimitReachedTx(tx, invite.familyId)) {
           throw new Error("MEMBER_LIMIT_REACHED");
         }
-        const claimed = await tx.update(familyInvites).set({ acceptedAt: /* @__PURE__ */ new Date() }).where(and8(eq10(familyInvites.id, invite.id), isNull3(familyInvites.acceptedAt))).returning();
+        const claimed = await tx.update(familyInvites).set({ acceptedAt: /* @__PURE__ */ new Date() }).where(and9(eq10(familyInvites.id, invite.id), isNull4(familyInvites.acceptedAt))).returning();
         if (claimed.length === 0) {
           throw new Error("INVITE_RACE");
         }
@@ -3511,7 +4060,9 @@ router3.post("/:token/accept", async (req, res) => {
           passwordHash,
           name,
           emailVerified: true,
-          termsAcceptedAt: /* @__PURE__ */ new Date()
+          termsAcceptedAt: /* @__PURE__ */ new Date(),
+          // Consenso AI opt-in: mai attivo di default per i nuovi account.
+          aiFeaturesEnabled: false
         }).returning();
         const [member] = await tx.insert(familyMembers).values({
           familyId: invite.familyId,
@@ -3526,6 +4077,8 @@ router3.post("/:token/accept", async (req, res) => {
       });
       createdUser = result.user;
       createdMember = result.member;
+      await recordConsent(createdUser.id, "terms", true);
+      await recordConsent(createdUser.id, "ai_features", false);
     } catch (txError) {
       if (txError?.message === "MEMBER_LIMIT_REACHED") {
         return res.status(403).json({
@@ -3652,7 +4205,9 @@ router4.post("/:code/accept", async (req, res) => {
           passwordHash,
           name,
           emailVerified: true,
-          termsAcceptedAt: /* @__PURE__ */ new Date()
+          termsAcceptedAt: /* @__PURE__ */ new Date(),
+          // Consenso AI opt-in: mai attivo di default per i nuovi account.
+          aiFeaturesEnabled: false
         }).returning();
         const [member] = await tx.insert(familyMembers).values({
           familyId: family.id,
@@ -3666,6 +4221,8 @@ router4.post("/:code/accept", async (req, res) => {
       });
       createdUser = result.user;
       createdMember = result.member;
+      await recordConsent(createdUser.id, "terms", true);
+      await recordConsent(createdUser.id, "ai_features", false);
     } catch (txError) {
       if (txError?.message === "MEMBER_LIMIT_REACHED") {
         return res.status(403).json({
@@ -3704,15 +4261,105 @@ init_auth();
 init_family();
 init_websocket();
 import { Router as Router5 } from "express";
-import { randomBytes as randomBytes4 } from "crypto";
+import { randomBytes as randomBytes4, randomUUID } from "crypto";
 import { z as z5 } from "zod";
-import { eq as eq14, and as and11, gte as gte2, lte } from "drizzle-orm";
+import { eq as eq14, and as and12, gte as gte2, lte, isNull as isNull5 } from "drizzle-orm";
 
 // server/lib/push.ts
 init_db();
 init_schema();
 init_logger();
-import { eq as eq12, inArray as inArray2 } from "drizzle-orm";
+import { eq as eq12, inArray as inArray3 } from "drizzle-orm";
+
+// server/lib/web-push.ts
+init_db();
+init_schema();
+init_logger();
+import webpush from "web-push";
+import { inArray as inArray2 } from "drizzle-orm";
+var configured = false;
+function isWebPushConfigured() {
+  return Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+}
+function getVapidPublicKey() {
+  return process.env.VAPID_PUBLIC_KEY || null;
+}
+function ensureConfigured() {
+  if (!isWebPushConfigured()) return false;
+  if (!configured) {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT || "mailto:assistenza@familysync.it",
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+    configured = true;
+  }
+  return true;
+}
+async function sendWebPushToSingleSubscription(sub, payload) {
+  if (!ensureConfigured()) return { ok: false, code: "NOT_CONFIGURED" };
+  const body = JSON.stringify({
+    title: payload.title,
+    body: payload.body,
+    data: payload.data ?? {}
+  });
+  try {
+    await webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+      body,
+      { TTL: 300 }
+    );
+    return { ok: true };
+  } catch (err) {
+    const status = err?.statusCode;
+    if (status === 404 || status === 410) {
+      try {
+        await db.delete(webPushSubscriptions).where(inArray2(webPushSubscriptions.endpoint, [sub.endpoint]));
+      } catch (cleanupErr) {
+        logger.error("Web push cleanup failed", { error: String(cleanupErr) });
+      }
+      return { ok: false, code: "EXPIRED", status };
+    }
+    logger.error("Web push test send failed", { status, error: String(err?.message || err) });
+    return { ok: false, code: "SEND_FAILED", status };
+  }
+}
+async function sendWebPushToSubscriptions(subs, payload) {
+  if (subs.length === 0 || !ensureConfigured()) return;
+  const body = JSON.stringify({
+    title: payload.title,
+    body: payload.body,
+    data: payload.data ?? {}
+  });
+  const expired = [];
+  await Promise.all(
+    subs.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          body,
+          { TTL: 3600 }
+        );
+      } catch (err) {
+        const status = err?.statusCode;
+        if (status === 404 || status === 410) {
+          expired.push(sub.endpoint);
+        } else {
+          logger.error("Web push send failed", { status, error: String(err?.message || err) });
+        }
+      }
+    })
+  );
+  if (expired.length > 0) {
+    try {
+      await db.delete(webPushSubscriptions).where(inArray2(webPushSubscriptions.endpoint, expired));
+    } catch (err) {
+      logger.error("Web push cleanup failed", { error: String(err) });
+    }
+  }
+}
+
+// server/lib/push.ts
 var EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 function isExpoPushToken(token) {
   return typeof token === "string" && (token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken["));
@@ -3747,8 +4394,44 @@ async function sendToTokens(validTokens, payload) {
     }
   });
   if (invalidTokens.length > 0) {
-    await db.delete(pushTokens).where(inArray2(pushTokens.token, invalidTokens));
+    await db.delete(pushTokens).where(inArray3(pushTokens.token, invalidTokens));
   }
+}
+async function sendNativePushToSingleToken(token, payload) {
+  const message = {
+    to: token,
+    title: payload.title,
+    body: payload.body,
+    data: payload.data,
+    sound: "default"
+  };
+  const res = await fetch(EXPO_PUSH_URL, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify([message])
+  });
+  if (!res.ok) {
+    logger.error("Expo push test send failed", { status: res.status });
+    return { ok: false, code: "SEND_FAILED", status: res.status };
+  }
+  const result = await res.json();
+  const ticket = Array.isArray(result?.data) ? result.data[0] : void 0;
+  if (ticket?.status === "ok") return { ok: true };
+  if (ticket?.details?.error === "DeviceNotRegistered") {
+    await db.delete(pushTokens).where(eq12(pushTokens.token, token));
+    return { ok: false, code: "DEVICE_NOT_REGISTERED" };
+  }
+  logger.error("Expo push test ticket error", {
+    error: String(ticket?.details?.error ?? ticket?.message ?? "unknown")
+  });
+  return {
+    ok: false,
+    code: "TICKET_ERROR",
+    detail: typeof ticket?.details?.error === "string" ? ticket.details.error : void 0
+  };
 }
 async function sendPushToFamily(familyId, payload, opts) {
   try {
@@ -3756,18 +4439,38 @@ async function sendPushToFamily(familyId, payload, opts) {
     const members = await db.select({ userId: familyMembers.userId }).from(familyMembers).where(eq12(familyMembers.familyId, familyId));
     const targetIds = members.map((m) => m.userId).filter((id) => !excluded.has(id));
     if (targetIds.length === 0) return;
-    const tokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(inArray2(pushTokens.userId, targetIds));
+    const [tokens, webSubs] = await Promise.all([
+      db.select({ token: pushTokens.token }).from(pushTokens).where(inArray3(pushTokens.userId, targetIds)),
+      db.select({
+        endpoint: webPushSubscriptions.endpoint,
+        p256dh: webPushSubscriptions.p256dh,
+        auth: webPushSubscriptions.auth
+      }).from(webPushSubscriptions).where(inArray3(webPushSubscriptions.userId, targetIds))
+    ]);
     const validTokens = tokens.map((t) => t.token).filter((t) => isExpoPushToken(t));
-    await sendToTokens(validTokens, payload);
+    await Promise.all([
+      sendToTokens(validTokens, payload),
+      sendWebPushToSubscriptions(webSubs, payload)
+    ]);
   } catch (error) {
     logger.error("sendPushToFamily error", { error: String(error) });
   }
 }
 async function sendPushToUser(userId, payload) {
   try {
-    const tokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(eq12(pushTokens.userId, userId));
+    const [tokens, webSubs] = await Promise.all([
+      db.select({ token: pushTokens.token }).from(pushTokens).where(eq12(pushTokens.userId, userId)),
+      db.select({
+        endpoint: webPushSubscriptions.endpoint,
+        p256dh: webPushSubscriptions.p256dh,
+        auth: webPushSubscriptions.auth
+      }).from(webPushSubscriptions).where(eq12(webPushSubscriptions.userId, userId))
+    ]);
     const validTokens = tokens.map((t) => t.token).filter((t) => isExpoPushToken(t));
-    await sendToTokens(validTokens, payload);
+    await Promise.all([
+      sendToTokens(validTokens, payload),
+      sendWebPushToSubscriptions(webSubs, payload)
+    ]);
   } catch (error) {
     logger.error("sendPushToUser error", { error: String(error) });
   }
@@ -3782,7 +4485,7 @@ init_db();
 init_schema();
 init_logger();
 init_entitlements();
-import { and as and10, eq as eq13, gte, sql as sql4 } from "drizzle-orm";
+import { and as and11, eq as eq13, gte, sql as sql4 } from "drizzle-orm";
 var BASE_FREE_DAILY_LIMIT = 5;
 var FEATURE_PREFIX = "base:";
 var BASE_LABELS = {
@@ -3809,7 +4512,7 @@ async function reserveBaseSlot(userId, familyId, feature) {
     return await db.transaction(async (tx) => {
       await tx.execute(sql4`SELECT pg_advisory_xact_lock(hashtext(${lockKey(familyId, feature)}))`);
       const [row] = await tx.select({ count: sql4`count(*)::int` }).from(aiUsage).where(
-        and10(
+        and11(
           eq13(aiUsage.familyId, familyId),
           eq13(aiUsage.feature, dbFeature),
           gte(aiUsage.createdAt, since)
@@ -3967,6 +4670,15 @@ function expandOccurrences(rule, startIsoDate, untilIsoDate, maxOccurrences = 10
 // server/routes/calendar.ts
 var MAX_RECURRENCE_OCCURRENCES = 60;
 var RECURRENCE_HORIZON_MONTHS = 6;
+function formatDateIt(isoDate) {
+  const d = /* @__PURE__ */ new Date(`${isoDate.slice(0, 10)}T12:00:00Z`);
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(d);
+}
 async function notifyAssignedMember(familyId, event, creatorUserId) {
   try {
     if (!event.memberId) return;
@@ -4048,7 +4760,7 @@ router5.get("/:familyId", authenticate, requireFamilyMember(), async (req, res) 
     }
     const blockFilter = applyBlockedFilter(calendarEvents.createdBy, blockedIds);
     if (blockFilter) conditions.push(blockFilter);
-    const events = await db.select().from(calendarEvents).where(and11(...conditions));
+    const events = await db.select().from(calendarEvents).where(and12(...conditions));
     res.json(events);
   } catch (error) {
     logger.error("Get events error", { error: String(error) });
@@ -4085,11 +4797,13 @@ router5.post("/:familyId", authenticate, requireFamilyMember(), async (req, res)
       );
       if (expanded.length > 0) dates = expanded;
     }
+    const seriesId = parsed.data.recurrenceRule ? randomUUID() : null;
     const inserted = await db.insert(calendarEvents).values(
       dates.map((date2) => ({
         familyId,
         ...parsed.data,
         date: date2,
+        seriesId,
         createdBy: req.user.userId
       }))
     ).returning();
@@ -4112,6 +4826,39 @@ router5.post("/:familyId", authenticate, requireFamilyMember(), async (req, res)
       }, { excludeUserIds: excluded });
     })().catch(() => {
     });
+    void (async () => {
+      if (!isEmailConfigured()) return;
+      const creatorId = req.user.userId;
+      const blockRelated = new Set(await getBlockRelatedUserIds(creatorId, familyId));
+      const members = await db.select({
+        userId: familyMembers.userId,
+        email: users.email,
+        name: users.name,
+        emailVerified: users.emailVerified
+      }).from(familyMembers).innerJoin(users, eq14(users.id, familyMembers.userId)).where(eq14(familyMembers.familyId, familyId));
+      const creatorName = members.find((m) => m.userId === creatorId)?.name || "Un membro della famiglia";
+      const recipients = members.filter(
+        (m) => m.userId !== creatorId && m.email && m.emailVerified && !blockRelated.has(m.userId)
+      );
+      for (const m of recipients) {
+        try {
+          await sendNewEventEmail({
+            to: m.email,
+            recipientName: m.name || "famiglia",
+            creatorName,
+            eventTitle: event.title,
+            eventDate: formatDateIt(event.date),
+            eventTime: !event.allDay ? event.time : null,
+            location: event.location,
+            isRecurring: Boolean(event.recurrenceRule)
+          });
+        } catch (err) {
+          logger.error("New event email failed", { eventId: event.id, error: String(err) });
+        }
+      }
+    })().catch((err) => {
+      logger.error("New event email fanout failed", { error: String(err) });
+    });
     res.status(201).json(event);
   } catch (error) {
     logger.error("Create event error", { error: String(error) });
@@ -4133,7 +4880,7 @@ router5.put("/:familyId/:eventId", authenticate, requireFamilyMember(), async (r
         error: { code: "VALIDATION_ERROR", message: "Regola di ricorrenza non valida" }
       });
     }
-    const [event] = await db.update(calendarEvents).set({ ...parsed.data, updatedAt: /* @__PURE__ */ new Date() }).where(and11(eq14(calendarEvents.id, eventId), eq14(calendarEvents.familyId, familyId))).returning();
+    const [event] = await db.update(calendarEvents).set({ ...parsed.data, updatedAt: /* @__PURE__ */ new Date() }).where(and12(eq14(calendarEvents.id, eventId), eq14(calendarEvents.familyId, familyId))).returning();
     if (!event) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Evento non trovato" } });
     }
@@ -4148,8 +4895,29 @@ router5.delete("/:familyId/:eventId", authenticate, requireFamilyMember(), async
   try {
     const familyId = getParam(req, "familyId");
     const eventId = getParam(req, "eventId");
-    await db.delete(calendarEvents).where(and11(eq14(calendarEvents.id, eventId), eq14(calendarEvents.familyId, familyId)));
-    broadcastToFamily(familyId, "event_deleted", { eventId });
+    const scope = getQuery(req, "scope");
+    const [deleted] = await db.delete(calendarEvents).where(and12(eq14(calendarEvents.id, eventId), eq14(calendarEvents.familyId, familyId))).returning();
+    if (scope === "series" && deleted?.recurrenceRule) {
+      if (deleted.seriesId) {
+        await db.delete(calendarEvents).where(
+          and12(
+            eq14(calendarEvents.familyId, familyId),
+            eq14(calendarEvents.seriesId, deleted.seriesId)
+          )
+        );
+      } else {
+        const conditions = [
+          eq14(calendarEvents.familyId, familyId),
+          eq14(calendarEvents.title, deleted.title),
+          eq14(calendarEvents.recurrenceRule, deleted.recurrenceRule),
+          eq14(calendarEvents.createdBy, deleted.createdBy),
+          isNull5(calendarEvents.seriesId),
+          deleted.time === null ? isNull5(calendarEvents.time) : eq14(calendarEvents.time, deleted.time)
+        ];
+        await db.delete(calendarEvents).where(and12(...conditions));
+      }
+    }
+    broadcastToFamily(familyId, "event_deleted", { eventId, scope: scope === "series" ? "series" : "single" });
     res.json({ message: "Evento eliminato" });
   } catch (error) {
     logger.error("Delete event error", { error: String(error) });
@@ -4164,7 +4932,7 @@ init_db();
 init_schema();
 init_logger();
 import { Router as Router6 } from "express";
-import { eq as eq15, and as and12, gte as gte3 } from "drizzle-orm";
+import { eq as eq15, and as and13, gte as gte3 } from "drizzle-orm";
 var router6 = Router6();
 function icsEscape(text2) {
   return text2.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
@@ -4221,7 +4989,7 @@ router6.get("/:token", async (req, res) => {
     const fromDate = /* @__PURE__ */ new Date();
     fromDate.setDate(fromDate.getDate() - 90);
     const fromStr = fromDate.toISOString().slice(0, 10);
-    const events = await db.select().from(calendarEvents).where(and12(eq15(calendarEvents.familyId, family.id), gte3(calendarEvents.date, fromStr)));
+    const events = await db.select().from(calendarEvents).where(and13(eq15(calendarEvents.familyId, family.id), gte3(calendarEvents.date, fromStr)));
     const lines = [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
@@ -4274,7 +5042,7 @@ init_family();
 init_websocket();
 import { Router as Router8 } from "express";
 import { z as z7 } from "zod";
-import { eq as eq17, and as and14 } from "drizzle-orm";
+import { eq as eq17, and as and15 } from "drizzle-orm";
 init_block_filter();
 
 // server/lib/normalize.ts
@@ -4393,7 +5161,7 @@ init_family();
 init_http_params();
 import { Router as Router7 } from "express";
 import { z as z6 } from "zod";
-import { eq as eq16, and as and13, sql as sql5, asc } from "drizzle-orm";
+import { eq as eq16, and as and14, sql as sql5, asc } from "drizzle-orm";
 init_websocket();
 init_logger();
 var router7 = Router7();
@@ -4501,7 +5269,7 @@ router7.put("/:familyId/:itemId", authenticate, requireFamilyMember(), async (re
     if (parsed.data.unit !== void 0) updateData.unit = parsed.data.unit?.trim() || null;
     if (parsed.data.category !== void 0) updateData.category = parsed.data.category || "food";
     if (parsed.data.expiryDate !== void 0) updateData.expiryDate = parsed.data.expiryDate || null;
-    const [item] = await db.update(pantryItems).set(updateData).where(and13(eq16(pantryItems.id, itemId), eq16(pantryItems.familyId, familyId))).returning();
+    const [item] = await db.update(pantryItems).set(updateData).where(and14(eq16(pantryItems.id, itemId), eq16(pantryItems.familyId, familyId))).returning();
     if (!item) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Prodotto non trovato in dispensa" } });
     }
@@ -4521,7 +5289,7 @@ router7.delete("/:familyId/:itemId", authenticate, requireFamilyMember(), async 
   try {
     const familyId = getParam(req, "familyId");
     const itemId = getParam(req, "itemId");
-    const [deleted] = await db.delete(pantryItems).where(and13(eq16(pantryItems.id, itemId), eq16(pantryItems.familyId, familyId))).returning();
+    const [deleted] = await db.delete(pantryItems).where(and14(eq16(pantryItems.id, itemId), eq16(pantryItems.familyId, familyId))).returning();
     if (!deleted) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Prodotto non trovato in dispensa" } });
     }
@@ -4574,11 +5342,11 @@ function enrichItemWithLegacyParsing(item) {
   return item;
 }
 async function verifyListOwnership(listId, familyId) {
-  const [list] = await db.select({ id: shoppingLists.id }).from(shoppingLists).where(and14(eq17(shoppingLists.id, listId), eq17(shoppingLists.familyId, familyId))).limit(1);
+  const [list] = await db.select({ id: shoppingLists.id }).from(shoppingLists).where(and15(eq17(shoppingLists.id, listId), eq17(shoppingLists.familyId, familyId))).limit(1);
   return !!list;
 }
 async function verifyItemOwnership(itemId, listId) {
-  const [item] = await db.select({ id: shoppingItems.id }).from(shoppingItems).where(and14(eq17(shoppingItems.id, itemId), eq17(shoppingItems.listId, listId))).limit(1);
+  const [item] = await db.select({ id: shoppingItems.id }).from(shoppingItems).where(and15(eq17(shoppingItems.id, itemId), eq17(shoppingItems.listId, listId))).limit(1);
   return !!item;
 }
 router8.get("/:familyId/lists", authenticate, requireFamilyMember(), async (req, res) => {
@@ -4588,12 +5356,12 @@ router8.get("/:familyId/lists", authenticate, requireFamilyMember(), async (req,
     const listConditions = [eq17(shoppingLists.familyId, familyId)];
     const blockFilter = applyBlockedFilter(shoppingLists.createdBy, blockedIds);
     if (blockFilter) listConditions.push(blockFilter);
-    const lists = await db.select().from(shoppingLists).where(and14(...listConditions));
+    const lists = await db.select().from(shoppingLists).where(and15(...listConditions));
     const listsWithItems = await Promise.all(lists.map(async (list) => {
       const itemConditions = [eq17(shoppingItems.listId, list.id)];
       const itemBlockFilter = applyBlockedFilter(shoppingItems.createdBy, blockedIds);
       if (itemBlockFilter) itemConditions.push(itemBlockFilter);
-      const items = await db.select().from(shoppingItems).where(and14(...itemConditions));
+      const items = await db.select().from(shoppingItems).where(and15(...itemConditions));
       return { ...list, items: items.map(enrichItemWithLegacyParsing) };
     }));
     res.json(listsWithItems);
@@ -4631,7 +5399,7 @@ router8.delete("/:familyId/lists/:listId", authenticate, requireFamilyMember(), 
     if (!await verifyListOwnership(listId, familyId)) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Lista non trovata in questa famiglia" } });
     }
-    await db.delete(shoppingLists).where(and14(eq17(shoppingLists.id, listId), eq17(shoppingLists.familyId, familyId)));
+    await db.delete(shoppingLists).where(and15(eq17(shoppingLists.id, listId), eq17(shoppingLists.familyId, familyId)));
     broadcastToFamily(familyId, "shopping_list_deleted", { listId });
     res.json({ message: "Lista eliminata" });
   } catch (error) {
@@ -4704,7 +5472,7 @@ router8.patch("/:familyId/lists/:listId/items/:itemId/toggle", authenticate, req
     if (!await verifyItemOwnership(itemId, listId)) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Prodotto non trovato in questa lista" } });
     }
-    const [currentItem] = await db.select().from(shoppingItems).where(and14(eq17(shoppingItems.id, itemId), eq17(shoppingItems.listId, listId))).limit(1);
+    const [currentItem] = await db.select().from(shoppingItems).where(and15(eq17(shoppingItems.id, itemId), eq17(shoppingItems.listId, listId))).limit(1);
     if (!currentItem) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Prodotto non trovato" } });
     }
@@ -4712,7 +5480,7 @@ router8.patch("/:familyId/lists/:listId/items/:itemId/toggle", authenticate, req
       isChecked: !currentItem.isChecked,
       checkedBy: !currentItem.isChecked ? req.user.userId : null,
       checkedAt: !currentItem.isChecked ? /* @__PURE__ */ new Date() : null
-    }).where(and14(eq17(shoppingItems.id, itemId), eq17(shoppingItems.listId, listId))).returning();
+    }).where(and15(eq17(shoppingItems.id, itemId), eq17(shoppingItems.listId, listId))).returning();
     if (!currentItem.isChecked) {
       await db.insert(shoppingHistory).values({
         familyId,
@@ -4764,7 +5532,7 @@ router8.patch("/:familyId/lists/:listId/items/:itemId", authenticate, requireFam
     if (parsed.data.unit !== void 0) updateData.unit = parsed.data.unit;
     if (parsed.data.category !== void 0) updateData.category = parsed.data.category;
     if (parsed.data.note !== void 0) updateData.note = parsed.data.note;
-    const [item] = await db.update(shoppingItems).set(updateData).where(and14(eq17(shoppingItems.id, itemId), eq17(shoppingItems.listId, listId))).returning();
+    const [item] = await db.update(shoppingItems).set(updateData).where(and15(eq17(shoppingItems.id, itemId), eq17(shoppingItems.listId, listId))).returning();
     broadcastToFamily(familyId, "shopping_item_updated", { listId, item });
     res.json(item);
   } catch (error) {
@@ -4783,7 +5551,7 @@ router8.delete("/:familyId/lists/:listId/items/:itemId", authenticate, requireFa
     if (!await verifyItemOwnership(itemId, listId)) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Prodotto non trovato in questa lista" } });
     }
-    await db.delete(shoppingItems).where(and14(eq17(shoppingItems.id, itemId), eq17(shoppingItems.listId, listId)));
+    await db.delete(shoppingItems).where(and15(eq17(shoppingItems.id, itemId), eq17(shoppingItems.listId, listId)));
     broadcastToFamily(familyId, "shopping_item_deleted", { listId, itemId });
     res.json({ message: "Prodotto eliminato" });
   } catch (error) {
@@ -4802,7 +5570,7 @@ init_family();
 init_websocket();
 import { Router as Router9 } from "express";
 import { z as z8 } from "zod";
-import { eq as eq18, and as and15, sql as sql6, isNull as isNull4, lt } from "drizzle-orm";
+import { eq as eq18, and as and16, sql as sql6, isNull as isNull6, lt } from "drizzle-orm";
 init_block_filter();
 init_logger();
 var router9 = Router9();
@@ -4830,7 +5598,7 @@ var updateChoreSchema = z8.object({
 var CHORE_EVENT_COLOR = "#8B5CF6";
 var COMPLETED_RETENTION_DAYS = 5;
 async function isFamilyMemberId(familyId, memberId) {
-  const [member] = await db.select({ id: familyMembers.id }).from(familyMembers).where(and15(eq18(familyMembers.id, memberId), eq18(familyMembers.familyId, familyId))).limit(1);
+  const [member] = await db.select({ id: familyMembers.id }).from(familyMembers).where(and16(eq18(familyMembers.id, memberId), eq18(familyMembers.familyId, familyId))).limit(1);
   return !!member;
 }
 function choreEventFields(chore) {
@@ -4858,9 +5626,9 @@ async function createChoreCalendarEvent(chore, userId) {
       ...choreEventFields(chore),
       createdBy: userId
     }).returning();
-    const [updated] = await db.update(chores).set({ calendarEventId: event.id }).where(and15(
+    const [updated] = await db.update(chores).set({ calendarEventId: event.id }).where(and16(
       eq18(chores.id, chore.id),
-      isNull4(chores.calendarEventId),
+      isNull6(chores.calendarEventId),
       eq18(chores.isCompleted, false),
       sql6`${chores.dueDate} IS NOT NULL`
     )).returning();
@@ -4879,7 +5647,7 @@ async function createChoreCalendarEvent(chore, userId) {
 async function updateChoreCalendarEvent(chore) {
   if (!chore.calendarEventId || !chore.dueDate) return;
   try {
-    const [event] = await db.update(calendarEvents).set({ ...choreEventFields(chore), updatedAt: /* @__PURE__ */ new Date() }).where(and15(eq18(calendarEvents.id, chore.calendarEventId), eq18(calendarEvents.familyId, chore.familyId))).returning();
+    const [event] = await db.update(calendarEvents).set({ ...choreEventFields(chore), updatedAt: /* @__PURE__ */ new Date() }).where(and16(eq18(calendarEvents.id, chore.calendarEventId), eq18(calendarEvents.familyId, chore.familyId))).returning();
     if (event) broadcastToFamily(chore.familyId, "event_updated", event);
   } catch (error) {
     logger.warn("Chore calendar sync (update) failed", { choreId: chore.id, error: String(error) });
@@ -4888,7 +5656,7 @@ async function updateChoreCalendarEvent(chore) {
 async function deleteChoreCalendarEvent(familyId, choreId, calendarEventId) {
   if (!calendarEventId) return;
   try {
-    await db.delete(calendarEvents).where(and15(eq18(calendarEvents.id, calendarEventId), eq18(calendarEvents.familyId, familyId)));
+    await db.delete(calendarEvents).where(and16(eq18(calendarEvents.id, calendarEventId), eq18(calendarEvents.familyId, familyId)));
     await db.update(chores).set({ calendarEventId: null }).where(eq18(chores.id, choreId));
     broadcastToFamily(familyId, "event_deleted", { eventId: calendarEventId });
   } catch (error) {
@@ -4898,7 +5666,7 @@ async function deleteChoreCalendarEvent(familyId, choreId, calendarEventId) {
 async function notifyChoreAssignee(familyId, chore, actorUserId) {
   try {
     if (!chore.assignedTo) return;
-    const [member] = await db.select({ userId: familyMembers.userId }).from(familyMembers).where(and15(eq18(familyMembers.id, chore.assignedTo), eq18(familyMembers.familyId, familyId))).limit(1);
+    const [member] = await db.select({ userId: familyMembers.userId }).from(familyMembers).where(and16(eq18(familyMembers.id, chore.assignedTo), eq18(familyMembers.familyId, familyId))).limit(1);
     if (!member || member.userId === actorUserId) return;
     const blockRelated = await getBlockRelatedUserIds(actorUserId, familyId);
     if (blockRelated.includes(member.userId)) return;
@@ -4917,7 +5685,7 @@ router9.get("/:familyId", authenticate, requireFamilyMember(), async (req, res) 
     const familyId = getParam(req, "familyId");
     try {
       const cutoff = new Date(Date.now() - COMPLETED_RETENTION_DAYS * 24 * 60 * 60 * 1e3);
-      await db.delete(chores).where(and15(
+      await db.delete(chores).where(and16(
         eq18(chores.familyId, familyId),
         eq18(chores.isCompleted, true),
         lt(chores.completedAt, cutoff)
@@ -4929,7 +5697,7 @@ router9.get("/:familyId", authenticate, requireFamilyMember(), async (req, res) 
     const conditions = [eq18(chores.familyId, familyId)];
     const blockFilter = applyBlockedFilter(chores.createdBy, blockedIds);
     if (blockFilter) conditions.push(blockFilter);
-    const choresList = await db.select().from(chores).where(and15(...conditions));
+    const choresList = await db.select().from(chores).where(and16(...conditions));
     res.json(choresList);
   } catch (error) {
     logger.error("Get chores error", { error: String(error) });
@@ -4994,7 +5762,7 @@ router9.put("/:familyId/:choreId", authenticate, requireFamilyMember(), async (r
     if (updateData.dueDate) {
       updateData.dueDate = new Date(updateData.dueDate);
     }
-    let [chore] = await db.update(chores).set(updateData).where(and15(eq18(chores.id, choreId), eq18(chores.familyId, familyId))).returning();
+    let [chore] = await db.update(chores).set(updateData).where(and16(eq18(chores.id, choreId), eq18(chores.familyId, familyId))).returning();
     if (!chore) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata" } });
     }
@@ -5025,13 +5793,13 @@ router9.patch("/:familyId/:choreId/complete", authenticate, requireFamilyMember(
       completedAt: /* @__PURE__ */ new Date(),
       completedBy: req.user.userId,
       updatedAt: /* @__PURE__ */ new Date()
-    }).where(and15(
+    }).where(and16(
       eq18(chores.id, choreId),
       eq18(chores.familyId, familyId),
       eq18(chores.isCompleted, false)
     )).returning();
     if (!chore) {
-      const [existing] = await db.select({ id: chores.id }).from(chores).where(and15(eq18(chores.id, choreId), eq18(chores.familyId, familyId))).limit(1);
+      const [existing] = await db.select({ id: chores.id }).from(chores).where(and16(eq18(chores.id, choreId), eq18(chores.familyId, familyId))).limit(1);
       if (!existing) {
         return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata" } });
       }
@@ -5043,7 +5811,7 @@ router9.patch("/:familyId/:choreId/complete", authenticate, requireFamilyMember(
     if (chore.assignedTo) {
       await db.update(familyMembers).set({
         points: sql6`COALESCE(${familyMembers.points}, 0) + ${pointsToAdd}`
-      }).where(and15(
+      }).where(and16(
         eq18(familyMembers.id, chore.assignedTo),
         eq18(familyMembers.familyId, familyId)
       ));
@@ -5086,12 +5854,12 @@ router9.delete("/:familyId/:choreId", authenticate, requireFamilyMember(), async
   try {
     const familyId = getParam(req, "familyId");
     const choreId = getParam(req, "choreId");
-    const [existing] = await db.select().from(chores).where(and15(eq18(chores.id, choreId), eq18(chores.familyId, familyId))).limit(1);
+    const [existing] = await db.select().from(chores).where(and16(eq18(chores.id, choreId), eq18(chores.familyId, familyId))).limit(1);
     if (!existing) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata" } });
     }
     await deleteChoreCalendarEvent(familyId, choreId, existing.calendarEventId);
-    await db.delete(chores).where(and15(eq18(chores.id, choreId), eq18(chores.familyId, familyId)));
+    await db.delete(chores).where(and16(eq18(chores.id, choreId), eq18(chores.familyId, familyId)));
     broadcastToFamily(familyId, "chore_deleted", { choreId });
     res.json({ message: "Faccenda eliminata" });
   } catch (error) {
@@ -5110,7 +5878,7 @@ init_family();
 init_websocket();
 import { Router as Router10 } from "express";
 import { z as z9 } from "zod";
-import { eq as eq19, and as and16, desc, sql as sql7 } from "drizzle-orm";
+import { eq as eq19, and as and17, desc, sql as sql7 } from "drizzle-orm";
 init_block_filter();
 init_logger();
 var router10 = Router10();
@@ -5126,7 +5894,7 @@ function canManageRewards(membership) {
 router10.get("/:familyId", authenticate, requireFamilyMember(), async (req, res) => {
   try {
     const familyId = getParam(req, "familyId");
-    const rewardsList = await db.select().from(rewards).where(and16(eq19(rewards.familyId, familyId), eq19(rewards.isActive, true))).orderBy(rewards.pointsCost);
+    const rewardsList = await db.select().from(rewards).where(and17(eq19(rewards.familyId, familyId), eq19(rewards.isActive, true))).orderBy(rewards.pointsCost);
     const redemptions = await db.select({
       id: rewardRedemptions.id,
       rewardTitle: rewardRedemptions.rewardTitle,
@@ -5188,7 +5956,7 @@ router10.put("/:familyId/:rewardId", authenticate, requireFamilyMember(), async 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Nessun dato da aggiornare" } });
     }
-    const [reward] = await db.update(rewards).set(updateData).where(and16(eq19(rewards.id, rewardId), eq19(rewards.familyId, familyId), eq19(rewards.isActive, true))).returning();
+    const [reward] = await db.update(rewards).set(updateData).where(and17(eq19(rewards.id, rewardId), eq19(rewards.familyId, familyId), eq19(rewards.isActive, true))).returning();
     if (!reward) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Premio non trovato" } });
     }
@@ -5207,7 +5975,7 @@ router10.delete("/:familyId/:rewardId", authenticate, requireFamilyMember(), asy
     if (!canManageRewards(membership)) {
       return res.status(403).json({ error: { code: "FORBIDDEN", message: "Solo admin e adulti possono gestire i premi" } });
     }
-    const [reward] = await db.update(rewards).set({ isActive: false }).where(and16(eq19(rewards.id, rewardId), eq19(rewards.familyId, familyId), eq19(rewards.isActive, true))).returning();
+    const [reward] = await db.update(rewards).set({ isActive: false }).where(and17(eq19(rewards.id, rewardId), eq19(rewards.familyId, familyId), eq19(rewards.isActive, true))).returning();
     if (!reward) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Premio non trovato" } });
     }
@@ -5224,12 +5992,12 @@ router10.post("/:familyId/:rewardId/redeem", authenticate, requireFamilyMember()
     const rewardId = getParam(req, "rewardId");
     const membership = req.membership;
     const userId = req.user.userId;
-    const [reward] = await db.select().from(rewards).where(and16(eq19(rewards.id, rewardId), eq19(rewards.familyId, familyId), eq19(rewards.isActive, true))).limit(1);
+    const [reward] = await db.select().from(rewards).where(and17(eq19(rewards.id, rewardId), eq19(rewards.familyId, familyId), eq19(rewards.isActive, true))).limit(1);
     if (!reward) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Premio non trovato" } });
     }
     const redemption = await db.transaction(async (tx) => {
-      const [updatedMember] = await tx.update(familyMembers).set({ points: sql7`${familyMembers.points} - ${reward.pointsCost}` }).where(and16(
+      const [updatedMember] = await tx.update(familyMembers).set({ points: sql7`${familyMembers.points} - ${reward.pointsCost}` }).where(and17(
         eq19(familyMembers.id, membership.id),
         eq19(familyMembers.familyId, familyId),
         sql7`COALESCE(${familyMembers.points}, 0) >= ${reward.pointsCost}`
@@ -5284,11 +6052,11 @@ init_auth();
 init_family();
 import { Router as Router12 } from "express";
 import multer from "multer";
-import crypto4 from "crypto";
-import fs2 from "fs";
-import path2 from "path";
+import crypto5 from "crypto";
+import fs3 from "fs";
+import path4 from "path";
 import sharp from "sharp";
-import { eq as eq23, and as and19, gte as gte6, desc as desc3, inArray as inArray3 } from "drizzle-orm";
+import { eq as eq23, and as and20, gte as gte6, desc as desc3, inArray as inArray4, lt as lt3 } from "drizzle-orm";
 
 // server/middleware/ai-guard.ts
 init_db();
@@ -5298,12 +6066,28 @@ init_entitlements();
 import { eq as eq21 } from "drizzle-orm";
 async function requireAiEnabled(req, res, next) {
   try {
-    const [user] = await db.select({ aiFeaturesEnabled: users.aiFeaturesEnabled }).from(users).where(eq21(users.id, req.user.userId)).limit(1);
+    const [user] = await db.select({ aiFeaturesEnabled: users.aiFeaturesEnabled, ageBand: users.ageBand }).from(users).where(eq21(users.id, req.user.userId)).limit(1);
     if (!user || !user.aiFeaturesEnabled) {
       return res.status(403).json({
         error: {
           code: "AI_DISABLED",
           message: "Le funzionalit\xE0 AI sono disabilitate. Attivale nelle impostazioni per continuare."
+        }
+      });
+    }
+    if (!user.ageBand) {
+      return res.status(403).json({
+        error: {
+          code: "ONBOARDING_REQUIRED",
+          message: "Completa il tuo profilo (fascia d'et\xE0) nelle impostazioni per usare le funzionalit\xE0 AI."
+        }
+      });
+    }
+    if (user.ageBand === "under14") {
+      return res.status(403).json({
+        error: {
+          code: "AI_DISABLED_MINOR",
+          message: "Le funzionalit\xE0 AI non sono disponibili per i profili sotto i 14 anni."
         }
       });
     }
@@ -5365,10 +6149,20 @@ var AiError = class extends Error {
 function isAiError(err) {
   return err instanceof AiError;
 }
+function resolveOpenAiConfig() {
+  const personalKey = process.env.OPENAI_API_KEY?.trim();
+  if (personalKey) {
+    return { apiKey: personalKey, baseURL: void 0 };
+  }
+  return {
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY?.trim() || void 0,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL?.trim() || void 0
+  };
+}
 function assertAiConfigured() {
-  const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-  if (!key || key.trim().length === 0) {
-    throw new AiError("AI_NOT_CONFIGURED", "AI_INTEGRATIONS_OPENAI_API_KEY non configurata");
+  const { apiKey: apiKey2 } = resolveOpenAiConfig();
+  if (!apiKey2) {
+    throw new AiError("AI_NOT_CONFIGURED", "Nessuna chiave OpenAI configurata (OPENAI_API_KEY o AI_INTEGRATIONS_OPENAI_API_KEY)");
   }
 }
 function mapOpenAiError(error) {
@@ -5401,10 +6195,12 @@ var openaiClient = null;
 function getOpenAiClient() {
   assertAiConfigured();
   if (!openaiClient) {
+    const { apiKey: apiKey2, baseURL } = resolveOpenAiConfig();
     openaiClient = new OpenAI({
-      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-      // baseURL opzionale: impostato solo se realmente configurato
-      ...process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ? { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL } : {},
+      apiKey: apiKey2,
+      // baseURL solo per l'integrazione Replit; con chiave personale si usa
+      // l'endpoint ufficiale OpenAI.
+      ...baseURL ? { baseURL } : {},
       timeout: 6e4,
       maxRetries: 1
     });
@@ -5635,8 +6431,8 @@ var MEAL_PLAN_RESPONSE_FORMAT = {
     }
   }
 };
-async function generateRecipeSuggestions(context) {
-  const count2 = context.count || 8;
+async function generateRecipeSuggestions(context, onBatch) {
+  const count3 = context.count || 8;
   const randomSeed = Math.floor(Math.random() * 1e5);
   const dietText = context.dietaryPreferences ? `
 Dieta: ${Array.isArray(context.dietaryPreferences) ? context.dietaryPreferences.join(", ") : context.dietaryPreferences}.` : "";
@@ -5672,7 +6468,7 @@ INGREDIENTI GI\xC0 IN DISPENSA (dai priorit\xE0 a ricette che li usano, per evit
     "stufato"
   ];
   const shuffled = allCategories.sort(() => Math.random() - 0.5);
-  const selectedCats = shuffled.slice(0, count2);
+  const selectedCats = shuffled.slice(0, count3);
   async function fetchRecipeBatch(cats, seed) {
     const n = cats.length;
     const catList = cats.join(", ");
@@ -5709,7 +6505,17 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
       batches.push(selectedCats.slice(i, i + BATCH));
     }
     const settled = await Promise.allSettled(
-      batches.map((cats, idx) => fetchRecipeBatch(cats, randomSeed + idx * 7919))
+      batches.map(async (cats, idx) => {
+        const batchRecipes = await fetchRecipeBatch(cats, randomSeed + idx * 7919);
+        if (onBatch && batchRecipes.length > 0) {
+          try {
+            onBatch(batchRecipes);
+          } catch (e) {
+            console.error("onBatch callback error:", String(e));
+          }
+        }
+        return batchRecipes;
+      })
     );
     const allRecipes = [];
     let firstReason = null;
@@ -5943,16 +6749,53 @@ async function generateBudgetInsights(context) {
     throw mapOpenAiError(error);
   }
 }
+function isPromptEcho(text2, prompt) {
+  const normalize = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const textNorm = normalize(text2);
+  const promptNorm = normalize(prompt);
+  if (!textNorm || !promptNorm) return false;
+  if (textNorm.length >= 30 && promptNorm.includes(textNorm)) return true;
+  const textWords = textNorm.split(" ");
+  if (textWords.length >= 8) {
+    const promptWords = promptNorm.split(" ");
+    const promptSet = new Set(promptWords);
+    const textSet = new Set(textWords);
+    const fromPrompt = textWords.filter((w) => promptSet.has(w)).length / textWords.length;
+    const coverage = promptWords.filter((w) => textSet.has(w)).length / promptWords.length;
+    if (fromPrompt >= 0.9 && coverage >= 0.6) return true;
+  }
+  return false;
+}
+var SHORT_CLIP_MAX_DURATION_MS = 2500;
+var SHORT_CLIP_MAX_BYTES = 15e3;
+var PLAUSIBLE_MIN_BYTES_PER_SEC = 100;
+var PLAUSIBLE_MAX_BYTES_PER_SEC = 25e4;
+function isDurationPlausible(durationMs, byteLength) {
+  if (typeof durationMs !== "number" || !Number.isFinite(durationMs) || durationMs <= 0) {
+    return false;
+  }
+  const bytesPerSec = byteLength / (durationMs / 1e3);
+  return bytesPerSec >= PLAUSIBLE_MIN_BYTES_PER_SEC && bytesPerSec <= PLAUSIBLE_MAX_BYTES_PER_SEC;
+}
 async function transcribeAudio(input) {
   assertAiConfigured();
   try {
     const file = await toFile(input.buffer, input.filename, { type: input.mimeType });
+    const baseHint = "Dettatura vocale in italiano per un'app di famiglia. Trascrivi fedelmente solo le parole pronunciate.";
+    const extra = (input.context || "").trim().slice(0, 300);
+    const hasDuration = isDurationPlausible(input.durationMs, input.buffer.length);
+    const isShortClip = hasDuration ? input.durationMs < SHORT_CLIP_MAX_DURATION_MS : input.buffer.length < SHORT_CLIP_MAX_BYTES;
+    const sentPrompt = isShortClip ? "" : extra ? `${baseHint} ${extra}` : baseHint;
     const response = await getOpenAiClient().audio.transcriptions.create({
       file,
       model: "gpt-4o-mini-transcribe",
-      language: "it"
+      language: "it",
+      ...sentPrompt ? { prompt: sentPrompt } : {}
     });
     const text2 = (response.text || "").trim();
+    if (sentPrompt && isPromptEcho(text2, sentPrompt)) {
+      return { text: "" };
+    }
     return { text: text2 };
   } catch (error) {
     throw mapOpenAiError(error);
@@ -6136,7 +6979,7 @@ init_schema();
 init_db();
 init_schema();
 init_logger();
-import { and as and18, eq as eq22, gte as gte5, sql as sql9 } from "drizzle-orm";
+import { and as and19, eq as eq22, gte as gte5, sql as sql9 } from "drizzle-orm";
 init_entitlements();
 var PLAN_LIMITS = {
   free: {
@@ -6206,7 +7049,7 @@ var dbStore = {
       return await db.transaction(async (tx) => {
         await tx.execute(sql9`SELECT pg_advisory_xact_lock(hashtext(${lockKey2(familyId, feature)}))`);
         const [row] = await tx.select({ count: sql9`count(*)::int` }).from(aiUsage).where(
-          and18(
+          and19(
             eq22(aiUsage.familyId, familyId),
             eq22(aiUsage.feature, feature),
             gte5(aiUsage.createdAt, since)
@@ -6239,7 +7082,7 @@ async function resolveFeatureLimit(familyId, feature) {
 }
 async function isFamilyAdmin(userId, familyId) {
   try {
-    const [m] = await db.select({ role: familyMembers.role }).from(familyMembers).where(and18(eq22(familyMembers.userId, userId), eq22(familyMembers.familyId, familyId))).limit(1);
+    const [m] = await db.select({ role: familyMembers.role }).from(familyMembers).where(and19(eq22(familyMembers.userId, userId), eq22(familyMembers.familyId, familyId))).limit(1);
     return m?.role === "admin";
   } catch (err) {
     logger.error("isFamilyAdmin check failed", { userId, familyId, error: String(err) });
@@ -6283,8 +7126,72 @@ function resolveMealPlanVariants(raw) {
   return Math.min(requested, MEAL_PLAN_MAX_VARIANTS);
 }
 
+// server/lib/recipe-image-prewarm.ts
+import crypto4 from "crypto";
+import path3 from "path";
+function recipeImageCacheKey(title) {
+  const normalized = title.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return crypto4.createHash("sha256").update(normalized).digest("hex").slice(0, 32);
+}
+function createRecipeImagePrewarm(deps) {
+  const concurrency = deps.concurrency ?? 2;
+  return async function prewarmRecipeImages2(items, userId, familyId) {
+    const candidates = items.map((r) => ({
+      title: typeof r.title === "string" ? r.title.trim() : "",
+      description: typeof r.description === "string" ? r.description.trim().slice(0, 300) : void 0
+    })).filter((r) => r.title.length >= 2 && r.title.length <= 200).map((r) => {
+      const key = recipeImageCacheKey(r.title);
+      return { ...r, key, filePath: path3.join(deps.imagesDir, `${key}.webp`) };
+    });
+    const pending = [];
+    for (const r of candidates) {
+      try {
+        if (!await deps.fileExists(r.filePath)) pending.push(r);
+      } catch (error) {
+        deps.logWarn("Recipe image prewarm cache check error", { error: String(error), familyId, title: r.title });
+      }
+    }
+    if (pending.length === 0) return;
+    let index2 = 0;
+    let stopped = false;
+    const worker = async () => {
+      while (!stopped && index2 < pending.length) {
+        const item = pending[index2++];
+        try {
+          const { run } = deps.startGeneration({ ...item, userId, familyId });
+          const result = await run;
+          if (result.outcome === "limited" || result.outcome === "unavailable") {
+            stopped = true;
+          }
+        } catch (error) {
+          deps.logWarn("Recipe image prewarm error", { error: String(error), familyId, title: item.title });
+        }
+      }
+    };
+    const workers = Array.from(
+      { length: Math.min(concurrency, pending.length) },
+      () => worker()
+    );
+    return Promise.allSettled(workers).then(() => void 0);
+  };
+}
+
 // server/routes/ai.ts
 var router12 = Router12();
+async function userHasAiHealthConsent(userId) {
+  try {
+    const [user] = await db.select({ aiHealthConsent: users.aiHealthConsent }).from(users).where(eq23(users.id, userId)).limit(1);
+    return user?.aiHealthConsent === true;
+  } catch {
+    return false;
+  }
+}
+async function stripHealthDataIfNoConsent(userId, preferences) {
+  if (!preferences || preferences.allergies == null) return preferences;
+  if (await userHasAiHealthConsent(userId)) return preferences;
+  const { allergies: _omitted, ...rest } = preferences;
+  return rest;
+}
 function sendAiError(res, error, fallbackMsg) {
   if (isAiError(error)) {
     return res.status(error.httpStatus).json({ error: { code: error.code, message: error.userMessage } });
@@ -6362,7 +7269,7 @@ router12.get("/:familyId/shopping-suggestions", authenticate, requireAiEnabled, 
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const fourteenDaysAgo = /* @__PURE__ */ new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-    const recentPurchasesRows = await db.select().from(shoppingHistory).where(and19(eq23(shoppingHistory.familyId, familyId), gte6(shoppingHistory.purchasedAt, thirtyDaysAgo))).orderBy(desc3(shoppingHistory.purchasedAt)).limit(50);
+    const recentPurchasesRows = await db.select().from(shoppingHistory).where(and20(eq23(shoppingHistory.familyId, familyId), gte6(shoppingHistory.purchasedAt, thirtyDaysAgo))).orderBy(desc3(shoppingHistory.purchasedAt)).limit(50);
     const recentPurchases = recentPurchasesRows.map((h) => h.itemName);
     const familyLists = await db.select({ id: shoppingLists.id }).from(shoppingLists).where(eq23(shoppingLists.familyId, familyId));
     let alreadyOnList = [];
@@ -6374,7 +7281,7 @@ router12.get("/:familyId/shopping-suggestions", authenticate, requireAiEnabled, 
         isChecked: shoppingItems.isChecked,
         checkedAt: shoppingItems.checkedAt,
         createdAt: shoppingItems.createdAt
-      }).from(shoppingItems).where(inArray3(shoppingItems.listId, listIds));
+      }).from(shoppingItems).where(inArray4(shoppingItems.listId, listIds));
       alreadyOnList = allItems.filter((i) => !i.isChecked).map((i) => i.name);
       completedRecently = allItems.filter((i) => {
         if (!i.isChecked) return false;
@@ -6382,7 +7289,7 @@ router12.get("/:familyId/shopping-suggestions", authenticate, requireAiEnabled, 
         return refDate >= thirtyDaysAgo;
       }).map((i) => i.name);
     }
-    const recentInsights = await db.select().from(aiInsights).where(and19(
+    const recentInsights = await db.select().from(aiInsights).where(and20(
       eq23(aiInsights.familyId, familyId),
       eq23(aiInsights.type, "shopping_suggestions"),
       gte6(aiInsights.createdAt, fourteenDaysAgo)
@@ -6397,9 +7304,9 @@ router12.get("/:familyId/shopping-suggestions", authenticate, requireAiEnabled, 
       }
     }
     const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-    const upcomingEvents = await db.select().from(calendarEvents).where(and19(eq23(calendarEvents.familyId, familyId), gte6(calendarEvents.date, today))).limit(10);
+    const upcomingEvents = await db.select().from(calendarEvents).where(and20(eq23(calendarEvents.familyId, familyId), gte6(calendarEvents.date, today))).limit(10);
     const pantryRows = await db.select({ name: pantryItems.name }).from(pantryItems).where(eq23(pantryItems.familyId, familyId)).limit(200);
-    const pantryNames = pantryRows.map((p) => p.name);
+    const pantryNames = pantryRows.map((p2) => p2.name);
     let aiResult = { items: [] };
     const reservation = await reserveAiSlot(userId, familyId, "shopping-suggestions");
     if (reservation.status === "limited") {
@@ -6602,14 +7509,14 @@ router12.get("/:familyId/chore-optimization", authenticate, requireAiEnabled, re
   const userId = req.user.userId;
   try {
     const members = await db.select().from(familyMembers).where(eq23(familyMembers.familyId, familyId));
-    const pendingChores = await db.select().from(chores).where(and19(eq23(chores.familyId, familyId), eq23(chores.isCompleted, false)));
+    const pendingChores = await db.select().from(chores).where(and20(eq23(chores.familyId, familyId), eq23(chores.isCompleted, false)));
     if (pendingChores.length === 0) {
       return res.json({ assignments: [], message: "Nessuna faccenda da assegnare" });
     }
     const run = await withAiUsage(
       { userId, familyId, feature: "chore-optimization" },
       () => optimizeChoreSchedule({
-        members: members.map((m) => ({ id: m.id, name: m.nickname || "Membro", points: m.points || 0 })),
+        members: members.map((m, i) => ({ id: m.id, name: `Membro ${i + 1}`, points: m.points || 0 })),
         chores: pendingChores.map((c) => ({ id: c.id, title: c.title, estimatedMinutes: c.estimatedMinutes || 30 }))
       })
     );
@@ -6655,7 +7562,7 @@ router12.post("/:familyId/budget-insights", authenticate, requireAiEnabled, requ
 router12.get("/:familyId/insights", authenticate, requireFamilyMember(), async (req, res) => {
   try {
     const familyId = getParam(req, "familyId");
-    const savedInsights = await db.select().from(aiInsights).where(and19(eq23(aiInsights.familyId, familyId), eq23(aiInsights.dismissed, false))).orderBy(desc3(aiInsights.createdAt)).limit(5);
+    const savedInsights = await db.select().from(aiInsights).where(and20(eq23(aiInsights.familyId, familyId), eq23(aiInsights.dismissed, false))).orderBy(desc3(aiInsights.createdAt)).limit(5);
     res.json(savedInsights);
   } catch (error) {
     logger.error("Get insights error", { error: String(error) });
@@ -6670,9 +7577,9 @@ router12.post("/:familyId/insights/generate", authenticate, requireAiEnabled, re
     const sevenDaysAgo = /* @__PURE__ */ new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const weekAgo = sevenDaysAgo.toISOString().split("T")[0];
-    const events = await db.select().from(calendarEvents).where(and19(eq23(calendarEvents.familyId, familyId), gte6(calendarEvents.date, weekAgo)));
-    const completedChores = await db.select().from(chores).where(and19(eq23(chores.familyId, familyId), eq23(chores.isCompleted, true), gte6(chores.completedAt, sevenDaysAgo)));
-    const pendingChores = await db.select().from(chores).where(and19(eq23(chores.familyId, familyId), eq23(chores.isCompleted, false)));
+    const events = await db.select().from(calendarEvents).where(and20(eq23(calendarEvents.familyId, familyId), gte6(calendarEvents.date, weekAgo)));
+    const completedChores = await db.select().from(chores).where(and20(eq23(chores.familyId, familyId), eq23(chores.isCompleted, true), gte6(chores.completedAt, sevenDaysAgo)));
+    const pendingChores = await db.select().from(chores).where(and20(eq23(chores.familyId, familyId), eq23(chores.isCompleted, false)));
     const topMember = members.reduce((top, m) => (m.points || 0) > (top.points || 0) ? m : top, members[0]);
     const run = await withAiUsage(
       { userId, familyId, feature: "insights" },
@@ -6713,31 +7620,98 @@ router12.patch("/:familyId/insights/:insightId/dismiss", authenticate, requireFa
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore" } });
   }
 });
+var RECIPE_GEN_TTL_MS = 10 * 60 * 1e3;
+var RECIPE_GEN_STALE_MS = 90 * 1e3;
+async function sweepRecipeGenSessions() {
+  try {
+    const cutoff = new Date(Date.now() - RECIPE_GEN_TTL_MS);
+    await db.delete(recipeGenSessions).where(lt3(recipeGenSessions.createdAt, cutoff));
+  } catch (error) {
+    logger.error("Recipe gen sessions sweep error", { error: String(error) });
+  }
+}
 router12.post("/:familyId/recipe-suggestions", authenticate, requireAiEnabled, requireFamilyMember(), async (req, res) => {
   const familyId = getParam(req, "familyId");
   const userId = req.user.userId;
   try {
     const members = await db.select().from(familyMembers).where(eq23(familyMembers.familyId, familyId));
-    const { dietaryPreferences, allergies, maxTimeMinutes, cuisinePreferences, excludedIngredients, count: count2, excludeTitles } = req.body || {};
+    const { dietaryPreferences, allergies, maxTimeMinutes, cuisinePreferences, excludedIngredients, count: count3, excludeTitles } = req.body || {};
+    const allowedAllergies = await userHasAiHealthConsent(userId) ? allergies : void 0;
     const existingRecipes = await db.select({ title: recipes.title }).from(recipes).where(eq23(recipes.familyId, familyId)).orderBy(desc3(recipes.createdAt)).limit(50);
     const dbTitles = existingRecipes.map((r) => r.title);
     const extraTitles = Array.isArray(excludeTitles) ? excludeTitles : [];
     const lastRecipeTitles = [.../* @__PURE__ */ new Set([...dbTitles, ...extraTitles])];
     const pantryRows = await db.select({ name: pantryItems.name }).from(pantryItems).where(eq23(pantryItems.familyId, familyId)).limit(60);
-    const pantryIngredients = pantryRows.map((p) => p.name);
+    const pantryIngredients = pantryRows.map((p2) => p2.name);
+    const genContext = {
+      familySize: members.length || 1,
+      dietaryPreferences,
+      allergies: allowedAllergies,
+      maxTimeMinutes: maxTimeMinutes || null,
+      cuisinePreferences: cuisinePreferences || null,
+      excludedIngredients: excludedIngredients || null,
+      lastRecipeTitles,
+      count: Math.min(count3 || 8, 20),
+      pantryIngredients
+    };
+    if (req.body?.incremental === true) {
+      void sweepRecipeGenSessions();
+      const generationId = crypto5.randomUUID();
+      const sessionRecipes = [];
+      const seenTitles2 = /* @__PURE__ */ new Set();
+      let writeChain = Promise.resolve();
+      const persistSession = (fields) => {
+        const snapshot = sessionRecipes.slice();
+        writeChain = writeChain.then(
+          () => db.update(recipeGenSessions).set({ recipes: snapshot, updatedAt: /* @__PURE__ */ new Date(), ...fields }).where(eq23(recipeGenSessions.id, generationId))
+        ).catch((error) => {
+          logger.error("Recipe gen session persist error", { generationId, error: String(error) });
+        });
+        return writeChain;
+      };
+      const appendDeduped = (batch) => {
+        let added = false;
+        for (const r of batch) {
+          const norm = r.title.toLowerCase().trim();
+          if (seenTitles2.has(norm)) continue;
+          seenTitles2.add(norm);
+          sessionRecipes.push(r);
+          added = true;
+        }
+        if (added) void persistSession({});
+      };
+      let errorFields = {};
+      try {
+        const run2 = await withAiUsage(
+          { userId, familyId, feature: "recipe-suggestions" },
+          async () => {
+            await db.insert(recipeGenSessions).values({
+              id: generationId,
+              userId,
+              familyId,
+              recipes: [],
+              done: false
+            });
+            res.status(202).json({ generationId });
+            return generateRecipeSuggestions(genContext, appendDeduped);
+          }
+        );
+        if (run2.outcome === "limited") return sendRateLimited(res, run2.max, run2.window);
+        if (run2.outcome === "unavailable") return sendUsageUnavailable(res);
+      } catch (error) {
+        logger.error("Incremental recipe generation error", { error: String(error) });
+        if (isAiError(error)) {
+          errorFields = { errorStatus: error.httpStatus, errorBody: { code: error.code, message: error.userMessage } };
+        } else {
+          errorFields = { errorStatus: 500, errorBody: { code: "AI_ERROR", message: "Errore nella generazione ricette" } };
+        }
+      }
+      await persistSession({ done: true, ...errorFields });
+      return;
+    }
     const run = await withAiUsage(
       { userId, familyId, feature: "recipe-suggestions" },
-      () => generateRecipeSuggestions({
-        familySize: members.length || 1,
-        dietaryPreferences,
-        allergies,
-        maxTimeMinutes: maxTimeMinutes || null,
-        cuisinePreferences: cuisinePreferences || null,
-        excludedIngredients: excludedIngredients || null,
-        lastRecipeTitles,
-        count: Math.min(count2 || 8, 20),
-        pantryIngredients
-      })
+      () => generateRecipeSuggestions(genContext)
     );
     if (run.outcome === "limited") return sendRateLimited(res, run.max, run.window);
     if (run.outcome === "unavailable") return sendUsageUnavailable(res);
@@ -6750,9 +7724,52 @@ router12.post("/:familyId/recipe-suggestions", authenticate, requireAiEnabled, r
       return true;
     });
     res.json({ recipes: dedupedRecipes, generatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+    prewarmRecipeImages(
+      dedupedRecipes.map((r) => ({ title: r.title, description: r.description })),
+      userId,
+      familyId
+    );
   } catch (error) {
     logger.error("Recipe suggestions error", { error: String(error) });
     sendAiError(res, error, "Errore nella generazione ricette");
+  }
+});
+router12.get("/:familyId/recipe-suggestions/:generationId", authenticate, requireAiEnabled, requireFamilyMember(), async (req, res) => {
+  const familyId = getParam(req, "familyId");
+  const generationId = getParam(req, "generationId");
+  if (!/^[0-9a-f-]{36}$/i.test(generationId)) {
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "Generazione non trovata o scaduta" } });
+  }
+  try {
+    const [session] = await db.select().from(recipeGenSessions).where(eq23(recipeGenSessions.id, generationId)).limit(1);
+    if (!session || session.familyId !== familyId || session.userId !== req.user.userId) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Generazione non trovata o scaduta" } });
+    }
+    let { done, recipes: sessionRecipes, errorStatus, errorBody } = session;
+    let interrupted = false;
+    if (!done && Date.now() - session.updatedAt.getTime() > RECIPE_GEN_STALE_MS) {
+      const closed = await db.update(recipeGenSessions).set({
+        done: true,
+        errorStatus: sessionRecipes.length === 0 ? 503 : null,
+        errorBody: sessionRecipes.length === 0 ? { code: "AI_INTERRUPTED", message: "La generazione si \xE8 interrotta per un riavvio del servizio. Riprova pi\xF9 tardi." } : null,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(and20(eq23(recipeGenSessions.id, generationId), eq23(recipeGenSessions.done, false))).returning({ id: recipeGenSessions.id });
+      const [final] = await db.select().from(recipeGenSessions).where(eq23(recipeGenSessions.id, generationId)).limit(1);
+      if (final) {
+        done = final.done;
+        sessionRecipes = final.recipes;
+        errorStatus = final.errorStatus;
+        errorBody = final.errorBody;
+      }
+      interrupted = closed.length > 0;
+    }
+    if (done && errorStatus && sessionRecipes.length === 0) {
+      return res.status(errorStatus).json({ error: errorBody });
+    }
+    res.json({ recipes: sessionRecipes, done, interrupted, generatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+  } catch (error) {
+    logger.error("Recipe gen polling error", { generationId, error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella lettura della generazione" } });
   }
 });
 router12.post("/:familyId/weekly-meal-plan", authenticate, requireAiEnabled, requireFamilyMember(), async (req, res) => {
@@ -6769,7 +7786,7 @@ router12.post("/:familyId/weekly-meal-plan", authenticate, requireAiEnabled, req
     const context = {
       familySize: members.length || 1,
       weekStartDate,
-      preferences
+      preferences: await stripHealthDataIfNoConsent(userId, preferences)
     };
     const run = await withAiUsage(
       { userId, familyId, feature: "weekly-meal-plan" },
@@ -6786,9 +7803,14 @@ router12.post("/:familyId/weekly-meal-plan", authenticate, requireAiEnabled, req
       familyId,
       variants,
       durationMs,
-      plans: resultPlans.map((p) => ({ title: p.title, itemsCount: p.items?.length || 0 }))
+      plans: resultPlans.map((p2) => ({ title: p2.title, itemsCount: p2.items?.length || 0 }))
     }));
     res.json({ plans: resultPlans });
+    prewarmRecipeImages(
+      (plan.items || []).map((it) => ({ title: it.title, description: it.description })),
+      userId,
+      familyId
+    );
   } catch (error) {
     const durationMs = Date.now() - startTime;
     logger.error("Weekly meal plan error", { error: String(error), durationMs });
@@ -6830,7 +7852,7 @@ router12.post("/:familyId/weekly-meal-plan/stream", authenticate, requireAiEnabl
     const plan = await generateWeeklyMealPlan({
       familySize: members.length || 1,
       weekStartDate,
-      preferences,
+      preferences: await stripHealthDataIfNoConsent(userId, preferences),
       planVariant,
       onProgress: (items) => {
         if (clientClosed) return;
@@ -6853,6 +7875,11 @@ router12.post("/:familyId/weekly-meal-plan/stream", authenticate, requireAiEnabl
       itemsCount: plan.items.length
     }) + "\n");
     res.end();
+    prewarmRecipeImages(
+      (plan.items || []).map((it) => ({ title: it.title, description: it.description })),
+      userId,
+      familyId
+    );
   } catch (error) {
     const durationMs = Date.now() - startTime;
     logger.error("Weekly meal plan stream error", { error: String(error), durationMs });
@@ -6900,6 +7927,11 @@ router12.post("/:familyId/recipe-search", authenticate, requireAiEnabled, requir
       return true;
     });
     res.json({ recipes: dedupedRecipes, query: query.trim() });
+    prewarmRecipeImages(
+      dedupedRecipes.map((r) => ({ title: r.title, description: r.description })),
+      userId,
+      familyId
+    );
   } catch (error) {
     logger.error("Recipe search error", { error: String(error) });
     sendAiError(res, error, "Errore nella ricerca ricette");
@@ -6976,7 +8008,13 @@ router12.post("/:familyId/transcribe", authenticate, requireAiEnabled, requireFa
         () => transcribeAudio({
           buffer: file.buffer,
           filename: `voice.${audioExtension(mime)}`,
-          mimeType: mime
+          mimeType: mime,
+          context: typeof req.body?.context === "string" ? req.body.context : void 0,
+          durationMs: (() => {
+            const raw = req.body?.durationMs;
+            const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : NaN;
+            return Number.isFinite(n) && n > 0 && n < 10 * 6e4 ? n : void 0;
+          })()
         })
       );
       if (run.outcome === "limited") return sendRateLimited(res, run.max, run.window);
@@ -7079,15 +8117,80 @@ router12.post("/:familyId/parse-expense", authenticate, requireAiEnabled, requir
     sendAiError(res, error, "Errore nella compilazione automatica della spesa");
   }
 });
-var recipeImagesDir = path2.resolve("uploads", "recipe-images");
-if (!fs2.existsSync(recipeImagesDir)) {
-  fs2.mkdirSync(recipeImagesDir, { recursive: true });
+var recipeImagesDir = path4.resolve("uploads", "recipe-images");
+if (!fs3.existsSync(recipeImagesDir)) {
+  fs3.mkdirSync(recipeImagesDir, { recursive: true });
 }
-function recipeImageCacheKey(title) {
-  const normalized = title.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  return crypto4.createHash("sha256").update(normalized).digest("hex").slice(0, 32);
+var knownRecipeImageFiles = /* @__PURE__ */ new Set();
+async function recipeImageIsCached(fileName) {
+  if (fs3.existsSync(path4.join(recipeImagesDir, fileName))) return true;
+  if (!isObjectStorageMode()) return false;
+  if (knownRecipeImageFiles.has(fileName)) return true;
+  const exists = await uploadObjectExists(`/uploads/recipe-images/${fileName}`);
+  if (exists) knownRecipeImageFiles.add(fileName);
+  return exists;
 }
 var inFlightRecipeImages = /* @__PURE__ */ new Map();
+function startRecipeImageGeneration(params) {
+  const { key, filePath, title, description, userId, familyId } = params;
+  let task = inFlightRecipeImages.get(key);
+  const isLeader = !task;
+  if (!task) {
+    task = (async () => {
+      const run = await withAiUsage(
+        { userId, familyId, feature: "recipe-image" },
+        () => generateRecipeImage({ title, description })
+      );
+      if (run.outcome === "ok") {
+        const optimized = await sharp(run.value).resize(512, 512, { fit: "cover" }).webp({ quality: 80 }).toBuffer();
+        const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+        await fs3.promises.writeFile(tmpPath, optimized);
+        await fs3.promises.rename(tmpPath, filePath);
+        const fileName = path4.basename(filePath);
+        try {
+          await persistUploadedFile(filePath, `/uploads/recipe-images/${fileName}`);
+          knownRecipeImageFiles.add(fileName);
+        } catch (error) {
+          logger.warn("Recipe image bucket upload failed (serving from local disk)", {
+            fileName,
+            error: String(error)
+          });
+        }
+      }
+      return run;
+    })();
+    inFlightRecipeImages.set(key, task);
+    task.catch(() => void 0).finally(() => inFlightRecipeImages.delete(key));
+  }
+  return { run: task, isLeader };
+}
+var prewarmRecipeImages = createRecipeImagePrewarm({
+  imagesDir: recipeImagesDir,
+  fileExists: (filePath) => recipeImageIsCached(path4.basename(filePath)),
+  startGeneration: startRecipeImageGeneration,
+  logWarn: (message, meta) => logger.warn(message, meta)
+});
+router12.post("/:familyId/recipe-images/resolve", authenticate, requireAiEnabled, requireFamilyMember(), async (req, res) => {
+  const raw = req.body?.titles;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 40) {
+    return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Lista titoli non valida" } });
+  }
+  const urls = {};
+  for (const t of raw) {
+    if (typeof t !== "string") continue;
+    const title = t.trim();
+    if (title.length < 2 || title.length > 200) continue;
+    const fileName = `${recipeImageCacheKey(title)}.webp`;
+    let cached = false;
+    try {
+      cached = await recipeImageIsCached(fileName);
+    } catch (error) {
+      logger.warn("Recipe image resolve cache check error", { fileName, error: String(error) });
+    }
+    urls[title] = cached ? `/uploads/recipe-images/${fileName}` : null;
+  }
+  res.json({ urls });
+});
 router12.post("/:familyId/recipe-image", authenticate, requireAiEnabled, requireFamilyMember(), async (req, res) => {
   const familyId = getParam(req, "familyId");
   const userId = req.user.userId;
@@ -7099,30 +8202,12 @@ router12.post("/:familyId/recipe-image", authenticate, requireAiEnabled, require
     }
     const key = recipeImageCacheKey(title);
     const fileName = `${key}.webp`;
-    const filePath = path2.join(recipeImagesDir, fileName);
+    const filePath = path4.join(recipeImagesDir, fileName);
     const url = `/uploads/recipe-images/${fileName}`;
-    if (fs2.existsSync(filePath)) {
+    if (await recipeImageIsCached(fileName)) {
       return res.json({ url, cached: true });
     }
-    let task = inFlightRecipeImages.get(key);
-    const isLeader = !task;
-    if (!task) {
-      task = (async () => {
-        const run2 = await withAiUsage(
-          { userId, familyId, feature: "recipe-image" },
-          () => generateRecipeImage({ title, description })
-        );
-        if (run2.outcome === "ok") {
-          const optimized = await sharp(run2.value).resize(512, 512, { fit: "cover" }).webp({ quality: 80 }).toBuffer();
-          const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-          await fs2.promises.writeFile(tmpPath, optimized);
-          await fs2.promises.rename(tmpPath, filePath);
-        }
-        return run2;
-      })();
-      inFlightRecipeImages.set(key, task);
-      task.catch(() => void 0).finally(() => inFlightRecipeImages.delete(key));
-    }
+    const { run: task, isLeader } = startRecipeImageGeneration({ key, filePath, title, description, userId, familyId });
     const run = await task;
     if (run.outcome === "limited") return sendRateLimited(res, run.max, run.window);
     if (run.outcome === "unavailable") return sendUsageUnavailable(res);
@@ -7387,9 +8472,9 @@ async function getSubscriberEntitlement(familyId) {
   if (!projectId) {
     throw new Error("REVENUECAT_PROJECT_ID non configurato");
   }
-  const client = getUncachableRevenueCatClient();
+  const client2 = getUncachableRevenueCatClient();
   const { data, error, response } = await listCustomerActiveEntitlements({
-    client,
+    client: client2,
     path: { project_id: projectId, customer_id: familyId }
   });
   if (error) {
@@ -7510,15 +8595,259 @@ var purchases_default = router14;
 // server/routes/legal.ts
 init_config();
 import { Router as Router15 } from "express";
+
+// shared/privacy-policy-content.ts
+var p = (text2) => ({ type: "p", text: text2 });
+var li = (text2) => ({ type: "li", text: text2 });
+var PRIVACY_POLICY_INTRO = `**Versione ${PRIVACY_POLICY_VERSION} \u2014 ${PRIVACY_POLICY_DATE}**`;
+var PRIVACY_POLICY_SECTIONS = [
+  {
+    title: "1. Titolare del Trattamento",
+    blocks: [
+      p("Il titolare del trattamento dei dati personali \xE8 **FamilySync**."),
+      p("Per qualsiasi domanda o richiesta relativa alla privacy, all'esercizio dei tuoi diritti o al supporto, puoi contattarci all'unico indirizzo email: assistenza@familysync.it"),
+      p("Sito di riferimento: https://familysync.eu")
+    ]
+  },
+  {
+    title: "2. Dati Raccolti",
+    blocks: [
+      p("FamilySync raccoglie e tratta le seguenti categorie di dati personali, in base alle funzioni che utilizzi:"),
+      li("**Dati di account:** nome, indirizzo email e password. La password non viene mai conservata in chiaro: viene salvata solo una sua rappresentazione irreversibile ottenuta con un algoritmo di hashing robusto, secondo le buone pratiche di settore"),
+      li("**Fascia di et\xE0 (obbligatoria):** in fase di registrazione ti chiediamo di indicare una fascia di et\xE0 (14-17 anni oppure 18 anni o pi\xF9). Non raccogliamo la data di nascita. Questa informazione serve solo ad applicare le tutele previste per i minori"),
+      li("**Verifica e sicurezza account:** token di verifica email (a scadenza temporale) e token di reset password (conservati in forma hashata), stato di verifica"),
+      li("**Registro dei consensi:** data, tipo di consenso (es. Termini, funzioni AI), stato (prestato/revocato) e versione della policy in vigore al momento"),
+      li("**Dati familiari:** nomi dei membri, ruoli nel gruppo, inviti familiari e relativi token di invito (conservati in forma hashata)"),
+      li("**Eventi calendario:** titoli, date, orari, luoghi e descrizioni degli eventi condivisi"),
+      li("**Liste della spesa e dispensa:** nomi delle liste, articoli inseriti e relativo storico"),
+      li("**Faccende domestiche:** attivit\xE0 assegnate, stato di completamento, punti accumulati"),
+      li("**Ricette e piani pasti:** ricette, ingredienti e pianificazioni settimanali"),
+      li("**Chat e messaggi:** contenuti dei messaggi scambiati tra i membri della famiglia ed eventuali file/immagini allegati"),
+      li("**Allegati caricati dagli utenti:** immagini e documenti caricati nell'app (ad esempio nelle chat o associati alle bollette)"),
+      li("**Bollette, scadenze e budget:** titoli, categorie, importi, date di scadenza, fornitori, intestatari, responsabili, note, ricevute, allegati e spese registrate manualmente"),
+      li("**Ripartizioni e pagamenti:** suddivisione degli importi tra i membri e storico dei pagamenti registrati manualmente"),
+      li("**Registrazioni vocali (facoltative):** se usi la dettatura vocale, l'audio viene inviato al fornitore AI (OpenAI) per la sola trascrizione e non viene conservato sui nostri server"),
+      li("**Notifiche:** preferenze di notifica e, se attive le notifiche push, il token push del dispositivo"),
+      li("**Dati tecnici:** informazioni sul dispositivo, log di accesso e di sistema, indirizzo IP (se raccolto dai log), token di sessione")
+    ]
+  },
+  {
+    title: "3. Dati Inseriti da Altri Membri della Famiglia",
+    blocks: [
+      p("FamilySync \xE8 un'app condivisa: alcune informazioni che ti riguardano possono essere inserite da altri membri della tua famiglia (ad esempio il tuo soprannome, eventi che ti coinvolgono, faccende assegnate a te, ripartizioni di spesa o messaggi che ti citano)."),
+      p("Chi inserisce dati relativi ad altre persone \xE8 responsabile di farlo in modo corretto e rispettoso. Se ritieni che un dato che ti riguarda sia inesatto o non debba essere presente, puoi modificarlo (dove previsto), chiedere al membro che lo ha inserito di correggerlo, oppure scriverci a assistenza@familysync.it.")
+    ]
+  },
+  {
+    title: "4. Finalit\xE0 e Basi Giuridiche del Trattamento",
+    blocks: [
+      li("Erogazione del servizio (calendario, liste, faccende, chat, bollette, budget, ricette, sincronizzazione) \u2192 esecuzione del contratto (art. 6.1.b GDPR)"),
+      li("Comunicazioni di servizio (verifica email, reset password, inviti) \u2192 esecuzione del contratto (art. 6.1.b)"),
+      li("Funzionalit\xE0 di intelligenza artificiale \u2192 consenso esplicito (art. 6.1.a), revocabile in qualsiasi momento"),
+      li("Sicurezza, prevenzione abusi, rate limiting, log tecnici \u2192 legittimo interesse (art. 6.1.f) alla sicurezza del servizio"),
+      li("Analytics interna temporanea di test (eventi tecnici minimi) \u2192 legittimo interesse (art. 6.1.f) al miglioramento e alla stabilit\xE0 del servizio"),
+      li("Adempimento di obblighi di legge \u2192 obbligo legale (art. 6.1.c)")
+    ]
+  },
+  {
+    title: "5. Bollette e Scadenze",
+    blocks: [
+      p("FamilySync consente di registrare bollette e scadenze domestiche, inclusi importi, date di scadenza, fornitori, intestatari, note, allegati e ricevute, oltre alla ripartizione delle spese tra i membri della famiglia e allo storico dei pagamenti."),
+      p(`**Importante:** l'app NON effettua pagamenti reali, NON elabora transazioni verso terzi, NON salva carte di credito, NON salva codici CVV e NON salva coordinate bancarie (IBAN). Lo stato "pagato" e i relativi importi sono registrazioni inserite manualmente dagli utenti a scopo organizzativo.`)
+    ]
+  },
+  {
+    title: "6. Email Transazionali",
+    blocks: [
+      p("FamilySync invia email transazionali tramite il fornitore **Resend** per: verifica dell'account, inviti familiari, reset della password e comunicazioni essenziali relative al servizio."),
+      p("Le email **non contengono mai la password** dell'utente. I link di verifica e reset hanno una durata limitata nel tempo (vedi sezione Conservazione dei Dati).")
+    ]
+  },
+  {
+    title: "7. Funzionalit\xE0 di Intelligenza Artificiale (AI)",
+    blocks: [
+      p("FamilySync offre funzionalit\xE0 facoltative basate sull'intelligenza artificiale tramite il fornitore **OpenAI**. Le funzioni AI sono **disattivate finch\xE9 non le attivi tu**: il consenso non \xE8 mai preselezionato, viene richiesto in fase di registrazione oppure pu\xF2 essere prestato in seguito dalle impostazioni, ed \xE8 revocabile in qualsiasi momento (Famiglia \u2192 Centro Privacy)."),
+      p("Le funzioni AI disponibili e i dati inviati al fornitore per ciascuna sono:"),
+      li("**Suggerimenti spesa:** numero di membri (senza nomi), articoli recenti delle liste, contenuto della dispensa, titoli degli eventi in programma, stagione corrente"),
+      li('**Ottimizzazione faccende:** punti accumulati, titoli e durata stimata delle faccende; i membri vengono indicati con alias temporanei (es. "Membro 1") e i soprannomi reali non vengono inviati'),
+      li("**Insights familiari e consigli di risparmio:** conteggi aggregati (eventi, faccende, spese per categoria), soprannome del miglior contributore, punti settimanali"),
+      li("**Ricette e piani pasti:** preferenze alimentari indicate, eventuali note libere sui pasti, ingredienti disponibili in dispensa, titoli e descrizioni delle ricette. Le **allergie e intolleranze** vengono incluse **solo se hai prestato il consenso specifico e separato** descritto pi\xF9 sotto; senza quel consenso vengono rimosse dai dati inviati e i suggerimenti non ne terranno conto"),
+      li("**Compilazione assistita (eventi, faccende, bollette, spese):** il testo libero che detti o scrivi per farti aiutare a compilare i campi (pu\xF2 includere testi relativi a eventi, faccende, bollette e spese, importi e categorie di spesa). Per riconoscere l'assegnatario di un evento o di una faccenda pu\xF2 essere inviato anche il soprannome del membro citato nel testo"),
+      li("**Trascrizione vocale:** la registrazione audio della tua voce, inviata al solo scopo di trascriverla in testo; l'audio non viene conservato sui nostri server"),
+      li("**Foto ricette AI:** il titolo della ricetta, usato per generare un'immagine illustrativa del piatto"),
+      p("**Dati che non inviamo mai per progettazione al fornitore AI:** password, indirizzi email degli account, identificativi interni (ID utente, ID famiglia), dati di pagamento, allegati e ricevute. I contenuti gi\xE0 archiviati nella chat non vengono inviati automaticamente all'AI. Attenzione per\xF2: i **campi di testo libero** (testi di eventi, faccende, bollette, spese, note sui pasti, dettatura vocale) vengono inviati cos\xEC come li scrivi o li detti; se vi inserisci tu stesso/a informazioni come indirizzi, numeri di telefono o dati di terzi, queste verranno trasmesse insieme al resto del testo."),
+      p("**Avvertenza:** non inserire nei campi di testo libero dati sanitari non necessari, documenti di identit\xE0, credenziali, dati bancari, indirizzi, numeri di telefono o informazioni di terzi non necessarie. Un avviso equivalente \xE8 mostrato nell'app vicino alle funzioni AI."),
+      p("**Allergie e intolleranze (consenso separato):** le allergie e intolleranze alimentari possono costituire dati relativi alla salute (art. 9 GDPR). Per questo il loro invio alle funzioni AI richiede un **consenso specifico, facoltativo, esplicito e mai preselezionato**, distinto dal consenso AI generale, che puoi prestare e revocare in qualsiasi momento dal Centro Privacy. Il consenso viene registrato con data e versione della policy. Senza questo consenso (o dopo la revoca) le allergie e intolleranze non vengono inviate al fornitore AI e i suggerimenti non ne terranno conto."),
+      p("In base ai termini contrattuali del fornitore applicabili all'uso via API, i dati inviati non vengono utilizzati per l'addestramento dei modelli. Il trattamento \xE8 regolato anche dalla Privacy Policy di OpenAI (https://openai.com/policies/privacy-policy)."),
+      p("I contenuti generati dall'AI sono chiaramente presentati come tali nell'app. Hanno natura indicativa, possono contenere errori e non costituiscono consulenza professionale. FamilySync **non adotta decisioni basate unicamente su trattamenti automatizzati** che producano effetti giuridici o significativi sugli utenti."),
+      p("**Base giuridica:** consenso esplicito dell'utente (art. 6.1.a GDPR), revocabile in qualsiasi momento senza pregiudicare la liceit\xE0 del trattamento precedente.")
+    ]
+  },
+  {
+    title: "8. Minori",
+    blocks: [
+      p("FamilySync \xE8 un'app per il coordinamento familiare, pensata per essere usata dalla famiglia insieme."),
+      li("Per creare un account in autonomia occorre avere **almeno 14 anni** (et\xE0 del consenso digitale in Italia, art. 2-quinquies D.Lgs. 196/2003). La registrazione autonoma di minori di 14 anni non \xE8 consentita e viene bloccata"),
+      li("I minori di 14 anni possono usare l'app solo tramite profili creati e supervisionati da un genitore o tutore che \xE8 membro della famiglia"),
+      li("Per i profili di et\xE0 inferiore ai 14 anni le **funzioni AI non sono disponibili**: il blocco \xE8 applicato dai nostri server e non dipende dalle impostazioni del dispositivo"),
+      li("In fase di registrazione chiediamo solo una fascia di et\xE0, non la data di nascita, in linea con il principio di minimizzazione"),
+      li("Se veniamo a conoscenza di aver raccolto dati di un minore di 14 anni senza il coinvolgimento di un genitore o tutore, provvederemo alla loro cancellazione tempestiva"),
+      p("Un'informativa semplificata per ragazze e ragazzi, con un linguaggio adatto ai pi\xF9 giovani, \xE8 disponibile nell'app (Famiglia \u2192 Centro Privacy) e sul sito alla pagina https://familysync.eu/legal/minori.")
+    ]
+  },
+  {
+    title: "9. Categorie Particolari di Dati (Dati Sensibili)",
+    blocks: [
+      p("FamilySync non richiede e non \xE8 progettata per raccogliere categorie particolari di dati personali (art. 9 GDPR), come dati sulla salute, convinzioni religiose od opinioni politiche."),
+      p('Tuttavia, i campi di testo libero (eventi, note, chat, faccende, liste) potrebbero contenere informazioni di questo tipo se scelte e inserite dagli utenti (ad esempio "visita cardiologica" nel calendario). Questi contenuti restano visibili solo alla famiglia, non vengono usati per altre finalit\xE0 e ti invitiamo a inserirli solo se necessario. Ricorda che, se attivi le funzioni AI, alcuni titoli o testi liberi possono essere inviati al fornitore AI (vedi sezione 7).')
+    ]
+  },
+  {
+    title: "10. Analytics Interna Temporanea (Periodo di Test)",
+    blocks: [
+      p("Durante il periodo di test dell'app pu\xF2 essere attiva una raccolta **interna e temporanea** di eventi tecnici minimi (es. apertura dell'app, schermata visitata, errori tecnici), utile a verificare stabilit\xE0 e funzionamento."),
+      p("Gli eventi analytics sono **dati personali di utilizzo** e possono essere associati a: ID utente, ID famiglia, schermate visitate, funzioni utilizzate, data e ora, piattaforma, versione dell'app ed errori tecnici. Nella dashboard amministrativa l'ID utente pu\xF2 essere collegato all'indirizzo email dell'account."),
+      li("Non contengono il testo di chat, note, eventi, bollette o allegati, n\xE9 password, token o dati di pagamento"),
+      li("I metadati sono filtrati da una lista ristretta di campi tecnici ammessi"),
+      li("Non vengono usati per pubblicit\xE0 n\xE9 per profilazione commerciale e non vengono venduti"),
+      li("Gli eventi sono conservati al massimo **30 giorni** e poi cancellati automaticamente; alla cancellazione dell'account gli eventi associati all'utente vengono eliminati"),
+      li("Sono visibili esclusivamente agli amministratori autorizzati, tramite un accesso protetto lato server; nessun dato \xE8 condiviso con terze parti"),
+      li("Non vengono utilizzati SDK di analytics di terze parti n\xE9 strumenti di tracciamento pubblicitario"),
+      p("**Base giuridica:** legittimo interesse (art. 6.1.f GDPR) al miglioramento e alla stabilit\xE0 del servizio. Puoi opporti scrivendo a assistenza@familysync.it.")
+    ]
+  },
+  {
+    title: "11. Pagamenti e Abbonamenti Premium",
+    blocks: [
+      p("Gli eventuali abbonamenti Premium nell'app mobile sono gestiti tramite gli acquisti in-app degli store, con la gestione degli abbonamenti e dei diritti (entitlements) affidata a **RevenueCat**:"),
+      li("**Apple In-App Purchase / StoreKit** su iOS"),
+      li("**Google Play Billing** su Android"),
+      li("**RevenueCat** per la gestione di abbonamenti, stato dell'abbonamento ed entitlements"),
+      p("I dati di pagamento (carte, ecc.) sono trattati direttamente da Apple o Google secondo le rispettive policy; FamilySync non ha accesso ai dati completi della tua carta.")
+    ]
+  },
+  {
+    title: "12. Notifiche",
+    blocks: [
+      li("**Notifiche locali:** programmate direttamente sul dispositivo (ad esempio i promemoria per le scadenze delle bollette); non richiedono l'invio dei contenuti a server esterni"),
+      li("**Notifiche push remote:** se attivate, possono utilizzare un token push del dispositivo e i servizi di notifica di Expo/Apple/Google per recapitare gli avvisi"),
+      li("**Notifiche push web:** se attivate dal browser, utilizzano il servizio push del browser stesso (Google, Apple, Mozilla o Microsoft) tramite una sottoscrizione revocabile in qualsiasi momento dalle impostazioni del browser")
+    ]
+  },
+  {
+    title: "13. Fornitori e Condivisione con Terze Parti",
+    blocks: [
+      p("Per erogare il servizio ci avvaliamo dei seguenti fornitori, ciascuno per le sole finalit\xE0 indicate:"),
+      li("**Replit, Inc.:** hosting e deploy dell'applicazione e del backend"),
+      li("**Neon, Inc. (PostgreSQL):** database in cui sono archiviati i dati"),
+      li("**Resend (Plus Five Five, Inc.):** invio di email transazionali"),
+      li("**OpenAI:** funzioni AI e trascrizione vocale, solo dati minimizzati e solo con il tuo consenso"),
+      li("**RevenueCat, Inc.:** gestione di abbonamenti e acquisti in-app"),
+      li('**Apple e Google:** acquisti in-app, login social ("Accedi con Google" / "Sign in with Apple") e servizi di notifica, secondo le proprie policy'),
+      li("**Servizi di notifica push** (Expo e, per il web, i servizi push del browser di Google/Apple/Mozilla/Microsoft): recapito delle notifiche push, se attive"),
+      p("Quando un fornitore tratta dati personali per conto di FamilySync, il rapporto \xE8 disciplinato, ove richiesto, da un accordo ai sensi dell'articolo 28 GDPR. Alcuni fornitori possono trattare determinati dati come titolari autonomi secondo le rispettive condizioni e informative."),
+      p("Non vendiamo, affittiamo o condividiamo i tuoi dati personali con terze parti per finalit\xE0 di marketing.")
+    ]
+  },
+  {
+    title: "14. Trasferimenti Extra-SEE",
+    blocks: [
+      p("Alcuni fornitori (ad esempio OpenAI, Resend, RevenueCat, Apple, Google o Replit) hanno sede negli Stati Uniti o possono trattare i dati su infrastrutture situate al di fuori dello Spazio Economico Europeo (SEE)."),
+      p("In questi casi i trasferimenti si basano sulle garanzie previste dal GDPR, secondo quanto dichiarato da ciascun fornitore nei propri termini e nelle proprie informative. Puoi chiederci maggiori informazioni sui trasferimenti scrivendo a assistenza@familysync.it.")
+    ]
+  },
+  {
+    title: "15. Conservazione dei Dati",
+    blocks: [
+      li("Dati dell'account \u2192 fino alla cancellazione dell'account"),
+      li("Dati familiari (calendario, liste, faccende, chat, bollette, budget, ricette, allegati) \u2192 fino alla cancellazione della famiglia o dell'account"),
+      li("Token di reset password \u2192 1 ora"),
+      li("Token di verifica email \u2192 6 ore"),
+      li("Token di invito familiare \u2192 72 ore"),
+      li("Sessioni / refresh token \u2192 7 giorni"),
+      li("Eventi di analytics interna di test \u2192 massimo 30 giorni"),
+      li("Registro dei consensi \u2192 per la durata dell'account e per il tempo necessario a dimostrare l'adempimento degli obblighi di legge"),
+      li("Log di sistema \u2192 per il tempo strettamente necessario a finalit\xE0 di sicurezza e diagnostica, secondo le impostazioni tecniche dei fornitori di hosting"),
+      li("Registrazioni vocali per la trascrizione \u2192 non conservate sui nostri server"),
+      p("I dati possono inoltre risiedere temporaneamente nei backup dell'infrastruttura del fornitore di database, gestiti secondo i cicli tecnici di quest'ultimo, e vengono rimossi con la naturale rotazione dei backup.")
+    ]
+  },
+  {
+    title: "16. Cancellazione dell'Account",
+    blocks: [
+      p("Puoi eliminare il tuo account in autonomia e in qualsiasi momento direttamente dall'app, nella scheda **Famiglia** \u2192 **Elimina account**, confermando con la tua password. In alternativa puoi richiedere la cancellazione scrivendo a assistenza@familysync.it."),
+      p("Cosa succede in concreto:"),
+      li("Il tuo profilo personale viene **reso anonimo**: nome ed email vengono rimossi e sostituiti, la password e i token di accesso vengono eliminati e non \xE8 pi\xF9 possibile accedere all'account"),
+      li("Se sei l'**unico membro** di una famiglia, quella famiglia e tutti i suoi dati (calendario, liste, faccende, chat, allegati, bollette e ricevute) vengono **eliminati definitivamente**, inclusi i file fisici allegati"),
+      li('Se la famiglia ha **altri membri**, i contenuti che hai condiviso restano visibili agli altri in forma anonima (autore mostrato come "Utente eliminato"): questo tutela la continuit\xE0 dei dati condivisi della famiglia'),
+      p("L'eliminazione \xE8 definitiva e irreversibile. Alcuni dati possono essere conservati per il tempo necessario ad adempiere a obblighi di legge. L'eliminazione dell'account non annulla automaticamente eventuali abbonamenti Premium, che vanno gestiti dallo store (Apple o Google). Maggiori dettagli alla pagina https://familysync.eu/legal/delete-account.")
+    ]
+  },
+  {
+    title: "17. Diritti dell'Utente",
+    blocks: [
+      p("In conformit\xE0 con il GDPR (artt. 15-22), hai il diritto di:"),
+      li("**Accesso:** richiedere una copia dei tuoi dati personali"),
+      li("**Rettifica:** correggere dati inesatti o incompleti"),
+      li("**Cancellazione:** richiedere la cancellazione dei tuoi dati"),
+      li("**Portabilit\xE0:** ricevere i tuoi dati in un formato strutturato, di uso comune e leggibile da dispositivo automatico"),
+      li("**Opposizione:** opporti ai trattamenti basati sul legittimo interesse (ad esempio l'analytics interna di test), per motivi connessi alla tua situazione particolare"),
+      li("**Limitazione:** chiedere la limitazione del trattamento dei tuoi dati"),
+      li("**Revoca del consenso:** revocare in qualsiasi momento i consensi prestati (ad esempio per le funzioni AI, dal Centro Privacy nell'app), senza pregiudicare la liceit\xE0 del trattamento precedente"),
+      li("**Reclamo:** proporre reclamo al Garante per la protezione dei dati personali (www.garanteprivacy.it)"),
+      p("Per esercitare questi diritti scrivi a assistenza@familysync.it. Per proteggerti, prima di dare seguito a una richiesta potremmo doverti chiedere elementi per verificare la tua identit\xE0. Rispondiamo entro un mese dalla richiesta, prorogabile di due mesi nei casi complessi previsti dal GDPR. L'esportazione dei dati viene fornita tramite il canale email di assistenza.")
+    ]
+  },
+  {
+    title: "18. Violazioni dei Dati (Data Breach)",
+    blocks: [
+      p("In caso di violazione dei dati personali che presenti un rischio per i diritti e le libert\xE0 degli utenti, notificheremo la violazione al Garante per la protezione dei dati personali **entro 72 ore** dal momento in cui ne veniamo a conoscenza, come previsto dall'art. 33 GDPR."),
+      p("Se la violazione presenta un rischio elevato per te, te ne daremo comunicazione senza ingiustificato ritardo (art. 34 GDPR), indicando la natura della violazione e le misure adottate.")
+    ]
+  },
+  {
+    title: "19. Cookie e Archiviazione Locale",
+    blocks: [
+      p("FamilySync **non utilizza cookie di profilazione n\xE9 strumenti di tracciamento pubblicitario**, n\xE9 su mobile n\xE9 su web."),
+      li("**App mobile:** i dati di sessione (token di accesso) e alcune preferenze sono salvati nella memoria locale del dispositivo per mantenerti collegato e far funzionare la modalit\xE0 offline"),
+      li("**Versione web:** il browser salva i dati di sessione e le preferenze nella memoria locale (localStorage), una tecnologia strettamente necessaria al funzionamento del servizio; non vengono usati cookie di terze parti"),
+      li("Eliminando i dati del sito dal browser o disinstallando l'app, questi dati locali vengono rimossi")
+    ]
+  },
+  {
+    title: "20. Sicurezza",
+    blocks: [
+      li("Password conservate esclusivamente in forma hashata con algoritmi robusti e mai in chiaro"),
+      li("Comunicazioni protette tramite protocollo HTTPS/TLS"),
+      li("Autenticazione basata su token a scadenza temporale"),
+      li("Token sensibili (verifica, reset, inviti) conservati solo in forma hashata"),
+      li("Rate limiting e protezioni contro gli abusi delle API"),
+      li("Header di sicurezza HTTP e controlli di accesso per famiglia")
+    ]
+  },
+  {
+    title: "21. Modifiche alla Privacy Policy",
+    blocks: [
+      p(`Questa \xE8 la versione ${PRIVACY_POLICY_VERSION} della Privacy Policy. Potremo aggiornarla in futuro: in caso di modifiche rilevanti lo comunicheremo tramite l'applicazione e/o via email, indicando la nuova versione e la data. Ti invitiamo a consultare periodicamente questa pagina.`)
+    ]
+  },
+  {
+    title: "22. Contatti",
+    blocks: [
+      p("Per qualsiasi domanda o richiesta relativa a questa Privacy Policy, puoi contattarci all'unico indirizzo:"),
+      p("assistenza@familysync.it")
+    ]
+  }
+];
+
+// server/routes/legal.ts
 var router15 = Router15();
-var LAST_UPDATED = "30 giugno 2026";
+var LAST_UPDATED = PRIVACY_POLICY_DATE;
+var TERMS_DATE = "30 giugno 2026";
 var APP_NAME = "FamilySync";
-var OWNER = "Marino Pizzuti / FamilySync";
+var OWNER = "FamilySync";
 var CONTACT_EMAIL = "assistenza@familysync.it";
-function getBaseUrl(req) {
-  return config.getBaseUrl(req);
-}
-function htmlWrapper(title, body) {
+function htmlWrapper(title, body, lastUpdated = LAST_UPDATED) {
   return `<!DOCTYPE html>
 <html lang="it">
 <head>
@@ -7595,155 +8924,87 @@ function htmlWrapper(title, body) {
   </div>
   <div class="content">
     ${body}
-    <p class="update-date">Ultimo aggiornamento: ${LAST_UPDATED}</p>
+    <p class="update-date">Ultimo aggiornamento: ${lastUpdated}</p>
   </div>
   <div class="footer">&copy; 2026 ${OWNER}. Tutti i diritti riservati.</div>
 </body>
 </html>`;
 }
+function inlineHtml(text2) {
+  let out = text2.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  out = out.replace(/(https?:\/\/[^\s)]+)/g, '<a href="$1" target="_blank">$1</a>');
+  out = out.replace(/(^|[\s:(])((?:[a-zA-Z0-9._%+-]+)@(?:[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}))/g, '$1<a href="mailto:$2">$2</a>');
+  out = out.replace(/(^|[\s(])(www\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '$1<a href="https://$2" target="_blank">$2</a>');
+  return out;
+}
+function renderPolicyBlocks(blocks2) {
+  const parts = [];
+  let listItems = [];
+  const flush = () => {
+    if (listItems.length > 0) {
+      parts.push(`<ul>${listItems.join("")}</ul>`);
+      listItems = [];
+    }
+  };
+  for (const block of blocks2) {
+    if (block.type === "li") {
+      listItems.push(`<li>${inlineHtml(block.text)}</li>`);
+    } else {
+      flush();
+      parts.push(`<p>${inlineHtml(block.text)}</p>`);
+    }
+  }
+  flush();
+  return parts.join("\n    ");
+}
 router15.get("/privacy", (_req, res) => {
+  const sectionsHtml = PRIVACY_POLICY_SECTIONS.map(
+    (section) => `<h2>${inlineHtml(section.title)}</h2>
+    ${renderPolicyBlocks(section.blocks)}`
+  ).join("\n\n    ");
   const body = `
-    <h2>1. Titolare del Trattamento</h2>
-    <p>Il titolare del trattamento dei dati personali \xE8 <strong>FamilySync</strong>.</p>
-    <p>Per qualsiasi domanda o richiesta relativa alla privacy, all'esercizio dei tuoi diritti o al supporto, puoi contattarci all'unico indirizzo email: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
-    <p>Sito di riferimento: <a href="https://familysync.eu" target="_blank">https://familysync.eu</a></p>
+    <p>${inlineHtml(PRIVACY_POLICY_INTRO)}</p>
 
-    <h2>2. Dati Raccolti</h2>
-    <p>${APP_NAME} raccoglie e tratta le seguenti categorie di dati personali, in base alle funzioni che utilizzi:</p>
-    <ul>
-      <li><strong>Dati di account:</strong> nome, indirizzo email e password (conservata in forma crittografata con hashing, mai in chiaro)</li>
-      <li><strong>Verifica e sicurezza account:</strong> token di verifica email (a scadenza temporale) e token di reset password (conservati in forma hashata), stato di verifica</li>
-      <li><strong>Dati familiari:</strong> nomi dei membri, ruoli nel gruppo, inviti familiari e relativi token di invito (conservati in forma hashata)</li>
-      <li><strong>Eventi calendario:</strong> titoli, date, orari, luoghi e descrizioni degli eventi condivisi</li>
-      <li><strong>Liste della spesa:</strong> nomi delle liste, articoli inseriti e relativo storico</li>
-      <li><strong>Faccende domestiche:</strong> attivita assegnate, stato di completamento, punti accumulati</li>
-      <li><strong>Chat e messaggi:</strong> contenuti dei messaggi scambiati tra i membri della famiglia ed eventuali file/immagini allegati</li>
-      <li><strong>Allegati caricati dagli utenti:</strong> immagini e documenti caricati nell'app (ad esempio nelle chat o associati alle bollette)</li>
-      <li><strong>Bollette e scadenze:</strong> titoli, categorie, importi, date di scadenza, fornitori, intestatari, responsabili, note, ricevute e allegati</li>
-      <li><strong>Ripartizioni e pagamenti:</strong> suddivisione degli importi tra i membri e storico dei pagamenti registrati manualmente</li>
-      <li><strong>Notifiche:</strong> preferenze di notifica e, se attive le notifiche push, il token push del dispositivo</li>
-      <li><strong>Dati tecnici:</strong> informazioni sul dispositivo, log di accesso e di sistema, indirizzo IP (se raccolto dai log), token di sessione</li>
-    </ul>
-
-    <h2>3. Bollette e Scadenze</h2>
-    <p>${APP_NAME} consente di registrare bollette e scadenze domestiche, inclusi importi, date di scadenza, fornitori, intestatari, note, allegati e ricevute, oltre alla ripartizione delle spese tra i membri della famiglia e allo storico dei pagamenti.</p>
-    <p><strong>Importante:</strong> l'app NON effettua pagamenti reali, NON elabora transazioni verso terzi, NON salva carte di credito, NON salva codici CVV e NON salva coordinate bancarie (IBAN). Lo stato "pagato" e i relativi importi sono registrazioni inserite manualmente dagli utenti a scopo organizzativo.</p>
-
-    <h2>4. Finalita del Trattamento</h2>
-    <p>I dati vengono raccolti e utilizzati per le seguenti finalita:</p>
-    <ul>
-      <li><strong>Erogazione del servizio:</strong> sincronizzazione familiare, gestione di calendario, liste della spesa, faccende, chat, bollette e scadenze</li>
-      <li><strong>Comunicazioni di servizio:</strong> invio di email di verifica account, reset password, inviti familiari e comunicazioni essenziali</li>
-      <li><strong>Notifiche:</strong> promemoria locali (ad esempio scadenze bollette) ed eventuali notifiche push remote</li>
-      <li><strong>Suggerimenti intelligenti:</strong> generazione di consigli tramite intelligenza artificiale (funzionalita opzionale)</li>
-      <li><strong>Miglioramento del servizio:</strong> analisi aggregate per migliorare le funzionalita dell'applicazione</li>
-      <li><strong>Supporto tecnico e sicurezza:</strong> assistenza, prevenzione abusi e protezione degli account</li>
-    </ul>
-
-    <h2>5. Email Transazionali</h2>
-    <p>${APP_NAME} invia email transazionali tramite il fornitore <strong>Resend</strong> per le seguenti finalita:</p>
-    <ul>
-      <li>verifica dell'account;</li>
-      <li>inviti familiari;</li>
-      <li>reset della password;</li>
-      <li>comunicazioni essenziali relative al servizio.</li>
-    </ul>
-    <p>Le email <strong>non contengono mai la password</strong> dell'utente. I link di verifica e reset hanno una durata limitata nel tempo (vedi sezione Conservazione dei Dati).</p>
-
-    <h2>6. Funzionalita di Intelligenza Artificiale (AI)</h2>
-    <p>${APP_NAME} offre funzionalita opzionali basate sull'intelligenza artificiale tramite il fornitore <strong>OpenAI</strong>. L'uso e facoltativo, soggetto al tuo consenso e gestito tramite impostazioni e limiti di utilizzo (quote) dell'app; puo essere attivato o disattivato in qualsiasi momento.</p>
-    <p><strong>I dati inviati a OpenAI sono minimizzati.</strong> Quando le funzioni AI sono attive vengono inviati, ad esempio:</p>
-    <ul>
-      <li><strong>Suggerimenti spesa:</strong> numero di membri (senza nomi), nomi dei prodotti recenti, titoli degli eventi in programma, stagione corrente</li>
-      <li><strong>Ottimizzazione faccende:</strong> soprannomi dei membri, punti accumulati, titoli e durata stimata delle faccende</li>
-      <li><strong>Insights familiari:</strong> conteggi aggregati (eventi, faccende completate/in sospeso), soprannome del miglior contributore, punti settimanali</li>
-    </ul>
-    <p><strong>Dati NON inviati a OpenAI:</strong> password, indirizzi email, dati di pagamento, allegati, ricevute, contenuti delle chat, indirizzi fisici o numeri di telefono.</p>
-    <p>I dati inviati tramite l'API di OpenAI non vengono utilizzati per l'addestramento dei modelli, salvo diversa configurazione o opt-in esplicito. Il trattamento e regolato anche dalla <a href="https://openai.com/policies/privacy-policy" target="_blank">Privacy Policy di OpenAI</a>.</p>
-    <p><strong>Base giuridica:</strong> consenso esplicito dell'utente, revocabile in qualsiasi momento disattivando la funzionalita nelle impostazioni.</p>
-
-    <h2>7. Pagamenti e Abbonamenti Premium</h2>
-    <p>Gli eventuali abbonamenti Premium nell'app mobile sono gestiti tramite gli acquisti in-app degli store, con la gestione degli abbonamenti e dei diritti (entitlements) affidata a <strong>RevenueCat</strong>:</p>
-    <ul>
-      <li><strong>Apple In-App Purchase / StoreKit</strong> su iOS;</li>
-      <li><strong>Google Play Billing</strong> su Android;</li>
-      <li><strong>RevenueCat</strong> per la gestione di abbonamenti, stato dell'abbonamento ed entitlements.</li>
-    </ul>
-    <p>I dati di pagamento (carte, ecc.) sono trattati direttamente da Apple o Google secondo le rispettive policy; ${APP_NAME} non ha accesso ai dati completi della tua carta.</p>
-
-    <h2>8. Notifiche</h2>
-    <ul>
-      <li><strong>Notifiche locali:</strong> programmate direttamente sul dispositivo (ad esempio i promemoria per le scadenze delle bollette); non richiedono l'invio dei contenuti a server esterni.</li>
-      <li><strong>Notifiche push remote:</strong> se attivate, possono utilizzare un token push del dispositivo e i servizi di notifica di Expo/Apple/Google per recapitare gli avvisi.</li>
-    </ul>
-
-    <h2>9. Condivisione con Terze Parti e Fornitori</h2>
-    <p>I dati possono essere trattati dai seguenti fornitori, esclusivamente per le finalita indicate:</p>
-    <ul>
-      <li><strong>Replit:</strong> hosting e deploy dell'applicazione e del backend</li>
-      <li><strong>Neon / PostgreSQL:</strong> database in cui sono archiviati i dati</li>
-      <li><strong>Resend:</strong> invio di email transazionali</li>
-      <li><strong>OpenAI:</strong> generazione di suggerimenti AI (solo dati minimizzati, funzione opzionale)</li>
-      <li><strong>RevenueCat, Apple, Google:</strong> gestione di abbonamenti e acquisti in-app</li>
-      <li><strong>Servizi di notifica push</strong> (Expo/Apple/Google): recapito delle notifiche push, se attive</li>
-    </ul>
-    <p>Non vendiamo, affittiamo o condividiamo i tuoi dati personali con terze parti per finalita di marketing.</p>
-
-    <h2>10. Trasferimenti Extra-UE</h2>
-    <p>Alcuni fornitori (ad esempio OpenAI, Resend, RevenueCat, Apple, Google o Replit) possono trattare i dati su infrastrutture situate al di fuori dello Spazio Economico Europeo (SEE). In tali casi, i trasferimenti avvengono adottando garanzie adeguate ove applicabile (ad esempio le Clausole Contrattuali Standard della Commissione Europea o meccanismi equivalenti).</p>
-
-    <h2>11. Conservazione dei Dati</h2>
-    <ul>
-      <li>I dati dell'account sono conservati fino alla cancellazione dell'account</li>
-      <li>I dati familiari (calendario, liste, faccende, chat, bollette, allegati, ricevute) sono conservati fino alla cancellazione della famiglia o dell'account</li>
-      <li>I token di reset password scadono dopo <strong>1 ora</strong></li>
-      <li>I token di verifica email scadono dopo <strong>6 ore</strong></li>
-      <li>I token di invito familiare scadono dopo <strong>72 ore</strong>; gli inviti scaduti o gia utilizzati non sono piu validi</li>
-      <li>Le sessioni / refresh token scadono dopo <strong>7 giorni</strong></li>
-      <li>I log di sistema sono conservati per il tempo necessario, fino a un massimo di 12 mesi</li>
-    </ul>
-
-    <h2>12. Sicurezza</h2>
-    <ul>
-      <li>Crittografia delle password con algoritmo bcrypt</li>
-      <li>Comunicazioni protette tramite protocollo HTTPS/TLS</li>
-      <li>Autenticazione basata su token JWT con scadenza temporale</li>
-      <li>Rate limiting per prevenire abusi delle API</li>
-      <li>Headers di sicurezza HTTP (Helmet)</li>
-    </ul>
-
-    <h2>13. Diritti dell'Utente</h2>
-    <p>In conformita con la normativa vigente (incluso il GDPR), hai il diritto di:</p>
-    <ul>
-      <li><strong>Accesso:</strong> richiedere una copia dei tuoi dati personali</li>
-      <li><strong>Rettifica:</strong> correggere dati inesatti o incompleti</li>
-      <li><strong>Cancellazione:</strong> richiedere la cancellazione dei tuoi dati</li>
-      <li><strong>Portabilita:</strong> ricevere i tuoi dati in formato strutturato e leggibile</li>
-      <li><strong>Opposizione:</strong> opporti al trattamento in determinate circostanze</li>
-      <li><strong>Limitazione:</strong> chiedere la limitazione del trattamento dei tuoi dati</li>
-      <li><strong>Revoca del consenso:</strong> revocare in qualsiasi momento i consensi prestati (ad esempio per le funzioni AI), senza pregiudicare la liceita del trattamento precedente</li>
-      <li><strong>Reclamo:</strong> proporre reclamo al Garante per la protezione dei dati personali</li>
-    </ul>
-    <p>Per esercitare questi diritti, scrivi a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
-
-    <h2>14. Cancellazione dell'Account</h2>
-    <p>Puoi eliminare il tuo account in autonomia e in qualsiasi momento direttamente dall'app, nella scheda <strong>Famiglia</strong> &rarr; <strong>Elimina account</strong>, confermando con la tua password. In alternativa puoi richiedere la cancellazione scrivendo a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
-    <p>Con l'eliminazione, il tuo profilo personale viene reso anonimo e le tue informazioni di contatto vengono rimosse. Se sei l'unico membro di una famiglia, quella famiglia e tutti i suoi dati (calendario, liste, faccende, chat, allegati, bollette e ricevute) vengono eliminati. I contenuti condivisi in famiglie con altri membri possono restare visibili agli altri, ma in forma anonima (autore mostrato come "Utente eliminato").</p>
-    <p>L'eliminazione e definitiva e irreversibile. Alcuni dati possono essere conservati per il tempo necessario ad adempiere a obblighi di legge. L'eliminazione dell'account non annulla automaticamente eventuali abbonamenti Premium, che vanno gestiti dallo store (Apple o Google). Maggiori dettagli sono disponibili alla pagina dedicata all'<a href="${getBaseUrl(_req)}/legal/delete-account">eliminazione dell'account</a>.</p>
-
-    <h2>15. Minori</h2>
-    <p>${APP_NAME} e un'applicazione per il coordinamento familiare. L'utilizzo da parte di minori di 14 anni e consentito esclusivamente sotto la supervisione e con il consenso di un genitore o tutore legale che sia gia membro della famiglia nell'applicazione.</p>
-    <p>Non raccogliamo consapevolmente dati personali di minori di 14 anni senza il consenso verificabile di un genitore o tutore. Se veniamo a conoscenza di aver raccolto dati di un minore senza il consenso appropriato, provvederemo alla loro cancellazione tempestiva.</p>
-
-    <h2>16. Modifiche alla Privacy Policy</h2>
-    <p>Ci riserviamo il diritto di aggiornare questa Privacy Policy in qualsiasi momento. Le modifiche saranno comunicate tramite l'applicazione e/o via email. L'uso continuato del servizio dopo la pubblicazione delle modifiche costituisce accettazione della nuova Privacy Policy.</p>
-
-    <h2>17. Contatti</h2>
-    <p>Per qualsiasi domanda o richiesta relativa a questa Privacy Policy, puoi contattarci all'unico indirizzo:</p>
-    <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+    ${sectionsHtml}
   `;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(htmlWrapper("Privacy Policy", body));
+});
+router15.get("/minori", (_req, res) => {
+  const body = `
+    <p><strong>Informativa privacy semplificata per ragazze e ragazzi</strong></p>
+
+    <h2>Ciao!</h2>
+    <p>Questa pagina spiega in modo semplice come ${APP_NAME} usa le tue informazioni. La versione completa (piu' lunga e dettagliata) e' nella <a href="/legal/privacy">Privacy Policy</a>, che puo' leggerti anche un adulto della tua famiglia.</p>
+
+    <h2>Cosa sappiamo di te</h2>
+    <ul>
+      <li>Il tuo nome (o soprannome) e la tua email, che servono per farti entrare nell'app</li>
+      <li>Le cose che tu e la tua famiglia scrivete nell'app: eventi del calendario, liste della spesa, faccende, messaggi in chat</li>
+    </ul>
+
+    <h2>Chi vede le tue cose</h2>
+    <p>Quello che scrivi nell'app lo vedono <strong>solo i membri della tua famiglia</strong>. Non lo mostriamo ad altre persone e non lo usiamo per pubblicita'.</p>
+
+    <h2>Se hai meno di 14 anni</h2>
+    <ul>
+      <li>Non puoi creare un account da solo/a: serve un genitore o un adulto che si occupa di te</li>
+      <li>Il tuo profilo viene creato e controllato da un adulto della famiglia</li>
+      <li>Le funzioni di intelligenza artificiale (i "suggerimenti automatici") <strong>non sono disponibili</strong> per te</li>
+    </ul>
+
+    <h2>Consigli utili</h2>
+    <ul>
+      <li>Non scrivere in chat o nelle note informazioni molto personali (es. dati sulla salute) se non serve</li>
+      <li>Se qualcosa ti sembra strano o ti mette a disagio, parlane subito con un genitore</li>
+      <li>Tu e i tuoi genitori potete chiedere di correggere o cancellare le tue informazioni quando volete</li>
+    </ul>
+
+    <h2>Domande?</h2>
+    <p>Un adulto della tua famiglia puo' scriverci a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
+  `;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(htmlWrapper("Privacy per Ragazze e Ragazzi", body));
 });
 router15.get("/terms", (_req, res) => {
   const body = `
@@ -7893,7 +9154,7 @@ router15.get("/terms", (_req, res) => {
     <p>Nessuna disposizione dei presenti Termini esclude o limita la responsabilit\xE0 nei casi in cui ci\xF2 non sia consentito dalla legge, inclusi i diritti inderogabili riconosciuti ai consumatori.</p>
 
     <h2>16. Propriet\xE0 Intellettuale</h2>
-    <p>Tutti i diritti di propriet\xE0 intellettuale relativi a ${APP_NAME}, inclusi design, codice, marchi e contenuti originali, sono di propriet\xE0 esclusiva di ${OWNER}. L'utente non acquisisce alcun diritto di propriet\xE0 intellettuale sull'applicazione. Restano salvi i diritti dell'utente sui propri contenuti (UGC) e la licenza limitata descritta alla sezione 6.</p>
+    <p>Tutti i diritti di propriet\xE0 intellettuale relativi a ${APP_NAME}, inclusi design, codice, marchi e contenuti originali, sono di propriet\xE0 esclusiva di FamilySync. L'utente non acquisisce alcun diritto di propriet\xE0 intellettuale sull'applicazione. Restano salvi i diritti dell'utente sui propri contenuti (UGC) e la licenza limitata descritta alla sezione 6.</p>
 
     <h2>17. Legge Applicabile e Foro Competente</h2>
     <p>I presenti Termini d'Uso sono regolati dalla legge italiana. Per qualsiasi controversia derivante dall'utilizzo del servizio, sar\xE0 competente il Foro del luogo di residenza del consumatore, in conformit\xE0 con il Codice del Consumo italiano.</p>
@@ -7906,7 +9167,7 @@ router15.get("/terms", (_req, res) => {
     <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
   `;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(htmlWrapper("Termini d'Uso", body));
+  res.send(htmlWrapper("Termini d'Uso", body, TERMS_DATE));
 });
 router15.get("/delete-account", (_req, res) => {
   const body = `
@@ -7937,7 +9198,7 @@ router15.get("/delete-account", (_req, res) => {
     <h2>4. Quali dati possono essere conservati</h2>
     <ul>
       <li>I contenuti che hai condiviso in famiglie con altri membri (ad esempio eventi o messaggi) possono restare visibili agli altri membri, ma senza il tuo nome (autore mostrato come "Utente eliminato")</li>
-      <li>Alcuni dati possono essere conservati per il tempo necessario ad adempiere a obblighi di legge, contabili o di sicurezza, e i log di sistema fino a un massimo di 12 mesi</li>
+      <li>Alcuni dati possono essere conservati per il tempo necessario ad adempiere a obblighi di legge, contabili o di sicurezza; i log di sistema sono conservati per il tempo strettamente necessario a finalit\xE0 di sicurezza e diagnostica, secondo le impostazioni tecniche dei fornitori di hosting</li>
     </ul>
 
     <h2>5. Abbonamenti Premium</h2>
@@ -7960,8 +9221,8 @@ var legal_default = router15;
 
 // server/routes/help.ts
 import { Router as Router16 } from "express";
-import * as fs3 from "fs";
-import * as path3 from "path";
+import * as fs4 from "fs";
+import * as path5 from "path";
 var router16 = Router16();
 var APP_NAME2 = "FamilySync";
 var DEVELOPER = "FamilySync Team";
@@ -8121,12 +9382,12 @@ function extractFaqJsonLd(md) {
   const schema = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    "mainEntity": pairs.map((p) => ({
+    "mainEntity": pairs.map((p2) => ({
       "@type": "Question",
-      "name": p.question,
+      "name": p2.question,
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": p.answer
+        "text": p2.answer
       }
     }))
   };
@@ -8293,8 +9554,8 @@ ${faqJsonLd}
 }
 router16.get("/user-guide", (_req, res) => {
   try {
-    const mdPath = path3.resolve(process.cwd(), "docs", "guida-utente.md");
-    const mdContent = fs3.readFileSync(mdPath, "utf-8");
+    const mdPath = path5.resolve(process.cwd(), "docs", "guida-utente.md");
+    const mdContent = fs4.readFileSync(mdPath, "utf-8");
     const bodyHtml = markdownToHtml(mdContent);
     const faqJsonLd = extractFaqJsonLd(mdContent);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -8317,7 +9578,7 @@ init_logger();
 init_websocket();
 import { Router as Router17 } from "express";
 import { z as z14 } from "zod";
-import { eq as eq25, and as and20, desc as desc4 } from "drizzle-orm";
+import { eq as eq25, and as and21, desc as desc4 } from "drizzle-orm";
 var router17 = Router17();
 var createReportSchema = z14.object({
   familyId: z14.string().uuid(),
@@ -8339,29 +9600,29 @@ router17.post("/report", authenticate, async (req, res) => {
       });
     }
     const { familyId, targetType, targetId, reasonCategory, reasonText } = parsed.data;
-    const [membership] = await db.select().from(familyMembers).where(and20(eq25(familyMembers.userId, req.user.userId), eq25(familyMembers.familyId, familyId))).limit(1);
+    const [membership] = await db.select().from(familyMembers).where(and21(eq25(familyMembers.userId, req.user.userId), eq25(familyMembers.familyId, familyId))).limit(1);
     if (!membership) {
       return res.status(403).json({
         error: { code: "NOT_FAMILY_MEMBER", message: "Non fai parte di questa famiglia" }
       });
     }
     if (targetType === "calendar_event") {
-      const [evt] = await db.select({ id: calendarEvents.id }).from(calendarEvents).where(and20(eq25(calendarEvents.id, targetId), eq25(calendarEvents.familyId, familyId))).limit(1);
+      const [evt] = await db.select({ id: calendarEvents.id }).from(calendarEvents).where(and21(eq25(calendarEvents.id, targetId), eq25(calendarEvents.familyId, familyId))).limit(1);
       if (!evt) {
         return res.status(404).json({ error: { code: "NOT_FOUND", message: "Evento non trovato in questa famiglia" } });
       }
     } else if (targetType === "shopping_item") {
-      const itemWithList = await db.select({ itemId: shoppingItems.id }).from(shoppingItems).innerJoin(shoppingLists, eq25(shoppingItems.listId, shoppingLists.id)).where(and20(eq25(shoppingItems.id, targetId), eq25(shoppingLists.familyId, familyId))).limit(1);
+      const itemWithList = await db.select({ itemId: shoppingItems.id }).from(shoppingItems).innerJoin(shoppingLists, eq25(shoppingItems.listId, shoppingLists.id)).where(and21(eq25(shoppingItems.id, targetId), eq25(shoppingLists.familyId, familyId))).limit(1);
       if (itemWithList.length === 0) {
         return res.status(404).json({ error: { code: "NOT_FOUND", message: "Prodotto non trovato in questa famiglia" } });
       }
     } else if (targetType === "chore") {
-      const [ch] = await db.select({ id: chores.id }).from(chores).where(and20(eq25(chores.id, targetId), eq25(chores.familyId, familyId))).limit(1);
+      const [ch] = await db.select({ id: chores.id }).from(chores).where(and21(eq25(chores.id, targetId), eq25(chores.familyId, familyId))).limit(1);
       if (!ch) {
         return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata in questa famiglia" } });
       }
     } else if (targetType === "user") {
-      const [targetMember] = await db.select({ id: familyMembers.id }).from(familyMembers).where(and20(eq25(familyMembers.userId, targetId), eq25(familyMembers.familyId, familyId))).limit(1);
+      const [targetMember] = await db.select({ id: familyMembers.id }).from(familyMembers).where(and21(eq25(familyMembers.userId, targetId), eq25(familyMembers.familyId, familyId))).limit(1);
       if (!targetMember) {
         return res.status(404).json({ error: { code: "NOT_FOUND", message: "Utente non trovato in questa famiglia" } });
       }
@@ -8388,7 +9649,7 @@ router17.get("/reports/:familyId", authenticate, requireFamilyAdmin(), async (re
     if (statusFilter) {
       conditions.push(eq25(reports.status, statusFilter));
     }
-    const reportsList = await db.select().from(reports).where(and20(...conditions)).orderBy(desc4(reports.createdAt));
+    const reportsList = await db.select().from(reports).where(and21(...conditions)).orderBy(desc4(reports.createdAt));
     const enriched = await Promise.all(
       reportsList.map(async (r) => {
         const [reporter] = await db.select({ name: users.name }).from(users).where(eq25(users.id, r.reporterUserId)).limit(1);
@@ -8434,7 +9695,7 @@ router17.post("/block", authenticate, async (req, res) => {
         error: { code: "CANNOT_BLOCK_SELF", message: "Non puoi bloccare te stesso" }
       });
     }
-    const [membership] = await db.select().from(familyMembers).where(and20(eq25(familyMembers.userId, req.user.userId), eq25(familyMembers.familyId, familyId))).limit(1);
+    const [membership] = await db.select().from(familyMembers).where(and21(eq25(familyMembers.userId, req.user.userId), eq25(familyMembers.familyId, familyId))).limit(1);
     if (!membership) {
       return res.status(403).json({
         error: { code: "NOT_FAMILY_MEMBER", message: "Non fai parte di questa famiglia" }
@@ -8461,7 +9722,7 @@ router17.delete("/block/:familyId/:blockedUserId", authenticate, async (req, res
     const familyId = getParam(req, "familyId");
     const blockedUserId = getParam(req, "blockedUserId");
     await db.delete(blocks).where(
-      and20(
+      and21(
         eq25(blocks.familyId, familyId),
         eq25(blocks.blockerUserId, req.user.userId),
         eq25(blocks.blockedUserId, blockedUserId)
@@ -8478,13 +9739,13 @@ router17.delete("/block/:familyId/:blockedUserId", authenticate, async (req, res
 router17.get("/blocks/:familyId", authenticate, async (req, res) => {
   try {
     const familyId = getParam(req, "familyId");
-    const [membership] = await db.select().from(familyMembers).where(and20(eq25(familyMembers.userId, req.user.userId), eq25(familyMembers.familyId, familyId))).limit(1);
+    const [membership] = await db.select().from(familyMembers).where(and21(eq25(familyMembers.userId, req.user.userId), eq25(familyMembers.familyId, familyId))).limit(1);
     if (!membership) {
       return res.status(403).json({
         error: { code: "NOT_FAMILY_MEMBER", message: "Non fai parte di questa famiglia" }
       });
     }
-    const userBlocks = await db.select().from(blocks).where(and20(eq25(blocks.familyId, familyId), eq25(blocks.blockerUserId, req.user.userId)));
+    const userBlocks = await db.select().from(blocks).where(and21(eq25(blocks.familyId, familyId), eq25(blocks.blockerUserId, req.user.userId)));
     const enriched = await Promise.all(
       userBlocks.map(async (b) => {
         const [blockedUser] = await db.select({ name: users.name }).from(users).where(eq25(users.id, b.blockedUserId)).limit(1);
@@ -8504,15 +9765,34 @@ router17.get("/blocks/:familyId", authenticate, async (req, res) => {
 });
 router17.patch("/preferences", authenticate, async (req, res) => {
   try {
-    const { aiFeaturesEnabled } = req.body;
-    if (typeof aiFeaturesEnabled !== "boolean") {
+    const { aiFeaturesEnabled, aiHealthConsent } = req.body;
+    const hasAiToggle = typeof aiFeaturesEnabled === "boolean";
+    const hasHealthToggle = typeof aiHealthConsent === "boolean";
+    if (!hasAiToggle && !hasHealthToggle) {
       return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "aiFeaturesEnabled deve essere un booleano" }
+        error: { code: "VALIDATION_ERROR", message: "Indicare aiFeaturesEnabled e/o aiHealthConsent come booleano" }
       });
     }
-    const [updated] = await db.update(users).set({ aiFeaturesEnabled, updatedAt: /* @__PURE__ */ new Date() }).where(eq25(users.id, req.user.userId)).returning({
-      id: users.id,
-      aiFeaturesEnabled: users.aiFeaturesEnabled
+    const updated = await db.transaction(async (tx) => {
+      const setValues = { updatedAt: /* @__PURE__ */ new Date() };
+      if (hasAiToggle) setValues.aiFeaturesEnabled = aiFeaturesEnabled;
+      if (hasHealthToggle) setValues.aiHealthConsent = aiHealthConsent;
+      if (hasAiToggle && aiFeaturesEnabled === false) setValues.aiHealthConsent = false;
+      const [row] = await tx.update(users).set(setValues).where(eq25(users.id, req.user.userId)).returning({
+        id: users.id,
+        aiFeaturesEnabled: users.aiFeaturesEnabled,
+        aiHealthConsent: users.aiHealthConsent
+      });
+      if (row) {
+        if (hasAiToggle) {
+          await recordConsent(req.user.userId, "ai_features", aiFeaturesEnabled, tx, { strict: true });
+        }
+        if (hasHealthToggle || hasAiToggle && aiFeaturesEnabled === false) {
+          const healthValue = hasAiToggle && aiFeaturesEnabled === false ? false : aiHealthConsent;
+          await recordConsent(req.user.userId, "ai_health", healthValue, tx, { strict: true });
+        }
+      }
+      return row;
     });
     res.json(updated);
   } catch (error) {
@@ -8520,10 +9800,28 @@ router17.patch("/preferences", authenticate, async (req, res) => {
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'aggiornamento preferenze" } });
   }
 });
+router17.get("/consents", authenticate, async (req, res) => {
+  try {
+    const records = await db.select({
+      id: consentRecords.id,
+      consentType: consentRecords.consentType,
+      granted: consentRecords.granted,
+      policyVersion: consentRecords.policyVersion,
+      createdAt: consentRecords.createdAt
+    }).from(consentRecords).where(eq25(consentRecords.userId, req.user.userId)).orderBy(desc4(consentRecords.createdAt)).limit(50);
+    res.json(records);
+  } catch (error) {
+    logger.error("Get consents error", { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero del registro consensi" } });
+  }
+});
 router17.get("/preferences", authenticate, async (req, res) => {
   try {
-    const [user] = await db.select({ aiFeaturesEnabled: users.aiFeaturesEnabled }).from(users).where(eq25(users.id, req.user.userId)).limit(1);
-    res.json({ aiFeaturesEnabled: user?.aiFeaturesEnabled ?? true });
+    const [user] = await db.select({ aiFeaturesEnabled: users.aiFeaturesEnabled, aiHealthConsent: users.aiHealthConsent }).from(users).where(eq25(users.id, req.user.userId)).limit(1);
+    res.json({
+      aiFeaturesEnabled: user?.aiFeaturesEnabled ?? false,
+      aiHealthConsent: user?.aiHealthConsent ?? false
+    });
   } catch (error) {
     logger.error("Get preferences error", { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero preferenze" } });
@@ -8541,7 +9839,7 @@ init_logger();
 init_websocket();
 import { Router as Router18 } from "express";
 import { z as z15 } from "zod";
-import { eq as eq26, and as and21, desc as desc5 } from "drizzle-orm";
+import { eq as eq26, and as and22, desc as desc5 } from "drizzle-orm";
 
 // server/lib/shopping-quantity.ts
 var UNIT_MAX_LEN = 10;
@@ -8781,7 +10079,7 @@ router18.get("/:familyId/recipes/:recipeId", authenticate, requireFamilyMember()
   try {
     const familyId = getParam(req, "familyId");
     const recipeId = getParam(req, "recipeId");
-    const [recipe] = await db.select().from(recipes).where(and21(eq26(recipes.id, recipeId), eq26(recipes.familyId, familyId))).limit(1);
+    const [recipe] = await db.select().from(recipes).where(and22(eq26(recipes.id, recipeId), eq26(recipes.familyId, familyId))).limit(1);
     if (!recipe) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Ricetta non trovata" } });
     }
@@ -8796,11 +10094,11 @@ router18.delete("/:familyId/recipes/:recipeId", authenticate, requireFamilyMembe
   try {
     const familyId = getParam(req, "familyId");
     const recipeId = getParam(req, "recipeId");
-    const [recipe] = await db.select().from(recipes).where(and21(eq26(recipes.id, recipeId), eq26(recipes.familyId, familyId))).limit(1);
+    const [recipe] = await db.select().from(recipes).where(and22(eq26(recipes.id, recipeId), eq26(recipes.familyId, familyId))).limit(1);
     if (!recipe) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Ricetta non trovata" } });
     }
-    await db.delete(recipes).where(and21(eq26(recipes.id, recipeId), eq26(recipes.familyId, familyId)));
+    await db.delete(recipes).where(and22(eq26(recipes.id, recipeId), eq26(recipes.familyId, familyId)));
     res.json({ message: "Ricetta eliminata con successo" });
   } catch (error) {
     logger.error("Errore eliminazione ricetta", { error: String(error) });
@@ -8818,7 +10116,7 @@ router18.post("/:familyId/recipes/:recipeId/to-shopping-list", authenticate, req
     if (!parsed.success) {
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dati non validi" } });
     }
-    const [recipe] = await db.select().from(recipes).where(and21(eq26(recipes.id, recipeId), eq26(recipes.familyId, familyId))).limit(1);
+    const [recipe] = await db.select().from(recipes).where(and22(eq26(recipes.id, recipeId), eq26(recipes.familyId, familyId))).limit(1);
     if (!recipe) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Ricetta non trovata" } });
     }
@@ -8844,7 +10142,7 @@ router18.post("/:familyId/recipes/:recipeId/to-shopping-list", authenticate, req
     let listId = parsed.data.listId ?? null;
     let listName;
     if (listId) {
-      const [list] = await db.select().from(shoppingLists).where(and21(eq26(shoppingLists.id, listId), eq26(shoppingLists.familyId, familyId))).limit(1);
+      const [list] = await db.select().from(shoppingLists).where(and22(eq26(shoppingLists.id, listId), eq26(shoppingLists.familyId, familyId))).limit(1);
       if (!list) {
         return res.status(404).json({ error: { code: "LIST_NOT_FOUND", message: "Lista della spesa non trovata" } });
       }
@@ -8899,7 +10197,7 @@ init_logger();
 init_websocket();
 import { Router as Router19 } from "express";
 import { z as z16 } from "zod";
-import { eq as eq27, and as and22, desc as desc6, inArray as inArray4 } from "drizzle-orm";
+import { eq as eq27, and as and23, desc as desc6, inArray as inArray5 } from "drizzle-orm";
 
 // server/lib/db-errors.ts
 function isUniqueViolation(err) {
@@ -8945,7 +10243,7 @@ router19.post("/:familyId/meal-plans", authenticate, requireFamilyMember(), asyn
       });
     }
     const { items, ...planData } = parsed.data;
-    const [existing] = await db.select({ id: mealPlans.id }).from(mealPlans).where(and22(eq27(mealPlans.familyId, familyId), eq27(mealPlans.weekStartDate, planData.weekStartDate))).limit(1);
+    const [existing] = await db.select({ id: mealPlans.id }).from(mealPlans).where(and23(eq27(mealPlans.familyId, familyId), eq27(mealPlans.weekStartDate, planData.weekStartDate))).limit(1);
     if (existing) {
       return res.status(409).json({
         error: {
@@ -9007,7 +10305,7 @@ router19.get("/:familyId/meal-plans/:planId", authenticate, requireFamilyMember(
   try {
     const familyId = getParam(req, "familyId");
     const planId = getParam(req, "planId");
-    const [plan] = await db.select().from(mealPlans).where(and22(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId))).limit(1);
+    const [plan] = await db.select().from(mealPlans).where(and23(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId))).limit(1);
     if (!plan) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Piano pasti non trovato" } });
     }
@@ -9015,7 +10313,7 @@ router19.get("/:familyId/meal-plans/:planId", authenticate, requireFamilyMember(
     const recipeIds = items.map((item) => item.recipeId).filter((id) => !!id);
     let recipesMap = {};
     if (recipeIds.length > 0) {
-      const recipeRows = await db.select({ id: recipes.id, title: recipes.title }).from(recipes).where(inArray4(recipes.id, recipeIds));
+      const recipeRows = await db.select({ id: recipes.id, title: recipes.title }).from(recipes).where(inArray5(recipes.id, recipeIds));
       recipesMap = Object.fromEntries(recipeRows.map((r) => [r.id, r.title]));
     }
     const itemsWithRecipes = items.map((item) => ({
@@ -9032,11 +10330,11 @@ router19.delete("/:familyId/meal-plans/:planId", authenticate, requireFamilyMemb
   try {
     const familyId = getParam(req, "familyId");
     const planId = getParam(req, "planId");
-    const [plan] = await db.select().from(mealPlans).where(and22(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId))).limit(1);
+    const [plan] = await db.select().from(mealPlans).where(and23(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId))).limit(1);
     if (!plan) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Piano pasti non trovato" } });
     }
-    await db.delete(mealPlans).where(and22(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId)));
+    await db.delete(mealPlans).where(and23(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId)));
     res.json({ message: "Piano pasti eliminato" });
   } catch (error) {
     logger.error("Delete meal plan error", { error: String(error) });
@@ -9057,11 +10355,11 @@ var mealPlanItemSchema = z16.object({
   })).optional().nullable()
 });
 async function findPlan(familyId, planId) {
-  const [plan] = await db.select().from(mealPlans).where(and22(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId))).limit(1);
+  const [plan] = await db.select().from(mealPlans).where(and23(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId))).limit(1);
   return plan;
 }
 async function recipeBelongsToFamily(familyId, recipeId) {
-  const [r] = await db.select({ id: recipes.id }).from(recipes).where(and22(eq27(recipes.id, recipeId), eq27(recipes.familyId, familyId))).limit(1);
+  const [r] = await db.select({ id: recipes.id }).from(recipes).where(and23(eq27(recipes.id, recipeId), eq27(recipes.familyId, familyId))).limit(1);
   return !!r;
 }
 router19.put("/:familyId/meal-plans/:planId", authenticate, requireFamilyMember(), async (req, res) => {
@@ -9076,7 +10374,7 @@ router19.put("/:familyId/meal-plans/:planId", authenticate, requireFamilyMember(
     if (!plan) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Piano pasti non trovato" } });
     }
-    const [updated] = await db.update(mealPlans).set({ title: parsed.data.title }).where(and22(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId))).returning();
+    const [updated] = await db.update(mealPlans).set({ title: parsed.data.title }).where(and23(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId))).returning();
     broadcastToFamily(familyId, "meal_plan_updated", { planId });
     res.json(updated);
   } catch (error) {
@@ -9136,7 +10434,7 @@ router19.put("/:familyId/meal-plans/:planId/items/:itemId", authenticate, requir
     if (!plan) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Piano pasti non trovato" } });
     }
-    const [existingItem] = await db.select().from(mealPlanItems).where(and22(eq27(mealPlanItems.id, itemId), eq27(mealPlanItems.mealPlanId, planId))).limit(1);
+    const [existingItem] = await db.select().from(mealPlanItems).where(and23(eq27(mealPlanItems.id, itemId), eq27(mealPlanItems.mealPlanId, planId))).limit(1);
     if (!existingItem) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Pasto non trovato" } });
     }
@@ -9159,7 +10457,7 @@ router19.put("/:familyId/meal-plans/:planId/items/:itemId", authenticate, requir
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Nessuna modifica indicata" } });
     }
-    const [updated] = await db.update(mealPlanItems).set(updates).where(and22(eq27(mealPlanItems.id, itemId), eq27(mealPlanItems.mealPlanId, planId))).returning();
+    const [updated] = await db.update(mealPlanItems).set(updates).where(and23(eq27(mealPlanItems.id, itemId), eq27(mealPlanItems.mealPlanId, planId))).returning();
     broadcastToFamily(familyId, "meal_plan_updated", { planId });
     res.json(updated);
   } catch (error) {
@@ -9176,11 +10474,11 @@ router19.delete("/:familyId/meal-plans/:planId/items/:itemId", authenticate, req
     if (!plan) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Piano pasti non trovato" } });
     }
-    const [existingItem] = await db.select({ id: mealPlanItems.id }).from(mealPlanItems).where(and22(eq27(mealPlanItems.id, itemId), eq27(mealPlanItems.mealPlanId, planId))).limit(1);
+    const [existingItem] = await db.select({ id: mealPlanItems.id }).from(mealPlanItems).where(and23(eq27(mealPlanItems.id, itemId), eq27(mealPlanItems.mealPlanId, planId))).limit(1);
     if (!existingItem) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Pasto non trovato" } });
     }
-    await db.delete(mealPlanItems).where(and22(eq27(mealPlanItems.id, itemId), eq27(mealPlanItems.mealPlanId, planId)));
+    await db.delete(mealPlanItems).where(and23(eq27(mealPlanItems.id, itemId), eq27(mealPlanItems.mealPlanId, planId)));
     broadcastToFamily(familyId, "meal_plan_updated", { planId });
     res.json({ message: "Pasto rimosso" });
   } catch (error) {
@@ -9192,7 +10490,7 @@ router19.post("/:familyId/meal-plans/:planId/to-shopping-list", authenticate, re
   try {
     const familyId = getParam(req, "familyId");
     const planId = getParam(req, "planId");
-    const [plan] = await db.select().from(mealPlans).where(and22(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId))).limit(1);
+    const [plan] = await db.select().from(mealPlans).where(and23(eq27(mealPlans.id, planId), eq27(mealPlans.familyId, familyId))).limit(1);
     if (!plan) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Piano pasti non trovato" } });
     }
@@ -9217,7 +10515,7 @@ router19.post("/:familyId/meal-plans/:planId/to-shopping-list", authenticate, re
     }
     const recipeIds = items.map((item) => item.recipeId).filter((id) => !!id);
     if (recipeIds.length > 0) {
-      const recipeIngs = await db.select().from(recipeIngredients).where(inArray4(recipeIngredients.recipeId, recipeIds));
+      const recipeIngs = await db.select().from(recipeIngredients).where(inArray5(recipeIngredients.recipeId, recipeIds));
       for (const ing of recipeIngs) {
         if (!uniqueIngredients.has(ing.normalizedName)) {
           uniqueIngredients.set(ing.normalizedName, {
@@ -9268,10 +10566,10 @@ init_block_filter();
 init_websocket();
 import { Router as Router20 } from "express";
 import multer2 from "multer";
-import path4 from "path";
-import crypto5 from "crypto";
-import fs4 from "fs";
-import { eq as eq28, and as and23, desc as desc7, lt as lt3 } from "drizzle-orm";
+import path6 from "path";
+import crypto6 from "crypto";
+import fs5 from "fs";
+import { eq as eq28, and as and24, desc as desc7, lt as lt4 } from "drizzle-orm";
 init_logger();
 var router20 = Router20();
 function getUploadBaseUrl(req) {
@@ -9293,9 +10591,10 @@ function withAbsoluteFileUrl(msg, req) {
   }
   return msg;
 }
-var localDiskStorage = {
-  async save(file, req) {
+var uploadFileStorage = {
+  async save(file, _req) {
     const relativeUrl = `/uploads/${file.filename}`;
+    await persistUploadedFile(file.path, relativeUrl);
     return {
       url: relativeUrl,
       mime: file.mimetype,
@@ -9304,21 +10603,11 @@ var localDiskStorage = {
     };
   }
 };
-function getChatStorage() {
-  return localDiskStorage;
-}
-var chatFileStorage = getChatStorage();
-var uploadWarningLogged = false;
-if (process.env.NODE_ENV === "production" && !process.env.STORAGE_MODE) {
-  logger.warn("UPLOAD_STORAGE_WARNING", {
-    tag: "UPLOAD_STORAGE_WARNING",
-    msg: "Using local disk uploads in production is fragile. Consider S3/R2/Supabase by setting STORAGE_MODE env var."
-  });
-  uploadWarningLogged = true;
-}
-var uploadsDir2 = path4.resolve("uploads");
-if (!fs4.existsSync(uploadsDir2)) {
-  fs4.mkdirSync(uploadsDir2, { recursive: true });
+var chatFileStorage = uploadFileStorage;
+logUploadStorageStatus();
+var uploadsDir2 = path6.resolve("uploads");
+if (!fs5.existsSync(uploadsDir2)) {
+  fs5.mkdirSync(uploadsDir2, { recursive: true });
 }
 var MIME_EXTENSIONS = {
   "image/jpeg": ".jpg",
@@ -9336,13 +10625,6 @@ function resolveUploadExtension(mimetype) {
 }
 function buildStoredFilename(mimetype, randomName) {
   return `${randomName}${resolveUploadExtension(mimetype)}`;
-}
-function resolveSafeUploadPath2(fileUrl, baseDir = uploadsDir2) {
-  const filePath = path4.resolve(fileUrl.replace(/^\//, ""));
-  if (filePath.startsWith(baseDir + path4.sep)) {
-    return filePath;
-  }
-  return null;
 }
 var MAGIC_VERIFIED_MIMES = /* @__PURE__ */ new Set([
   "image/jpeg",
@@ -9372,12 +10654,12 @@ function verifyMagicBytes(buffer, mimetype) {
 }
 function readMagicBytes(filePath, length = 12) {
   const buffer = Buffer.alloc(length);
-  const fd = fs4.openSync(filePath, "r");
+  const fd = fs5.openSync(filePath, "r");
   try {
-    const bytesRead = fs4.readSync(fd, buffer, 0, length, 0);
+    const bytesRead = fs5.readSync(fd, buffer, 0, length, 0);
     return buffer.subarray(0, bytesRead);
   } finally {
-    fs4.closeSync(fd);
+    fs5.closeSync(fd);
   }
 }
 var storage = multer2.diskStorage({
@@ -9385,7 +10667,7 @@ var storage = multer2.diskStorage({
     cb(null, uploadsDir2);
   },
   filename: (_req, file, cb) => {
-    const name = crypto5.randomBytes(16).toString("hex");
+    const name = crypto6.randomBytes(16).toString("hex");
     cb(null, buildStoredFilename(file.mimetype, name));
   }
 });
@@ -9413,7 +10695,7 @@ function handleUploadError(err, _req, res, next) {
   return res.status(415).json({ error: "Tipo di file non supportato" });
 }
 async function verifyFamilyMembership(userId, familyId) {
-  const [membership] = await db.select().from(familyMembers).where(and23(eq28(familyMembers.userId, userId), eq28(familyMembers.familyId, familyId))).limit(1);
+  const [membership] = await db.select().from(familyMembers).where(and24(eq28(familyMembers.userId, userId), eq28(familyMembers.familyId, familyId))).limit(1);
   return membership;
 }
 async function requireFamilyMembership(req, res, next) {
@@ -9444,7 +10726,7 @@ router20.get("/:familyId/messages", async (req, res) => {
     const blockFilter = applyBlockedFilter(chatMessages.userId, blockedIds);
     const conditions = [eq28(chatMessages.familyId, familyId)];
     if (cursor) {
-      conditions.push(lt3(chatMessages.createdAt, new Date(cursor)));
+      conditions.push(lt4(chatMessages.createdAt, new Date(cursor)));
     }
     if (blockFilter) {
       conditions.push(blockFilter);
@@ -9462,7 +10744,7 @@ router20.get("/:familyId/messages", async (req, res) => {
       createdAt: chatMessages.createdAt,
       userName: users.name,
       userAvatar: users.avatarUrl
-    }).from(chatMessages).innerJoin(users, eq28(chatMessages.userId, users.id)).where(and23(...conditions)).orderBy(desc7(chatMessages.createdAt)).limit(limit + 1);
+    }).from(chatMessages).innerJoin(users, eq28(chatMessages.userId, users.id)).where(and24(...conditions)).orderBy(desc7(chatMessages.createdAt)).limit(limit + 1);
     const hasMore = messages.length > limit;
     const result = hasMore ? messages.slice(0, limit) : messages;
     const enriched = result.map((m) => withAbsoluteFileUrl(m, req));
@@ -9537,7 +10819,7 @@ router20.post("/:familyId/upload", requireFamilyMembership, upload.single("file"
     const magic = readMagicBytes(req.file.path);
     if (!verifyMagicBytes(magic, req.file.mimetype)) {
       const spoofedPath = req.file.path;
-      fs4.unlink(spoofedPath, (unlinkErr) => {
+      fs5.unlink(spoofedPath, (unlinkErr) => {
         if (unlinkErr) {
           logger.warn("Chat upload: impossibile cancellare file spoofato", {
             path: spoofedPath,
@@ -9549,18 +10831,11 @@ router20.post("/:familyId/upload", requireFamilyMembership, upload.single("file"
     }
     const gate = await reserveBaseSlot(userId, familyId, "chat-message");
     if (gate.status === "limited") {
-      if (req.file) fs4.unlink(req.file.path, () => {
+      if (req.file) fs5.unlink(req.file.path, () => {
       });
       return res.status(429).json(baseLimitBody(gate));
     }
     const [user] = await db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq28(users.id, userId)).limit(1);
-    if (process.env.NODE_ENV === "production" && !process.env.STORAGE_MODE && !uploadWarningLogged) {
-      logger.warn("UPLOAD_STORAGE_WARNING", {
-        tag: "UPLOAD_STORAGE_WARNING",
-        msg: "Using local disk uploads in production is fragile. Consider S3/R2/Supabase by setting STORAGE_MODE env var."
-      });
-      uploadWarningLogged = true;
-    }
     const stored = await chatFileStorage.save(req.file, req);
     const isImage = stored.mime.startsWith("image/");
     const [message] = await db.insert(chatMessages).values({
@@ -9594,8 +10869,9 @@ router20.post("/:familyId/upload", requireFamilyMembership, upload.single("file"
   } catch (error) {
     logger.error("Errore POST upload chat", { error: String(error) });
     if (req.file) {
-      fs4.unlink(req.file.path, () => {
+      fs5.unlink(req.file.path, () => {
       });
+      void deleteStoredUploads([`/uploads/${req.file.filename}`]);
     }
     res.status(500).json({ error: "Errore nel caricamento del file" });
   }
@@ -9605,7 +10881,7 @@ router20.delete("/:familyId/messages/:messageId", async (req, res) => {
     const userId = req.user.userId;
     const familyId = req.params.familyId;
     const messageId = req.params.messageId;
-    const [message] = await db.select().from(chatMessages).where(and23(eq28(chatMessages.id, messageId), eq28(chatMessages.familyId, familyId))).limit(1);
+    const [message] = await db.select().from(chatMessages).where(and24(eq28(chatMessages.id, messageId), eq28(chatMessages.familyId, familyId))).limit(1);
     if (!message) {
       return res.status(404).json({ error: "Messaggio non trovato" });
     }
@@ -9613,16 +10889,7 @@ router20.delete("/:familyId/messages/:messageId", async (req, res) => {
       return res.status(403).json({ error: "Puoi eliminare solo i tuoi messaggi" });
     }
     if (message.fileUrl) {
-      const safePath = resolveSafeUploadPath2(message.fileUrl);
-      if (safePath) {
-        fs4.unlink(safePath, () => {
-        });
-      } else {
-        logger.warn("Chat delete: file path fuori da uploadsDir, skip unlink", {
-          messageId,
-          fileUrl: message.fileUrl
-        });
-      }
+      void deleteStoredUploads([message.fileUrl]);
     }
     await db.delete(chatMessages).where(eq28(chatMessages.id, messageId));
     await broadcastChatMessageToFamily(familyId, message.userId, "chat:message_deleted", { messageId });
@@ -9640,8 +10907,65 @@ init_schema();
 init_auth();
 init_logger();
 import { Router as Router21 } from "express";
+import rateLimit5 from "express-rate-limit";
 import { z as z17 } from "zod";
-import { eq as eq29, and as and24 } from "drizzle-orm";
+import { eq as eq29, and as and25 } from "drizzle-orm";
+
+// server/lib/test-analytics.ts
+init_db();
+init_schema();
+import { lt as lt5 } from "drizzle-orm";
+function resolveRetentionDays() {
+  const raw = Number(process.env.TEST_ANALYTICS_RETENTION_DAYS);
+  if (Number.isFinite(raw) && raw >= 1 && raw <= 30) return Math.floor(raw);
+  return 30;
+}
+var RETENTION_DAYS = resolveRetentionDays();
+var ALLOWED_EVENTS = /* @__PURE__ */ new Set([
+  "app_open",
+  "login_success",
+  "screen_view",
+  "feature_used",
+  "api_error",
+  "premium_status_checked",
+  "ai_toggle_changed",
+  "delete_account_opened",
+  "legal_page_opened"
+]);
+var ALLOWED_PLATFORMS = /* @__PURE__ */ new Set(["web", "android", "ios"]);
+var ALLOWED_METADATA_KEYS = /* @__PURE__ */ new Set(["feature", "status", "code", "route", "source", "enabled", "durationMs"]);
+var METADATA_VALUE_MAX_LEN = 100;
+function isTestAnalyticsEnabled() {
+  return process.env.ENABLE_TEST_ANALYTICS === "true";
+}
+function isAppOwner(email) {
+  if (!email) return false;
+  const raw = process.env.APP_OWNER_EMAILS || "";
+  const allow = raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return allow.includes(email.trim().toLowerCase());
+}
+function sanitizeMetadata(input) {
+  const out = {};
+  if (!input || typeof input !== "object" || Array.isArray(input)) return out;
+  for (const [key, value] of Object.entries(input)) {
+    if (!ALLOWED_METADATA_KEYS.has(key)) continue;
+    if (typeof value === "string") out[key] = value.slice(0, METADATA_VALUE_MAX_LEN);
+    else if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
+    else if (typeof value === "boolean") out[key] = value;
+  }
+  return out;
+}
+function sanitizePlatform(input) {
+  if (typeof input !== "string") return null;
+  const p2 = input.toLowerCase().trim();
+  return ALLOWED_PLATFORMS.has(p2) ? p2 : null;
+}
+async function pruneOldEvents() {
+  const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1e3);
+  await db.delete(testAnalyticsEvents).where(lt5(testAnalyticsEvents.createdAt, cutoff));
+}
+
+// server/routes/notifications.ts
 var router21 = Router21();
 var registerSchema = z17.object({
   token: z17.string().min(1, "Token mancante"),
@@ -9675,11 +10999,182 @@ router21.post("/unregister", authenticate, async (req, res) => {
         error: { code: "VALIDATION_ERROR", message: "Dati non validi" }
       });
     }
-    await db.delete(pushTokens).where(and24(eq29(pushTokens.token, parsed.data.token), eq29(pushTokens.userId, req.user.userId)));
+    await db.delete(pushTokens).where(and25(eq29(pushTokens.token, parsed.data.token), eq29(pushTokens.userId, req.user.userId)));
     res.json({ message: "Token rimosso" });
   } catch (error) {
     logger.error("Unregister push token error", { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella rimozione del token" } });
+  }
+});
+router21.get("/web/public-key", (_req, res) => {
+  if (!isWebPushConfigured()) {
+    return res.status(503).json({ error: { code: "WEB_PUSH_NOT_CONFIGURED", message: "Notifiche web non configurate" } });
+  }
+  res.json({ publicKey: getVapidPublicKey() });
+});
+var ALLOWED_PUSH_HOST_SUFFIXES = [
+  ".googleapis.com",
+  // Chrome/FCM (fcm.googleapis.com)
+  ".push.apple.com",
+  // Safari (web.push.apple.com)
+  ".push.services.mozilla.com",
+  // Firefox
+  ".notify.windows.com"
+  // Edge/WNS
+];
+function isAllowedPushEndpoint(endpoint) {
+  let url;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:") return false;
+  const host = url.hostname.toLowerCase();
+  return ALLOWED_PUSH_HOST_SUFFIXES.some(
+    (suffix) => host.endsWith(suffix) && host.length > suffix.length
+  );
+}
+var webSubscribeSchema = z17.object({
+  endpoint: z17.string().url().max(2e3),
+  keys: z17.object({
+    p256dh: z17.string().min(1).max(500),
+    auth: z17.string().min(1).max(500)
+  })
+});
+router21.post("/web/subscribe", authenticate, async (req, res) => {
+  try {
+    const parsed = webSubscribeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dati non validi" } });
+    }
+    const { endpoint, keys } = parsed.data;
+    if (!isAllowedPushEndpoint(endpoint)) {
+      return res.status(400).json({ error: { code: "INVALID_ENDPOINT", message: "Endpoint push non supportato" } });
+    }
+    const userId = req.user.userId;
+    await db.insert(webPushSubscriptions).values({ userId, endpoint, p256dh: keys.p256dh, auth: keys.auth }).onConflictDoUpdate({
+      target: webPushSubscriptions.endpoint,
+      set: { userId, p256dh: keys.p256dh, auth: keys.auth, updatedAt: /* @__PURE__ */ new Date() }
+    });
+    res.status(201).json({ message: "Sottoscrizione registrata" });
+  } catch (error) {
+    logger.error("Web push subscribe error", { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella registrazione" } });
+  }
+});
+var webUnsubscribeSchema = z17.object({ endpoint: z17.string().min(1).max(2e3) });
+router21.post("/web/unsubscribe", authenticate, async (req, res) => {
+  try {
+    const parsed = webUnsubscribeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dati non validi" } });
+    }
+    await db.delete(webPushSubscriptions).where(and25(
+      eq29(webPushSubscriptions.endpoint, parsed.data.endpoint),
+      eq29(webPushSubscriptions.userId, req.user.userId)
+    ));
+    res.json({ message: "Sottoscrizione rimossa" });
+  } catch (error) {
+    logger.error("Web push unsubscribe error", { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella rimozione" } });
+  }
+});
+async function requireAppOwner404(req, res, next) {
+  try {
+    if (!req.user) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Non trovato" } });
+    }
+    const [record] = await db.select({ email: users.email, emailVerified: users.emailVerified }).from(users).where(eq29(users.id, req.user.userId)).limit(1);
+    if (!record || !record.emailVerified || !isAppOwner(record.email)) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Non trovato" } });
+    }
+    next();
+  } catch {
+    return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante la verifica dei permessi" } });
+  }
+}
+var webTestLimiter = rateLimit5({
+  windowMs: 60 * 1e3,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.userId ?? "unauthenticated",
+  message: { error: { code: "RATE_LIMITED", message: "Troppe notifiche di prova. Attendi un minuto e riprova." } }
+});
+router21.get("/web/test/access", requireAppOwner404, (_req, res) => {
+  res.json({ ok: true });
+});
+var webTestSchema = z17.object({ endpoint: z17.string().min(1).max(2e3) });
+router21.post("/web/test", requireAppOwner404, webTestLimiter, async (req, res) => {
+  try {
+    if (!isWebPushConfigured()) {
+      return res.status(503).json({ error: { code: "WEB_PUSH_NOT_CONFIGURED", message: "Notifiche web non configurate sul server" } });
+    }
+    const parsed = webTestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dati non validi" } });
+    }
+    const [sub] = await db.select({
+      endpoint: webPushSubscriptions.endpoint,
+      p256dh: webPushSubscriptions.p256dh,
+      auth: webPushSubscriptions.auth
+    }).from(webPushSubscriptions).where(and25(
+      eq29(webPushSubscriptions.endpoint, parsed.data.endpoint),
+      eq29(webPushSubscriptions.userId, req.user.userId)
+    )).limit(1);
+    if (!sub) {
+      return res.status(404).json({ error: { code: "SUBSCRIPTION_NOT_FOUND", message: "Questo dispositivo non risulta registrato per le notifiche. Attiva prima le notifiche dal banner." } });
+    }
+    const result = await sendWebPushToSingleSubscription(sub, {
+      title: "Notifica di prova",
+      body: "Se leggi questo messaggio, le notifiche web funzionano su questo dispositivo. \u2705",
+      data: { type: "web_push_test" }
+    });
+    if (result.ok) {
+      return res.json({ ok: true, message: "Notifica inviata al servizio push" });
+    }
+    if (result.code === "EXPIRED") {
+      return res.status(410).json({ error: { code: "SUBSCRIPTION_EXPIRED", message: "La sottoscrizione di questo browser \xE8 scaduta ed \xE8 stata rimossa. Riattiva le notifiche e riprova." } });
+    }
+    return res.status(502).json({ error: { code: "PUSH_SEND_FAILED", message: `Il servizio push ha rifiutato l'invio${result.status ? ` (HTTP ${result.status})` : ""}. Riprova pi\xF9 tardi.` } });
+  } catch (error) {
+    logger.error("Web push test error", { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante l'invio della notifica di prova" } });
+  }
+});
+var nativeTestSchema = z17.object({ token: z17.string().min(1).max(500) });
+router21.post("/native/test", requireAppOwner404, webTestLimiter, async (req, res) => {
+  try {
+    const parsed = nativeTestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dati non validi" } });
+    }
+    const [record] = await db.select({ token: pushTokens.token }).from(pushTokens).where(and25(
+      eq29(pushTokens.token, parsed.data.token),
+      eq29(pushTokens.userId, req.user.userId)
+    )).limit(1);
+    if (!record) {
+      return res.status(404).json({ error: { code: "TOKEN_NOT_FOUND", message: "Questo dispositivo non risulta registrato per le notifiche. Attiva prima le notifiche dalle impostazioni." } });
+    }
+    if (!isExpoPushToken(record.token)) {
+      return res.status(400).json({ error: { code: "INVALID_TOKEN", message: "Il token di questo dispositivo non \xE8 un token Expo valido." } });
+    }
+    const result = await sendNativePushToSingleToken(record.token, {
+      title: "Notifica di prova",
+      body: "Se leggi questo messaggio, le notifiche native funzionano su questo dispositivo. \u2705",
+      data: { type: "native_push_test" }
+    });
+    if (result.ok) {
+      return res.json({ ok: true, message: "Notifica inviata al servizio push" });
+    }
+    if (result.code === "DEVICE_NOT_REGISTERED") {
+      return res.status(410).json({ error: { code: "TOKEN_EXPIRED", message: "Il token di questo dispositivo non \xE8 pi\xF9 valido ed \xE8 stato rimosso. Riapri l'app per registrarlo di nuovo e riprova." } });
+    }
+    return res.status(502).json({ error: { code: "PUSH_SEND_FAILED", message: `Il servizio push ha rifiutato l'invio${"status" in result && result.status ? ` (HTTP ${result.status})` : ""}. Riprova pi\xF9 tardi.` } });
+  } catch (error) {
+    logger.error("Native push test error", { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante l'invio della notifica di prova" } });
   }
 });
 var notifications_default = router21;
@@ -9694,11 +11189,11 @@ init_websocket();
 init_logger();
 import { Router as Router22 } from "express";
 import multer3 from "multer";
-import path5 from "path";
-import crypto6 from "crypto";
-import fs5 from "fs";
+import path7 from "path";
+import crypto7 from "crypto";
+import fs6 from "fs";
 import { z as z18 } from "zod";
-import { eq as eq30, and as and25, desc as desc8, isNull as isNull5 } from "drizzle-orm";
+import { eq as eq30, and as and26, desc as desc8, isNull as isNull7 } from "drizzle-orm";
 
 // server/lib/bills.ts
 var FREE_MAX_ACTIVE_BILLS = 5;
@@ -9782,14 +11277,14 @@ var BILL_ALLOWED_MIMES = /* @__PURE__ */ new Set([
   "image/webp",
   "application/pdf"
 ]);
-var uploadsDir3 = path5.resolve("uploads");
-if (!fs5.existsSync(uploadsDir3)) {
-  fs5.mkdirSync(uploadsDir3, { recursive: true });
+var uploadsDir3 = path7.resolve("uploads");
+if (!fs6.existsSync(uploadsDir3)) {
+  fs6.mkdirSync(uploadsDir3, { recursive: true });
 }
 var storage2 = multer3.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir3),
   filename: (_req, file, cb) => {
-    const name = crypto6.randomBytes(16).toString("hex");
+    const name = crypto7.randomBytes(16).toString("hex");
     cb(null, buildStoredFilename(file.mimetype, name));
   }
 });
@@ -9875,7 +11370,7 @@ var updateBillSchema = z18.object({
   paidAt: z18.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
 }).strict();
 async function assignedToBelongsToFamily(assignedTo, familyId) {
-  const [row] = await db.select({ id: familyMembers.id }).from(familyMembers).where(and25(eq30(familyMembers.id, assignedTo), eq30(familyMembers.familyId, familyId))).limit(1);
+  const [row] = await db.select({ id: familyMembers.id }).from(familyMembers).where(and26(eq30(familyMembers.id, assignedTo), eq30(familyMembers.familyId, familyId))).limit(1);
   return !!row;
 }
 var BILL_EVENT_COLOR = "#F59E0B";
@@ -9902,7 +11397,7 @@ async function createBillCalendarEvent(bill, userId) {
       ...billEventFields(bill),
       createdBy: userId
     }).returning();
-    const [updated] = await db.update(bills).set({ calendarEventId: event.id }).where(and25(eq30(bills.id, bill.id), isNull5(bills.calendarEventId))).returning();
+    const [updated] = await db.update(bills).set({ calendarEventId: event.id }).where(and26(eq30(bills.id, bill.id), isNull7(bills.calendarEventId))).returning();
     if (!updated) {
       await db.delete(calendarEvents).where(eq30(calendarEvents.id, event.id));
       const [current] = await db.select().from(bills).where(eq30(bills.id, bill.id)).limit(1);
@@ -9918,7 +11413,7 @@ async function createBillCalendarEvent(bill, userId) {
 async function updateBillCalendarEvent(bill) {
   if (!bill.calendarEventId) return;
   try {
-    const [event] = await db.update(calendarEvents).set({ ...billEventFields(bill), updatedAt: /* @__PURE__ */ new Date() }).where(and25(eq30(calendarEvents.id, bill.calendarEventId), eq30(calendarEvents.familyId, bill.familyId))).returning();
+    const [event] = await db.update(calendarEvents).set({ ...billEventFields(bill), updatedAt: /* @__PURE__ */ new Date() }).where(and26(eq30(calendarEvents.id, bill.calendarEventId), eq30(calendarEvents.familyId, bill.familyId))).returning();
     if (event) broadcastToFamily(bill.familyId, "event_updated", event);
   } catch (error) {
     logger.warn("Bill calendar sync (update) failed", { billId: bill.id, error: String(error) });
@@ -9927,7 +11422,7 @@ async function updateBillCalendarEvent(bill) {
 async function deleteBillCalendarEvent(familyId, billId, calendarEventId) {
   if (!calendarEventId) return;
   try {
-    await db.delete(calendarEvents).where(and25(eq30(calendarEvents.id, calendarEventId), eq30(calendarEvents.familyId, familyId)));
+    await db.delete(calendarEvents).where(and26(eq30(calendarEvents.id, calendarEventId), eq30(calendarEvents.familyId, familyId)));
     await db.update(bills).set({ calendarEventId: null }).where(eq30(bills.id, billId));
     broadcastToFamily(familyId, "event_deleted", { eventId: calendarEventId });
   } catch (error) {
@@ -9954,7 +11449,7 @@ router22.get("/:familyId/reminders", requireFamilyMember(), async (req, res) => 
   try {
     const familyId = getParam(req, "familyId");
     const plan = await getPlanForFamily(familyId);
-    const rows = await db.select().from(bills).where(and25(eq30(bills.familyId, familyId), eq30(bills.status, "da_pagare")));
+    const rows = await db.select().from(bills).where(and26(eq30(bills.familyId, familyId), eq30(bills.status, "da_pagare")));
     const reminders = rows.flatMap(
       (bill) => computeBillReminders({
         dueDate: bill.dueDate,
@@ -9978,7 +11473,7 @@ router22.get("/:familyId/:billId", requireFamilyMember(), async (req, res) => {
   try {
     const familyId = getParam(req, "familyId");
     const billId = getParam(req, "billId");
-    const [bill] = await db.select().from(bills).where(and25(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
+    const [bill] = await db.select().from(bills).where(and26(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
     if (!bill) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Bolletta non trovata" } });
     }
@@ -10033,7 +11528,7 @@ router22.post("/:familyId", requireFamilyMember(), async (req, res) => {
     const createAsPaid = parsed.data.paid === true;
     if (!createAsPaid) {
       const plan = await getPlanForFamily(familyId);
-      const activeRows = await db.select({ id: bills.id }).from(bills).where(and25(eq30(bills.familyId, familyId), eq30(bills.status, "da_pagare")));
+      const activeRows = await db.select({ id: bills.id }).from(bills).where(and26(eq30(bills.familyId, familyId), eq30(bills.status, "da_pagare")));
       if (!canCreateBill(plan, activeRows.length)) {
         return res.status(403).json({
           error: {
@@ -10106,7 +11601,7 @@ router22.put("/:familyId/:billId", requireFamilyMember(), async (req, res) => {
       updateData.amount = parsed.data.amount.toFixed(2);
     }
     if (paidAtInput !== void 0) {
-      const [current] = await db.select({ status: bills.status }).from(bills).where(and25(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
+      const [current] = await db.select({ status: bills.status }).from(bills).where(and26(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
       if (!current) {
         return res.status(404).json({ error: { code: "NOT_FOUND", message: "Bolletta non trovata" } });
       }
@@ -10121,7 +11616,7 @@ router22.put("/:familyId/:billId", requireFamilyMember(), async (req, res) => {
     if (paidAtInput !== void 0) {
       whereConditions.push(eq30(bills.status, "pagata"));
     }
-    let [bill] = await db.update(bills).set(updateData).where(and25(...whereConditions)).returning();
+    let [bill] = await db.update(bills).set(updateData).where(and26(...whereConditions)).returning();
     if (!bill) {
       if (paidAtInput !== void 0) {
         return res.status(409).json({
@@ -10157,14 +11652,14 @@ router22.patch("/:familyId/:billId/pay", requireFamilyMember(), async (req, res)
         error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors }
       });
     }
-    const [existing] = await db.select().from(bills).where(and25(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
+    const [existing] = await db.select().from(bills).where(and26(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
     if (!existing) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Bolletta non trovata" } });
     }
     const markPaid = parsed.data.paid;
     if (!markPaid && existing.status !== "da_pagare") {
       const plan = await getPlanForFamily(familyId);
-      const activeRows = await db.select({ id: bills.id }).from(bills).where(and25(eq30(bills.familyId, familyId), eq30(bills.status, "da_pagare")));
+      const activeRows = await db.select({ id: bills.id }).from(bills).where(and26(eq30(bills.familyId, familyId), eq30(bills.status, "da_pagare")));
       if (!canCreateBill(plan, activeRows.length)) {
         return res.status(403).json({
           error: {
@@ -10179,7 +11674,7 @@ router22.patch("/:familyId/:billId/pay", requireFamilyMember(), async (req, res)
       paidAt: markPaid ? /* @__PURE__ */ new Date() : null,
       paidBy: markPaid ? req.user.userId : null,
       updatedAt: /* @__PURE__ */ new Date()
-    }).where(and25(eq30(bills.id, billId), eq30(bills.familyId, familyId))).returning();
+    }).where(and26(eq30(bills.id, billId), eq30(bills.familyId, familyId))).returning();
     if (markPaid) {
       await deleteBillCalendarEvent(familyId, billId, bill.calendarEventId);
       bill = { ...bill, calendarEventId: null };
@@ -10206,18 +11701,14 @@ router22.delete("/:familyId/:billId", requireFamilyMember(), async (req, res) =>
   try {
     const familyId = getParam(req, "familyId");
     const billId = getParam(req, "billId");
-    const [bill] = await db.select({ id: bills.id, calendarEventId: bills.calendarEventId }).from(bills).where(and25(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
+    const [bill] = await db.select({ id: bills.id, calendarEventId: bills.calendarEventId }).from(bills).where(and26(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
     if (!bill) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Bolletta non trovata" } });
     }
     await deleteBillCalendarEvent(familyId, billId, bill.calendarEventId);
     const attachments = await db.select({ fileUrl: billAttachments.fileUrl }).from(billAttachments).where(eq30(billAttachments.billId, billId));
-    for (const att of attachments) {
-      const safePath = resolveSafeUploadPath2(att.fileUrl);
-      if (safePath) fs5.unlink(safePath, () => {
-      });
-    }
-    await db.delete(bills).where(and25(eq30(bills.id, billId), eq30(bills.familyId, familyId)));
+    void deleteStoredUploads(attachments.map((att) => att.fileUrl));
+    await db.delete(bills).where(and26(eq30(bills.id, billId), eq30(bills.familyId, familyId)));
     broadcastToFamily(familyId, "bill_deleted", { billId });
     res.json({ message: "Bolletta eliminata" });
   } catch (error) {
@@ -10240,7 +11731,7 @@ router22.put("/:familyId/:billId/splits", requireFamilyMember(), requirePremium(
         error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors }
       });
     }
-    const [bill] = await db.select().from(bills).where(and25(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
+    const [bill] = await db.select().from(bills).where(and26(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
     if (!bill) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Bolletta non trovata" } });
     }
@@ -10308,23 +11799,25 @@ router22.post(
       if (!req.file) {
         return res.status(400).json({ error: { code: "NO_FILE", message: "Nessun file caricato" } });
       }
-      const [bill] = await db.select({ id: bills.id }).from(bills).where(and25(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
+      const [bill] = await db.select({ id: bills.id }).from(bills).where(and26(eq30(bills.id, billId), eq30(bills.familyId, familyId))).limit(1);
       if (!bill) {
-        fs5.unlink(req.file.path, () => {
+        fs6.unlink(req.file.path, () => {
         });
         return res.status(404).json({ error: { code: "NOT_FOUND", message: "Bolletta non trovata" } });
       }
       const magic = readMagicBytes(req.file.path);
       if (!verifyMagicBytes(magic, req.file.mimetype)) {
-        fs5.unlink(req.file.path, () => {
+        fs6.unlink(req.file.path, () => {
         });
         return res.status(415).json({ error: { code: "CONTENT_MISMATCH", message: "Il contenuto del file non corrisponde al tipo dichiarato" } });
       }
+      const fileUrl = `/uploads/${req.file.filename}`;
+      await persistUploadedFile(req.file.path, fileUrl);
       const [attachment] = await db.insert(billAttachments).values({
         billId,
         familyId,
         kind,
-        fileUrl: `/uploads/${req.file.filename}`,
+        fileUrl,
         fileName: req.file.originalname,
         fileMimeType: req.file.mimetype,
         fileSize: req.file.size,
@@ -10334,8 +11827,11 @@ router22.post(
       res.status(201).json(attachment);
     } catch (error) {
       logger.error("Upload bill attachment error", { error: String(error) });
-      if (req.file) fs5.unlink(req.file.path, () => {
-      });
+      if (req.file) {
+        fs6.unlink(req.file.path, () => {
+        });
+        void deleteStoredUploads([`/uploads/${req.file.filename}`]);
+      }
       res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel caricamento del file" } });
     }
   }
@@ -10345,13 +11841,11 @@ router22.delete("/:familyId/:billId/attachments/:attachmentId", requireFamilyMem
     const familyId = getParam(req, "familyId");
     const billId = getParam(req, "billId");
     const attachmentId = getParam(req, "attachmentId");
-    const [attachment] = await db.select().from(billAttachments).where(and25(eq30(billAttachments.id, attachmentId), eq30(billAttachments.billId, billId), eq30(billAttachments.familyId, familyId))).limit(1);
+    const [attachment] = await db.select().from(billAttachments).where(and26(eq30(billAttachments.id, attachmentId), eq30(billAttachments.billId, billId), eq30(billAttachments.familyId, familyId))).limit(1);
     if (!attachment) {
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Allegato non trovato" } });
     }
-    const safePath = resolveSafeUploadPath2(attachment.fileUrl);
-    if (safePath) fs5.unlink(safePath, () => {
-    });
+    void deleteStoredUploads([attachment.fileUrl]);
     await db.delete(billAttachments).where(eq30(billAttachments.id, attachmentId));
     broadcastToFamily(familyId, "bill_updated", { billId });
     res.json({ message: "Allegato eliminato" });
@@ -10366,13 +11860,13 @@ var bills_default = router22;
 init_db();
 init_schema();
 import { Router as Router23 } from "express";
-import rateLimit5 from "express-rate-limit";
+import rateLimit6 from "express-rate-limit";
 import { z as z19 } from "zod";
 import { eq as eq31 } from "drizzle-orm";
 init_config();
 init_logger();
 var router23 = Router23();
-var supportLimiter = rateLimit5({
+var supportLimiter = rateLimit6({
   windowMs: 60 * 60 * 1e3,
   max: 5,
   standardHeaders: true,
@@ -10428,19 +11922,19 @@ init_schema();
 init_logger();
 import { Router as Router24 } from "express";
 import multer4 from "multer";
-import path6 from "path";
-import crypto7 from "crypto";
-import fs6 from "fs";
+import path8 from "path";
+import crypto8 from "crypto";
+import fs7 from "fs";
 import { eq as eq32 } from "drizzle-orm";
 var router24 = Router24();
-var avatarsDir = path6.resolve("uploads/avatars");
-if (!fs6.existsSync(avatarsDir)) {
-  fs6.mkdirSync(avatarsDir, { recursive: true });
+var avatarsDir = path8.resolve("uploads/avatars");
+if (!fs7.existsSync(avatarsDir)) {
+  fs7.mkdirSync(avatarsDir, { recursive: true });
 }
 var MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 var storage3 = multer4.diskStorage({
   destination: (_req, _file, cb) => cb(null, avatarsDir),
-  filename: (_req, file, cb) => cb(null, buildStoredFilename(file.mimetype, crypto7.randomBytes(16).toString("hex")))
+  filename: (_req, file, cb) => cb(null, buildStoredFilename(file.mimetype, crypto8.randomBytes(16).toString("hex")))
 });
 var upload3 = multer4({
   storage: storage3,
@@ -10476,18 +11970,19 @@ router24.post(
       }
       const magic = readMagicBytes(file.path);
       if (!verifyMagicBytes(magic, file.mimetype)) {
-        await deleteUploadFiles([`/uploads/avatars/${file.filename}`]);
+        await deleteStoredUploads([`/uploads/avatars/${file.filename}`]);
         return res.status(415).json({ error: { code: "INVALID_IMAGE", message: "Il file non \xE8 un'immagine valida" } });
       }
       const newUrl = `/uploads/avatars/${file.filename}`;
+      await persistUploadedFile(file.path, newUrl);
       const [prev] = await db.select({ avatarUrl: users.avatarUrl }).from(users).where(eq32(users.id, req.user.userId)).limit(1);
       await db.update(users).set({ avatarUrl: newUrl }).where(eq32(users.id, req.user.userId));
       if (prev?.avatarUrl && prev.avatarUrl.startsWith("/uploads/avatars/")) {
-        await deleteUploadFiles([prev.avatarUrl]);
+        await deleteStoredUploads([prev.avatarUrl]);
       }
       res.json({ avatarUrl: newUrl });
     } catch (error) {
-      if (file) await deleteUploadFiles([`/uploads/avatars/${file.filename}`]);
+      if (file) await deleteStoredUploads([`/uploads/avatars/${file.filename}`]);
       logger.error("Avatar upload error", { error: String(error) });
       res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel salvataggio della foto" } });
     }
@@ -10498,7 +11993,7 @@ router24.delete("/avatar", async (req, res) => {
     const [prev] = await db.select({ avatarUrl: users.avatarUrl }).from(users).where(eq32(users.id, req.user.userId)).limit(1);
     await db.update(users).set({ avatarUrl: null }).where(eq32(users.id, req.user.userId));
     if (prev?.avatarUrl && prev.avatarUrl.startsWith("/uploads/avatars/")) {
-      await deleteUploadFiles([prev.avatarUrl]);
+      await deleteStoredUploads([prev.avatarUrl]);
     }
     res.json({ ok: true });
   } catch (error) {
@@ -10512,14 +12007,14 @@ var profile_default = router24;
 init_db();
 init_schema();
 import { Router as Router25 } from "express";
-import { and as and27, count, desc as desc9, eq as eq34, gte as gte7, sql as sql13 } from "drizzle-orm";
+import { and as and28, count, desc as desc9, eq as eq34, gte as gte7, sql as sql13 } from "drizzle-orm";
 import { z as z20 } from "zod";
 
 // server/lib/demo-account.ts
 init_db();
 init_schema();
 import bcrypt5 from "bcryptjs";
-import { and as and26, eq as eq33, inArray as inArray5, sql as sql12 } from "drizzle-orm";
+import { and as and27, eq as eq33, inArray as inArray6, sql as sql12 } from "drizzle-orm";
 var DEMO_ENABLED = process.env.ENABLE_DEMO_ACCOUNT === "true";
 var DEMO_EMAIL = process.env.DEMO_ACCOUNT_EMAIL || "demo@familysync.eu";
 var DEMO_PASSWORD = process.env.DEMO_ACCOUNT_PASSWORD || "";
@@ -10548,20 +12043,20 @@ var mondayOfThisWeek = () => {
   return d;
 };
 async function cleanup(tx) {
-  const existing = await tx.select({ id: users.id }).from(users).where(inArray5(users.email, [DEMO_EMAIL, PARTNER_EMAIL]));
+  const existing = await tx.select({ id: users.id }).from(users).where(inArray6(users.email, [DEMO_EMAIL, PARTNER_EMAIL]));
   if (existing.length === 0) return { users: 0, families: 0 };
   const userIds = existing.map((u) => u.id);
   const demoFamilies = await tx.selectDistinct({ familyId: families.id }).from(families).innerJoin(familyMembers, eq33(familyMembers.familyId, families.id)).where(
-    and26(
+    and27(
       eq33(families.name, DEMO_FAMILY_NAME),
-      inArray5(familyMembers.userId, userIds)
+      inArray6(familyMembers.userId, userIds)
     )
   );
   const familyIds = demoFamilies.map((f) => f.familyId);
   if (familyIds.length > 0) {
-    await tx.delete(families).where(inArray5(families.id, familyIds));
+    await tx.delete(families).where(inArray6(families.id, familyIds));
   }
-  await tx.delete(users).where(inArray5(users.id, userIds));
+  await tx.delete(users).where(inArray6(users.id, userIds));
   return { users: userIds.length, families: familyIds.length };
 }
 async function ensureDemoAccount(opts = {}) {
@@ -10586,16 +12081,18 @@ async function ensureDemoAccount(opts = {}) {
       passwordHash,
       name: DEMO_NAME,
       emailVerified: true,
-      termsAcceptedAt: now,
-      aiFeaturesEnabled: true
+      // Nessun consenso pre-impostato: anche il revisore store passa
+      // dall'onboarding (fascia d'età, Termini, consenso AI opt-in).
+      termsAcceptedAt: null,
+      aiFeaturesEnabled: false
     }).returning();
     const [partnerUser] = await tx.insert(users).values({
       email: PARTNER_EMAIL,
       passwordHash: partnerHash,
       name: PARTNER_NAME,
       emailVerified: true,
-      termsAcceptedAt: now,
-      aiFeaturesEnabled: true
+      termsAcceptedAt: null,
+      aiFeaturesEnabled: false
     }).returning();
     const [family] = await tx.insert(families).values({
       name: DEMO_FAMILY_NAME,
@@ -10814,55 +12311,6 @@ async function ensureDemoAccount(opts = {}) {
   });
 }
 
-// server/lib/test-analytics.ts
-init_db();
-init_schema();
-import { lt as lt4 } from "drizzle-orm";
-var RETENTION_DAYS = 30;
-var ALLOWED_EVENTS = /* @__PURE__ */ new Set([
-  "app_open",
-  "login_success",
-  "screen_view",
-  "feature_used",
-  "api_error",
-  "premium_status_checked",
-  "ai_toggle_changed",
-  "delete_account_opened",
-  "legal_page_opened"
-]);
-var ALLOWED_PLATFORMS = /* @__PURE__ */ new Set(["web", "android", "ios"]);
-var ALLOWED_METADATA_KEYS = /* @__PURE__ */ new Set(["feature", "status", "code", "route", "source", "enabled", "durationMs"]);
-var METADATA_VALUE_MAX_LEN = 100;
-function isTestAnalyticsEnabled() {
-  return process.env.ENABLE_TEST_ANALYTICS === "true";
-}
-function isAppOwner(email) {
-  if (!email) return false;
-  const raw = process.env.APP_OWNER_EMAILS || "";
-  const allow = raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
-  return allow.includes(email.trim().toLowerCase());
-}
-function sanitizeMetadata(input) {
-  const out = {};
-  if (!input || typeof input !== "object" || Array.isArray(input)) return out;
-  for (const [key, value] of Object.entries(input)) {
-    if (!ALLOWED_METADATA_KEYS.has(key)) continue;
-    if (typeof value === "string") out[key] = value.slice(0, METADATA_VALUE_MAX_LEN);
-    else if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
-    else if (typeof value === "boolean") out[key] = value;
-  }
-  return out;
-}
-function sanitizePlatform(input) {
-  if (typeof input !== "string") return null;
-  const p = input.toLowerCase().trim();
-  return ALLOWED_PLATFORMS.has(p) ? p : null;
-}
-async function pruneOldEvents() {
-  const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1e3);
-  await db.delete(testAnalyticsEvents).where(lt4(testAnalyticsEvents.createdAt, cutoff));
-}
-
 // server/routes/test-analytics.ts
 function requireTestAnalyticsFlag(req, res, next) {
   if (!isTestAnalyticsEnabled()) {
@@ -10958,14 +12406,14 @@ testAnalyticsAdminRouter.get("/summary", async (req, res) => {
     ] = await Promise.all([
       db.select({ total: count() }).from(testAnalyticsEvents).where(where),
       db.select({ n: sql13`count(distinct ${testAnalyticsEvents.userId})` }).from(testAnalyticsEvents).where(gte7(testAnalyticsEvents.createdAt, todayStart)),
-      db.select({ n: count() }).from(testAnalyticsEvents).where(and27(where, eq34(testAnalyticsEvents.eventName, "app_open"))),
-      db.select({ screen: testAnalyticsEvents.screen, n: count() }).from(testAnalyticsEvents).where(and27(where, eq34(testAnalyticsEvents.eventName, "screen_view"))).groupBy(testAnalyticsEvents.screen).orderBy(desc9(count())).limit(10),
-      db.select({ feature: sql13`${testAnalyticsEvents.metadata}->>'feature'`, n: count() }).from(testAnalyticsEvents).where(and27(where, eq34(testAnalyticsEvents.eventName, "feature_used"))).groupBy(sql13`${testAnalyticsEvents.metadata}->>'feature'`).orderBy(desc9(count())).limit(10),
+      db.select({ n: count() }).from(testAnalyticsEvents).where(and28(where, eq34(testAnalyticsEvents.eventName, "app_open"))),
+      db.select({ screen: testAnalyticsEvents.screen, n: count() }).from(testAnalyticsEvents).where(and28(where, eq34(testAnalyticsEvents.eventName, "screen_view"))).groupBy(testAnalyticsEvents.screen).orderBy(desc9(count())).limit(10),
+      db.select({ feature: sql13`${testAnalyticsEvents.metadata}->>'feature'`, n: count() }).from(testAnalyticsEvents).where(and28(where, eq34(testAnalyticsEvents.eventName, "feature_used"))).groupBy(sql13`${testAnalyticsEvents.metadata}->>'feature'`).orderBy(desc9(count())).limit(10),
       db.select({ platform: testAnalyticsEvents.platform, n: count() }).from(testAnalyticsEvents).where(where).groupBy(testAnalyticsEvents.platform).orderBy(desc9(count())),
       db.select({ eventName: testAnalyticsEvents.eventName, n: count() }).from(testAnalyticsEvents).where(where).groupBy(testAnalyticsEvents.eventName).orderBy(desc9(count())),
-      db.select().from(testAnalyticsEvents).where(and27(where, eq34(testAnalyticsEvents.eventName, "api_error"))).orderBy(desc9(testAnalyticsEvents.createdAt)).limit(20),
+      db.select().from(testAnalyticsEvents).where(and28(where, eq34(testAnalyticsEvents.eventName, "api_error"))).orderBy(desc9(testAnalyticsEvents.createdAt)).limit(20),
       db.select().from(testAnalyticsEvents).orderBy(desc9(testAnalyticsEvents.createdAt)).limit(1),
-      db.select({ n: count() }).from(testAnalyticsEvents).where(and27(where, eq34(testAnalyticsEvents.isDemoAccount, true)))
+      db.select({ n: count() }).from(testAnalyticsEvents).where(and28(where, eq34(testAnalyticsEvents.isDemoAccount, true)))
     ]);
     res.json({
       period: typeof req.query.period === "string" ? req.query.period : "7d",
@@ -11000,7 +12448,7 @@ testAnalyticsAdminRouter.get("/users", async (req, res) => {
       userId: testAnalyticsEvents.userId,
       screen: testAnalyticsEvents.screen,
       n: count()
-    }).from(testAnalyticsEvents).where(and27(where, eq34(testAnalyticsEvents.eventName, "screen_view"))).groupBy(testAnalyticsEvents.userId, testAnalyticsEvents.screen).orderBy(desc9(count()));
+    }).from(testAnalyticsEvents).where(and28(where, eq34(testAnalyticsEvents.eventName, "screen_view"))).groupBy(testAnalyticsEvents.userId, testAnalyticsEvents.screen).orderBy(desc9(count()));
     const screensByUser = /* @__PURE__ */ new Map();
     for (const row of screensRows) {
       const key = row.userId ?? "unknown";
@@ -11028,7 +12476,7 @@ testAnalyticsAdminRouter.get("/events", async (req, res) => {
     const limitRaw = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 100;
     const eventName = typeof req.query.eventName === "string" && ALLOWED_EVENTS.has(req.query.eventName) ? req.query.eventName : null;
-    const where = eventName ? and27(gte7(testAnalyticsEvents.createdAt, since), eq34(testAnalyticsEvents.eventName, eventName)) : gte7(testAnalyticsEvents.createdAt, since);
+    const where = eventName ? and28(gte7(testAnalyticsEvents.createdAt, since), eq34(testAnalyticsEvents.eventName, eventName)) : gte7(testAnalyticsEvents.createdAt, since);
     const events = await db.select().from(testAnalyticsEvents).where(where).orderBy(desc9(testAnalyticsEvents.createdAt)).limit(limit);
     res.json({ events });
   } catch {
@@ -11044,13 +12492,118 @@ testAnalyticsAdminRouter.delete("/", async (_req, res) => {
   }
 });
 
+// server/routes/feedback.ts
+init_db();
+init_schema();
+import { Router as Router26 } from "express";
+import { desc as desc10, eq as eq35, gte as gte8, sql as sql14, count as count2, and as and29 } from "drizzle-orm";
+import { z as z21 } from "zod";
+init_logger();
+async function requireAppOwner2(req, res, next) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: { code: "NO_TOKEN", message: "Token di autenticazione mancante" } });
+    }
+    const [record] = await db.select({ email: users.email, emailVerified: users.emailVerified }).from(users).where(eq35(users.id, req.user.userId)).limit(1);
+    if (!record) {
+      return res.status(401).json({ error: { code: "USER_NOT_FOUND", message: "Utente non trovato" } });
+    }
+    if (!record.emailVerified || !isAppOwner(record.email)) {
+      return res.status(403).json({ error: { code: "FORBIDDEN", message: "Accesso riservato al proprietario dell'app" } });
+    }
+    next();
+  } catch {
+    return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante la verifica dei permessi" } });
+  }
+}
+var feedbackSchema = z21.object({
+  category: z21.enum(["bug", "suggestion", "other"]),
+  rating: z21.number().int().min(1).max(5).optional(),
+  message: z21.string().trim().min(2, "Messaggio troppo corto").max(2e3),
+  platform: z21.string().trim().max(10).optional(),
+  appVersion: z21.string().trim().max(20).optional()
+});
+var feedbackRouter = Router26();
+feedbackRouter.post("/", async (req, res) => {
+  try {
+    const parsed = feedbackSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: parsed.error.issues[0]?.message || "Dati non validi" } });
+    }
+    const userId = req.user.userId;
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1e3);
+    const [row] = await db.select({ n: count2() }).from(feedbackEntries).where(and29(eq35(feedbackEntries.userId, userId), gte8(feedbackEntries.createdAt, since)));
+    if ((row?.n ?? 0) >= 12) {
+      return res.status(429).json({ error: { code: "RATE_LIMITED", message: "Hai gi\xE0 inviato molti feedback nelle ultime 24 ore. Riprova pi\xF9 tardi, grazie!" } });
+    }
+    const { category, rating, message, platform, appVersion } = parsed.data;
+    await db.insert(feedbackEntries).values({
+      userId,
+      category,
+      rating: rating ?? null,
+      message,
+      platform: platform || null,
+      appVersion: appVersion || null
+    });
+    res.status(201).json({ ok: true });
+    void (async () => {
+      const [author] = await db.select({ name: users.name, email: users.email }).from(users).where(eq35(users.id, userId)).limit(1);
+      await sendFeedbackNotificationEmail({
+        userName: author?.name ?? "Tester",
+        userEmail: author?.email ?? "sconosciuto",
+        category,
+        rating: rating ?? null,
+        message,
+        platform: platform || null,
+        appVersion: appVersion || null
+      });
+    })().catch((error) => {
+      logger.error("Feedback notification email failed", { error: String(error) });
+    });
+  } catch (error) {
+    logger.error("Feedback insert error", { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Impossibile salvare il feedback" } });
+  }
+});
+var feedbackAdminRouter = Router26();
+feedbackAdminRouter.get("/access", requireAppOwner2, (_req, res) => {
+  res.json({ ok: true });
+});
+feedbackAdminRouter.get("/", requireAppOwner2, async (req, res) => {
+  try {
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500) : 200;
+    const entries = await db.select({
+      id: feedbackEntries.id,
+      category: feedbackEntries.category,
+      rating: feedbackEntries.rating,
+      message: feedbackEntries.message,
+      platform: feedbackEntries.platform,
+      appVersion: feedbackEntries.appVersion,
+      createdAt: feedbackEntries.createdAt,
+      userName: users.name,
+      userEmail: users.email
+    }).from(feedbackEntries).innerJoin(users, eq35(users.id, feedbackEntries.userId)).orderBy(desc10(feedbackEntries.createdAt)).limit(limit);
+    const [summary] = await db.select({
+      total: count2(),
+      avgRating: sql14`round(avg(${feedbackEntries.rating})::numeric, 2)`,
+      bugs: sql14`count(*) filter (where ${feedbackEntries.category} = 'bug')`,
+      suggestions: sql14`count(*) filter (where ${feedbackEntries.category} = 'suggestion')`
+    }).from(feedbackEntries);
+    res.json({ entries, summary });
+  } catch (error) {
+    logger.error("Feedback list error", { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Impossibile caricare i feedback" } });
+  }
+});
+
 // server/routes.ts
 async function registerRoutes(app2) {
   app2.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false
   }));
-  const limiter = rateLimit6({
+  const limiter = rateLimit7({
     windowMs: 15 * 60 * 1e3,
     max: 100,
     standardHeaders: true,
@@ -11058,7 +12611,7 @@ async function registerRoutes(app2) {
     skip: (req) => req.path === "/api/health"
   });
   app2.use("/api", limiter);
-  app2.get("/api/health", (req, res) => {
+  app2.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
   });
   app2.use("/api/auth", auth_default);
@@ -11085,10 +12638,16 @@ async function registerRoutes(app2) {
   app2.use("/api/profile", authenticate, requireEmailVerified, profile_default);
   app2.use("/api/test-analytics", requireTestAnalyticsFlag, authenticate, testAnalyticsEventsRouter);
   app2.use("/api/admin/test-analytics", requireTestAnalyticsFlag, authenticate, testAnalyticsAdminRouter);
+  app2.use("/api/feedback", authenticate, requireEmailVerified, feedbackRouter);
+  app2.use("/api/admin/feedback", authenticate, feedbackAdminRouter);
   app2.use("/calendar-feed", calendar_feed_default);
-  app2.use("/uploads/recipe-images", express.static("uploads/recipe-images", { maxAge: "30d", immutable: true }));
-  app2.use("/uploads/avatars", express.static("uploads/avatars", { maxAge: "7d" }));
-  app2.use("/uploads", authenticateMedia, requireEmailVerified, express.static("uploads"));
+  app2.use(
+    "/uploads/recipe-images",
+    createUploadsObjectHandler("/uploads/recipe-images", { cacheControl: "public, max-age=2592000, immutable" }),
+    express.static("uploads/recipe-images", { maxAge: "30d", immutable: true })
+  );
+  app2.use("/uploads/avatars", createUploadsObjectHandler("/uploads/avatars"), express.static("uploads/avatars", { maxAge: "7d" }));
+  app2.use("/uploads", authenticateMedia, requireEmailVerified, createUploadsObjectHandler("/uploads"), express.static("uploads"));
   app2.use("/legal", legal_default);
   app2.use("/privacy", (req, res, next) => {
     req.url = "/privacy";
@@ -11109,15 +12668,16 @@ async function registerRoutes(app2) {
 init_config();
 init_logger();
 init_entitlements();
-import * as fs7 from "fs";
-import * as path7 from "path";
+import * as fs8 from "fs";
+import * as path9 from "path";
+import * as crypto10 from "crypto";
 
 // server/lib/tester-accounts.ts
 init_db();
 init_schema();
-import crypto8 from "crypto";
+import crypto9 from "crypto";
 import bcrypt6 from "bcryptjs";
-import { and as and28, eq as eq35, inArray as inArray6, sql as sql14 } from "drizzle-orm";
+import { and as and30, eq as eq36, inArray as inArray7, sql as sql15 } from "drizzle-orm";
 var TESTER_COUNT = 100;
 var TESTER_TRIAL_DAYS = 15;
 var TESTER_ENABLED = process.env.ENABLE_TESTER_ACCOUNTS === "true";
@@ -11129,7 +12689,7 @@ var PASSWORD_SEED = process.env.TESTER_PASSWORD_SEED || process.env.SESSION_SECR
 var ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 var pad2 = (n) => String(n).padStart(2, "0");
 function derivePassword(index2) {
-  const digest = crypto8.createHmac("sha256", PASSWORD_SEED).update(`familysync-tester-account-${index2}`).digest();
+  const digest = crypto9.createHmac("sha256", PASSWORD_SEED).update(`familysync-tester-account-${index2}`).digest();
   let out = "";
   for (let i = 0; i < 16; i++) {
     out += ALPHABET[digest[i] % ALPHABET.length];
@@ -11150,15 +12710,15 @@ function getTesterCredentials() {
   return list;
 }
 async function cleanup2(tx, emails) {
-  const existing = await tx.select({ id: users.id }).from(users).where(inArray6(users.email, emails));
+  const existing = await tx.select({ id: users.id }).from(users).where(inArray7(users.email, emails));
   if (existing.length === 0) return;
   const userIds = existing.map((u) => u.id);
-  const testerFamilies = await tx.selectDistinct({ familyId: families.id }).from(families).innerJoin(familyMembers, eq35(familyMembers.familyId, families.id)).where(and28(eq35(families.name, TESTER_FAMILY_NAME), inArray6(familyMembers.userId, userIds)));
+  const testerFamilies = await tx.selectDistinct({ familyId: families.id }).from(families).innerJoin(familyMembers, eq36(familyMembers.familyId, families.id)).where(and30(eq36(families.name, TESTER_FAMILY_NAME), inArray7(familyMembers.userId, userIds)));
   const familyIds = testerFamilies.map((f) => f.familyId);
   if (familyIds.length > 0) {
-    await tx.delete(families).where(inArray6(families.id, familyIds));
+    await tx.delete(families).where(inArray7(families.id, familyIds));
   }
-  await tx.delete(users).where(inArray6(users.id, userIds));
+  await tx.delete(users).where(inArray7(users.id, userIds));
 }
 async function createTester(tx, cred, now) {
   const passwordHash = await bcrypt6.hash(cred.password, 10);
@@ -11168,8 +12728,10 @@ async function createTester(tx, cred, now) {
     name: cred.name,
     emailVerified: true,
     // tutte le /api richiedono email verificata
-    termsAcceptedAt: now,
-    aiFeaturesEnabled: true
+    // NIENTE consensi pre-impostati: al primo accesso il tester passa
+    // dall'onboarding (fascia d'età, Termini, consenso AI opt-in).
+    termsAcceptedAt: null,
+    aiFeaturesEnabled: false
   }).returning();
   const [family] = await tx.insert(families).values({
     name: TESTER_FAMILY_NAME,
@@ -11204,12 +12766,12 @@ async function ensureTesterAccounts(opts = {}) {
   const creds = getTesterCredentials();
   const emails = creds.map((c) => c.email);
   return db.transaction(async (tx) => {
-    await tx.execute(sql14`SELECT pg_advisory_xact_lock(hashtext('familysync:tester-accounts'))`);
+    await tx.execute(sql15`SELECT pg_advisory_xact_lock(hashtext('familysync:tester-accounts'))`);
     if (opts.reset) {
       await cleanup2(tx, emails);
     }
     const now = /* @__PURE__ */ new Date();
-    const present = await tx.select({ email: users.email }).from(users).where(inArray6(users.email, emails));
+    const present = await tx.select({ email: users.email }).from(users).where(inArray7(users.email, emails));
     const existing = new Set(present.map((r) => r.email));
     let created = 0;
     for (const cred of creds) {
@@ -11225,7 +12787,7 @@ async function ensureTesterAccounts(opts = {}) {
 init_db();
 init_schema();
 import bcrypt7 from "bcryptjs";
-import { and as and29, eq as eq36, sql as sql15 } from "drizzle-orm";
+import { and as and31, eq as eq37, sql as sql16 } from "drizzle-orm";
 var VIP_EMAIL = (process.env.VIP_ACCOUNT_EMAIL || "").trim().toLowerCase();
 var VIP_PASSWORD = process.env.VIP_ACCOUNT_PASSWORD || "";
 var VIP_PRODUCT_ID = "familysync_vip_lifetime";
@@ -11234,17 +12796,17 @@ async function ensureVipAccount() {
     return { created: false, upgraded: false, skipped: true, reason: "disabled", email: "" };
   }
   return db.transaction(async (tx) => {
-    await tx.execute(sql15`SELECT pg_advisory_xact_lock(hashtext('familysync:vip-account'))`);
-    const [existing] = await tx.select({ id: users.id }).from(users).where(eq36(users.email, VIP_EMAIL)).limit(1);
+    await tx.execute(sql16`SELECT pg_advisory_xact_lock(hashtext('familysync:vip-account'))`);
+    const [existing] = await tx.select({ id: users.id }).from(users).where(eq37(users.email, VIP_EMAIL)).limit(1);
     let userId;
     let familyId = null;
     let created = false;
     if (existing) {
       userId = existing.id;
-      const memberships = await tx.select({ familyId: familyMembers.familyId, role: familyMembers.role }).from(familyMembers).where(eq36(familyMembers.userId, userId));
+      const memberships = await tx.select({ familyId: familyMembers.familyId, role: familyMembers.role }).from(familyMembers).where(eq37(familyMembers.userId, userId));
       const admin = memberships.find((m) => m.role === "admin");
       familyId = (admin || memberships[0])?.familyId ?? null;
-      await tx.update(users).set({ emailVerified: true }).where(eq36(users.id, userId));
+      await tx.update(users).set({ emailVerified: true }).where(eq37(users.id, userId));
     } else {
       if (!VIP_PASSWORD) {
         return { created: false, upgraded: false, skipped: true, reason: "missing_password", email: VIP_EMAIL };
@@ -11256,8 +12818,9 @@ async function ensureVipAccount() {
         passwordHash,
         name: "Francesco",
         emailVerified: true,
-        termsAcceptedAt: now,
-        aiFeaturesEnabled: true
+        // Anche il VIP esprime i consensi al primo accesso (onboarding).
+        termsAcceptedAt: null,
+        aiFeaturesEnabled: false
       }).returning();
       userId = user.id;
       created = true;
@@ -11277,7 +12840,7 @@ async function ensureVipAccount() {
         color: "#6366F1"
       });
     }
-    const [ent] = await tx.select({ id: entitlements.id, status: entitlements.status, expiresAt: entitlements.expiresAt }).from(entitlements).where(and29(eq36(entitlements.familyId, familyId), eq36(entitlements.productId, VIP_PRODUCT_ID))).limit(1);
+    const [ent] = await tx.select({ id: entitlements.id, status: entitlements.status, expiresAt: entitlements.expiresAt }).from(entitlements).where(and31(eq37(entitlements.familyId, familyId), eq37(entitlements.productId, VIP_PRODUCT_ID))).limit(1);
     let upgraded = false;
     if (!ent) {
       await tx.insert(entitlements).values({
@@ -11291,12 +12854,225 @@ async function ensureVipAccount() {
       });
       upgraded = true;
     } else if (ent.status !== "active" || ent.expiresAt !== null) {
-      await tx.update(entitlements).set({ status: "active", expiresAt: null }).where(eq36(entitlements.id, ent.id));
+      await tx.update(entitlements).set({ status: "active", expiresAt: null }).where(eq37(entitlements.id, ent.id));
       upgraded = true;
     }
-    await tx.update(families).set({ subscriptionStatus: "premium" }).where(eq36(families.id, familyId));
+    await tx.update(families).set({ subscriptionStatus: "premium" }).where(eq37(families.id, familyId));
     return { created, upgraded, skipped: false, email: VIP_EMAIL };
   });
+}
+
+// server/lib/bill-reminders.ts
+init_db();
+init_schema();
+init_logger();
+import { and as and32, eq as eq38, ne as ne2 } from "drizzle-orm";
+var TZ = "Europe/Rome";
+var CHECK_INTERVAL_MS = 60 * 60 * 1e3;
+function todayInRome() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(/* @__PURE__ */ new Date());
+}
+function addDays3(isoDate, days) {
+  const d = /* @__PURE__ */ new Date(`${isoDate}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function formatDateIt2(isoDate) {
+  const d = /* @__PURE__ */ new Date(`${isoDate}T12:00:00Z`);
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(d);
+}
+async function claimReminder(billId, kind) {
+  const inserted = await db.insert(billReminderLog).values({ billId, kind }).onConflictDoNothing().returning({ id: billReminderLog.id });
+  return inserted.length > 0;
+}
+async function releaseReminder(billId, kind) {
+  try {
+    await db.delete(billReminderLog).where(and32(eq38(billReminderLog.billId, billId), eq38(billReminderLog.kind, kind)));
+  } catch (err) {
+    logger.error("Bill reminder release failed", { billId, error: String(err) });
+  }
+}
+async function processKind(kind, dueDate) {
+  const dueBills = await db.select().from(bills).where(and32(
+    eq38(bills.dueDate, dueDate),
+    eq38(bills.remindersEnabled, true),
+    ne2(bills.status, "pagata")
+  ));
+  for (const bill of dueBills) {
+    try {
+      const claimed = await claimReminder(bill.id, kind);
+      if (!claimed) continue;
+      const whenText = kind === "due_today" ? "scade oggi" : "scade domani";
+      const title = kind === "due_today" ? "Bolletta in scadenza oggi" : "Bolletta in scadenza domani";
+      const body = `"${bill.title}" di \u20AC ${bill.amount} ${whenText} (${formatDateIt2(bill.dueDate)})`;
+      try {
+        await sendPushToFamily(bill.familyId, {
+          title,
+          body,
+          data: { type: "bill_reminder", billId: bill.id }
+        });
+        if (isEmailConfigured()) {
+          const members = await db.select({ email: users.email, name: users.name, emailVerified: users.emailVerified }).from(familyMembers).innerJoin(users, eq38(users.id, familyMembers.userId)).where(eq38(familyMembers.familyId, bill.familyId));
+          const recipients = members.filter((m) => m.email && m.emailVerified);
+          let sent = 0;
+          for (const m of recipients) {
+            try {
+              await sendBillReminderEmail({
+                to: m.email,
+                recipientName: m.name || "famiglia",
+                billTitle: bill.title,
+                amount: String(bill.amount),
+                dueDate: formatDateIt2(bill.dueDate),
+                kind
+              });
+              sent++;
+            } catch (err) {
+              logger.error("Bill reminder email failed", { billId: bill.id, error: String(err) });
+            }
+          }
+          if (recipients.length > 0 && sent === 0) {
+            await releaseReminder(bill.id, kind);
+          }
+        }
+      } catch (err) {
+        logger.error("Bill reminder send failed, will retry", { billId: bill.id, error: String(err) });
+        await releaseReminder(bill.id, kind);
+      }
+    } catch (err) {
+      logger.error("Bill reminder processing failed", { billId: bill.id, error: String(err) });
+    }
+  }
+}
+async function runBillRemindersOnce() {
+  const today = todayInRome();
+  await processKind("due_today", today);
+  await processKind("due_tomorrow", addDays3(today, 1));
+}
+function startBillReminderScheduler() {
+  const run = () => {
+    runBillRemindersOnce().catch(
+      (err) => logger.error("Bill reminder scheduler error", { error: String(err) })
+    );
+  };
+  setTimeout(run, 30 * 1e3);
+  const timer = setInterval(run, CHECK_INTERVAL_MS);
+  timer.unref?.();
+}
+
+// server/lib/event-reminders.ts
+init_db();
+init_schema();
+init_logger();
+import { and as and33, eq as eq39 } from "drizzle-orm";
+init_block_filter();
+var TZ2 = "Europe/Rome";
+var CHECK_INTERVAL_MS2 = 60 * 60 * 1e3;
+function todayInRome2() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ2 }).format(/* @__PURE__ */ new Date());
+}
+function addDays4(isoDate, days) {
+  const d = /* @__PURE__ */ new Date(`${isoDate}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function formatDateIt3(isoDate) {
+  const d = /* @__PURE__ */ new Date(`${isoDate}T12:00:00Z`);
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(d);
+}
+async function claimReminder2(eventId, kind) {
+  const inserted = await db.insert(eventReminderLog).values({ eventId, kind }).onConflictDoNothing().returning({ id: eventReminderLog.id });
+  return inserted.length > 0;
+}
+async function releaseReminder2(eventId, kind) {
+  try {
+    await db.delete(eventReminderLog).where(and33(eq39(eventReminderLog.eventId, eventId), eq39(eventReminderLog.kind, kind)));
+  } catch (err) {
+    logger.error("Event reminder release failed", { eventId, error: String(err) });
+  }
+}
+async function processKind2(kind, date2) {
+  const events = await db.select().from(calendarEvents).where(eq39(calendarEvents.date, date2));
+  for (const event of events) {
+    try {
+      const claimed = await claimReminder2(event.id, kind);
+      if (!claimed) continue;
+      const blockRelated = new Set(
+        await getBlockRelatedUserIds(event.createdBy, event.familyId)
+      );
+      const whenText = kind === "event_today" ? "\xE8 oggi" : "\xE8 domani";
+      const title = kind === "event_today" ? "Evento oggi" : "Evento domani";
+      const timeText = !event.allDay && event.time ? ` alle ${event.time}` : "";
+      const body = `"${event.title}" ${whenText} (${formatDateIt3(event.date)}${timeText})`;
+      try {
+        await sendPushToFamily(event.familyId, {
+          title,
+          body,
+          data: { type: "event_reminder", eventId: event.id }
+        }, { excludeUserIds: blockRelated });
+        if (isEmailConfigured()) {
+          const members = await db.select({
+            userId: familyMembers.userId,
+            email: users.email,
+            name: users.name,
+            emailVerified: users.emailVerified
+          }).from(familyMembers).innerJoin(users, eq39(users.id, familyMembers.userId)).where(eq39(familyMembers.familyId, event.familyId));
+          const recipients = members.filter(
+            (m) => m.email && m.emailVerified && !blockRelated.has(m.userId)
+          );
+          let sent = 0;
+          for (const m of recipients) {
+            try {
+              await sendEventReminderEmail({
+                to: m.email,
+                recipientName: m.name || "famiglia",
+                eventTitle: event.title,
+                eventDate: formatDateIt3(event.date),
+                eventTime: !event.allDay ? event.time : null,
+                location: event.location,
+                kind
+              });
+              sent++;
+            } catch (err) {
+              logger.error("Event reminder email failed", { eventId: event.id, error: String(err) });
+            }
+          }
+          if (recipients.length > 0 && sent === 0) {
+            await releaseReminder2(event.id, kind);
+          }
+        }
+      } catch (err) {
+        logger.error("Event reminder send failed, will retry", { eventId: event.id, error: String(err) });
+        await releaseReminder2(event.id, kind);
+      }
+    } catch (err) {
+      logger.error("Event reminder processing failed", { eventId: event.id, error: String(err) });
+    }
+  }
+}
+async function runEventRemindersOnce() {
+  const today = todayInRome2();
+  await processKind2("event_today", today);
+  await processKind2("event_tomorrow", addDays4(today, 1));
+}
+function startEventReminderScheduler() {
+  const run = () => {
+    runEventRemindersOnce().catch(
+      (err) => logger.error("Event reminder scheduler error", { error: String(err) })
+    );
+  };
+  setTimeout(run, 45 * 1e3);
+  const timer = setInterval(run, CHECK_INTERVAL_MS2);
+  timer.unref?.();
 }
 
 // server/index.ts
@@ -11439,8 +13215,8 @@ function setupRequestLogging(app2) {
 }
 function getAppName() {
   try {
-    const appJsonPath = path7.resolve(process.cwd(), "app.json");
-    const appJsonContent = fs7.readFileSync(appJsonPath, "utf-8");
+    const appJsonPath = path9.resolve(process.cwd(), "app.json");
+    const appJsonContent = fs8.readFileSync(appJsonPath, "utf-8");
     const appJson = JSON.parse(appJsonContent);
     return appJson.expo?.name || "App Landing Page";
   } catch {
@@ -11448,19 +13224,19 @@ function getAppName() {
   }
 }
 function serveExpoManifest(platform, res) {
-  const manifestPath = path7.resolve(
+  const manifestPath = path9.resolve(
     process.cwd(),
     "static-build",
     platform,
     "manifest.json"
   );
-  if (!fs7.existsSync(manifestPath)) {
+  if (!fs8.existsSync(manifestPath)) {
     return res.status(404).json({ error: `Manifest not found for platform: ${platform}` });
   }
   res.setHeader("expo-protocol-version", "1");
   res.setHeader("expo-sfv-version", "0");
   res.setHeader("content-type", "application/json");
-  const manifest = fs7.readFileSync(manifestPath, "utf-8");
+  const manifest = fs8.readFileSync(manifestPath, "utf-8");
   res.send(manifest);
 }
 function serveLandingPage({
@@ -11481,17 +13257,46 @@ function serveLandingPage({
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.status(200).send(html);
 }
+function computeWebBuildVersion(indexHtml) {
+  const bundlePaths = indexHtml.match(/\/_expo\/static\/js\/[^"' >]+\.js/g) ?? [];
+  if (bundlePaths.length === 0) return "";
+  const canonical = Array.from(new Set(bundlePaths)).sort().join("|");
+  return crypto10.createHash("sha256").update(canonical).digest("hex").slice(0, 16);
+}
 function configureExpoAndLanding(app2) {
-  const templatePath = path7.resolve(
+  const templatePath = path9.resolve(
     process.cwd(),
     "server",
     "templates",
     "landing-page.html"
   );
-  const landingPageTemplate = fs7.readFileSync(templatePath, "utf-8");
+  const landingPageTemplate = fs8.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
-  const webBuildDir = path7.resolve(process.cwd(), "web-build");
-  const hasWebBuild = fs7.existsSync(path7.join(webBuildDir, "index.html"));
+  const webBuildDir = path9.resolve(process.cwd(), "web-build");
+  const hasWebBuild = fs8.existsSync(path9.join(webBuildDir, "index.html"));
+  let buildVersion = "";
+  if (hasWebBuild) {
+    try {
+      const indexHtml = fs8.readFileSync(path9.join(webBuildDir, "index.html"), "utf-8");
+      buildVersion = computeWebBuildVersion(indexHtml);
+      if (!buildVersion) {
+        logger.warn("No _expo bundle references found in web-build/index.html; /build-version disabled");
+      }
+    } catch (err) {
+      logger.warn(`Unable to compute web build version: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  app2.get("/build-version", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!buildVersion) {
+      return res.status(404).json({ error: "NO_WEB_BUILD" });
+    }
+    res.json({ version: buildVersion });
+  });
+  app2.get("/api/version", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ version: buildVersion || "unknown" });
+  });
   log(
     hasWebBuild ? "Serving Expo web app from web-build with native manifest routing" : "Serving static Expo files with dynamic manifest routing"
   );
@@ -11516,8 +13321,8 @@ function configureExpoAndLanding(app2) {
     next();
   });
   app2.get("/download/store-assets.zip", (_req, res) => {
-    const zipPath = path7.resolve(process.cwd(), "store-assets.zip");
-    if (fs7.existsSync(zipPath)) {
+    const zipPath = path9.resolve(process.cwd(), "store-assets.zip");
+    if (fs8.existsSync(zipPath)) {
       res.setHeader("Content-Disposition", "attachment; filename=store-assets.zip");
       res.setHeader("Content-Type", "application/zip");
       res.sendFile(zipPath);
@@ -11526,15 +13331,25 @@ function configureExpoAndLanding(app2) {
     }
   });
   if (hasWebBuild) {
-    app2.use(express2.static(webBuildDir));
+    app2.use(
+      express2.static(webBuildDir, {
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith(".html") || filePath.endsWith("sw.js")) {
+            res.setHeader("Cache-Control", "no-cache, must-revalidate");
+          } else if (filePath.includes(`${path9.sep}_expo${path9.sep}`)) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          }
+        }
+      })
+    );
   }
-  app2.use("/assets", express2.static(path7.resolve(process.cwd(), "assets")));
-  app2.use(express2.static(path7.resolve(process.cwd(), "static-build")));
+  app2.use("/assets", express2.static(path9.resolve(process.cwd(), "assets")));
+  app2.use(express2.static(path9.resolve(process.cwd(), "static-build")));
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
 function setupWebAppFallback(app2) {
-  const webIndexPath = path7.resolve(process.cwd(), "web-build", "index.html");
-  if (!fs7.existsSync(webIndexPath)) {
+  const webIndexPath = path9.resolve(process.cwd(), "web-build", "index.html");
+  if (!fs8.existsSync(webIndexPath)) {
     return;
   }
   app2.use((req, res, next) => {
@@ -11547,6 +13362,7 @@ function setupWebAppFallback(app2) {
     if (!req.accepts("html")) {
       return next();
     }
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
     res.sendFile(webIndexPath);
   });
 }
@@ -11600,6 +13416,11 @@ function setupErrorHandler(app2) {
         else if (r.skipped && r.reason === "missing_password")
           log(`vip account skipped: set VIP_ACCOUNT_PASSWORD to enable`);
       }).catch((err) => log(`vip account seed failed: ${String(err)}`));
+      startBillReminderScheduler();
+      startEventReminderScheduler();
     }
   );
 })();
+export {
+  computeWebBuildVersion
+};

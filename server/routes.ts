@@ -49,7 +49,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.use('/api', limiter);
 
-  app.get('/api/health', (req, res) => {
+  app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
