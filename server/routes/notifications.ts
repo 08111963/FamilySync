@@ -13,6 +13,7 @@ import {
   isWebPushConfigured,
   sendWebPushToSingleSubscription,
 } from '../lib/web-push';
+import { isExpoPushToken, sendNativePushToSingleToken } from '../lib/push';
 
 const router = Router();
 
@@ -248,6 +249,55 @@ router.post('/web/test', requireAppOwner404, webTestLimiter, async (req: Request
     return res.status(502).json({ error: { code: 'PUSH_SEND_FAILED', message: `Il servizio push ha rifiutato l'invio${result.status ? ` (HTTP ${result.status})` : ''}. Riprova più tardi.` } });
   } catch (error) {
     logger.error('Web push test error', { error: String(error) });
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: "Errore durante l'invio della notifica di prova" } });
+  }
+});
+
+const nativeTestSchema = z.object({ token: z.string().min(1).max(500) });
+
+// POST /api/notifications/native/test — invia una push nativa di prova SOLO al
+// token Expo del dispositivo corrente (passato dal client, verificato che
+// appartenga all'utente autenticato in push_tokens). Stesso gating owner-only
+// e rate limiter della notifica di prova web.
+router.post('/native/test', requireAppOwner404, webTestLimiter, async (req: Request, res: Response) => {
+  try {
+    const parsed = nativeTestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Dati non validi' } });
+    }
+
+    // Il token deve esistere ED essere associato all'utente corrente:
+    // niente invii verso token arbitrari o di altri account.
+    const [record] = await db
+      .select({ token: pushTokens.token })
+      .from(pushTokens)
+      .where(and(
+        eq(pushTokens.token, parsed.data.token),
+        eq(pushTokens.userId, req.user!.userId),
+      ))
+      .limit(1);
+    if (!record) {
+      return res.status(404).json({ error: { code: 'TOKEN_NOT_FOUND', message: 'Questo dispositivo non risulta registrato per le notifiche. Attiva prima le notifiche dalle impostazioni.' } });
+    }
+    if (!isExpoPushToken(record.token)) {
+      return res.status(400).json({ error: { code: 'INVALID_TOKEN', message: 'Il token di questo dispositivo non è un token Expo valido.' } });
+    }
+
+    const result = await sendNativePushToSingleToken(record.token, {
+      title: 'Notifica di prova',
+      body: 'Se leggi questo messaggio, le notifiche native funzionano su questo dispositivo. ✅',
+      data: { type: 'native_push_test' },
+    });
+
+    if (result.ok) {
+      return res.json({ ok: true, message: 'Notifica inviata al servizio push' });
+    }
+    if (result.code === 'DEVICE_NOT_REGISTERED') {
+      return res.status(410).json({ error: { code: 'TOKEN_EXPIRED', message: 'Il token di questo dispositivo non è più valido ed è stato rimosso. Riapri l\'app per registrarlo di nuovo e riprova.' } });
+    }
+    return res.status(502).json({ error: { code: 'PUSH_SEND_FAILED', message: `Il servizio push ha rifiutato l'invio${'status' in result && result.status ? ` (HTTP ${result.status})` : ''}. Riprova più tardi.` } });
+  } catch (error) {
+    logger.error('Native push test error', { error: String(error) });
     res.status(500).json({ error: { code: 'SERVER_ERROR', message: "Errore durante l'invio della notifica di prova" } });
   }
 });

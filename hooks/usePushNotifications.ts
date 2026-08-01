@@ -152,6 +152,25 @@ async function registerForPush(): Promise<string | null> {
   }
 }
 
+/**
+ * Ritorna il token Expo push del dispositivo corrente (solo app nativa,
+ * build store). Prova prima il token già registrato in AsyncStorage, poi
+ * una nuova registrazione. Null su web, Expo Go o senza permesso.
+ */
+export async function getNativePushToken(): Promise<string | null> {
+  if (Platform.OS === "web" || isExpoGo) return null;
+  try {
+    const stored = await AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
+    if (stored) return stored;
+  } catch {}
+  return registerForPush();
+}
+
+/** True se questa piattaforma può ricevere push native (app installata, non Expo Go). */
+export function isNativePushSupported(): boolean {
+  return Platform.OS !== "web" && !isExpoGo;
+}
+
 export function usePushNotifications(enabled: boolean) {
   const registeredToken = useRef<string | null>(null);
 

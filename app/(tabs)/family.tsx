@@ -13,6 +13,7 @@ import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
 import { WebPushTestButton } from "@/components/WebPushTestButton";
+import { NativePushTestButton } from "@/components/NativePushTestButton";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { trackEvent } from "@/lib/test-analytics";
 
@@ -599,6 +600,7 @@ export default function FamilyScreen() {
             </Card>
           )}
           <WebPushTestButton />
+          <NativePushTestButton />
         </View>
       </View>
 
