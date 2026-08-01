@@ -1,0 +1,45 @@
+-- Pulizia allegati orfani in produzione
+-- Rilevato il: 2026-08-01
+-- Queste righe puntano a /uploads/... che non esistono né su disco né nel bucket Object Storage.
+--
+-- ATTENZIONE: questo script MODIFICA dati in produzione.
+-- Eseguire tramite endpoint temporaneo (pattern migrate.ts) dopo conferma utente.
+--
+-- ============================================================
+-- OPZIONE A: cancellare i messaggi chat con file orfani
+-- ============================================================
+-- I seguenti messaggi hanno solo un allegato perso (nessun testo utile da preservare):
+--   id b3d93fd1-7abb-4dd2-8d69-61fb6496c0ec  /uploads/f27d189a3ef6bdd07c787b66f6c670b2.txt  (2026-02-10)
+--   id 1a527fbe-cd1c-4ba1-906f-f1e22ad5d7bd  /uploads/41d60df84c9c8b1f6c2c27dbf5fcc0c3.png  (2026-06-26)
+--   id 2d2f4e57-8f4c-4f29-88c7-ea3dfad23808  /uploads/../../tmp/sentinel_target.txt          (2026-06-26, path traversal di test)
+--   id 568730e8-0109-47c4-beb1-f0eee23dfd0f  /uploads/../../tmp/sentinel_target.txt          (2026-06-26, path traversal di test)
+--
+-- DELETE FROM chat_messages
+-- WHERE id IN (
+--   'b3d93fd1-7abb-4dd2-8d69-61fb6496c0ec',
+--   '1a527fbe-cd1c-4ba1-906f-f1e22ad5d7bd',
+--   '2d2f4e57-8f4c-4f29-88c7-ea3dfad23808',
+--   '568730e8-0109-47c4-beb1-f0eee23dfd0f'
+-- );
+
+-- ============================================================
+-- OPZIONE B: azzerare solo il file_url (preserva il messaggio)
+-- ============================================================
+-- UPDATE chat_messages
+-- SET file_url = NULL
+-- WHERE id IN (
+--   'b3d93fd1-7abb-4dd2-8d69-61fb6496c0ec',
+--   '1a527fbe-cd1c-4ba1-906f-f1e22ad5d7bd',
+--   '2d2f4e57-8f4c-4f29-88c7-ea3dfad23808',
+--   '568730e8-0109-47c4-beb1-f0eee23dfd0f'
+-- );
+
+-- ============================================================
+-- Avatar orfano
+-- ============================================================
+-- utente 67d0d86b-45a4-4e97-b837-8345da970c86  /uploads/avatars/f64c7f9ed9164a8ca5d0594d763b2491.jpg
+--
+-- UPDATE users
+-- SET avatar_url = NULL
+-- WHERE id = '67d0d86b-45a4-4e97-b837-8345da970c86'
+--   AND avatar_url = '/uploads/avatars/f64c7f9ed9164a8ca5d0594d763b2491.jpg';
