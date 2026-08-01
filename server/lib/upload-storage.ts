@@ -36,6 +36,14 @@ export function isObjectStorageMode(): boolean {
 
 let client: Client | null = null;
 
+/**
+ * SOLO PER TEST: inietta un client fittizio (bucket in-memory) al posto del
+ * Client Replit reale. Non usare mai in codice di produzione.
+ */
+export function __setObjectStorageClientForTests(fake: unknown): void {
+  client = fake as Client;
+}
+
 function getClient(): Client {
   if (!client) {
     const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
