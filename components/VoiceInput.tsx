@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Pressable, ActivityIndicator, Alert, Platform, StyleSheet } from "react-native";
+import { Pressable, ActivityIndicator, Alert, Animated, Platform, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
@@ -42,8 +42,7 @@ function getActiveMic() {
   return activeMicId;
 }
 
-// Su web Alert.alert di react-native-web NON mostra nulla: usa window.alert
-// come fallback, altrimenti gli errori di dettatura restano invisibili.
+const MAX_RECORDING_MS = 60_000;
 function showAlert(title: string, message: string) {
   if (Platform.OS === "web") {
     const win = globalThis as any;
@@ -90,6 +89,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
   const recordStartRef = useRef(0);
   const justStoppedRef = useRef(false);
   const releasedWhileStartingRef = useRef(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const activeMic = useSyncExternalStore(subscribeMic, getActiveMic, getActiveMic);
   const lockedByOther = activeMic !== null && activeMic !== idRef.current;
@@ -228,6 +228,48 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
     }
   };
 
+  // Timeout di sicurezza (solo web): se l'utente dimentica il secondo tocco,
+  // dopo MAX_RECORDING_MS la registrazione si ferma da sola e trascrive.
+  useEffect(() => {
+    if (Platform.OS !== "web" || !recording) return;
+    const elapsed = Date.now() - recordStartRef.current;
+    const remaining = Math.max(0, MAX_RECORDING_MS - elapsed);
+    const timer = setTimeout(() => {
+      if (recordingRef.current) {
+        stopAndTranscribe();
+      }
+    }, remaining);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording]);
+
+  // Pulsazione dell'icona mentre registra: rende lo stato "sto registrando"
+  // chiaramente visibile anche senza guardare da vicino il colore dell'icona.
+  useEffect(() => {
+    if (!recording) {
+      pulseAnim.stopAnimation();
+      pulseAnim.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.35,
+          duration: 550,
+          useNativeDriver: Platform.OS !== "web",
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 550,
+          useNativeDriver: Platform.OS !== "web",
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording]);
+
   // Web: se il puntatore viene rilasciato fuori dal pulsante o la finestra
   // perde il focus, l'onPressOut del Pressable può non arrivare. Questi
   // listener globali garantiscono che la registrazione venga sempre chiusa.
@@ -347,16 +389,22 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
         // prima di parlare, così la prima parola non viene tagliata.
         <ActivityIndicator size="small" color={colors.primary} testID="voice-starting" />
       ) : (
-        <Ionicons
-          name={recording ? "radio-button-on" : "mic-outline"}
-          size={recording ? size + 4 : size}
-          color={recording ? "#FF6B6B" : isDisabled ? colors.textSecondary : colors.primary}
-        />
+        <Animated.View style={recording ? { transform: [{ scale: pulseAnim }] } : undefined}>
+          <Ionicons
+            name={recording ? "radio-button-on" : "mic-outline"}
+            size={recording ? size + 4 : size}
+            color={recording ? "#FF6B6B" : isDisabled ? colors.textSecondary : colors.primary}
+          />
+        </Animated.View>
       )}
+      {recording ? (
+        <Animated.Text style={[styles.recLabel, { opacity: pulseAnim.interpolate({ inputRange: [1, 1.35], outputRange: [0.55, 1] }) }]}>
+          REC
+        </Animated.Text>
+      ) : null}
     </Pressable>
   );
 }
-
 /**
  * Legge un testo ad alta voce in italiano (interrompe eventuali letture in corso).
  * Utile per leggere automaticamente i risultati generati dall'AI.
@@ -473,5 +521,12 @@ const styles = StyleSheet.create({
     padding: 4,
     alignItems: "center",
     justifyContent: "center",
+  },
+  recLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#FF6B6B",
+    letterSpacing: 1,
+    marginTop: 1,
   },
 });
