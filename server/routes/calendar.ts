@@ -4,7 +4,7 @@ import { getParam, getQuery } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { calendarEvents, familyMembers, families } from '../../shared/schema';
+import { calendarEvents, familyMembers, families, users } from '../../shared/schema';
 import { eq, and, gte, lte, isNull } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
@@ -13,12 +13,21 @@ import { sendPushToUser, sendPushToFamily } from '../lib/push';
 import { getBlockedUserIds, getBlockRelatedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
+import { sendNewEventEmail, isEmailConfigured } from '../lib/email';
 import { parseRecurrenceRule, expandOccurrences, isRealIsoDate } from '../../shared/chore-recurrence';
 
 /** Numero massimo di occorrenze materializzate per un evento ricorrente. */
 const MAX_RECURRENCE_OCCURRENCES = 60;
 /** Orizzonte massimo (in mesi) per la materializzazione delle occorrenze. */
 const RECURRENCE_HORIZON_MONTHS = 6;
+
+/** Formatta una data ISO (AAAA-MM-GG) in italiano (es. "23 luglio 2026"). */
+function formatDateIt(isoDate: string): string {
+  const d = new Date(`${isoDate.slice(0, 10)}T12:00:00Z`);
+  return new Intl.DateTimeFormat('it-IT', {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+  }).format(d);
+}
 
 async function notifyAssignedMember(
   familyId: string,
@@ -229,6 +238,51 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
         data: { route: '/(tabs)/calendar' },
       }, { excludeUserIds: excluded });
     })().catch(() => {});
+
+    // Email agli ALTRI membri con email verificata (mai all'autore, esclusi
+    // gli utenti in blocco reciproco). UNA sola email anche per le serie
+    // ricorrenti: l'inserimento della serie avviene in questa singola POST.
+    void (async () => {
+      if (!isEmailConfigured()) return;
+      const creatorId = req.user!.userId;
+      const blockRelated = new Set<string>(await getBlockRelatedUserIds(creatorId, familyId));
+
+      const members = await db
+        .select({
+          userId: familyMembers.userId,
+          email: users.email,
+          name: users.name,
+          emailVerified: users.emailVerified,
+        })
+        .from(familyMembers)
+        .innerJoin(users, eq(users.id, familyMembers.userId))
+        .where(eq(familyMembers.familyId, familyId));
+
+      const creatorName =
+        members.find((m) => m.userId === creatorId)?.name || 'Un membro della famiglia';
+      const recipients = members.filter(
+        (m) => m.userId !== creatorId && m.email && m.emailVerified && !blockRelated.has(m.userId),
+      );
+
+      for (const m of recipients) {
+        try {
+          await sendNewEventEmail({
+            to: m.email!,
+            recipientName: m.name || 'famiglia',
+            creatorName,
+            eventTitle: event.title,
+            eventDate: formatDateIt(event.date),
+            eventTime: !event.allDay ? event.time : null,
+            location: event.location,
+            isRecurring: Boolean(event.recurrenceRule),
+          });
+        } catch (err) {
+          logger.error('New event email failed', { eventId: event.id, error: String(err) });
+        }
+      }
+    })().catch((err) => {
+      logger.error('New event email fanout failed', { error: String(err) });
+    });
 
     res.status(201).json(event);
   } catch (error) {

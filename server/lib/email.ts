@@ -242,6 +242,51 @@ export async function sendEventReminderEmail(params: {
 }
 
 /**
+ * Avviso di nuovo evento creato in calendario. Inviata (fire-and-forget dal
+ * chiamante) agli ALTRI membri della famiglia con email verificata — mai
+ * all'autore. Per le serie ricorrenti si invia UNA sola email per la serie.
+ */
+export async function sendNewEventEmail(params: {
+  to: string;
+  recipientName: string;
+  creatorName: string;
+  eventTitle: string;
+  eventDate: string; // già formattata (es. "23 luglio 2026")
+  eventTime?: string | null; // es. "15:30"
+  location?: string | null;
+  isRecurring: boolean;
+}) {
+  if (!isEmailConfigured()) {
+    console.log(`[DEV] Nuovo evento "${params.eventTitle}" — email per ${params.to}`);
+    return;
+  }
+
+  const name = escapeHtml(params.recipientName);
+  const creator = escapeHtml(params.creatorName);
+  const title = escapeHtml(params.eventTitle);
+  const eventDate = escapeHtml(params.eventDate);
+  const time = params.eventTime ? escapeHtml(params.eventTime) : '';
+  const location = params.location ? escapeHtml(params.location) : '';
+  const appLink = clientBaseUrl();
+  const seriesNote = params.isRecurring
+    ? `<p>Si tratta di un evento ricorrente: la prima occorrenza è il ${eventDate}${time ? ` alle ${time}` : ''}.</p>`
+    : `<p>Quando: <strong>${eventDate}${time ? ` alle ${time}` : ''}</strong></p>`;
+
+  await sendEmail({
+    to: params.to,
+    subject: `Nuovo evento in famiglia: "${params.eventTitle.replace(/[\r\n]+/g, ' ').trim()}"`,
+    html: `
+      <h2>Ciao ${name}!</h2>
+      <p><strong>${creator}</strong> ha aggiunto l'evento <strong>${title}</strong> al calendario della famiglia.</p>
+      ${seriesNote}
+      ${location ? `<p>Luogo: <strong>${location}</strong></p>` : ''}
+      ${appLink ? `<p><a href="${appLink}">Apri FamilySync</a></p>` : ''}
+      <p style="color:#888;font-size:12px;">Ricevi questa email perché fai parte della famiglia su FamilySync.</p>
+    `,
+  });
+}
+
+/**
  * Notifica il proprietario dell'app (indirizzi in APP_OWNER_EMAILS) che un
  * tester ha inviato un nuovo feedback dal modulo "Dacci il tuo parere".
  * Fire-and-forget lato chiamante: eventuali errori vanno solo loggati e non
