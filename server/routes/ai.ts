@@ -20,6 +20,7 @@ import { reserveAiSlot, finalizeAiUsage, withAiUsage } from '../lib/ai-usage';
 import { resolveMealPlanVariants } from '../lib/ai-policy';
 import { isAiError } from '../lib/ai-errors';
 import { recipeImageCacheKey, createRecipeImagePrewarm } from '../lib/recipe-image-prewarm';
+import { isObjectStorageMode, persistUploadedFile, uploadObjectExists } from '../lib/upload-storage';
 
 const router = Router();
 
@@ -1250,6 +1251,25 @@ if (!fs.existsSync(recipeImagesDir)) {
   fs.mkdirSync(recipeImagesDir, { recursive: true });
 }
 
+// Cache in-memory (solo positiva) delle foto già presenti nel bucket: le foto
+// ricette sono immutabili per chiave, quindi un "esiste" non diventa mai falso.
+// Evita un round-trip al bucket per ogni resolve/cache-hit successivo.
+const knownRecipeImageFiles = new Set<string>();
+
+/**
+ * true se la foto ricetta è già in cache: disco locale (dev / file appena
+ * scritti) oppure bucket Object Storage (prod). Lancia se il check sul bucket
+ * fallisce: il chiamante decide come degradare, senza sprecare quota.
+ */
+async function recipeImageIsCached(fileName: string): Promise<boolean> {
+  if (fs.existsSync(path.join(recipeImagesDir, fileName))) return true;
+  if (!isObjectStorageMode()) return false;
+  if (knownRecipeImageFiles.has(fileName)) return true;
+  const exists = await uploadObjectExists(`/uploads/recipe-images/${fileName}`);
+  if (exists) knownRecipeImageFiles.add(fileName);
+  return exists;
+}
+
 // Dedup richieste concorrenti sulla stessa ricetta: una sola generazione
 // (e un solo slot di quota) anche se più client chiedono la stessa foto insieme.
 // Il valore è la promise del run del "leader", condivisa con i follower
@@ -1290,6 +1310,20 @@ function startRecipeImageGeneration(params: {
         const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
         await fs.promises.writeFile(tmpPath, optimized);
         await fs.promises.rename(tmpPath, filePath);
+        // In modalità object-storage la foto va nel bucket (persistente su
+        // autoscale); persistUploadedFile rimuove il file locale temporaneo.
+        // Se l'upload fallisce l'errore propaga (niente cache-hit fantasma)
+        // e il file locale resta comunque servibile finché il disco vive.
+        const fileName = path.basename(filePath);
+        try {
+          await persistUploadedFile(filePath, `/uploads/recipe-images/${fileName}`);
+          knownRecipeImageFiles.add(fileName);
+        } catch (error) {
+          logger.warn('Recipe image bucket upload failed (serving from local disk)', {
+            fileName,
+            error: String(error),
+          });
+        }
       }
       return run;
     })();
@@ -1305,7 +1339,7 @@ function startRecipeImageGeneration(params: {
 // server/lib/recipe-image-prewarm.ts (dipendenze reali iniettate qui).
 const prewarmRecipeImages = createRecipeImagePrewarm({
   imagesDir: recipeImagesDir,
-  fileExists: (filePath) => fs.existsSync(filePath),
+  fileExists: (filePath) => recipeImageIsCached(path.basename(filePath)),
   startGeneration: startRecipeImageGeneration,
   logWarn: (message, meta) => logger.warn(message, meta),
 });
@@ -1316,7 +1350,7 @@ const prewarmRecipeImages = createRecipeImagePrewarm({
  * Nessuna generazione, nessun consumo di quota: solo lookup su disco.
  * Risposta: { urls: { [titolo]: "/uploads/..." | null } }
  */
-router.post('/:familyId/recipe-images/resolve', authenticate, requireAiEnabled, requireFamilyMember(), (req: Request, res: Response) => {
+router.post('/:familyId/recipe-images/resolve', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const raw = req.body?.titles;
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > 40) {
     return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Lista titoli non valida' } });
@@ -1327,9 +1361,14 @@ router.post('/:familyId/recipe-images/resolve', authenticate, requireAiEnabled, 
     const title = t.trim();
     if (title.length < 2 || title.length > 200) continue;
     const fileName = `${recipeImageCacheKey(title)}.webp`;
-    urls[title] = fs.existsSync(path.join(recipeImagesDir, fileName))
-      ? `/uploads/recipe-images/${fileName}`
-      : null;
+    let cached = false;
+    try {
+      cached = await recipeImageIsCached(fileName);
+    } catch (error) {
+      // Check bucket fallito: nessuna generazione qui, degradiamo a "non in cache".
+      logger.warn('Recipe image resolve cache check error', { fileName, error: String(error) });
+    }
+    urls[title] = cached ? `/uploads/recipe-images/${fileName}` : null;
   }
   res.json({ urls });
 });
@@ -1354,8 +1393,8 @@ router.post('/:familyId/recipe-image', authenticate, requireAiEnabled, requireFa
     const filePath = path.join(recipeImagesDir, fileName);
     const url = `/uploads/recipe-images/${fileName}`;
 
-    // Cache-hit: la foto esiste già, non consuma quota.
-    if (fs.existsSync(filePath)) {
+    // Cache-hit (disco locale o bucket): la foto esiste già, non consuma quota.
+    if (await recipeImageIsCached(fileName)) {
       return res.json({ url, cached: true });
     }
 

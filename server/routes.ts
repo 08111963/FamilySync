@@ -100,7 +100,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Foto ricette generate dall'AI: immagini generiche di piatti (nessun dato
   // personale, cache condivisa per titolo tra famiglie), servite pubblicamente
   // con cache lunga. Montate PRIMA di /uploads autenticato.
-  app.use('/uploads/recipe-images', express.static('uploads/recipe-images', { maxAge: '30d', immutable: true }));
+  // In modalità STORAGE_MODE=object-storage servite dal bucket (persistente su
+  // autoscale); express.static resta come fallback per file legacy su disco.
+  app.use(
+    '/uploads/recipe-images',
+    createUploadsObjectHandler('/uploads/recipe-images', { cacheControl: 'public, max-age=2592000, immutable' }),
+    express.static('uploads/recipe-images', { maxAge: '30d', immutable: true })
+  );
 
   // Foto profilo (avatar): immagini di profilo mostrate ovunque nell'app, senza
   // dati sensibili. Servite pubblicamente (come le foto ricette) per non dover

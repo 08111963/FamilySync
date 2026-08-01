@@ -90,6 +90,23 @@ export async function persistUploadedFile(localPath: string, fileUrl: string): P
 }
 
 /**
+ * Verifica se un oggetto /uploads/* esiste nel bucket. In modalità local
+ * ritorna sempre false (il chiamante controlla il disco). Lancia in caso di
+ * errore di comunicazione col bucket: il chiamante decide come degradare
+ * (niente false negativi silenziosi che sprecherebbero quota AI).
+ */
+export async function uploadObjectExists(fileUrl: string): Promise<boolean> {
+  if (!isObjectStorageMode()) return false;
+  const key = objectKeyFromUrl(fileUrl);
+  if (!key) return false;
+  const { ok, error, value } = await getClient().exists(key);
+  if (!ok) {
+    throw new Error(`Object storage exists fallito (${key}): ${String(error)}`);
+  }
+  return value;
+}
+
+/**
  * Elimina in modo sicuro i file corrispondenti agli URL forniti da TUTTI gli
  * storage: sempre dal disco locale (copre i file legacy pre-migrazione) e, in
  * modalità object-storage, anche dal bucket. Non lancia mai: la cancellazione
@@ -138,7 +155,11 @@ const EXTENSION_MIMES: Record<string, string> = {
  *
  * Va montato con un prefisso (es. app.use('/uploads', ..., createUploadsObjectHandler('/uploads'), express.static('uploads'))).
  */
-export function createUploadsObjectHandler(mountPrefix: string) {
+export function createUploadsObjectHandler(
+  mountPrefix: string,
+  options?: { cacheControl?: string }
+) {
+  const cacheControl = options?.cacheControl ?? "private, max-age=3600";
   return async function uploadsObjectHandler(req: Request, res: Response, next: NextFunction) {
     if (!isObjectStorageMode()) return next();
     if (req.method !== "GET" && req.method !== "HEAD") return next();
@@ -178,7 +199,7 @@ export function createUploadsObjectHandler(mountPrefix: string) {
       const mime = EXTENSION_MIMES[ext] || "application/octet-stream";
       res.setHeader("Content-Type", mime);
       res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.setHeader("Cache-Control", cacheControl);
       if (req.method === "HEAD") {
         return res.status(200).end();
       }

@@ -35,8 +35,11 @@ export interface StartGenerationParams {
 export interface RecipeImagePrewarmDeps {
   /** Cartella su disco dove vivono le foto (.webp). */
   imagesDir: string;
-  /** true se la foto è già in cache su disco (nessuna quota consumata). */
-  fileExists: (filePath: string) => boolean;
+  /**
+   * true se la foto è già in cache (disco locale o bucket): nessuna quota
+   * consumata. Può essere async (check su object storage).
+   */
+  fileExists: (filePath: string) => boolean | Promise<boolean>;
   /**
    * Avvia (o si aggancia a) la generazione della foto: run risolve con
    * l'esito di withAiUsage ('ok' | 'limited' | 'unavailable').
@@ -61,13 +64,13 @@ export interface RecipeImagePrewarmDeps {
 export function createRecipeImagePrewarm(deps: RecipeImagePrewarmDeps) {
   const concurrency = deps.concurrency ?? 2;
 
-  return function prewarmRecipeImages(
+  return async function prewarmRecipeImages(
     items: RecipeImagePrewarmItem[],
     userId: string,
     familyId: string,
   ): Promise<void> {
-    // Solo titoli validi e non già in cache su disco.
-    const pending = items
+    // Solo titoli validi e non già in cache (disco o bucket).
+    const candidates = items
       .map(r => ({
         title: typeof r.title === 'string' ? r.title.trim() : '',
         description: typeof r.description === 'string' ? r.description.trim().slice(0, 300) : undefined,
@@ -76,9 +79,18 @@ export function createRecipeImagePrewarm(deps: RecipeImagePrewarmDeps) {
       .map(r => {
         const key = recipeImageCacheKey(r.title);
         return { ...r, key, filePath: path.join(deps.imagesDir, `${key}.webp`) };
-      })
-      .filter(r => !deps.fileExists(r.filePath));
-    if (pending.length === 0) return Promise.resolve();
+      });
+    const pending: typeof candidates = [];
+    for (const r of candidates) {
+      try {
+        if (!(await deps.fileExists(r.filePath))) pending.push(r);
+      } catch (error) {
+        // Check di cache fallito (es. bucket irraggiungibile): meglio saltare
+        // il titolo che rischiare una generazione duplicata (quota sprecata).
+        deps.logWarn('Recipe image prewarm cache check error', { error: String(error), familyId, title: r.title });
+      }
+    }
+    if (pending.length === 0) return;
 
     let index = 0;
     let stopped = false;
