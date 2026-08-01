@@ -2,8 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, usePathname, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
-import { Alert, View } from "react-native";
-import { UpdateBanner } from "@/components/UpdateBanner";
+import { Alert, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
@@ -32,6 +31,7 @@ if (isPushSupported()) {
 
 // Registra il token push quando l'utente è autenticato e gestisce il tap
 // sulla notifica navigando alla schermata indicata in data.route.
+import { WebUpdateBanner } from "@/components/WebUpdateBanner";
 function PushNotificationsManager() {
   const { isAuthenticated, accessToken, user } = useAuth();
   const router = useRouter();
@@ -118,7 +118,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 function RootLayoutNav() {
   return (
     <View style={{ flex: 1 }}>
-      <UpdateBanner />
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
       <Stack.Screen name="welcome" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
@@ -201,6 +200,7 @@ export default function RootLayout() {
                       <TestAnalyticsTracker />
                       <PushNotificationsManager />
                       <RootLayoutNav />
+                      {Platform.OS === "web" && <WebUpdateBanner />}
                     </AuthGate>
                   </KeyboardProvider>
                 </GestureHandlerRootView>

@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
+import * as crypto from "crypto";
 import { config } from './lib/config';
 import { logger, generateRequestId } from './lib/logger';
 import { seedOwnerEntitlements } from './lib/entitlements';
@@ -253,6 +254,12 @@ function serveLandingPage({
   res.status(200).send(html);
 }
 
+export function computeWebBuildVersion(indexHtml: string): string {
+  const bundlePaths = indexHtml.match(/\/_expo\/static\/js\/[^"' >]+\.js/g) ?? [];
+  if (bundlePaths.length === 0) return "";
+  const canonical = Array.from(new Set(bundlePaths)).sort().join("|");
+  return crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 16);
+}
 function configureExpoAndLanding(app: express.Application) {
   const templatePath = path.resolve(
     process.cwd(),
@@ -266,22 +273,39 @@ function configureExpoAndLanding(app: express.Application) {
   const webBuildDir = path.resolve(process.cwd(), "web-build");
   const hasWebBuild = fs.existsSync(path.join(webBuildDir, "index.html"));
 
-  // Versione della build web: il nome del bundle entry-<hash>.js cambia a ogni
-  // build, quindi è un identificatore perfetto. Il client la confronta
-  // periodicamente per proporre l'aggiornamento (PWA con bundle vecchio).
-  let webBuildVersion = "unknown";
+  // Versione della build web corrente: derivata dai percorsi (con hash nel
+  // nome) dei bundle JS referenziati da index.html. Il client web calcola lo
+  // STESSO valore leggendo i propri tag <script> a runtime, quindi il
+  // confronto funziona anche se l'app aperta è già una build vecchia.
+  // Calcolata una volta all'avvio: dopo un Republish il processo riparte.
+  let buildVersion = "";
   if (hasWebBuild) {
     try {
-      const html = fs.readFileSync(path.join(webBuildDir, "index.html"), "utf-8");
-      const m = html.match(/entry-([a-f0-9]+)\.js/);
-      if (m) webBuildVersion = m[1];
-    } catch {
-      // best effort: se fallisce resta "unknown" e il banner non compare mai
+      const indexHtml = fs.readFileSync(path.join(webBuildDir, "index.html"), "utf-8");
+      buildVersion = computeWebBuildVersion(indexHtml);
+      if (!buildVersion) {
+        logger.warn("No _expo bundle references found in web-build/index.html; /build-version disabled");
+      }
+    } catch (err) {
+      logger.warn(`Unable to compute web build version: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  // Endpoint leggerissimo (fuori da /api: niente auth né rate limiter) usato
+  // dall'app web per accorgersi che il server ha una build più recente.
+  app.get("/build-version", (_req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!buildVersion) {
+      return res.status(404).json({ error: "NO_WEB_BUILD" });
+    }
+    res.json({ version: buildVersion });
+  });
+
+  // Alias di compatibilità: i bundle web GIÀ distribuiti (vecchio UpdateBanner)
+  // interrogano /api/version; deve restituire la stessa versione.
   app.get("/api/version", (_req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
-    res.json({ version: webBuildVersion });
+    res.json({ version: buildVersion || "unknown" });
   });
 
   log(
