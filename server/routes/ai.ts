@@ -1354,9 +1354,10 @@ const prewarmRecipeImages = createRecipeImagePrewarm({
   fileExists: (filePath) => recipeImageIsCached(path.basename(filePath)),
   startGeneration: startRecipeImageGeneration,
   logWarn: (message, meta) => logger.warn(message, meta),
-  // 4 foto in parallelo (era 2): con 8 ricette o 21 pasti le ondate si
-  // dimezzano e le foto sono pronte molto prima.
-  concurrency: 4,
+  // 6 foto in parallelo: il modello impiega ~10s a foto (incomprimibile),
+  // quindi l'unica leva è generarne di più contemporaneamente. Con 8 ricette
+  // servono 2 ondate (~20s totali), con 21 pasti ~4 ondate (~40s).
+  concurrency: 6,
 });
 
 /**
