@@ -571,6 +571,12 @@ export async function generateWeeklyMealPlan(context: {
     : 'Crea un piano creativo e diverso con piatti più originali e meno convenzionali.';
 
   const rawNotes = typeof context.preferences?.notes === 'string' ? context.preferences.notes.trim().slice(0, 600) : '';
+  // "Dieta mediterranea" senza guida diventa spesso "tanti legumi, poca pasta,
+  // poche verdure": ancoriamo la distribuzione settimanale reale della dieta.
+  const dietLower = (context.preferences?.diet || '').toLowerCase();
+  const mediterraneanRule = dietLower.includes('mediterran')
+    ? `\n- DIETA MEDITERRANEA VERA: pasta/riso/cereali come primo quasi ogni giorno a pranzo; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
+    : '';
   const prefText = context.preferences
     ? `${context.preferences.diet ? ` Dieta: ${context.preferences.diet}.` : ''}${context.preferences.allergies ? ` Allergie: ${context.preferences.allergies}.` : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}${rawNotes ? ` Preferenze della famiglia (dettate a voce, seguile con attenzione): ${rawNotes}.` : ''}`
     : '';
@@ -631,6 +637,7 @@ REGOLE:
   - lunch (pranzo): pasto principale completo (es. primo di pasta/riso o piatto unico con contorno).
   - dinner (cena): pasto più leggero del pranzo (es. secondo di carne/pesce/uova/legumi con verdure, zuppe, minestre).
   - snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).
+- Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno.${excludeRule}
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questi giorni ${themeHint}.` : ''}${breakfastHint && mealTypes.includes('breakfast') ? `\n- Per la colazione di questi giorni proponi: ${breakfastHint}. NON ripetere la stessa colazione in giorni diversi.` : ''}
 - Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
