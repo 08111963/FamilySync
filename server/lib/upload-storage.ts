@@ -115,6 +115,21 @@ export async function uploadObjectExists(fileUrl: string): Promise<boolean> {
 }
 
 /**
+ * Elenca le chiavi di TUTTI gli oggetti sotto il prefisso "uploads/" nel
+ * bucket. In modalità local ritorna [] (non c'è bucket da scandire).
+ * Lancia in caso di errore di comunicazione col bucket (fail-closed: il
+ * chiamante deve interrompere la scansione, niente falsi "non referenziato").
+ */
+export async function listUploadObjects(): Promise<string[]> {
+  if (!isObjectStorageMode()) return [];
+  const { ok, error, value } = await getClient().list({ prefix: "uploads/" });
+  if (!ok) {
+    throw new Error(`Object storage list fallito (uploads/): ${String(error)}`);
+  }
+  return value.map((obj) => obj.name);
+}
+
+/**
  * Elimina in modo sicuro i file corrispondenti agli URL forniti da TUTTI gli
  * storage: sempre dal disco locale (copre i file legacy pre-migrazione) e, in
  * modalità object-storage, anche dal bucket. Non lancia mai: la cancellazione

@@ -366,19 +366,25 @@ export async function sendUploadIntegrityAlertEmail(report: {
     reason: string;
     cleaned: boolean;
   }>;
+  /** Oggetti bucket esaminati nella direzione bucket→DB (opzionale). */
+  bucketChecked?: number;
+  /** File nel bucket non referenziati più da nessuna riga (opzionale). */
+  forgotten?: Array<{ key: string; deleted: boolean }>;
 }) {
+  const forgotten = report.forgotten ?? [];
+  const totalIssues = report.orphans.length + forgotten.length;
   const raw = process.env.APP_OWNER_EMAILS || '';
   const recipients = raw.split(',').map((e) => e.trim()).filter(Boolean);
 
   if (recipients.length === 0) {
     console.log(
-      `[upload-integrity] APP_OWNER_EMAILS non configurata: ${report.orphans.length} orfani solo nei log`
+      `[upload-integrity] APP_OWNER_EMAILS non configurata: ${totalIssues} anomalie solo nei log`
     );
     return;
   }
   if (!isEmailConfigured()) {
     console.log(
-      `[DEV] Upload integrity: ${report.orphans.length} orfani su ${report.checked} controllati`
+      `[DEV] Upload integrity: ${report.orphans.length} orfani su ${report.checked} controllati, ${forgotten.length} file bucket dimenticati`
     );
     return;
   }
@@ -390,19 +396,43 @@ export async function sendUploadIntegrityAlertEmail(report: {
     )
     .join('');
 
+  const orphansSection =
+    report.orphans.length > 0
+      ? `
+          <h3>Righe DB che puntano a file mancanti (${report.orphans.length})</h3>
+          <table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+            <tr><th>Tabella</th><th>ID riga</th><th>File URL</th><th>Motivo</th><th>Ripulito</th></tr>
+            ${rows}
+          </table>`
+      : '';
+
+  const forgottenRows = forgotten
+    .map((f) => `<tr><td>${escapeHtml(f.key)}</td><td>${f.deleted ? 'sì' : 'no'}</td></tr>`)
+    .join('');
+
+  const forgottenSection =
+    forgotten.length > 0
+      ? `
+          <h3>File nel bucket senza più alcun riferimento nel DB (${forgotten.length})</h3>
+          <p style="font-size:13px;">Occupano spazio e possono contenere dati personali che dovevano essere eliminati.</p>
+          <table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+            <tr><th>Chiave oggetto</th><th>Eliminato</th></tr>
+            ${forgottenRows}
+          </table>`
+      : '';
+
   await Promise.all(
     recipients.map((to) =>
       sendEmail({
         to,
-        subject: `[FamilySync] ${report.orphans.length} allegati orfani rilevati`,
+        subject: `[FamilySync] ${totalIssues} anomalie integrità upload rilevate`,
         html: `
           <h2>Scansione integrità upload</h2>
-          <p>Controllati <strong>${report.checked}</strong> riferimenti; trovati <strong>${report.orphans.length}</strong> orfani.
+          <p>Controllati <strong>${report.checked}</strong> riferimenti DB e <strong>${report.bucketChecked ?? 0}</strong> oggetti bucket;
+          trovati <strong>${report.orphans.length}</strong> riferimenti orfani e <strong>${forgotten.length}</strong> file bucket dimenticati.
           Auto-cleanup: <strong>${report.autoClean ? 'ATTIVO' : 'disattivo (solo segnalazione)'}</strong>.</p>
-          <table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
-            <tr><th>Tabella</th><th>ID riga</th><th>File URL</th><th>Motivo</th><th>Ripulito</th></tr>
-            ${rows}
-          </table>
+          ${orphansSection}
+          ${forgottenSection}
           <p style="color:#888;font-size:12px;">Vedi i log con tag UPLOAD_INTEGRITY per i dettagli. Per l'auto-cleanup imposta UPLOAD_INTEGRITY_AUTO_CLEAN=true.</p>
         `,
       })

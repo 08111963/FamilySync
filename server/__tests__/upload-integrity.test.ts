@@ -26,6 +26,7 @@ describe("upload integrity scan", { skip: hasDb ? false : "DATABASE_URL non impo
 
   const bucket = new Map<string, Buffer>();
   let failExists = false;
+  let failList = false;
 
   const suffix = Date.now().toString(36);
   let familyId: string;
@@ -44,8 +45,16 @@ describe("upload integrity scan", { skip: hasDb ? false : "DATABASE_URL non impo
       async uploadFromFilename() {
         return { ok: true as const };
       },
-      async delete() {
+      async delete(key: string) {
+        bucket.delete(key);
         return { ok: true as const };
+      },
+      async list({ prefix }: { prefix?: string } = {}) {
+        if (failList) return { ok: false as const, error: new Error("bucket giù") };
+        const names = Array.from(bucket.keys())
+          .filter((k) => !prefix || k.startsWith(prefix))
+          .map((name) => ({ name }));
+        return { ok: true as const, value: names };
       },
       downloadAsStream() {
         return new Readable({ read() {} });
@@ -189,6 +198,70 @@ describe("upload integrity scan", { skip: hasDb ? false : "DATABASE_URL non impo
       assert.equal(atts.length, 0);
     } finally {
       delete process.env.UPLOAD_INTEGRITY_AUTO_CLEAN;
+    }
+  });
+
+  test("bucket→DB: file non referenziato segnalato solo dopo il periodo di grazia", async () => {
+    integrity.__resetForgottenTrackingForTests();
+    process.env.UPLOAD_INTEGRITY_GRACE_MS = "0";
+    bucket.set(`uploads/forgotten-${suffix}.bin`, Buffer.from("x"));
+    bucket.set(`uploads/recipe-images/cache-${suffix}.webp`, Buffer.from("x"));
+    try {
+      // Prima vista: solo tracking (grazia), nessuna segnalazione.
+      let report = await integrity.runUploadIntegrityScanOnce();
+      assert.ok(!report.forgotten.some((f) => f.key.includes(suffix)));
+
+      // Seconda vista (grazia scaduta): segnalato ma NON eliminato (auto-clean off).
+      report = await integrity.runUploadIntegrityScanOnce();
+      const mine = report.forgotten.filter((f) => f.key.includes(suffix));
+      assert.deepEqual(
+        mine.map((f) => f.key),
+        [`uploads/forgotten-${suffix}.bin`]
+      );
+      assert.ok(mine.every((f) => !f.deleted));
+      assert.ok(bucket.has(`uploads/forgotten-${suffix}.bin`));
+      // Il file referenziato e la cache ricette NON sono segnalati.
+      assert.ok(!report.forgotten.some((f) => f.key === `uploads/ok-${suffix}.png`));
+      assert.ok(!report.forgotten.some((f) => f.key.startsWith("uploads/recipe-images/")));
+      assert.ok(report.bucketChecked >= 2);
+    } finally {
+      delete process.env.UPLOAD_INTEGRITY_GRACE_MS;
+    }
+  });
+
+  test("bucket→DB: auto-clean elimina i file dimenticati oltre la grazia", async () => {
+    integrity.__resetForgottenTrackingForTests();
+    process.env.UPLOAD_INTEGRITY_GRACE_MS = "0";
+    process.env.UPLOAD_INTEGRITY_AUTO_CLEAN = "true";
+    try {
+      // Prima vista: grazia, il file resta.
+      await integrity.runUploadIntegrityScanOnce();
+      assert.ok(bucket.has(`uploads/forgotten-${suffix}.bin`));
+
+      // Seconda vista: eliminato dal bucket.
+      const report = await integrity.runUploadIntegrityScanOnce();
+      const mine = report.forgotten.filter((f) => f.key.includes(suffix));
+      assert.deepEqual(
+        mine.map((f) => f.key),
+        [`uploads/forgotten-${suffix}.bin`]
+      );
+      assert.ok(mine.every((f) => f.deleted));
+      assert.ok(!bucket.has(`uploads/forgotten-${suffix}.bin`));
+      // Il file referenziato e la cache ricette restano intatti.
+      assert.ok(bucket.has(`uploads/ok-${suffix}.png`));
+      assert.ok(bucket.has(`uploads/recipe-images/cache-${suffix}.webp`));
+    } finally {
+      delete process.env.UPLOAD_INTEGRITY_GRACE_MS;
+      delete process.env.UPLOAD_INTEGRITY_AUTO_CLEAN;
+    }
+  });
+
+  test("bucket→DB fail-closed: errore list interrompe la scansione", async () => {
+    failList = true;
+    try {
+      await assert.rejects(() => integrity.runUploadIntegrityScanOnce());
+    } finally {
+      failList = false;
     }
   });
 });

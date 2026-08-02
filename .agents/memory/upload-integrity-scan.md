@@ -11,4 +11,6 @@ Daily scheduler verifies chat_messages.file_url, users.avatar_url, bill_attachme
 - External http(s) avatar URLs (Google etc.) are always "ok" — never our files, never touched.
 - Malformed /uploads URLs (path traversal, bad chars) count as orphans with reason "invalid": they can never be served.
 
-**Why:** broken chat attachments were previously discovered manually (see scripts/cleanup-orphan-uploads.sql).
+**Reverse direction (bucket→DB):** the same scan lists bucket objects under `uploads/` and flags files no longer referenced by any row ("forgotten"). `uploads/recipe-images/` is excluded (public cross-family cache, separate lifecycle). Grace period for fresh uploads not yet in DB: the bucket client exposes no object timestamps, so grace is a two-sighting in-memory map (first sighting only tracks; reported/deleted only if still unreferenced after `UPLOAD_INTEGRITY_GRACE_MS`, default 6h). Restart resets the map → reporting can only be delayed, never premature.
+
+**Why:** broken chat attachments were previously discovered manually (see scripts/cleanup-orphan-uploads.sql); forgotten bucket files waste space and may hold personal data that should have been deleted.

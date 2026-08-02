@@ -3,7 +3,13 @@ import { db } from "../db";
 import { chatMessages, users, billAttachments } from "../../shared/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { logger } from "./logger";
-import { isObjectStorageMode, objectKeyFromUrl, uploadObjectExists } from "./upload-storage";
+import {
+  deleteStoredUploads,
+  isObjectStorageMode,
+  listUploadObjects,
+  objectKeyFromUrl,
+  uploadObjectExists,
+} from "./upload-storage";
 import { resolveSafeUploadPath } from "./uploads-cleanup";
 import { sendUploadIntegrityAlertEmail } from "./email";
 
@@ -40,10 +46,51 @@ export interface OrphanRecord {
   cleaned: boolean;
 }
 
+/** File nel bucket sotto uploads/* che nessuna riga del DB referenzia più. */
+export interface ForgottenFileRecord {
+  /** Chiave oggetto nel bucket (es. "uploads/abc.jpg"). */
+  key: string;
+  deleted: boolean;
+}
+
 export interface UploadIntegrityReport {
   checked: number;
   orphans: OrphanRecord[];
+  /** Oggetti bucket esaminati nella direzione bucket→DB (0 in modalità local). */
+  bucketChecked: number;
+  forgotten: ForgottenFileRecord[];
   autoClean: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Direzione inversa (bucket→DB): file sotto uploads/* che nessuna riga
+// referenzia più (es. delete DB riuscita ma delete bucket fallita).
+// ---------------------------------------------------------------------------
+
+// Il prefisso della cache foto ricette è ESCLUSO: è una cache pubblica
+// cross-family per titolo, gestita a parte (non appartiene a nessuna riga).
+const EXCLUDED_KEY_PREFIXES = ["uploads/recipe-images/"];
+
+// Periodo di grazia per i file appena caricati non ancora salvati nel DB
+// (upload multer -> bucket -> INSERT riga: la scansione può passare in mezzo).
+// Il client bucket non espone il timestamp degli oggetti, quindi la grazia è
+// implementata "a doppia vista": un oggetto non referenziato viene ricordato
+// in memoria alla prima vista e segnalato solo se risulta ANCORA non
+// referenziato dopo il periodo di grazia. Un riavvio azzera la memoria: il
+// peggio che può succedere è una segnalazione ritardata, mai prematura.
+const DEFAULT_GRACE_MS = 6 * 60 * 60 * 1000; // 6 ore
+
+function graceMs(): number {
+  const raw = Number(process.env.UPLOAD_INTEGRITY_GRACE_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_GRACE_MS;
+}
+
+/** key -> timestamp (ms) della prima vista come non referenziato. */
+const unreferencedFirstSeen = new Map<string, number>();
+
+/** SOLO PER TEST: azzera lo stato del periodo di grazia. */
+export function __resetForgottenTrackingForTests(): void {
+  unreferencedFirstSeen.clear();
 }
 
 /**
@@ -114,6 +161,61 @@ async function cleanupOrphan(orphan: OrphanRecord): Promise<boolean> {
 }
 
 /**
+ * Direzione bucket→DB: confronta gli oggetti uploads/* del bucket con le
+ * chiavi referenziate dal DB e segnala (o elimina, con auto-clean) i file
+ * "dimenticati". Lancia se il list del bucket fallisce (fail-closed).
+ */
+async function scanForgottenBucketFiles(
+  referencedKeys: Set<string>,
+  autoClean: boolean
+): Promise<{ bucketChecked: number; forgotten: ForgottenFileRecord[] }> {
+  const forgotten: ForgottenFileRecord[] = [];
+  if (!isObjectStorageMode()) return { bucketChecked: 0, forgotten };
+
+  const keys = await listUploadObjects();
+  const now = Date.now();
+  const grace = graceMs();
+  const stillUnreferenced = new Set<string>();
+
+  for (const key of keys) {
+    if (EXCLUDED_KEY_PREFIXES.some((p) => key.startsWith(p))) continue;
+    if (referencedKeys.has(key)) continue;
+
+    stillUnreferenced.add(key);
+    const firstSeen = unreferencedFirstSeen.get(key);
+    if (firstSeen === undefined) {
+      // Prima vista: potrebbe essere un upload in corso non ancora nel DB.
+      unreferencedFirstSeen.set(key, now);
+      continue;
+    }
+    if (now - firstSeen < grace) continue;
+
+    const record: ForgottenFileRecord = { key, deleted: false };
+    if (autoClean) {
+      const result = await deleteStoredUploads([`/${key}`]);
+      record.deleted = result.failed === 0;
+      if (record.deleted) {
+        stillUnreferenced.delete(key);
+      }
+    }
+    forgotten.push(record);
+
+    logger.warn("File bucket dimenticato rilevato", {
+      tag: "UPLOAD_INTEGRITY",
+      key: record.key,
+      deleted: record.deleted,
+    });
+  }
+
+  // Dimentica le chiavi tornate referenziate/sparite: la mappa resta piccola.
+  for (const key of Array.from(unreferencedFirstSeen.keys())) {
+    if (!stillUnreferenced.has(key)) unreferencedFirstSeen.delete(key);
+  }
+
+  return { bucketChecked: keys.length, forgotten };
+}
+
+/**
  * Un singolo passaggio di scansione (esportato per i test).
  * Ritorna il report; lancia se il bucket non è raggiungibile.
  */
@@ -148,9 +250,16 @@ export async function runUploadIntegrityScanOnce(): Promise<UploadIntegrityRepor
     },
   ];
 
+  // Chiavi bucket referenziate da ALMENO una riga (per la direzione inversa).
+  // Include anche le righe "invalid"/orfane: la direzione inversa non deve
+  // eliminare file che una riga referenzia ancora, anche se rotta.
+  const referencedKeys = new Set<string>();
+
   for (const { source, rows } of targets) {
     for (const row of rows) {
       if (!row.fileUrl) continue;
+      const refKey = objectKeyFromUrl(row.fileUrl);
+      if (refKey) referencedKeys.add(refKey);
       checked++;
       const status = await checkStoredUpload(row.fileUrl);
       if (status === "ok") continue;
@@ -178,9 +287,14 @@ export async function runUploadIntegrityScanOnce(): Promise<UploadIntegrityRepor
     }
   }
 
-  if (orphans.length > 0) {
+  // Direzione inversa bucket→DB. Lancia se il list fallisce (fail-closed):
+  // meglio nessun report che segnalare "dimenticati" file solo perché la
+  // lista è arrivata incompleta.
+  const { bucketChecked, forgotten } = await scanForgottenBucketFiles(referencedKeys, autoClean);
+
+  if (orphans.length > 0 || forgotten.length > 0) {
     try {
-      await sendUploadIntegrityAlertEmail({ checked, orphans, autoClean });
+      await sendUploadIntegrityAlertEmail({ checked, orphans, bucketChecked, forgotten, autoClean });
     } catch (err) {
       // L'alert email è best-effort: gli orfani restano comunque nei log.
       logger.error("Upload integrity alert email failed", {
@@ -192,10 +306,11 @@ export async function runUploadIntegrityScanOnce(): Promise<UploadIntegrityRepor
     logger.info("Upload integrity scan: nessun orfano", {
       tag: "UPLOAD_INTEGRITY",
       checked,
+      bucketChecked,
     });
   }
 
-  return { checked, orphans, autoClean };
+  return { checked, orphans, bucketChecked, forgotten, autoClean };
 }
 
 /**
