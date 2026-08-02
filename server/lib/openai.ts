@@ -615,13 +615,13 @@ export async function generateWeeklyMealPlan(context: {
   // che rispecchia la vera piramide mediterranea: pasta quasi ogni pranzo,
   // verdure sempre, pesce 3x, legumi 2x, carne bianca 1-2x, rossa max 1x.
   const mediterraneanDayThemes = [
-    'a pranzo un primo di pasta con verdure di stagione più contorno; a cena pesce azzurro (es. alla griglia o al forno) con verdure',
-    'a pranzo pasta o riso al pomodoro/verdure; a cena una zuppa di legumi con verdure e pane',
-    'a pranzo un primo di pasta; a cena carne bianca (pollo o tacchino) con contorno di verdure',
-    'a pranzo un piatto unico di cereali (farro, orzo) con verdure; a cena pesce con verdure',
-    'a pranzo pasta con sugo di verdure o pesce; a cena uova o formaggio fresco con verdure',
-    'a pranzo un primo di riso o minestrone; a cena legumi (es. insalata di legumi o polpette di legumi) con verdure',
-    'a pranzo pasta al forno o un primo della domenica; a cena pesce oppure una piccola porzione di carne rossa magra con verdure',
+    'a pranzo pasta con ricotta o sugo di pesce e verdure di stagione più contorno; a cena pesce azzurro (es. alla griglia o al forno) con verdure e pane integrale',
+    'a pranzo pasta o riso con sugo di tonno o uova e verdure; a cena una zuppa di legumi con verdure e pane integrale',
+    'a pranzo un primo di pasta con proteine (es. pasta e ceci, pasta con ragù bianco); a cena carne bianca (pollo o tacchino) con verdure e patate o farro',
+    'a pranzo un piatto unico di cereali (farro, orzo) con formaggio o pesce e verdure; a cena pesce con verdure e pane',
+    'a pranzo pasta con sugo di pesce e verdure; a cena uova o formaggio fresco con verdure e pane integrale o patate',
+    'a pranzo un primo di riso con proteine o un minestrone con legumi e crostini; a cena insalata o polpette di legumi con verdure e pane',
+    'a pranzo pasta al forno o lasagne (con proteine) e contorno; a cena pesce oppure una piccola porzione di carne rossa magra con verdure e patate o pane',
   ];
   const activeDayThemes = mediterraneanRule ? mediterraneanDayThemes : dayThemes;
 
@@ -652,6 +652,9 @@ REGOLE:
   - lunch (pranzo): pasto principale completo (es. primo di pasta/riso o piatto unico con contorno).
   - dinner (cena): pasto più leggero del pranzo (es. secondo di carne/pesce/uova/legumi con verdure, zuppe, minestre).
   - snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).
+- EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
+  - A pranzo il primo deve includere una fonte proteica (es. pasta con legumi/pesce/ragù bianco/uova/formaggio come tonno, ceci, sgombro, ricotta) oppure va aggiunto un secondo leggero: MAI solo pasta al pomodoro senza proteine.
+  - A cena, accanto alla fonte proteica, includi SEMPRE una porzione di carboidrati (pane integrale, patate, farro, orzo o riso): MAI solo proteine e verdure.
 - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno.${excludeRule}
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questi giorni ${themeHint}.` : ''}${breakfastHint && mealTypes.includes('breakfast') ? `\n- Per la colazione di questi giorni proponi: ${breakfastHint}. NON ripetere la stessa colazione in giorni diversi.` : ''}
