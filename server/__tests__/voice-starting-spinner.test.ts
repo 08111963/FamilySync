@@ -53,7 +53,9 @@ describe("Spinner di avvio microfono (testID voice-starting)", () => {
 
   test("il tocco sul pulsante avvia startRecording (spinner collegato al gesto)", () => {
     assert.match(src, /testID=["'`]voice-input-button["'`]/);
-    assert.match(src, /onPressIn=\{handlePressIn\}/);
+    // Nativo: press handler del Pressable; web: pointerdown DOM (setPointerCapture)
+    assert.match(src, /onPressIn=\{Platform\.OS === "web" \? undefined : handlePressIn\}/);
+    assert.match(src, /pointerdown/);
     const pressIn = extractFunctionBody(src, "handlePressIn");
     assert.match(pressIn, /startRecording\(\)/);
   });

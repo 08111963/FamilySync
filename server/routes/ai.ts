@@ -680,16 +680,28 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
         });
         return writeChain;
       };
-      const appendDeduped = (batch: { title: string }[]) => {
+      const appendDeduped = (batch: { title: string; description?: string }[]) => {
         let added = false;
+        const newOnes: { title: string; description?: string }[] = [];
         for (const r of batch) {
           const norm = r.title.toLowerCase().trim();
           if (seenTitles.has(norm)) continue;
           seenTitles.add(norm);
           sessionRecipes.push(r);
+          newOnes.push(r);
           added = true;
         }
-        if (added) void persistSession({});
+        if (added) {
+          void persistSession({});
+          // Prewarm foto per ogni batch appena arriva (non solo a fine
+          // generazione): quando l'utente apre la lista, le foto dei primi
+          // batch sono già in cache.
+          prewarmRecipeImages(
+            newOnes.map(r => ({ title: r.title, description: r.description })),
+            userId,
+            familyId,
+          );
+        }
       };
 
       let errorFields: { errorStatus?: number; errorBody?: unknown } = {};
@@ -1342,6 +1354,9 @@ const prewarmRecipeImages = createRecipeImagePrewarm({
   fileExists: (filePath) => recipeImageIsCached(path.basename(filePath)),
   startGeneration: startRecipeImageGeneration,
   logWarn: (message, meta) => logger.warn(message, meta),
+  // 4 foto in parallelo (era 2): con 8 ricette o 21 pasti le ondate si
+  // dimezzano e le foto sono pronte molto prima.
+  concurrency: 4,
 });
 
 /**

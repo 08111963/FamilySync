@@ -564,7 +564,20 @@ export async function generateWeeklyMealPlan(context: {
 
   const mealOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
 
-  async function fetchChunk(chunkDates: string[], excludeTitles: string[]): Promise<MealPlanSuggestion['items']> {
+  // Temi rotanti per giorno: permettono di generare più giorni IN PARALLELO
+  // mantenendo la varietà (i giorni della stessa ondata non vedono i titoli
+  // l'uno dell'altro, ma temi diversi evitano piatti fotocopia).
+  const dayThemes = [
+    'privilegia primi di pasta e verdure di stagione',
+    'privilegia pesce e piatti leggeri',
+    'privilegia carni bianche e contorni',
+    'privilegia legumi e piatti vegetariani',
+    'privilegia riso, cereali e zuppe',
+    'privilegia uova, formaggi e torte salate',
+    'privilegia piatti regionali italiani meno comuni',
+  ];
+
+  async function fetchChunk(chunkDates: string[], excludeTitles: string[], themeHint?: string): Promise<MealPlanSuggestion['items']> {
     const excludeRule = excludeTitles.length
       ? `\n- VARIETÀ OBBLIGATORIA: questi piatti sono GIÀ stati pianificati in altri giorni della settimana, quindi NON riproporli e NON proporne di simili: ${excludeTitles.join('; ')}. Scegli piatti chiaramente DIVERSI per ogni pasto.`
       : '';
@@ -580,7 +593,7 @@ REGOLE:
   - dinner (cena): pasto più leggero del pranzo (es. secondo di carne/pesce/uova/legumi con verdure, zuppe, minestre).
   - snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno.${excludeRule}
-- ${variantHint}
+- ${variantHint}${themeHint ? `\n- Per pranzo e cena di questi giorni ${themeHint} (la colazione resta una tipica colazione italiana).` : ''}
 - Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
@@ -608,9 +621,26 @@ REGOLE:
   const usedTitles: string[] = [];
   let failedChunks = 0;
   let firstReason: unknown = null;
-  for (const chunkDates of chunks) {
-    try {
-      const items = await fetchChunk(chunkDates, usedTitles);
+  // Ondate di 3 giorni in PARALLELO (7 chiamate seriali → 3 attese):
+  // dentro l'ondata la varietà è garantita dai temi rotanti, tra le ondate
+  // dai titoli già usati (excludeTitles).
+  const WAVE = 3;
+  for (let w = 0; w < chunks.length; w += WAVE) {
+    const wave = chunks.slice(w, w + WAVE);
+    const excludeSnapshot = usedTitles.slice();
+    const results = await Promise.allSettled(
+      wave.map((chunkDates, i) =>
+        fetchChunk(chunkDates, excludeSnapshot, dayThemes[(w + i) % dayThemes.length])
+      )
+    );
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        failedChunks++;
+        if (firstReason === null) firstReason = result.reason;
+        console.error('Meal plan chunk failed:', String(result.reason));
+        continue;
+      }
+      const items = result.value;
       allItems.push(...items);
       for (const it of items) {
         if (it.title) usedTitles.push(it.title);
@@ -626,10 +656,42 @@ REGOLE:
           try { context.onProgress(dayItems); } catch {}
         }
       }
+    }
+  }
+
+  // Ripassata anti-doppioni: i giorni della stessa ondata non si vedono tra
+  // loro, quindi possono capitare piatti identici in giorni diversi. Se
+  // succede, UNA sola chiamata extra rigenera i giorni coinvolti e sostituisce
+  // solo i piatti doppi; se non trova alternative, il piatto resta (mai buchi).
+  const normTitle = (t: string) => t.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const seenNorm = new Set<string>();
+  const dupSlots: { date: string; mealType: string }[] = [];
+  for (const it of allItems) {
+    if (!it.title || !validDates.has(it.date)) continue;
+    const n = normTitle(it.title);
+    if (seenNorm.has(n)) dupSlots.push({ date: it.date, mealType: it.mealType });
+    else seenNorm.add(n);
+  }
+  let duplicatesFixed = 0;
+  if (dupSlots.length > 0) {
+    try {
+      const dupDates = Array.from(new Set(dupSlots.map(s => s.date)));
+      const replacements = await fetchChunk(dupDates, usedTitles, 'proponi piatti mai citati finora');
+      for (const slot of dupSlots) {
+        // Sostituisce SOLO l'item doppio di quello slot (titolo già visto).
+        const target = allItems.find(it =>
+          it.date === slot.date && it.mealType === slot.mealType && it.title && seenNorm.has(normTitle(it.title)));
+        const candidate = replacements.find(r =>
+          r.date === slot.date && r.mealType === slot.mealType && r.title && !seenNorm.has(normTitle(r.title)));
+        if (candidate && target) {
+          Object.assign(target, candidate);
+          seenNorm.add(normTitle(candidate.title!));
+          duplicatesFixed++;
+        }
+      }
     } catch (reason) {
-      failedChunks++;
-      if (firstReason === null) firstReason = reason;
-      console.error('Meal plan chunk failed:', String(reason));
+      // Doppione non sostituito: meglio un piatto ripetuto che un pasto mancante.
+      console.error('Meal plan dedupe pass failed:', String(reason));
     }
   }
 
@@ -640,7 +702,7 @@ REGOLE:
   });
 
   const aiDurationMs = Date.now() - aiStartTime;
-  console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, aiDurationMs, chunks: chunks.length, failedChunks, itemsCount: filtered.length }));
+  console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, aiDurationMs, chunks: chunks.length, failedChunks, itemsCount: filtered.length, duplicates: dupSlots.length, duplicatesFixed }));
 
   // Se non è stato generato nessun pasto valido e c'è stato un errore, propagalo tipizzato.
   if (filtered.length === 0 && firstReason !== null) {
