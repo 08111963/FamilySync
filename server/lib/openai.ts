@@ -568,7 +568,7 @@ export async function generateWeeklyMealPlan(context: {
   const variant = context.planVariant || 1;
   const variantHint = variant === 1
     ? 'Crea un piano equilibrato e classico con piatti tradizionali italiani.'
-    : 'Crea un piano creativo e diverso con piatti più originali e meno convenzionali.';
+    : 'Questo è il PIANO B, l\'alternativa al piano classico: proponi piatti DIVERSI nella sostanza (ricette regionali diverse, tecniche di cottura diverse, ingredienti principali diversi), non semplici variazioni di nome o di condimento dei piatti più comuni.';
 
   const rawNotes = typeof context.preferences?.notes === 'string' ? context.preferences.notes.trim().slice(0, 600) : '';
   // "Dieta mediterranea" senza guida diventa spesso "tanti legumi, poca pasta,
@@ -630,7 +630,20 @@ export async function generateWeeklyMealPlan(context: {
     'a pranzo un primo di riso con proteine o un minestrone con legumi e crostini; a cena insalata o polpette di legumi con verdure e pane',
     'a pranzo pasta al forno o lasagne (con proteine) e contorno; a cena pesce oppure una piccola porzione di carne rossa magra con verdure e patate o pane',
   ];
-  const activeDayThemes = mediterraneanRule ? mediterraneanDayThemes : dayThemes;
+  // Piano B mediterraneo: stessa piramide (pasta a pranzo, pesce 3x, legumi 2x…)
+  // ma piatti concreti diversi dal piano A, altrimenti i due piani si somigliano.
+  const mediterraneanDayThemesB = [
+    'a pranzo orecchiette o trofie con broccoli/pesto e una fonte proteica; a cena polpo o calamari con patate e verdure',
+    'a pranzo risotto ai frutti di mare o alle verdure con formaggio; a cena minestra di lenticchie con verdure e pane',
+    'a pranzo pasta alla Norma o con melanzane e ricotta salata; a cena tacchino o coniglio in umido con verdure e pane',
+    'a pranzo couscous o orzo con verdure e pesce; a cena pesce spada o salmone alla griglia con verdure e patate',
+    'a pranzo gnocchi o pasta fresca con sugo di pesce o formaggio; a cena parmigiana leggera o uova in purgatorio con pane e verdure',
+    'a pranzo paella-risotto di verdure o minestrone con farro e crostini; a cena burger o polpette di ceci con verdure e pane',
+    'a pranzo cannelloni o gnocchi alla sorrentina; a cena alici al forno oppure una tagliata magra con verdure e patate',
+  ];
+  const activeDayThemes = mediterraneanRule
+    ? (variant === 2 ? mediterraneanDayThemesB : mediterraneanDayThemes)
+    : (variant === 2 ? [...dayThemes.slice(3), ...dayThemes.slice(0, 3)] : dayThemes);
 
   // Anche le colazioni ruotano: senza un tema per giorno il modello propone
   // sempre la stessa colazione generica (es. "latte e biscotti") tutti i giorni.
