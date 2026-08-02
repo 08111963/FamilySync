@@ -7,4 +7,6 @@ Scheduler orario (Europe/Rome) in server/lib che replica lo schema dei promemori
 
 **Why:** dedup sicuro anche con più istanze; meglio una push duplicata che un promemoria perso.
 
+**Durabilità autoscale:** entrambi gli scheduler (bollette+eventi) passano da `startDurableScheduler` (server/lib/scheduled-jobs.ts): last-run persistito in `scheduled_job_runs` con claim atomico (finestra 50 min, poll orario, catch-up al boot); il claim del job viene rilasciato se il run lancia. Il dedup per-elemento resta la garanzia anti-doppioni. Migrazione `0020_scheduled_job_runs.sql` da portare in prod.
+
 **How to apply:** destinatari = membri famiglia con email verificata, ESCLUSI gli utenti in blocco reciproco con `createdBy` dell'evento (getBlockRelatedUserIds), sia per email che per push (excludeUserIds). Migrazione `0019_event_reminder_log.sql` da portare in prod. L'email "nuovo evento creato" NON è implementata (opzionale, da confermare col proprietario).

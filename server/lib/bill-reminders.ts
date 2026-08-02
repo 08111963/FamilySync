@@ -9,6 +9,7 @@ import { and, eq, inArray, ne } from 'drizzle-orm';
 import { logger } from './logger';
 import { sendBillReminderEmail, isEmailConfigured } from './email';
 import { sendPushToFamily } from './push';
+import { startDurableScheduler } from './scheduled-jobs';
 
 const TZ = 'Europe/Rome';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // ogni ora
@@ -142,18 +143,31 @@ export async function runBillRemindersOnce(): Promise<void> {
   await processKind('due_tomorrow', addDays(today, 1));
 }
 
+/** Nome del job nella tabella scheduled_job_runs. */
+export const BILL_REMINDERS_JOB_NAME = 'bill_reminders_hourly';
+
+/**
+ * Finestra minima tra due run: poco meno dell'intervallo di poll, così la
+ * cadenza resta davvero oraria anche se i tick arrivano con qualche secondo
+ * di ritardo (altrimenti un tick su due verrebbe scartato).
+ */
+export const BILL_REMINDERS_MIN_INTERVAL_MS = 50 * 60 * 1000;
+
 /**
  * Avvia lo scheduler dei promemoria bollette: un controllo subito dopo l'avvio
- * e poi ogni ora. Deduplica via bill_reminder_log (sicuro anche con più istanze).
+ * (catch-up dopo i riavvii autoscale) e poi ogni ora. Il "quando è partito
+ * l'ultimo run" è persistito su DB (scheduled_job_runs) con claim atomico:
+ * se l'istanza si spegne tra un tick e l'altro, la prima istanza che riparte
+ * recupera subito il giro perso. Il dedup per-bolletta resta la garanzia
+ * anti-doppioni (bill_reminder_log, sicuro anche con più istanze).
  */
 export function startBillReminderScheduler(): void {
-  const run = () => {
-    runBillRemindersOnce().catch((err) =>
-      logger.error('Bill reminder scheduler error', { error: String(err) }),
-    );
-  };
-  // Primo giro dopo 30 secondi (lascia respirare l'avvio del server).
-  setTimeout(run, 30 * 1000);
-  const timer = setInterval(run, CHECK_INTERVAL_MS) as unknown as { unref?: () => void };
-  timer.unref?.();
+  startDurableScheduler({
+    jobName: BILL_REMINDERS_JOB_NAME,
+    minIntervalMs: BILL_REMINDERS_MIN_INTERVAL_MS,
+    pollIntervalMs: CHECK_INTERVAL_MS,
+    // Primo giro dopo 30 secondi (lascia respirare l'avvio del server).
+    firstRunDelayMs: 30 * 1000,
+    run: runBillRemindersOnce,
+  });
 }
