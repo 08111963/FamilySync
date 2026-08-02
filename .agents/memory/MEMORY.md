@@ -39,4 +39,5 @@
 - [Privacy Policy v2.1 / consensi GDPR](privacy-policy-v21.md) — opt-in AI fail-closed a ogni livello, registro consensi strict sul toggle, mai dichiarare DPA attivi, data Termini separata.
 - [Upload integrity scan](upload-integrity-scan.md) — scan giornaliera orfani file_url/avatar_url: fail-closed su errori bucket, auto-clean opt-in via UPLOAD_INTEGRITY_AUTO_CLEAN, URL esterni mai toccati.
 - [ZIP di consegna pulito](delivery-zip-export.md) — usare scripts/export-consegna.sh (esclusioni + doppia scansione anti-segreti), mai zip manuale.
+- [Meal plan balance monitor](meal-plan-balance-monitor.md) — eval AI reale settimanale opt-in (MEAL_PLAN_BALANCE_MONITOR=true, solo prod); riusare runMealPlanBalanceEvalOnce, mai duplicare la logica.
 - [Privacy policy fonte unica](privacy-policy-single-source.md) — testo policy SOLO in shared/privacy-policy-content.ts (web+mobile+DOCX); mai duplicare testi legali; DOCX generato senza dipendenze via scripts/generate-privacy-docx.ts.

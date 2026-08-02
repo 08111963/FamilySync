@@ -13,6 +13,7 @@ import { ensureVipAccount } from './lib/vip-account';
 import { startBillReminderScheduler } from './lib/bill-reminders';
 import { startEventReminderScheduler } from './lib/event-reminders';
 import { startUploadIntegrityScheduler } from './lib/upload-integrity';
+import { startMealPlanBalanceScheduler } from './lib/meal-plan-balance-monitor';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -482,6 +483,9 @@ function setupErrorHandler(app: express.Application) {
       startEventReminderScheduler();
       // Scansione giornaliera integrità allegati (rileva file_url/avatar_url orfani).
       startUploadIntegrityScheduler();
+      // Valutazione settimanale equilibrio piani mediterranei AI reali
+      // (opt-in via MEAL_PLAN_BALANCE_MONITOR=true: consuma quota AI).
+      startMealPlanBalanceScheduler();
     },
   );
 })();

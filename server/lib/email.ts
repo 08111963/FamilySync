@@ -441,6 +441,59 @@ export async function sendUploadIntegrityAlertEmail(report: {
 }
 
 /**
+ * Avvisa il proprietario dell'app (APP_OWNER_EMAILS) che la valutazione
+ * periodica dei piani mediterranei REALI ha rilevato squilibri (troppi legumi,
+ * poca pasta, verdure/pesce mancanti). Best-effort: il chiamante logga gli
+ * errori e non deve mai bloccare la valutazione.
+ */
+export async function sendMealPlanBalanceAlertEmail(report: {
+  weekStartDate: string;
+  runs: Array<{ run: number; balanced: boolean; issues: string[] }>;
+}) {
+  const unbalanced = report.runs.filter((r) => !r.balanced);
+  const raw = process.env.APP_OWNER_EMAILS || '';
+  const recipients = raw.split(',').map((e) => e.trim()).filter(Boolean);
+
+  if (recipients.length === 0) {
+    console.log(
+      `[meal-plan-balance] APP_OWNER_EMAILS non configurata: ${unbalanced.length} run squilibrate solo nei log`
+    );
+    return;
+  }
+  if (!isEmailConfigured()) {
+    console.log(
+      `[DEV] Meal plan balance: ${unbalanced.length}/${report.runs.length} run squilibrate (settimana ${report.weekStartDate})`
+    );
+    return;
+  }
+
+  const sections = unbalanced
+    .map(
+      (r) => `
+        <h3>Run ${r.run}</h3>
+        <ul>${r.issues.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
+    )
+    .join('');
+
+  await Promise.all(
+    recipients.map((to) =>
+      sendEmail({
+        to,
+        subject: `[FamilySync] Piano mediterraneo AI squilibrato (${unbalanced.length}/${report.runs.length} run)`,
+        html: `
+          <h2>Valutazione equilibrio piano mediterraneo</h2>
+          <p>La valutazione periodica con AI reale (settimana dal <strong>${escapeHtml(report.weekStartDate)}</strong>)
+          ha rilevato squilibri in <strong>${unbalanced.length}</strong> run su ${report.runs.length}.</p>
+          ${sections}
+          <p style="color:#888;font-size:12px;">Vedi i log con tag MEAL_PLAN_BALANCE per i dettagli.
+          Esecuzione manuale: npx tsx scripts/eval-meal-plan-balance.ts</p>
+        `,
+      })
+    )
+  );
+}
+
+/**
  * Invia alla casella di assistenza una richiesta inviata da un utente dall'app.
  * Il Reply-To è impostato sull'email dell'utente, così l'assistenza può
  * rispondere direttamente con un semplice "Rispondi". Il chiamante deve aver già
