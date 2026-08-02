@@ -1,13 +1,17 @@
 ---
 name: Mic hold-to-talk su web
-description: Perché il pulsante "tieni premuto per parlare" falliva su web/canvas iframe e come è stato reso robusto
+description: Comportamento del pulsante microfono su web (hold-to-talk stile WhatsApp) e perché il toggle è stato abbandonato
 ---
 
-Regola: un controllo "tieni premuto per parlare" su web deve avere `touchAction: "none"` + `userSelect: "none"` (con prefissi WebKit). Comportamento aggiornato (29 lug 2026, dopo bug reale su Android Chrome): su **web** un tap breve NON deve annullare in silenzio — l'utente medio tocca, non tiene premuto, e otteneva zero feedback e zero richieste al server. Su web: tap = avvia, secondo tap = ferma e trascrive; hold >250ms con rilascio = trascrive; solo il blur finestra durante l'avvio annulla. Su nativo resta lo stile WhatsApp puro (rilascio ferma sempre, tocco <250ms annulla in silenzio). Mai annullare con un alert "tieni premuto".
+Regola (2 ago 2026, scelta ESPLICITA dell'utente che ha rifiutato il toggle): il microfono è **hold-to-talk stile WhatsApp su tutte le piattaforme** — tieni premuto, parli, al rilascio trascrive nel campo. Non reintrodurre la modalità "tap = avvia / secondo tap = ferma" su web.
 
-**Why:** il browser annullava la pressione prolungata (scroll/selezione testo, o rilascio per rispondere al prompt permesso microfono), quindi l'app vedeva sempre un "tocco troppo breve" e mostrava in loop l'avviso, anche con il dito fermo sul pulsante.
+Differenze web vs nativo:
+- web: tocco troppo breve (o rilascio durante un avvio lento) annulla MA mostra un suggerimento inline non bloccante ("tieni premuto mentre parli") — mai annullare in silenzio e mai window.alert per questo caso;
+- nativo: tocco breve annulla in silenzio, come WhatsApp.
 
-**How to apply:** VoiceInput gestisce hold e toggle insieme (justStoppedRef evita che il pressOut del tap di stop rifermi; il listener globale pointerup agisce solo se la pressione è partita dal pulsante). Qualsiasi nuovo controllo press-and-hold su web deve seguire lo stesso schema.
+**Why:** la modalità toggle (introdotta il 29 lug per un bug reale su Android Chrome) confondeva l'utente: rilasciava il dito e la registrazione continuava. Il bug originale (browser che "rilascia" da solo il tocco) è coperto in altro modo: `touchAction:"none"`+`userSelect:"none"`, listener globali `pointerup`/`blur`, recovery "nuova pressione mentre registra = ferma e trascrivi" (pointerup perso), timeout di sicurezza 60s che ferma e trascrive da solo.
+
+**How to apply:** logica pura in components/voice-input-press-logic.ts (testata in server/__tests__/voice-input-web-tap.test.ts); il componente esegue le azioni. Qualsiasi nuovo controllo press-and-hold su web deve seguire lo stesso schema (stesse guardie + feedback visivo, mai annullamento muto su web).
 
 - Alert.alert di react-native-web è un NO-OP: su web ogni errore mostrato via Alert è invisibile. Usare un helper (window.alert o toast) per i messaggi d'errore utente su web (fatto in VoiceInput con showAlert).
 - Le PWA installate da familysync.eu conservano a lungo il bundle vecchio: dopo un Republish serve chiudere l'app e riaprirla (o reinstallarla) per vedere la versione nuova.

@@ -90,6 +90,21 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
   const justStoppedRef = useRef(false);
   const releasedWhileStartingRef = useRef(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  // Suggerimento non bloccante (solo web): "tieni premuto mentre parli".
+  const [hint, setHint] = useState<string | null>(null);
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showHint = (text: string) => {
+    setHint(text);
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = setTimeout(() => setHint(null), 2500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    };
+  }, []);
 
   const activeMic = useSyncExternalStore(subscribeMic, getActiveMic, getActiveMic);
   const lockedByOther = activeMic !== null && activeMic !== idRef.current;
@@ -151,11 +166,16 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
       // Stile WhatsApp: se l'utente ha già rilasciato mentre stavamo avviando
-      // (es. durante la richiesta di permesso del browser), non lasciare il
-      // microfono acceso: annulla subito in silenzio. L'utente ripremerà.
+      // (es. durante la richiesta di permesso del browser o un avvio lento),
+      // non lasciare il microfono acceso: annulla subito. Su web mostriamo un
+      // suggerimento, perché spesso l'utente HA tenuto premuto ma l'avvio era
+      // lento e non ha fatto in tempo a registrare nulla.
       if (decideStartCompleted({ releasedWhileStarting: releasedWhileStartingRef.current }) === "cancelRecording") {
         releasedWhileStartingRef.current = false;
         await cancelRecording();
+        if (Platform.OS === "web") {
+          showHint("Tieni premuto finché non finisci di parlare");
+        }
         return;
       }
     } catch (err) {
@@ -228,8 +248,8 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
     }
   };
 
-  // Timeout di sicurezza (solo web): se l'utente dimentica il secondo tocco,
-  // dopo MAX_RECORDING_MS la registrazione si ferma da sola e trascrive.
+  // Timeout di sicurezza (solo web): se il rilascio va perso (quirk del
+  // browser), dopo MAX_RECORDING_MS la registrazione si ferma da sola e trascrive.
   useEffect(() => {
     if (Platform.OS !== "web" || !recording) return;
     const elapsed = Date.now() - recordStartRef.current;
@@ -339,16 +359,17 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
         justStoppedRef.current = false;
         return;
       case "markReleasedWhileStarting":
-        // Nativo, hold-to-talk: il rilascio durante l'avvio annulla appena pronto
+        // Hold-to-talk: il rilascio durante l'avvio annulla appena pronto
         releasedWhileStartingRef.current = true;
-        return;
-      case "keepRecording":
-        // Web, modalità toggle: tap breve → la registrazione continua,
-        // un secondo tap la fermerà. Solo il blur della finestra annulla.
         return;
       case "cancelRecording":
         // Nativo: tocco troppo breve → annulla in silenzio, come WhatsApp.
         cancelRecording();
+        return;
+      case "cancelWithHint":
+        // Web: tocco troppo breve → annulla, ma spiega come si usa.
+        cancelRecording();
+        showHint("Tieni premuto mentre parli, poi rilascia");
         return;
       case "stopAndTranscribe":
         // Stile WhatsApp: al rilascio si ferma SEMPRE e si trascrive.
@@ -372,15 +393,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       disabled={isDisabled}
       hitSlop={8}
       style={[styles.button, webHoldStyle]}
-      accessibilityLabel={
-        recording
-          ? Platform.OS === "web"
-            ? "Tocca di nuovo per trascrivere"
-            : "Rilascia per trascrivere"
-          : Platform.OS === "web"
-            ? "Tocca e parla"
-            : "Tieni premuto e parla"
-      }
+      accessibilityLabel={recording ? "Rilascia per trascrivere" : "Tieni premuto e parla"}
       testID="voice-input-button"
     >
       {starting && !recording ? (
@@ -400,6 +413,11 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       {recording ? (
         <Animated.Text style={[styles.recLabel, { opacity: pulseAnim.interpolate({ inputRange: [1, 1.35], outputRange: [0.55, 1] }) }]}>
           REC
+        </Animated.Text>
+      ) : null}
+      {hint && !recording && !starting ? (
+        <Animated.Text style={[styles.hintLabel, { color: colors.primary }]} testID="voice-hint">
+          {hint}
         </Animated.Text>
       ) : null}
     </Pressable>
@@ -521,6 +539,14 @@ const styles = StyleSheet.create({
     padding: 4,
     alignItems: "center",
     justifyContent: "center",
+  },
+  hintLabel: {
+    position: "absolute",
+    bottom: -16,
+    width: 180,
+    textAlign: "center",
+    fontSize: 10,
+    fontWeight: "600",
   },
   recLabel: {
     fontSize: 9,

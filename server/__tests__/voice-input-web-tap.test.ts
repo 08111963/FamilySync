@@ -1,12 +1,11 @@
 /**
- * Task: verificare che il microfono su WEB funzioni con un semplice tocco.
+ * Microfono stile WhatsApp su TUTTE le piattaforme (scelta esplicita
+ * dell'utente, 2 ago 2026): tieni premuto → parla → rilascia → trascrive.
  *
- * Un bug faceva sì che un tap breve sul microfono su web annullasse la
- * registrazione in silenzio (nessuna rotellina, nessun messaggio, nessuna
- * richiesta al server). Comportamento atteso:
- * - web: tap = avvia, secondo tap = ferma e trascrive (toggle);
- *   solo il blur della finestra annulla.
- * - nativo: hold-to-talk invariato (rilascio breve = annulla in silenzio).
+ * Differenza web vs nativo:
+ * - web: un tocco troppo breve annulla ma mostra un suggerimento visivo
+ *   non bloccante (mai annullare in silenzio: l'utente non capirebbe);
+ * - nativo: tocco breve annulla in silenzio, come WhatsApp.
  *
  * Test comportamentali sulla logica pura estratta in
  * components/voice-input-press-logic.ts + verifica del cablaggio nel componente.
@@ -52,6 +51,9 @@ function createMicSimulator(platform: "web" | "native") {
     state.recording = false;
     state.transcribing = true;
   };
+  const showHint = () => {
+    calls.push("showHint");
+  };
 
   return {
     state,
@@ -86,6 +88,7 @@ function createMicSimulator(platform: "web" | "native") {
       if (decideStartCompleted({ releasedWhileStarting: state.releasedWhileStarting }) === "cancelRecording") {
         state.releasedWhileStarting = false;
         cancelRecording();
+        if (isWeb) showHint();
       }
       state.starting = false;
     },
@@ -107,6 +110,10 @@ function createMicSimulator(platform: "web" | "native") {
         case "cancelRecording":
           cancelRecording();
           break;
+        case "cancelWithHint":
+          cancelRecording();
+          showHint();
+          break;
         case "stopAndTranscribe":
           stopAndTranscribe();
           break;
@@ -122,53 +129,63 @@ function createMicSimulator(platform: "web" | "native") {
   };
 }
 
-describe("WEB: tap breve = toggle, la registrazione NON viene annullata in silenzio", () => {
-  test("tap breve → registrazione resta attiva → secondo tap → stopAndTranscribe", () => {
+describe("WEB: hold-to-talk stile WhatsApp", () => {
+  test("tieni premuto → rilascia → stopAndTranscribe (flusso principale)", () => {
     const mic = createMicSimulator("web");
-
     assert.equal(mic.pressIn(), "startRecording");
     mic.startCompleted();
-    mic.advance(80); // tap molto breve
-    assert.equal(mic.pressOut(), "keepRecording");
-
-    // Regressione del bug: la registrazione deve restare ATTIVA, senza cancel
-    assert.equal(mic.state.recording, true);
-    assert.ok(!mic.calls.includes("cancelRecording"), "il tap breve non deve annullare in silenzio");
-    assert.ok(!mic.calls.includes("stopAndTranscribe"));
-
-    // Secondo tap: ferma e trascrive
-    mic.advance(1500);
-    assert.equal(mic.pressIn(), "stopAndTranscribe");
+    mic.advance(SHORT_TAP_MS + 800); // l'utente parla tenendo premuto
+    assert.equal(mic.pressOut(), "stopAndTranscribe");
     assert.deepEqual(mic.calls, ["startRecording", "stopAndTranscribe"]);
     assert.equal(mic.state.transcribing, true);
-
-    // Il rilascio del secondo tap non deve rifermarla/riavviarla
-    assert.equal(mic.pressOut(), "clearJustStopped");
-    assert.equal(mic.state.justStopped, false);
   });
 
-  test("rilascio durante l'avvio (prompt permesso) su web NON annulla: la registrazione parte", () => {
+  test("tocco breve → annulla MA mostra il suggerimento (mai in silenzio)", () => {
     const mic = createMicSimulator("web");
     mic.pressIn();
-    // L'utente rilascia mentre il browser mostra il prompt del permesso
-    assert.equal(mic.pressOut(), "keepRecording");
-    assert.equal(mic.state.releasedWhileStarting, false);
+    mic.startCompleted();
+    mic.advance(80); // tap molto breve
+    assert.equal(mic.pressOut(), "cancelWithHint");
+    assert.equal(mic.state.recording, false, "il tap breve non deve lasciare il microfono acceso");
+    assert.ok(mic.calls.includes("showHint"), "l'utente deve capire come si usa");
+    assert.ok(!mic.calls.includes("stopAndTranscribe"));
+  });
+
+  test("rilascio durante un avvio lento → annulla appena pronto + suggerimento", () => {
+    const mic = createMicSimulator("web");
+    mic.pressIn();
+    // L'utente ha tenuto premuto ma l'avvio (getUserMedia) era lento: rilascia prima
+    assert.equal(mic.pressOut(), "markReleasedWhileStarting");
+    assert.equal(mic.state.releasedWhileStarting, true);
 
     mic.startCompleted();
-    assert.equal(mic.state.recording, true);
-    assert.ok(!mic.calls.includes("cancelRecording"));
+    assert.equal(mic.state.recording, false, "il microfono NON deve restare acceso dopo il rilascio");
+    assert.ok(mic.calls.includes("cancelRecording"));
+    assert.ok(mic.calls.includes("showHint"));
+    assert.ok(!mic.calls.includes("stopAndTranscribe"));
+  });
+
+  test("recovery: nuova pressione mentre risulta ancora in registrazione (pointerup perso) → ferma e trascrive", () => {
+    const mic = createMicSimulator("web");
+    mic.pressIn();
+    mic.startCompleted();
+    mic.advance(3000);
+    // pointerup perso: arriva direttamente una nuova pressione
+    assert.equal(mic.pressIn(), "stopAndTranscribe");
+    assert.equal(mic.state.transcribing, true);
+    // Il rilascio di quel tocco non deve rifermare/riavviare
+    assert.equal(mic.pressOut(), "clearJustStopped");
+    assert.equal(mic.state.justStopped, false);
   });
 
   test("blur della finestra DURANTE l'avvio → annullamento appena il recorder è pronto", () => {
     const mic = createMicSimulator("web");
     mic.pressIn();
     assert.equal(mic.windowBlur(), "markReleasedWhileStarting");
-    assert.equal(mic.state.releasedWhileStarting, true);
-
     mic.startCompleted();
     assert.ok(mic.calls.includes("cancelRecording"), "il blur durante l'avvio deve annullare");
     assert.equal(mic.state.recording, false);
-    assert.ok(!mic.calls.includes("stopAndTranscribe"), "annullamento silenzioso: nessuna trascrizione");
+    assert.ok(!mic.calls.includes("stopAndTranscribe"), "nessuna trascrizione");
   });
 
   test("blur della finestra MENTRE registra → annullamento immediato", () => {
@@ -177,15 +194,6 @@ describe("WEB: tap breve = toggle, la registrazione NON viene annullata in silen
     mic.startCompleted();
     assert.equal(mic.windowBlur(), "cancelRecording");
     assert.equal(mic.state.recording, false);
-  });
-
-  test("hold >250ms con rilascio su web → trascrizione (comportamento desktop invariato)", () => {
-    const mic = createMicSimulator("web");
-    mic.pressIn();
-    mic.startCompleted();
-    mic.advance(SHORT_TAP_MS + 50);
-    assert.equal(mic.pressOut(), "stopAndTranscribe");
-    assert.deepEqual(mic.calls, ["startRecording", "stopAndTranscribe"]);
   });
 
   test("pressIn ignorato mentre trascrive / bloccato / disabled / in avvio", () => {
@@ -205,6 +213,7 @@ describe("NATIVO: hold-to-talk invariato", () => {
     assert.equal(mic.pressOut(), "cancelRecording");
     assert.equal(mic.state.recording, false);
     assert.ok(!mic.calls.includes("stopAndTranscribe"));
+    assert.ok(!mic.calls.includes("showHint"), "su nativo l'annullamento resta silenzioso");
   });
 
   test("rilascio durante l'avvio → annulla appena il recorder è pronto", () => {
@@ -236,7 +245,11 @@ describe("Cablaggio: VoiceInput usa davvero la logica pura estratta", () => {
 
   test("handlePressOut passa isWeb da Platform.OS e non ha più branch hardcoded sul tap breve", () => {
     assert.match(src, /isWeb:\s*Platform\.OS\s*===\s*["']web["']/);
-    // Il vecchio bug: confronto elapsed < 250 direttamente nel componente
     assert.doesNotMatch(src, /elapsed\s*<\s*250/);
+  });
+
+  test("il tocco breve su web mostra il suggerimento (cancelWithHint cablato)", () => {
+    assert.match(src, /case\s+["']cancelWithHint["']/);
+    assert.match(src, /showHint\(/);
   });
 });
