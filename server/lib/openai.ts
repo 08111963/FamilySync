@@ -604,7 +604,19 @@ export async function generateWeeklyMealPlan(context: {
     'privilegia piatti regionali italiani meno comuni',
   ];
 
-  async function fetchChunk(chunkDates: string[], excludeTitles: string[], themeHint?: string): Promise<MealPlanSuggestion['items']> {
+  // Anche le colazioni ruotano: senza un tema per giorno il modello propone
+  // sempre la stessa colazione generica (es. "latte e biscotti") tutti i giorni.
+  const breakfastThemes = [
+    'yogurt con frutta fresca e cereali o granola',
+    'pane o fette biscottate con marmellata o miele',
+    'dolce da forno casalingo (ciambellone, crostata o plumcake) con latte o spremuta',
+    'cappuccino o caffellatte con cornetto o brioche',
+    'porridge o pancake con frutta',
+    'ricotta o formaggio fresco con miele e frutta secca',
+    'frullato o smoothie con biscotti secchi',
+  ];
+
+  async function fetchChunk(chunkDates: string[], excludeTitles: string[], themeHint?: string, breakfastHint?: string): Promise<MealPlanSuggestion['items']> {
     const excludeRule = excludeTitles.length
       ? `\n- VARIETÀ OBBLIGATORIA: questi piatti sono GIÀ stati pianificati in altri giorni della settimana, quindi NON riproporli e NON proporne di simili: ${excludeTitles.join('; ')}. Scegli piatti chiaramente DIVERSI per ogni pasto.`
       : '';
@@ -620,7 +632,7 @@ REGOLE:
   - dinner (cena): pasto più leggero del pranzo (es. secondo di carne/pesce/uova/legumi con verdure, zuppe, minestre).
   - snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno.${excludeRule}
-- ${variantHint}${themeHint ? `\n- Per pranzo e cena di questi giorni ${themeHint} (la colazione resta una tipica colazione italiana).` : ''}
+- ${variantHint}${themeHint ? `\n- Per pranzo e cena di questi giorni ${themeHint}.` : ''}${breakfastHint && mealTypes.includes('breakfast') ? `\n- Per la colazione di questi giorni proponi: ${breakfastHint}. NON ripetere la stessa colazione in giorni diversi.` : ''}
 - Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
@@ -657,7 +669,12 @@ REGOLE:
     const excludeSnapshot = usedTitles.slice();
     const results = await Promise.allSettled(
       wave.map((chunkDates, i) =>
-        fetchChunk(chunkDates, excludeSnapshot, dayThemes[(w + i) % dayThemes.length])
+        fetchChunk(
+          chunkDates,
+          excludeSnapshot,
+          dayThemes[(w + i) % dayThemes.length],
+          breakfastThemes[(w + i) % breakfastThemes.length],
+        )
       )
     );
     for (const result of results) {
@@ -703,7 +720,7 @@ REGOLE:
   if (dupSlots.length > 0) {
     try {
       const dupDates = Array.from(new Set(dupSlots.map(s => s.date)));
-      const replacements = await fetchChunk(dupDates, usedTitles, 'proponi piatti mai citati finora');
+      const replacements = await fetchChunk(dupDates, usedTitles, 'proponi piatti mai citati finora', 'una colazione italiana diversa da quelle già proposte');
       for (const slot of dupSlots) {
         // Sostituisce SOLO l'item doppio di quello slot (titolo già visto).
         const target = allItems.find(it =>
