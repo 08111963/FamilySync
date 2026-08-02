@@ -390,10 +390,13 @@ export default function RecipePreviewScreen() {
   // le ricette man mano che i batch arrivano dal server.
   const [activeGenerationId, setActiveGenerationId] = useState<string | null>(params.generationId || null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gotFirstBatchRef = useRef(false);
 
   useEffect(() => {
     if (!activeGenerationId || !currentFamily) return;
     let cancelled = false;
+    // Ogni nuova generazione riparte con il polling fitto.
+    gotFirstBatchRef.current = false;
 
     const poll = async () => {
       try {
@@ -403,6 +406,7 @@ export default function RecipePreviewScreen() {
         );
         if (cancelled) return;
         const incoming = data.recipes || [];
+        if (incoming.length > 0) gotFirstBatchRef.current = true;
         // Il server restituisce la lista cumulativa: aggiungi solo i titoli nuovi.
         setAllRecipes(prev => {
           const known = new Set(prev.map(r => r.title.toLowerCase().trim()));
@@ -423,7 +427,9 @@ export default function RecipePreviewScreen() {
           setRefreshing(false);
           return;
         }
-        pollTimerRef.current = setTimeout(poll, 1200);
+        // Polling fitto finché non arriva la prima ricetta (l'utente sta
+        // fissando lo spinner), poi più rilassato.
+        pollTimerRef.current = setTimeout(poll, gotFirstBatchRef.current ? 1200 : 450);
       } catch (err: any) {
         if (cancelled) return;
         // 404 = sessione persa/scaduta (es. riavvio prima che la generazione

@@ -383,9 +383,13 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
   assertAiConfigured();
   try {
     const startTime = Date.now();
+    // Primo batch da 1 sola ricetta: l'utente vede il primo risultato in
+    // pochi secondi (l'output di 1 ricetta costa ~1/3 dei token di 3).
+    // Il resto in batch da 3, tutti in parallelo.
     const BATCH = 3;
     const batches: string[][] = [];
-    for (let i = 0; i < selectedCats.length; i += BATCH) {
+    if (selectedCats.length > 1) batches.push(selectedCats.slice(0, 1));
+    for (let i = batches.length ? 1 : 0; i < selectedCats.length; i += BATCH) {
       batches.push(selectedCats.slice(i, i + BATCH));
     }
     const settled = await Promise.allSettled(
@@ -444,30 +448,53 @@ export async function searchRecipesByQuery(query: string, context: {
   assertAiConfigured();
   try {
     const startTime = Date.now();
-    const response = await getOpenAiClient().chat.completions.create({
-      model: 'gpt-5-mini',
-      reasoning_effort: 'minimal',
-      messages: [
-        {
-          role: 'system',
-          content: `Genera ricette italiane basate sulla richiesta dell'utente. JSON:{"recipes":[{"title":"nome","description":"breve","servings":4,"prepTimeMinutes":10,"cookTimeMinutes":20,"steps":["..."],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"x","quantity":"200","unit":"g","category":"y"}]}]}
-Quantity stringa. Genera esattamente 3 ricette pertinenti alla ricerca. Ogni ricetta DEVE contenere l'ingrediente cercato.${excludeLine}`,
-        },
-        {
-          role: 'user',
-          content: `[s:${randomSeed}] Famiglia ${context.familySize} persone. Cerca: "${query}"`,
-        },
-      ],
-      response_format: RECIPES_RESPONSE_FORMAT,
-      max_completion_tokens: 2500,
-    });
+    // 3 chiamate in parallelo da 1 ricetta ciascuna invece di 1 chiamata da 3:
+    // il tempo è dominato dai token di output, quindi il totale scende a ~1/3.
+    // Ogni chiamata ha uno stile diverso per evitare doppioni tra parallele.
+    const styles = ['versione classica/tradizionale', 'versione creativa/originale', 'versione veloce e leggera'];
+    const fetchOne = async (style: string, seed: number): Promise<RecipeSuggestion[]> => {
+      const response = await getOpenAiClient().chat.completions.create({
+        model: 'gpt-5-mini',
+        reasoning_effort: 'minimal',
+        messages: [
+          {
+            role: 'system',
+            content: `Genera ricette italiane basate sulla richiesta dell'utente. JSON:{"recipes":[{"title":"nome","description":"breve","servings":4,"prepTimeMinutes":10,"cookTimeMinutes":20,"steps":["..."],"tags":{"diet":[],"allergens":[],"cuisine":"italiana","difficulty":"facile"},"ingredients":[{"name":"x","quantity":"200","unit":"g","category":"y"}]}]}
+Quantity stringa. Genera esattamente 1 ricetta pertinente alla ricerca (${style}). La ricetta DEVE contenere l'ingrediente cercato.${excludeLine}`,
+          },
+          {
+            role: 'user',
+            content: `[s:${seed}] Famiglia ${context.familySize} persone. Cerca: "${query}"`,
+          },
+        ],
+        response_format: RECIPES_RESPONSE_FORMAT,
+        max_completion_tokens: 1200,
+      });
+      const content = response.choices[0].message.content || '{"recipes": []}';
+      return parseRecipesResponse(JSON.parse(content));
+    };
 
-    const content = response.choices[0].message.content || '{"recipes": []}';
+    const settled = await Promise.allSettled(styles.map((s, i) => fetchOne(s, randomSeed + i * 7919)));
+    const recipes: RecipeSuggestion[] = [];
+    let firstReason: unknown = null;
+    const seen = new Set<string>();
+    for (const s of settled) {
+      if (s.status === 'fulfilled') {
+        for (const r of s.value) {
+          const norm = r.title.toLowerCase().trim();
+          if (seen.has(norm)) continue;
+          seen.add(norm);
+          recipes.push(r);
+        }
+      } else if (firstReason === null) {
+        firstReason = s.reason;
+      }
+    }
+    if (recipes.length === 0 && firstReason !== null) throw mapOpenAiError(firstReason);
+
     const elapsed = Date.now() - startTime;
-    console.log(`Recipe search "${query}": ${elapsed}ms, len=${content.length}`);
-
-    const parsed: unknown = JSON.parse(content);
-    return { recipes: parseRecipesResponse(parsed) };
+    console.log(`Recipe search "${query}": ${elapsed}ms, ${recipes.length} recipes (3 parallel calls)`);
+    return { recipes };
   } catch (error) {
     throw mapOpenAiError(error);
   }

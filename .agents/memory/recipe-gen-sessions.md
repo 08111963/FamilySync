@@ -13,3 +13,6 @@ Le sessioni della generazione incrementale ricette sono persistite su DB (tabell
 - Il client tratta il 404 del polling come "sessione scaduta/interrotta" (messaggio chiaro, ricette già ricevute conservate), non come errore generico.
 - TTL 10 min con sweep best-effort a ogni POST incrementale.
 - Migrazione: 0018_recipe_gen_sessions.sql (da portare in prod come le altre).
+
+## Latenza AI (convenzione)
+Il tempo AI è dominato dai token di OUTPUT: dividere N ricette in chiamate parallele più piccole (con hint di stile/tema per evitare doppioni tra parallele, poi dedupe finale) riduce il tempo a ~1/chiamate. Applica: recipe-search = 3 chiamate da 1 ricetta; suggerimenti incrementali = primo batch da 1 (primo risultato veloce) + resto in batch da 3; piano pasti = ondate da 3 giorni + ripassata anti-doppioni. Quota: withAiUsage resta 1 riserva per richiesta anche con più chiamate provider (scelta intenzionale). Polling client fitto (450ms) solo finché non arriva il primo batch, ref da resettare a ogni nuova generazione.
