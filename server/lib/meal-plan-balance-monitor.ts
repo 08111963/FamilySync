@@ -1,3 +1,5 @@
+import { sql } from 'drizzle-orm';
+import { db } from '../db';
 import { generateWeeklyMealPlan, type MealPlanSuggestion } from './openai';
 import { analyzeMediterraneanBalance, type MealPlanBalanceReport } from './meal-plan-balance';
 import { logger } from './logger';
@@ -22,8 +24,12 @@ import { sendMealPlanBalanceAlertEmail } from './email';
  * riusa runMealPlanBalanceEvalOnce e restituisce exit code 0/1.
  */
 
-const CHECK_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // una volta a settimana
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000; // intervallo tra due run (1 settimana)
+const POLL_INTERVAL_MS = 6 * 60 * 60 * 1000; // controllo economico su DB ogni 6 ore
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000; // 5 minuti dopo l'avvio
+
+/** Nome del job nella tabella scheduled_job_runs. */
+export const BALANCE_JOB_NAME = 'meal_plan_balance_weekly';
 
 export function isBalanceMonitorEnabled(): boolean {
   return (process.env.MEAL_PLAN_BALANCE_MONITOR || '').trim().toLowerCase() === 'true';
@@ -130,10 +136,38 @@ export async function runMealPlanBalanceEvalOnce(options?: {
 }
 
 /**
+ * Prova ad aggiudicarsi (claim atomico) il run settimanale del job.
+ *
+ * Una sola istruzione SQL: INSERT se il job non è mai girato, altrimenti
+ * UPDATE del last_run_at SOLO se è passata almeno una settimana. Il RETURNING
+ * dice se questa istanza ha vinto il claim: con più istanze concorrenti solo
+ * una riceve la riga (Postgres serializza sul conflitto di chiave primaria).
+ *
+ * Il claim NON viene mai rilasciato in caso di errore del run: un run fallito
+ * può aver già consumato quota AI, quindi si riprova solo la settimana dopo
+ * (garanzia: al massimo 1 valutazione a settimana).
+ */
+export async function claimWeeklyBalanceRun(now = new Date()): Promise<boolean> {
+  const cutoff = new Date(now.getTime() - WEEK_MS);
+  const result = await db.execute(sql`
+    INSERT INTO scheduled_job_runs (job_name, last_run_at)
+    VALUES (${BALANCE_JOB_NAME}, ${now})
+    ON CONFLICT (job_name) DO UPDATE SET last_run_at = EXCLUDED.last_run_at
+    WHERE scheduled_job_runs.last_run_at <= ${cutoff}
+    RETURNING job_name
+  `);
+  return (result.rows?.length ?? 0) > 0;
+}
+
+/**
  * Avvia lo scheduler settimanale (solo se MEAL_PLAN_BALANCE_MONITOR=true).
- * Idempotente rispetto a più istanze: la valutazione è read-only (non tocca
- * il DB), il costo è solo la quota AI — per questo il flag è opt-in ed è
- * pensato per essere attivo su UNA sola installazione (es. produzione).
+ *
+ * Su deployment autoscale l'istanza non resta viva 7 giorni, quindi il
+ * "quando è partito l'ultimo run" è persistito su DB (scheduled_job_runs) e
+ * verificato con un poll economico: 5 minuti dopo il boot e poi ogni 6 ore.
+ * Il run vero parte solo se il claim atomico riesce (è passata una settimana
+ * e nessun'altra istanza l'ha già preso), quindi è sicuro anche con più
+ * istanze e riavvii frequenti.
  */
 export function startMealPlanBalanceScheduler(): void {
   if (!isBalanceMonitorEnabled()) {
@@ -142,15 +176,23 @@ export function startMealPlanBalanceScheduler(): void {
     });
     return;
   }
-  const run = () => {
-    runMealPlanBalanceEvalOnce().catch((err) =>
+  const tick = async () => {
+    try {
+      const claimed = await claimWeeklyBalanceRun();
+      if (!claimed) return; // settimana non ancora passata o run preso da un'altra istanza
+      logger.info('Meal plan balance eval: claim settimanale acquisito, avvio run', {
+        tag: 'MEAL_PLAN_BALANCE',
+      });
+      await runMealPlanBalanceEvalOnce();
+    } catch (err) {
       logger.error('Meal plan balance eval error', {
         tag: 'MEAL_PLAN_BALANCE',
         error: String(err),
-      })
-    );
+      });
+    }
   };
-  setTimeout(run, FIRST_RUN_DELAY_MS);
-  const timer = setInterval(run, CHECK_INTERVAL_MS) as unknown as { unref?: () => void };
+  const first = setTimeout(() => void tick(), FIRST_RUN_DELAY_MS) as unknown as { unref?: () => void };
+  first.unref?.();
+  const timer = setInterval(() => void tick(), POLL_INTERVAL_MS) as unknown as { unref?: () => void };
   timer.unref?.();
 }

@@ -542,6 +542,16 @@ export const eventReminderLog = pgTable("event_reminder_log", {
   unique("event_reminder_log_unique").on(table.eventId, table.kind),
 ]);
 
+// SCHEDULED JOB RUNS — schedulazione durevole per job periodici lato server.
+// Su deployment autoscale l'istanza non resta viva per giorni: il "quando è
+// partito l'ultimo run" deve vivere nel DB, non in un setInterval in-process.
+// Il claim è atomico (INSERT ... ON CONFLICT DO UPDATE ... WHERE): una sola
+// istanza alla volta può aggiudicarsi il run del periodo corrente.
+export const scheduledJobRuns = pgTable("scheduled_job_runs", {
+  jobName: varchar("job_name", { length: 64 }).primaryKey(),
+  lastRunAt: timestamp("last_run_at").defaultNow().notNull(),
+});
+
 // ENTITLEMENTS — Premium acquistato tramite store nativi (Google Play / Apple).
 // Premium è UNICO per famiglia: una sola riga per familyId (unique).
 // La verifica server-side aggiorna status/expiresAt; isPremium(familyId) legge qui.
