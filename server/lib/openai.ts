@@ -610,6 +610,21 @@ export async function generateWeeklyMealPlan(context: {
     'privilegia piatti regionali italiani meno comuni',
   ];
 
+  // Dieta mediterranea: temi generici non bastano (il modello scivola su
+  // legumi/vegetariano). Qui uno schema settimanale ESPLICITO pranzo/cena
+  // che rispecchia la vera piramide mediterranea: pasta quasi ogni pranzo,
+  // verdure sempre, pesce 3x, legumi 2x, carne bianca 1-2x, rossa max 1x.
+  const mediterraneanDayThemes = [
+    'a pranzo un primo di pasta con verdure di stagione più contorno; a cena pesce azzurro (es. alla griglia o al forno) con verdure',
+    'a pranzo pasta o riso al pomodoro/verdure; a cena una zuppa di legumi con verdure e pane',
+    'a pranzo un primo di pasta; a cena carne bianca (pollo o tacchino) con contorno di verdure',
+    'a pranzo un piatto unico di cereali (farro, orzo) con verdure; a cena pesce con verdure',
+    'a pranzo pasta con sugo di verdure o pesce; a cena uova o formaggio fresco con verdure',
+    'a pranzo un primo di riso o minestrone; a cena legumi (es. insalata di legumi o polpette di legumi) con verdure',
+    'a pranzo pasta al forno o un primo della domenica; a cena pesce oppure una piccola porzione di carne rossa magra con verdure',
+  ];
+  const activeDayThemes = mediterraneanRule ? mediterraneanDayThemes : dayThemes;
+
   // Anche le colazioni ruotano: senza un tema per giorno il modello propone
   // sempre la stessa colazione generica (es. "latte e biscotti") tutti i giorni.
   const breakfastThemes = [
@@ -679,7 +694,7 @@ REGOLE:
         fetchChunk(
           chunkDates,
           excludeSnapshot,
-          dayThemes[(w + i) % dayThemes.length],
+          activeDayThemes[(w + i) % activeDayThemes.length],
           breakfastThemes[(w + i) % breakfastThemes.length],
         )
       )
