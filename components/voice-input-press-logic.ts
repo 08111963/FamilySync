@@ -68,6 +68,24 @@ export function decidePressOut(state: {
   return "stopAndTranscribe";
 }
 
+export type PointerCancelAction =
+  | "markLostPointerWhileStarting" // avvio in corso: NON annullare, tracking perso
+  | "keepRecordingWithHint" // registra: continua + spiega come fermare
+  | "none";
+
+/**
+ * Web: `pointercancel` significa che il BROWSER ha smesso di tracciare il dito
+ * (non che l'utente ha rilasciato!). Succede su alcuni Android durante l'avvio
+ * del microfono. In quel caso il vero rilascio non arriverà mai: la
+ * registrazione deve CONTINUARE e l'utente la ferma con un tocco (recovery in
+ * decidePressIn) o col timeout di sicurezza.
+ */
+export function decidePointerCancel(state: { starting: boolean; recording: boolean }): PointerCancelAction {
+  if (state.starting) return "markLostPointerWhileStarting";
+  if (state.recording) return "keepRecordingWithHint";
+  return "none";
+}
+
 export type WindowBlurAction =
   | "markReleasedWhileStarting" // blur durante l'avvio: annulla appena pronto
   | "cancelRecording" // blur mentre registra: chiudi subito
@@ -80,9 +98,16 @@ export function decideWindowBlur(state: { starting: boolean; recording: boolean 
 }
 
 /**
- * Al termine dell'avvio del recorder: se nel frattempo è arrivata la richiesta
- * di annullare (rilascio o blur durante l'avvio), annulla subito in silenzio.
+ * Al termine dell'avvio del recorder:
+ * - se l'utente ha DAVVERO rilasciato (pointerup/blur durante l'avvio) → annulla;
+ * - se il browser ha solo perso il tracciamento (pointercancel) → continua a
+ *   registrare e mostra come fermare (il vero rilascio non arriverà mai).
  */
-export function decideStartCompleted(state: { releasedWhileStarting: boolean }): "cancelRecording" | "keepRecording" {
-  return state.releasedWhileStarting ? "cancelRecording" : "keepRecording";
+export function decideStartCompleted(state: {
+  releasedWhileStarting: boolean;
+  lostPointerWhileStarting?: boolean;
+}): "cancelRecording" | "keepRecording" | "keepRecordingWithHint" {
+  if (state.releasedWhileStarting) return "cancelRecording";
+  if (state.lostPointerWhileStarting) return "keepRecordingWithHint";
+  return "keepRecording";
 }

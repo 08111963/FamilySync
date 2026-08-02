@@ -12,6 +12,7 @@ import {
 
 import { useTheme } from "@/hooks/useTheme";
 import {
+  decidePointerCancel,
   decidePressIn,
   decidePressOut,
   decideStartCompleted,
@@ -89,6 +90,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
   const recordStartRef = useRef(0);
   const justStoppedRef = useRef(false);
   const releasedWhileStartingRef = useRef(false);
+  const lostPointerWhileStartingRef = useRef(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   // Suggerimento non bloccante (solo web): "tieni premuto mentre parli".
   const [hint, setHint] = useState<string | null>(null);
@@ -144,6 +146,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
     startingRef.current = true;
     setStarting(true);
     releasedWhileStartingRef.current = false;
+    lostPointerWhileStartingRef.current = false;
     try {
       const perm = await AudioModule.requestRecordingPermissionsAsync();
       if (!perm.granted) {
@@ -170,13 +173,23 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       // non lasciare il microfono acceso: annulla subito. Su web mostriamo un
       // suggerimento, perché spesso l'utente HA tenuto premuto ma l'avvio era
       // lento e non ha fatto in tempo a registrare nulla.
-      if (decideStartCompleted({ releasedWhileStarting: releasedWhileStartingRef.current }) === "cancelRecording") {
-        releasedWhileStartingRef.current = false;
+      const afterStart = decideStartCompleted({
+        releasedWhileStarting: releasedWhileStartingRef.current,
+        lostPointerWhileStarting: lostPointerWhileStartingRef.current,
+      });
+      releasedWhileStartingRef.current = false;
+      lostPointerWhileStartingRef.current = false;
+      if (afterStart === "cancelRecording") {
         await cancelRecording();
         if (Platform.OS === "web") {
           showHint("Tieni premuto finché non finisci di parlare");
         }
         return;
+      }
+      if (afterStart === "keepRecordingWithHint") {
+        // Il browser ha smesso di tracciare il dito (pointercancel): il vero
+        // rilascio non arriverà. La registrazione continua: spiega come fermare.
+        showHint("Sto registrando: tocca per fermare");
       }
     } catch (err) {
       console.error("Errore avvio registrazione:", err);
@@ -325,6 +338,23 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording, starting]);
 
+  // Web: pointercancel = il browser ha smesso di tracciare il dito (NON è un
+  // rilascio!). Succede su alcuni Android durante l'avvio del microfono. In
+  // quel caso il vero pointerup non arriverà mai: la registrazione continua e
+  // l'utente la ferma con un tocco (recovery in decidePressIn) o col timeout.
+  const handlePointerCancel = () => {
+    pressedRef.current = false;
+    const action = decidePointerCancel({
+      starting: startingRef.current,
+      recording: recordingRef.current,
+    });
+    if (action === "markLostPointerWhileStarting") {
+      lostPointerWhileStartingRef.current = true;
+    } else if (action === "keepRecordingWithHint") {
+      showHint("Sto registrando: tocca per fermare");
+    }
+  };
+
   const handlePressIn = () => {
     const action = decidePressIn({
       transcribing,
@@ -380,6 +410,39 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
     }
   };
 
+  // Web: gestiamo il tocco direttamente con i Pointer Events del browser +
+  // setPointerCapture. Così: (1) il rilascio arriva anche se il dito esce dal
+  // pulsante; (2) distinguiamo il vero rilascio (pointerup) dal tracciamento
+  // perso (pointercancel), che il Pressable di react-native-web confonde.
+  const pressHandlersRef = useRef({ handlePressIn, handlePressOut, handlePointerCancel });
+  pressHandlersRef.current = { handlePressIn, handlePressOut, handlePointerCancel };
+  const hostRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const node = hostRef.current as HTMLElement | null;
+    if (!node?.addEventListener) return;
+    const onPointerDown = (e: PointerEvent) => {
+      try {
+        (node as any).setPointerCapture?.(e.pointerId);
+      } catch {}
+      pressHandlersRef.current.handlePressIn();
+    };
+    const onPointerUp = () => {
+      if (pressedRef.current || justStoppedRef.current) pressHandlersRef.current.handlePressOut();
+    };
+    const onPointerCancel = () => pressHandlersRef.current.handlePointerCancel();
+    node.addEventListener("pointerdown", onPointerDown);
+    node.addEventListener("pointerup", onPointerUp);
+    node.addEventListener("pointercancel", onPointerCancel);
+    return () => {
+      node.removeEventListener("pointerdown", onPointerDown);
+      node.removeEventListener("pointerup", onPointerUp);
+      node.removeEventListener("pointercancel", onPointerCancel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transcribing]);
+
   if (transcribing) {
     return <ActivityIndicator size="small" color={colors.primary} style={styles.button} testID="voice-transcribing" />;
   }
@@ -388,8 +451,11 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
 
   return (
     <Pressable
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
+      ref={hostRef}
+      // Su web i tocchi passano dai Pointer Events DOM (vedi effetto sopra):
+      // i press handler del Pressable qui farebbero doppio scatto.
+      onPressIn={Platform.OS === "web" ? undefined : handlePressIn}
+      onPressOut={Platform.OS === "web" ? undefined : handlePressOut}
       disabled={isDisabled}
       hitSlop={8}
       style={[styles.button, webHoldStyle]}

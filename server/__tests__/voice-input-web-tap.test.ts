@@ -17,6 +17,7 @@ import { join } from "node:path";
 
 import {
   SHORT_TAP_MS,
+  decidePointerCancel,
   decidePressIn,
   decidePressOut,
   decideStartCompleted,
@@ -37,6 +38,7 @@ function createMicSimulator(platform: "web" | "native") {
     transcribing: false,
     justStopped: false,
     releasedWhileStarting: false,
+    lostPointerWhileStarting: false,
     recordStart: 0,
   };
   const calls: string[] = [];
@@ -79,18 +81,33 @@ function createMicSimulator(platform: "web" | "native") {
       calls.push("startRecording");
       state.starting = true;
       state.releasedWhileStarting = false;
+      state.lostPointerWhileStarting = false;
       return action;
     },
     /** Il recorder ha finito l'avvio (perm ok, record() partito). */
     startCompleted() {
       state.recording = true;
       state.recordStart = now;
-      if (decideStartCompleted({ releasedWhileStarting: state.releasedWhileStarting }) === "cancelRecording") {
-        state.releasedWhileStarting = false;
+      const afterStart = decideStartCompleted({
+        releasedWhileStarting: state.releasedWhileStarting,
+        lostPointerWhileStarting: state.lostPointerWhileStarting,
+      });
+      state.releasedWhileStarting = false;
+      state.lostPointerWhileStarting = false;
+      if (afterStart === "cancelRecording") {
         cancelRecording();
         if (isWeb) showHint();
+      } else if (afterStart === "keepRecordingWithHint") {
+        showHint();
       }
       state.starting = false;
+    },
+    /** Il browser smette di tracciare il dito (pointercancel), NON è un rilascio. */
+    pointerCancel() {
+      const action = decidePointerCancel({ starting: state.starting, recording: state.recording });
+      if (action === "markLostPointerWhileStarting") state.lostPointerWhileStarting = true;
+      if (action === "keepRecordingWithHint") showHint();
+      return action;
     },
     pressOut() {
       const action = decidePressOut({
@@ -163,6 +180,33 @@ describe("WEB: hold-to-talk stile WhatsApp", () => {
     assert.ok(mic.calls.includes("cancelRecording"));
     assert.ok(mic.calls.includes("showHint"));
     assert.ok(!mic.calls.includes("stopAndTranscribe"));
+  });
+
+  test("pointercancel DURANTE l'avvio (bug Android) → la registrazione parte comunque + suggerimento", () => {
+    const mic = createMicSimulator("web");
+    mic.pressIn();
+    // Il browser smette di tracciare il dito mentre il mic si sta avviando:
+    // NON è un rilascio, il microfono deve partire lo stesso.
+    assert.equal(mic.pointerCancel(), "markLostPointerWhileStarting");
+    mic.startCompleted();
+    assert.equal(mic.state.recording, true, "la registrazione DEVE partire nonostante il pointercancel");
+    assert.ok(!mic.calls.includes("cancelRecording"));
+    assert.ok(mic.calls.includes("showHint"), "l'utente deve sapere che sta registrando e come fermare");
+
+    // L'utente ferma con un tocco (il vero rilascio non arriverà mai)
+    mic.advance(4000);
+    assert.equal(mic.pressIn(), "stopAndTranscribe");
+    assert.equal(mic.state.transcribing, true);
+  });
+
+  test("pointercancel MENTRE registra → continua a registrare + suggerimento", () => {
+    const mic = createMicSimulator("web");
+    mic.pressIn();
+    mic.startCompleted();
+    mic.advance(1000);
+    assert.equal(mic.pointerCancel(), "keepRecordingWithHint");
+    assert.equal(mic.state.recording, true);
+    assert.ok(!mic.calls.includes("cancelRecording"));
   });
 
   test("recovery: nuova pressione mentre risulta ancora in registrazione (pointerup perso) → ferma e trascrive", () => {

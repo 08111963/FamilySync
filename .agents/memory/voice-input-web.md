@@ -11,6 +11,8 @@ Differenze web vs nativo:
 
 **Why:** la modalità toggle (introdotta il 29 lug per un bug reale su Android Chrome) confondeva l'utente: rilasciava il dito e la registrazione continuava. Il bug originale (browser che "rilascia" da solo il tocco) è coperto in altro modo: `touchAction:"none"`+`userSelect:"none"`, listener globali `pointerup`/`blur`, recovery "nuova pressione mentre registra = ferma e trascrivi" (pointerup perso), timeout di sicurezza 60s che ferma e trascrive da solo.
 
+Su web i tocchi del microfono NON passano dal Pressable (che confonde pointercancel con un rilascio): listener DOM diretti `pointerdown` (con setPointerCapture) / `pointerup` / `pointercancel` sul nodo. `pointercancel` = browser ha perso il dito (Android lo fa durante l'avvio del mic): NON è un rilascio → la registrazione continua con hint "tocca per fermare"; il vero rilascio è solo `pointerup`.
+
 **How to apply:** logica pura in components/voice-input-press-logic.ts (testata in server/__tests__/voice-input-web-tap.test.ts); il componente esegue le azioni. Qualsiasi nuovo controllo press-and-hold su web deve seguire lo stesso schema (stesse guardie + feedback visivo, mai annullamento muto su web).
 
 - Alert.alert di react-native-web è un NO-OP: su web ogni errore mostrato via Alert è invisibile. Usare un helper (window.alert o toast) per i messaggi d'errore utente su web (fatto in VoiceInput con showAlert).
