@@ -12,6 +12,7 @@ import { ensureTesterAccounts } from './lib/tester-accounts';
 import { ensureVipAccount } from './lib/vip-account';
 import { startBillReminderScheduler } from './lib/bill-reminders';
 import { startEventReminderScheduler } from './lib/event-reminders';
+import { startUploadIntegrityScheduler } from './lib/upload-integrity';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -479,6 +480,8 @@ function setupErrorHandler(app: express.Application) {
       startBillReminderScheduler();
       // Promemoria eventi calendario lato server (email + push, dedup su DB).
       startEventReminderScheduler();
+      // Scansione giornaliera integrità allegati (rileva file_url/avatar_url orfani).
+      startUploadIntegrityScheduler();
     },
   );
 })();

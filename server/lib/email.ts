@@ -351,6 +351,66 @@ export async function sendFeedbackNotificationEmail(params: {
 }
 
 /**
+ * Avvisa il proprietario dell'app (APP_OWNER_EMAILS) che la scansione di
+ * integrità degli upload ha trovato allegati orfani (file_url/avatar_url che
+ * puntano a file inesistenti). Best-effort: il chiamante logga gli errori e
+ * non deve mai bloccare la scansione.
+ */
+export async function sendUploadIntegrityAlertEmail(report: {
+  checked: number;
+  autoClean: boolean;
+  orphans: Array<{
+    source: string;
+    rowId: string;
+    fileUrl: string;
+    reason: string;
+    cleaned: boolean;
+  }>;
+}) {
+  const raw = process.env.APP_OWNER_EMAILS || '';
+  const recipients = raw.split(',').map((e) => e.trim()).filter(Boolean);
+
+  if (recipients.length === 0) {
+    console.log(
+      `[upload-integrity] APP_OWNER_EMAILS non configurata: ${report.orphans.length} orfani solo nei log`
+    );
+    return;
+  }
+  if (!isEmailConfigured()) {
+    console.log(
+      `[DEV] Upload integrity: ${report.orphans.length} orfani su ${report.checked} controllati`
+    );
+    return;
+  }
+
+  const rows = report.orphans
+    .map(
+      (o) =>
+        `<tr><td>${escapeHtml(o.source)}</td><td>${escapeHtml(o.rowId)}</td><td>${escapeHtml(o.fileUrl)}</td><td>${escapeHtml(o.reason)}</td><td>${o.cleaned ? 'sì' : 'no'}</td></tr>`
+    )
+    .join('');
+
+  await Promise.all(
+    recipients.map((to) =>
+      sendEmail({
+        to,
+        subject: `[FamilySync] ${report.orphans.length} allegati orfani rilevati`,
+        html: `
+          <h2>Scansione integrità upload</h2>
+          <p>Controllati <strong>${report.checked}</strong> riferimenti; trovati <strong>${report.orphans.length}</strong> orfani.
+          Auto-cleanup: <strong>${report.autoClean ? 'ATTIVO' : 'disattivo (solo segnalazione)'}</strong>.</p>
+          <table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+            <tr><th>Tabella</th><th>ID riga</th><th>File URL</th><th>Motivo</th><th>Ripulito</th></tr>
+            ${rows}
+          </table>
+          <p style="color:#888;font-size:12px;">Vedi i log con tag UPLOAD_INTEGRITY per i dettagli. Per l'auto-cleanup imposta UPLOAD_INTEGRITY_AUTO_CLEAN=true.</p>
+        `,
+      })
+    )
+  );
+}
+
+/**
  * Invia alla casella di assistenza una richiesta inviata da un utente dall'app.
  * Il Reply-To è impostato sull'email dell'utente, così l'assistenza può
  * rispondere direttamente con un semplice "Rispondi". Il chiamante deve aver già
