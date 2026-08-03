@@ -10,6 +10,7 @@ import { seedOwnerEntitlements } from './lib/entitlements';
 import { ensureDemoAccount } from './lib/demo-account';
 import { ensureTesterAccounts } from './lib/tester-accounts';
 import { ensureVipAccount } from './lib/vip-account';
+import { ensurePantryUniqueIndex } from './lib/ensure-pantry-schema';
 import { startBillReminderScheduler } from './lib/bill-reminders';
 import { startEventReminderScheduler } from './lib/event-reminders';
 import { startUploadIntegrityScheduler } from './lib/upload-integrity';
@@ -434,6 +435,18 @@ function setupErrorHandler(app: express.Application) {
   setupWebAppFallback(app);
 
   setupErrorHandler(app);
+
+  // Indice univoco dispensa PRIMA di accettare richieste: drizzle push non
+  // sa creare indici a espressione, quindi lo garantiamo qui (dev e prod).
+  // Senza indice l'upsert ON CONFLICT di addToPantry fallisce, quindi in
+  // produzione un errore qui deve bloccare l'avvio (fail-fast, mai degradato).
+  try {
+    const r = await ensurePantryUniqueIndex();
+    if (r.created) log('pantry unique index created (was missing)');
+  } catch (err) {
+    log(`pantry unique index ensure failed: ${String(err)}`);
+    if (process.env.NODE_ENV === 'production') throw err;
+  }
 
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(
