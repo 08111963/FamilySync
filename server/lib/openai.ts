@@ -753,13 +753,39 @@ REGOLE:
   // succede, UNA sola chiamata extra rigenera i giorni coinvolti e sostituisce
   // solo i piatti doppi; se non trova alternative, il piatto resta (mai buchi).
   const normTitle = (t: string) => t.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const seenNorm = new Set<string>();
+  // Confronto "fuzzy": due titoli sono lo stesso piatto se condividono la
+  // maggior parte delle parole significative (es. "Pasta al tonno e pomodorini"
+  // ≈ "Spaghetti con tonno e pomodorini"). Stopword e formati di pasta
+  // vengono normalizzati prima del confronto (similarità di Jaccard ≥ 0.6).
+  const MEAL_STOPWORDS = new Set(['con', 'e', 'ed', 'di', 'del', 'della', 'delle', 'dei', 'al', 'alla', 'alle', 'ai', 'agli', 'allo', 'la', 'il', 'lo', 'le', 'i', 'gli', 'un', 'una', 'uno', 'in', 'su', 'per', 'da', 'fresco', 'fresca', 'freschi', 'fresche', 'misto', 'mista', 'misti', 'miste']);
+  const PASTA_SYNONYMS = new Set(['spaghetti', 'penne', 'fusilli', 'rigatoni', 'linguine', 'tagliatelle', 'orecchiette', 'farfalle', 'maccheroni', 'trofie', 'paccheri', 'bucatini', 'mezze', 'maniche', 'caserecce', 'pennette']);
+  const titleTokens = (t: string): Set<string> => {
+    const out = new Set<string>();
+    for (const w of normTitle(t).split(' ')) {
+      if (MEAL_STOPWORDS.has(w)) continue;
+      if (w.length < 3 && !/^\d+$/.test(w)) continue;
+      out.add(PASTA_SYNONYMS.has(w) ? 'pasta' : w);
+    }
+    return out;
+  };
+  const sameDish = (a: Set<string>, b: Set<string>): boolean => {
+    if (a.size === 0 || b.size === 0) return false;
+    let inter = 0;
+    for (const w of a) if (b.has(w)) inter++;
+    const union = a.size + b.size - inter;
+    return inter / union >= 0.6;
+  };
+  const seenTokenSets: Set<string>[] = [];
+  const isDupTitle = (title: string): boolean => {
+    const toks = titleTokens(title);
+    return seenTokenSets.some(s => sameDish(s, toks));
+  };
+  const markSeen = (title: string) => { seenTokenSets.push(titleTokens(title)); };
   const dupSlots: { date: string; mealType: string }[] = [];
   for (const it of allItems) {
     if (!it.title || !validDates.has(it.date)) continue;
-    const n = normTitle(it.title);
-    if (seenNorm.has(n)) dupSlots.push({ date: it.date, mealType: it.mealType });
-    else seenNorm.add(n);
+    if (isDupTitle(it.title)) dupSlots.push({ date: it.date, mealType: it.mealType });
+    else markSeen(it.title);
   }
   let duplicatesFixed = 0;
   if (dupSlots.length > 0) {
@@ -769,12 +795,12 @@ REGOLE:
       for (const slot of dupSlots) {
         // Sostituisce SOLO l'item doppio di quello slot (titolo già visto).
         const target = allItems.find(it =>
-          it.date === slot.date && it.mealType === slot.mealType && it.title && seenNorm.has(normTitle(it.title)));
+          it.date === slot.date && it.mealType === slot.mealType && it.title && isDupTitle(it.title));
         const candidate = replacements.find(r =>
-          r.date === slot.date && r.mealType === slot.mealType && r.title && !seenNorm.has(normTitle(r.title)));
+          r.date === slot.date && r.mealType === slot.mealType && r.title && !isDupTitle(r.title));
         if (candidate && target) {
           Object.assign(target, candidate);
-          seenNorm.add(normTitle(candidate.title!));
+          markSeen(candidate.title!);
           duplicatesFixed++;
         }
       }

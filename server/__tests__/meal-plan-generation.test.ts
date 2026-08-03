@@ -192,6 +192,76 @@ test("ripassata anti-doppioni: il doppione intra-ondata viene sostituito", async
   assert.equal(new Set(titles).size, titles.length);
 });
 
+test("ripassata anti-doppioni: riconosce lo stesso piatto scritto in modo diverso (fuzzy)", async (t) => {
+  // Caso reale: 3 pranzi consecutivi erano "pasta al tonno e pomodorini"
+  // con titoli leggermente diversi (anche "Spaghetti" invece di "Pasta").
+  const nearDupes = [
+    "Pasta al tonno e pomodorini con insalata mista",
+    "Spaghetti con tonno e pomodorini + insalata mista",
+    "Pasta al tonno con pomodorini e insalata mista",
+  ];
+  const dedupeCalls: string[][] = [];
+  const { client } = makeFakeClient({
+    itemsForDate: (date) => {
+      const idx = DATES.indexOf(date);
+      const lunchTitle = idx < 3 ? nearDupes[idx]! : `Pranzo ${idx}`;
+      return [meal(date, "lunch", lunchTitle), meal(date, "dinner", `Cena ${idx}`)];
+    },
+    onDedupe: (dates) => {
+      dedupeCalls.push(dates);
+      return dates.map((d, i) => meal(d, "lunch", `Piatto alternativo ${i}`));
+    },
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { mealsPerDay: 2 },
+  });
+
+  // I giorni 1 e 2 sono riconosciuti come doppioni del giorno 0 e sostituiti.
+  assert.deepEqual(dedupeCalls, [[DATES[1], DATES[2]]]);
+  const lunch1 = plan.items.find((i) => i.date === DATES[1] && i.mealType === "lunch");
+  const lunch2 = plan.items.find((i) => i.date === DATES[2] && i.mealType === "lunch");
+  assert.equal(lunch1?.title, "Piatto alternativo 0");
+  assert.equal(lunch2?.title, "Piatto alternativo 1");
+  // Il giorno 0 resta invariato e piatti legittimamente diversi non vengono toccati.
+  const lunch0 = plan.items.find((i) => i.date === DATES[0] && i.mealType === "lunch");
+  assert.equal(lunch0?.title, nearDupes[0]);
+  assert.equal(plan.items.length, 14);
+});
+
+test("ripassata fuzzy: piatti diversi con un ingrediente in comune NON sono doppioni", async (t) => {
+  const { client, calls } = makeFakeClient({
+    itemsForDate: (date) => {
+      const idx = DATES.indexOf(date);
+      const lunches = [
+        "Pasta al pomodoro e basilico",
+        "Pasta alla Norma con melanzane",
+        "Risotto ai frutti di mare",
+        "Insalata di riso con verdure",
+        "Zuppa di lenticchie con riso",
+        "Petto di pollo alla piastra con patate",
+        "Frittata di zucchine con insalata",
+      ];
+      return [meal(date, "lunch", lunches[idx]!), meal(date, "dinner", `Cena ${idx}`)];
+    },
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { mealsPerDay: 2 },
+  });
+
+  assert.equal(calls.length, 7, "nessuna ripassata: nessun falso positivo");
+  assert.equal(plan.items.length, 14);
+});
+
 test("ripassata fallita: il doppione resta al suo posto (mai buchi nel piano)", async (t) => {
   const { client, calls } = makeFakeClient({
     itemsForDate: (date) => {
