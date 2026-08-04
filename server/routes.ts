@@ -35,7 +35,26 @@ import { feedbackRouter, feedbackAdminRouter } from "./routes/feedback";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(helmet({
-    contentSecurityPolicy: false,
+    // CSP come difesa in profondità per la web app Expo servita da questo server.
+    // Bundle JS content-hashed => script-src 'self' basta; niente inline script.
+    // 'unsafe-inline' solo per gli style (React Native Web inietta stili inline).
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "blob:", "https:"],
+        fontSrc: ["'self'", "data:"],
+        connectSrc: ["'self'", "wss:", "https://api.revenuecat.com"],
+        mediaSrc: ["'self'", "blob:"],
+        workerSrc: ["'self'", "blob:"],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'self'"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
   }));
 

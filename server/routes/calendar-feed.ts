@@ -15,13 +15,20 @@ import { isRealIsoDate } from '../../shared/chore-recurrence';
  */
 const router = Router();
 
-/** Escape testo per ICS (RFC 5545): backslash, punto e virgola, virgola, newline. */
+/**
+ * Escape testo per ICS (RFC 5545): backslash, punto e virgola, virgola, newline.
+ * Gestisce TUTTE le varianti di a-capo (\r\n, \r, \n): un \r "nudo" lasciato
+ * passare permetterebbe di iniettare righe/proprietà ICS arbitrarie nel feed.
+ * Rimuove anche gli altri caratteri di controllo, mai legittimi in un testo.
+ */
 export function icsEscape(text: string): string {
   return text
     .replace(/\\/g, '\\\\')
     .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
-    .replace(/\r?\n/g, '\\n');
+    .replace(/\r\n|\r|\n/g, '\\n')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 }
 
 /** Piega le righe oltre 75 ottetti come richiesto dallo standard ICS. */

@@ -65,29 +65,38 @@ async function notifyAssignedMember(
 
 const router = Router();
 
+/**
+ * Rimuove i caratteri di controllo (incluso \r "nudo") dai campi testuali:
+ * difesa a monte contro iniezioni di righe nel feed ICS e in altre viste.
+ */
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]|\r(?!\n)/g;
+const stripControlChars = (value: string) => value.replace(CONTROL_CHARS, '');
+const cleanText = (schema: z.ZodString) => schema.transform(stripControlChars);
+
 const createEventSchema = z.object({
-  title: z.string().min(1, "Il titolo è obbligatorio"),
-  description: z.string().optional(),
+  title: cleanText(z.string().min(1, "Il titolo è obbligatorio").max(200)),
+  description: cleanText(z.string().max(2000)).optional(),
   date: z.string().refine(isRealIsoDate, "Data non valida (formato AAAA-MM-GG)"),
   time: z.string().optional(),
   endTime: z.string().optional(),
   allDay: z.boolean().optional().default(false),
   category: z.enum(["work", "school", "sport", "health", "social", "family", "other"]).optional().default("other"),
-  location: z.string().optional(),
+  location: cleanText(z.string().max(500)).optional(),
   color: z.string().optional().default("#6366F1"),
   memberId: z.string().optional(),
   recurrenceRule: z.string().optional(),
 });
 
 const updateEventSchema = z.object({
-  title: z.string().min(1).optional(),
-  description: z.string().optional(),
+  title: cleanText(z.string().min(1).max(200)).optional(),
+  description: cleanText(z.string().max(2000)).optional(),
   date: z.string().refine(isRealIsoDate, "Data non valida (formato AAAA-MM-GG)").optional(),
   time: z.string().nullable().optional(),
   endTime: z.string().nullable().optional(),
   allDay: z.boolean().optional(),
   category: z.enum(["work", "school", "sport", "health", "social", "family", "other"]).optional(),
-  location: z.string().nullable().optional(),
+  location: cleanText(z.string().max(500)).nullable().optional(),
   color: z.string().optional(),
   memberId: z.string().nullable().optional(),
   recurrenceRule: z.string().nullable().optional(),

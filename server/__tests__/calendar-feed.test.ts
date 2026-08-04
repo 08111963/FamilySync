@@ -64,3 +64,9 @@ test('computeTimedEnd: endTime uguale all inizio va al giorno dopo', () => {
     endTime: '10:00',
   });
 });
+
+test('icsEscape neutralizza \\r nudo e caratteri di controllo (ICS injection)', () => {
+  assert.equal(icsEscape('Meeting\rEND:VEVENT'), 'Meeting\\nEND:VEVENT');
+  assert.equal(icsEscape('a\r\nb\rc\nd'), 'a\\nb\\nc\\nd');
+  assert.equal(icsEscape('x\u0000y\u0007z\u007Fw'), 'xyzw');
+});
