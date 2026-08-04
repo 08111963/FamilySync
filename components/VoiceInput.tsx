@@ -19,7 +19,7 @@ import {
   decideWindowBlur,
 } from "@/components/voice-input-press-logic";
 import { apiUpload } from "@/lib/query-client";
-import { aiErrorMessage } from "@/lib/ai-error-message";
+import { isAiDisabled, showAiErrorAlert } from "@/lib/ai-error-message";
 
 // ---- Lock globale: un solo microfono attivo alla volta ----
 // Evita registrazioni concorrenti quando più VoiceInput sono nella stessa
@@ -254,7 +254,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       }
     } catch (err) {
       console.error("Errore trascrizione:", err);
-      showAlert("Dettatura", aiErrorMessage(err, "Impossibile trascrivere l'audio. Riprova."));
+      showAiErrorAlert(err, "Impossibile trascrivere l'audio. Riprova.", "Dettatura");
     } finally {
       setTranscribing(false);
       setActiveMic(null);

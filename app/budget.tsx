@@ -24,7 +24,7 @@ import { apiRequest } from "@/lib/query-client";
 import { EmptyState } from "@/components/EmptyState";
 import { Card } from "@/components/Card";
 import { VoiceInput } from "@/components/VoiceInput";
-import { aiErrorMessage } from "@/lib/ai-error-message";
+import { showAiErrorAlert } from "@/lib/ai-error-message";
 import { AiBadge } from "@/components/AiBadge";
 
 interface Expense {
@@ -148,9 +148,10 @@ export default function BudgetScreen() {
     } catch (error: any) {
       // Fallback: metti comunque il testo dettato nella descrizione
       setDescription(text.slice(0, 255));
-      Alert.alert(
-        "Dettatura",
-        aiErrorMessage(error, "Non sono riuscito a capire importo e categoria: ho messo il testo nella descrizione.")
+      showAiErrorAlert(
+        error,
+        "Non sono riuscito a capire importo e categoria: ho messo il testo nella descrizione.",
+        "Dettatura"
       );
     } finally {
       setParsingVoice(false);
@@ -286,7 +287,7 @@ export default function BudgetScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
       setInsights(null);
-      Alert.alert("Analisi non disponibile", aiErrorMessage(error, "Impossibile analizzare il budget ora. Riprova più tardi."));
+      showAiErrorAlert(error, "Impossibile analizzare il budget ora. Riprova più tardi.", "Analisi non disponibile");
     } finally {
       setLoadingInsights(false);
     }

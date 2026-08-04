@@ -15,7 +15,7 @@ import { Avatar } from "@/components/Avatar";
 import { CalendarPicker } from "@/components/CalendarPicker";
 import Colors from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
-import { aiErrorMessage } from "@/lib/ai-error-message";
+import { showAiErrorAlert } from "@/lib/ai-error-message";
 import { buildRecurrenceRule, WEEKDAY_LABELS } from "@/shared/chore-recurrence";
 
 const EVENT_COLORS = Object.values(Colors.light.calendar);
@@ -142,7 +142,7 @@ export default function AddEventScreen() {
         showError("Non ho capito l'evento: prova a descriverlo in modo più specifico.");
       }
     } catch (e) {
-      showError(aiErrorMessage(e, "Non sono riuscito a compilare i campi. Riprova."));
+      showAiErrorAlert(e, "Non sono riuscito a compilare i campi. Riprova.");
     } finally {
       setIsCompiling(false);
     }

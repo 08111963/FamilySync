@@ -506,7 +506,7 @@ export default function AIInsightsScreen() {
           <Pressable
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push("/(tabs)/family");
+              router.push("/privacy-center");
             }}
             style={[styles.bannerButton, { backgroundColor: colors.error }]}
           >

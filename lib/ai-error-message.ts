@@ -1,3 +1,6 @@
+import { Alert, Platform } from "react-native";
+import { router } from "expo-router";
+
 type AiErrorLike = {
   status?: number;
   body?: { error?: { code?: string; message?: string } };
@@ -30,4 +33,43 @@ export function aiErrorMessage(err: unknown, fallback: string): string {
   if (serverMsg && typeof serverMsg === "string") return serverMsg;
   if (code && FALLBACK_BY_CODE[code]) return FALLBACK_BY_CODE[code];
   return fallback;
+}
+
+/** Apre il Centro Privacy, dove si trova l'interruttore delle Funzioni AI. */
+export function openAiSettings() {
+  router.push("/privacy-center");
+}
+
+/**
+ * Mostra l'errore AI all'utente. Se l'errore è AI_DISABLED (consenso AI
+ * disattivato), l'alert offre anche l'azione "Vai alle impostazioni" che
+ * porta direttamente all'interruttore nel Centro Privacy.
+ * Per gli altri errori mostra il solito messaggio con OK.
+ */
+export function showAiErrorAlert(err: unknown, fallback: string, title = "Errore") {
+  const msg = aiErrorMessage(err, fallback);
+  if (isAiDisabled(err)) {
+    if (Platform.OS === "web") {
+      const win = globalThis as any;
+      const ok =
+        typeof win?.confirm === "function"
+          ? win.confirm(`${msg}\n\nVuoi andare alle impostazioni per attivarle ora?`)
+          : false;
+      if (ok) openAiSettings();
+      return;
+    }
+    Alert.alert(title, msg, [
+      { text: "Annulla", style: "cancel" },
+      { text: "Vai alle impostazioni", onPress: openAiSettings },
+    ]);
+    return;
+  }
+  if (Platform.OS === "web") {
+    const win = globalThis as any;
+    if (typeof win?.alert === "function") {
+      win.alert(`${title}\n\n${msg}`);
+      return;
+    }
+  }
+  Alert.alert(title, msg);
 }

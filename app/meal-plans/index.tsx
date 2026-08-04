@@ -908,6 +908,13 @@ export default function MealPlansScreen() {
               <Text style={[styles.aiDisabledText, { color: colors.error }]}>
                 Funzionalità AI disabilitata. Attivala nelle Impostazioni.
               </Text>
+              <Pressable
+                onPress={() => router.push("/privacy-center")}
+                style={[styles.aiDisabledButton, { backgroundColor: colors.error }]}
+                testID="ai-disabled-settings"
+              >
+                <Text style={styles.aiDisabledButtonText}>Attiva ora</Text>
+              </Pressable>
             </View>
           )}
 
@@ -1548,5 +1555,15 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: "Inter_500Medium",
+  },
+  aiDisabledButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  aiDisabledButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
   },
 });

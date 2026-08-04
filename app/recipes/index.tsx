@@ -100,6 +100,9 @@ export default function RecipesScreen() {
   const [generatingAi, setGeneratingAi] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  // True se l'ultimo errore AI è "consenso disattivato": il banner mostra
+  // anche il pulsante che porta all'interruttore nel Centro Privacy.
+  const [aiErrorDisabled, setAiErrorDisabled] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [savedQuery, setSavedQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -138,6 +141,7 @@ export default function RecipesScreen() {
     const useQuery = q.length >= 2;
     setGeneratingAi(true);
     setAiError(null);
+    setAiErrorDisabled(false);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       if (useQuery) Keyboard.dismiss();
@@ -174,6 +178,7 @@ export default function RecipesScreen() {
     } catch (error: any) {
       if (isAiDisabled(error)) {
         setAiError("Funzionalità AI disabilitata. Attivala nelle Impostazioni.");
+        setAiErrorDisabled(true);
       } else {
         setAiError(aiErrorMessage(error, "Errore nella generazione. Riprova."));
       }
@@ -190,6 +195,7 @@ export default function RecipesScreen() {
     Keyboard.dismiss();
     setSearching(true);
     setAiError(null);
+    setAiErrorDisabled(false);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const data = await apiFetch<{ recipes?: any[] }>(
@@ -221,6 +227,7 @@ export default function RecipesScreen() {
     } catch (error: any) {
       if (isAiDisabled(error)) {
         setAiError("Funzionalità AI disabilitata. Attivala nelle Impostazioni.");
+        setAiErrorDisabled(true);
       } else {
         setAiError(aiErrorMessage(error, "Errore nella ricerca. Riprova."));
       }
@@ -434,7 +441,16 @@ export default function RecipesScreen() {
         <View style={[styles.errorBanner, { backgroundColor: colors.error + "15" }]}>
           <Ionicons name="warning-outline" size={16} color={colors.error} />
           <Text style={[styles.errorText, { color: colors.error }]}>{aiError}</Text>
-          <Pressable onPress={() => setAiError(null)} hitSlop={8}>
+          {aiErrorDisabled ? (
+            <Pressable
+              onPress={() => router.push("/privacy-center")}
+              style={[styles.errorActionButton, { backgroundColor: colors.error }]}
+              testID="ai-disabled-settings"
+            >
+              <Text style={styles.errorActionText}>Attiva ora</Text>
+            </Pressable>
+          ) : null}
+          <Pressable onPress={() => { setAiError(null); setAiErrorDisabled(false); }} hitSlop={8}>
             <Ionicons name="close" size={16} color={colors.error} />
           </Pressable>
         </View>
@@ -700,6 +716,16 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontFamily: "Inter_500Medium",
+  },
+  errorActionButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  errorActionText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
   },
   generateButton: {
     flexDirection: "row",

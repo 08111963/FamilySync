@@ -14,7 +14,7 @@ import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { freeLimitMessage } from "@/lib/plan-limit";
-import { aiErrorMessage } from "@/lib/ai-error-message";
+import { showAiErrorAlert } from "@/lib/ai-error-message";
 import { buildRecurrenceRule, WEEKDAY_LABELS } from "@/shared/chore-recurrence";
 
 const POINTS_OPTIONS = [5, 10, 15, 20, 25, 50];
@@ -128,7 +128,7 @@ export default function AddChoreScreen() {
         showError("Non ho capito la faccenda: prova a descriverla in modo più specifico.");
       }
     } catch (e) {
-      showError(aiErrorMessage(e, "Non sono riuscito a compilare i campi. Riprova."));
+      showAiErrorAlert(e, "Non sono riuscito a compilare i campi. Riprova.");
     } finally {
       setIsCompiling(false);
     }
