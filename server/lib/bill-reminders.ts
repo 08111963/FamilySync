@@ -136,11 +136,32 @@ async function processKind(kind: ReminderKind, dueDate: string): Promise<void> {
   }
 }
 
-/** Un singolo passaggio dello scheduler (esportato per i test). */
-export async function runBillRemindersOnce(): Promise<void> {
+/** Ora corrente (0-23) nel fuso orario italiano. */
+function hourInRome(): number {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hour12: false })
+      .format(new Date()),
+  );
+}
+
+// Fasce orarie di invio (ora italiana): mai notifiche di notte.
+// "Scade oggi" parte al mattino; "scade domani" la sera prima.
+export const DUE_TODAY_WINDOW = { from: 7, to: 21 } as const;
+export const DUE_TOMORROW_WINDOW = { from: 17, to: 21 } as const;
+
+/**
+ * Un singolo passaggio dello scheduler (esportato per i test; `hourOverride`
+ * serve solo ai test per simulare l'ora italiana).
+ */
+export async function runBillRemindersOnce(hourOverride?: number): Promise<void> {
+  const hour = hourOverride ?? hourInRome();
   const today = todayInRome();
-  await processKind('due_today', today);
-  await processKind('due_tomorrow', addDays(today, 1));
+  if (hour >= DUE_TODAY_WINDOW.from && hour <= DUE_TODAY_WINDOW.to) {
+    await processKind('due_today', today);
+  }
+  if (hour >= DUE_TOMORROW_WINDOW.from && hour <= DUE_TOMORROW_WINDOW.to) {
+    await processKind('due_tomorrow', addDays(today, 1));
+  }
 }
 
 /** Nome del job nella tabella scheduled_job_runs. */

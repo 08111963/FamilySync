@@ -147,11 +147,32 @@ async function processKind(kind: ReminderKind, date: string): Promise<void> {
   }
 }
 
-/** Un singolo passaggio dello scheduler (esportato per i test). */
-export async function runEventRemindersOnce(): Promise<void> {
+/** Ora corrente (0-23) nel fuso orario italiano. */
+function hourInRome(): number {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hour12: false })
+      .format(new Date()),
+  );
+}
+
+// Fasce orarie di invio (ora italiana): mai notifiche di notte.
+// "Evento oggi" parte al mattino; "evento domani" la sera prima.
+export const TODAY_WINDOW = { from: 7, to: 21 } as const;
+export const TOMORROW_WINDOW = { from: 17, to: 21 } as const;
+
+/**
+ * Un singolo passaggio dello scheduler (esportato per i test; `hourOverride`
+ * serve solo ai test per simulare l'ora italiana).
+ */
+export async function runEventRemindersOnce(hourOverride?: number): Promise<void> {
+  const hour = hourOverride ?? hourInRome();
   const today = todayInRome();
-  await processKind('event_today', today);
-  await processKind('event_tomorrow', addDays(today, 1));
+  if (hour >= TODAY_WINDOW.from && hour <= TODAY_WINDOW.to) {
+    await processKind('event_today', today);
+  }
+  if (hour >= TOMORROW_WINDOW.from && hour <= TOMORROW_WINDOW.to) {
+    await processKind('event_tomorrow', addDays(today, 1));
+  }
 }
 
 /** Nome del job nella tabella scheduled_job_runs. */

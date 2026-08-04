@@ -77,7 +77,7 @@ describe("event reminders (DB)", { skip: hasDb ? false : "DATABASE_URL non impos
   });
 
   test("primo giro: claim per oggi e domani, non per eventi lontani", async () => {
-    await runEventRemindersOnce();
+    await runEventRemindersOnce(18);
 
     const logToday = await db
       .select()
@@ -99,7 +99,7 @@ describe("event reminders (DB)", { skip: hasDb ? false : "DATABASE_URL non impos
   });
 
   test("secondo giro: nessun doppio invio (dedup)", async () => {
-    await runEventRemindersOnce();
+    await runEventRemindersOnce(18);
     const logToday = await db
       .select()
       .from(eventReminderLog)
