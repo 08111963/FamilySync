@@ -7,6 +7,8 @@ The backend (port 5000) serves a static Expo web export from `web-build/` alongs
 
 **Why:** After the voice-input feature shipped, the user could not see new UI while Metro/e2e tests showed it — the static `web-build` was weeks old. Cost hours of debugging (cache, layout, bundle checks) before finding it.
 
+**In-app signal:** in dev the web app now shows a dismissible "anteprima potrebbe essere vecchia" banner when `/build-version` reports `staleness.status === "stale"` (server gates it off in production/deploy). The "Nuova versione" update banner takes precedence over it. Staleness is computed once at server startup.
+
 **How to apply:** After any user-visible frontend change, regenerate with `npx expo export --platform web --output-dir web-build-new`, verify the new bundle contains the new feature (grep a testID), swap directories, restart the backend. The export takes >2 min — run it backgrounded with output redirected (plain foreground bash call times out at 120s with no output).
 
 **In-session regen works with Metro STOPPED:** with no Metro/Frontend workflow running, a backgrounded `CI=1 npx expo export --platform web --output-dir web-build-new` completed in ~100s (Aug 2026). The contention failure below applies when Metro 8081 is already running.

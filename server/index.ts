@@ -302,18 +302,31 @@ function configureExpoAndLanding(app: express.Application) {
   // le modifiche frontend (vedi .agents/memory/expo-static-web-build.md).
   // Calcolato all'avvio, loggato subito e riesposto in /build-version.
   let staleness: WebBuildStaleness | null = null;
-  void checkWebBuildStaleness()
-    .then((result) => {
-      staleness = result;
-      if (result.status === "stale") {
-        logger.warn(`[web-build staleness] ${result.message}`);
-      } else {
-        log(`[web-build staleness] ${result.message}`);
-      }
-    })
-    .catch((err) => {
-      log(`[web-build staleness] check failed: ${String(err)}`);
-    });
+  // In produzione (deploy) non c'è git e la build è per definizione quella
+  // pubblicata: il controllo non ha senso e non deve MAI segnalare "stale".
+  const isProductionDeploy =
+    process.env.REPLIT_DEPLOYMENT === "1" || process.env.NODE_ENV === "production";
+  if (!isProductionDeploy) {
+    void checkWebBuildStaleness()
+      .then((result) => {
+        staleness = result;
+        if (result.status === "stale") {
+          logger.warn(`[web-build staleness] ${result.message}`);
+        } else {
+          log(`[web-build staleness] ${result.message}`);
+        }
+      })
+      .catch((err) => {
+        log(`[web-build staleness] check failed: ${String(err)}`);
+      });
+  } else {
+    staleness = {
+      status: "unknown",
+      webBuildMtime: null,
+      lastFrontendCommit: null,
+      message: "controllo staleness disattivato in produzione",
+    };
+  }
 
   app.get("/build-version", (_req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");

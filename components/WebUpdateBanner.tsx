@@ -7,12 +7,22 @@ import { useTheme } from "@/hooks/useTheme";
 // Ogni quanto ricontrollare la versione del server (oltre al ritorno in foreground).
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 
-async function fetchServerVersion(): Promise<string | null> {
+type ServerBuildInfo = {
+  version: string | null;
+  /** "stale" quando il backend segnala che web-build/ è più vecchia dell'ultimo commit frontend (solo dev) */
+  stalenessStatus: string | null;
+};
+
+async function fetchServerBuildInfo(): Promise<ServerBuildInfo | null> {
   try {
     const res = await fetch("/build-version", { cache: "no-store" });
     if (!res.ok) return null;
     const data = await res.json();
-    return typeof data?.version === "string" && data.version ? data.version : null;
+    return {
+      version: typeof data?.version === "string" && data.version ? data.version : null,
+      stalenessStatus:
+        typeof data?.staleness?.status === "string" ? data.staleness.status : null,
+    };
   } catch {
     return null;
   }
@@ -53,11 +63,15 @@ async function computeRunningVersion(): Promise<string | null> {
  * più recente di quella in esecuzione. Alla prima apertura memorizza la
  * versione corrente, poi ricontrolla periodicamente e al ritorno in
  * foreground: se cambia, propone un ricaricamento completo della pagina.
+ * Mostra inoltre (solo dev) una nota discreta quando il backend segnala che
+ * la build statica servita è più vecchia dell'ultimo commit frontend.
  */
 export function WebUpdateBanner() {
   const { colors } = useTheme();
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [stale, setStale] = useState(false);
+  const [staleDismissed, setStaleDismissed] = useState(false);
   const runningVersion = useRef<string | null>(null);
 
   useEffect(() => {
@@ -71,13 +85,9 @@ export function WebUpdateBanner() {
     // senza avviso per minuti.
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const checkWithRetry = async () => {
-      if (runningVersion.current === null) {
-        runningVersion.current = await computeRunningVersion();
-        if (runningVersion.current === null) return;
-      }
-      const serverVersion = await fetchServerVersion();
+      const info = await fetchServerBuildInfo();
       if (cancelled) return;
-      if (!serverVersion) {
+      if (!info) {
         if (!retryTimer) {
           retryTimer = setTimeout(() => {
             retryTimer = null;
@@ -86,7 +96,23 @@ export function WebUpdateBanner() {
         }
         return;
       }
-      if (serverVersion !== runningVersion.current) {
+
+      // Avviso "anteprima vecchia": il backend lo segnala SOLO in dev; in
+      // produzione staleness è sempre unknown, quindi il banner non appare.
+      setStale(info.stalenessStatus === "stale");
+
+      if (runningVersion.current === null) {
+        // Versione in esecuzione letta dai bundle della pagina: rileva anche
+        // un'app GIÀ vecchia alla prima apertura dopo un Republish.
+        runningVersion.current = await computeRunningVersion();
+        if (runningVersion.current === null) {
+          // Ambiente senza bundle statici (dev Metro) o senza WebCrypto:
+          // impossibile identificare la build in esecuzione, banner disattivo.
+          return;
+        }
+      }
+      if (cancelled || !info.version) return;
+      if (info.version !== runningVersion.current) {
         setUpdateAvailable(true);
       }
     };
@@ -125,7 +151,11 @@ export function WebUpdateBanner() {
     };
   }, []);
 
-  if (Platform.OS !== "web" || !updateAvailable || dismissed) return null;
+  if (Platform.OS !== "web") return null;
+
+  const showUpdate = updateAvailable && !dismissed;
+  const showStale = !showUpdate && stale && !staleDismissed;
+  if (!showUpdate && !showStale) return null;
 
   const reload = () => {
     try {
@@ -139,6 +169,32 @@ export function WebUpdateBanner() {
       window.location.reload();
     }
   };
+
+  if (showStale) {
+    // Nota discreta (solo dev, porta 5000): la build statica servita dal
+    // backend è più vecchia dell'ultimo commit frontend.
+    return (
+      <View style={styles.wrapper} pointerEvents="box-none">
+        <View
+          style={[styles.banner, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          testID="web-stale-banner"
+        >
+          <Ionicons name="time-outline" size={22} color={colors.textSecondary} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={[styles.title, { color: colors.text }]}>
+              Questa anteprima potrebbe essere vecchia
+            </Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              Ci sono modifiche frontend più recenti della build statica servita qui.
+            </Text>
+          </View>
+          <Pressable onPress={() => setStaleDismissed(true)} hitSlop={8} testID="web-stale-dismiss">
+            <Ionicons name="close" size={18} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.wrapper} pointerEvents="box-none">
