@@ -524,7 +524,7 @@ export default function MealPlansScreen() {
     }
   };
 
-  const fetchAlternativeStream = async () => {
+  const fetchAlternativeStream = async (opts?: { speak?: boolean }) => {
     if (!currentFamily || generating || generatingAlt) return;
     setGeneratingAlt(true);
     setAiDisabledError(false);
@@ -539,6 +539,7 @@ export default function MealPlansScreen() {
 
     let started = false;
     let streamErr = false;
+    const collectedItems: MealPlanItem[] = [];
     try {
       await apiStream(
         `/api/ai/${currentFamily.id}/weekly-meal-plan/stream`,
@@ -547,6 +548,7 @@ export default function MealPlansScreen() {
           if (obj?.type === "error") {
             streamErr = true;
           } else if (obj?.type === "items" && Array.isArray(obj.items)) {
+            collectedItems.push(...(obj.items as MealPlanItem[]));
             if (!started) {
               started = true;
               setAiPlans((prev) => {
@@ -581,6 +583,8 @@ export default function MealPlansScreen() {
         }
         setAiPlans((prev) => prev.slice(0, 1));
         setSelectedPlanIndex(0);
+      } else if (opts?.speak && collectedItems.length > 0) {
+        speakText(buildPlanSpeech("Piano B - Creativo", collectedItems));
       }
     } catch (err: any) {
       if (isAiDisabled(err)) {
@@ -600,8 +604,10 @@ export default function MealPlansScreen() {
     }
   };
 
-  const handleGenerate = () => fetchMealPlanStream();
-  const handleGenerateAlternative = () => fetchAlternativeStream();
+  // Il toggle "L'AI legge il piano ad alta voce" vale per QUALSIASI generazione,
+  // non solo per quella avviata a voce col microfono.
+  const handleGenerate = () => fetchMealPlanStream({ speak: autoSpeak });
+  const handleGenerateAlternative = () => fetchAlternativeStream({ speak: autoSpeak });
 
   // Dettatura completa: l'utente detta dieta, allergie e preferenze in una volta;
   // al rilascio si genera subito il piano e a fine generazione viene letto ad alta voce.

@@ -152,7 +152,9 @@ export default function RecipesScreen() {
 
   const runAiSearch = async (rawQuery: string, opts?: { speakResults?: boolean }) => {
     const q = rawQuery.trim();
-    if (!currentFamily || q.length < 2) return;
+    // Guardia anti-doppioni: una ricerca già in corso non deve partire due
+    // volte (doppia chiamata API e doppia lettura ad alta voce).
+    if (!currentFamily || q.length < 2 || searching) return;
     Keyboard.dismiss();
     setSearching(true);
     setAiError(null);
@@ -195,7 +197,8 @@ export default function RecipesScreen() {
     }
   };
 
-  const handleSearch = () => runAiSearch(searchQuery);
+  // Il toggle lettura ad alta voce vale anche per la ricerca avviata dal pulsante.
+  const handleSearch = () => runAiSearch(searchQuery, { speakResults: autoSpeak });
 
   // Dettatura vocale: inserisce il testo, avvia subito la ricerca AI
   // e legge ad alta voce le ricette trovate.
