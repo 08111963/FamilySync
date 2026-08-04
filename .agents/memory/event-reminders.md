@@ -3,7 +3,7 @@ name: Promemoria eventi calendario
 description: Email+push server-side per eventi di oggi/domani, dedup event_reminder_log
 ---
 
-**Fasce orarie (ago 2026):** i promemoria (eventi E bollette) partono solo in fasce italiane — "oggi" 7-21, "domani" 17-21 — perché il primo tick dopo mezzanotte inviava push alle 00:50 che nessuno vedeva; `runOnce(hourOverride?)` per i test. Il dedup claim avviene solo dentro processKind, quindi i tick fuori fascia non bruciano il promemoria.
+**Fasce orarie:** i promemoria (eventi E bollette) partono solo in fasce italiane — "oggi" 7-21, "domani" 17-21 — perché il primo tick dopo mezzanotte inviava push alle 00:50 che nessuno vedeva; `runOnce(hourOverride?)` per i test. Il dedup claim avviene solo dentro processKind, quindi i tick fuori fascia non bruciano il promemoria.
 
 Scheduler orario (Europe/Rome) in server/lib che replica lo schema dei promemoria bollette: kinds `event_today`/`event_tomorrow`, claim atomico su `event_reminder_log` UNIQUE(event_id,kind), claim rilasciato se NESSUNA email parte.
 
