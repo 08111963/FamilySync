@@ -579,11 +579,12 @@ router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requ
 
 router.patch('/:familyId/insights/:insightId/dismiss', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
+    const familyId = getParam(req, 'familyId');
     const insightId = getParam(req, 'insightId');
 
     await db.update(aiInsights)
       .set({ dismissed: true })
-      .where(eq(aiInsights.id, insightId));
+      .where(and(eq(aiInsights.id, insightId), eq(aiInsights.familyId, familyId)));
 
     res.json({ message: 'Insight nascosto' });
   } catch (error) {

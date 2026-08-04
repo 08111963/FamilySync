@@ -131,6 +131,7 @@ router.get("/reports/:familyId", authenticate, requireFamilyAdmin(), async (req:
 
 router.patch("/reports/:familyId/:reportId", authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
   try {
+    const familyId = getParam(req, 'familyId');
     const reportId = getParam(req, 'reportId');
     const { status } = req.body;
 
@@ -143,7 +144,7 @@ router.patch("/reports/:familyId/:reportId", authenticate, requireFamilyAdmin(),
     const [updated] = await db
       .update(reports)
       .set({ status, updatedAt: new Date() })
-      .where(eq(reports.id, reportId))
+      .where(and(eq(reports.id, reportId), eq(reports.familyId, familyId)))
       .returning();
 
     if (!updated) {
