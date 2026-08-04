@@ -100,10 +100,12 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Famiglia non trovata" } });
     }
 
+    // LEFT JOIN: i "profili bambino" gestiti dai genitori non hanno account
+    // (userId NULL) e devono comunque comparire tra i membri.
     const members = await db
       .select({ member: familyMembers, user: users })
       .from(familyMembers)
-      .innerJoin(users, eq(familyMembers.userId, users.id))
+      .leftJoin(users, eq(familyMembers.userId, users.id))
       .where(eq(familyMembers.familyId, familyId));
 
     const [eventsCount] = await db
@@ -132,13 +134,15 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
       ...family,
       members: members.map(m => ({
         id: m.member.id,
-        userId: m.user.id,
-        name: m.user.name,
+        userId: m.user?.id ?? null,
+        name: m.user?.name ?? m.member.name ?? m.member.nickname ?? 'Membro',
         nickname: m.member.nickname,
         role: m.member.role,
         color: m.member.color,
         points: m.member.points,
-        avatarUrl: m.user.avatarUrl,
+        avatarUrl: m.user?.avatarUrl ?? null,
+        // true per i profili gestiti dai genitori (nessun account/login)
+        isManagedProfile: !m.user,
       })),
     });
   } catch (error) {
@@ -265,6 +269,68 @@ router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamil
   } catch (error) {
     logger.error('Create invite error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione dell'invito" } });
+  }
+});
+
+// Crea un "profilo bambino" gestito dai genitori: membro della famiglia SENZA
+// account/email (userId NULL). Solo admin/adult possono crearlo. Nessun dato di
+// contatto del minore viene raccolto (coerente con privacy policy / pagina minori).
+const childProfileSchema = z.object({
+  name: z.string().trim().min(2, "Il nome deve avere almeno 2 caratteri").max(100),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+});
+
+router.post('/:familyId/child-profiles', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = getParam(req, 'familyId');
+    const membership = (req as any).membership;
+
+    if (membership.role !== 'admin' && membership.role !== 'adult') {
+      return res.status(403).json({
+        error: { code: "FORBIDDEN", message: "Solo un genitore (admin o adulto) può creare un profilo bambino" },
+      });
+    }
+
+    const parsed = childProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+
+    // Limite piano Free verificato ATOMICAMENTE nella stessa transazione
+    // dell'insert (advisory lock per-famiglia), come per gli inviti.
+    const txResult = await db.transaction(async (tx) => {
+      if (await isFamilyMemberLimitReachedTx(tx, familyId)) {
+        return { limitReached: true as const };
+      }
+      const [member] = await tx.insert(familyMembers).values({
+        familyId,
+        userId: null,
+        role: 'child',
+        name: parsed.data.name,
+        nickname: parsed.data.name,
+        color: parsed.data.color || '#F59E0B',
+        points: 0,
+      }).returning();
+      return { limitReached: false as const, member };
+    });
+
+    if (txResult.limitReached) {
+      return res.status(403).json({
+        error: {
+          code: "MEMBER_LIMIT_REACHED",
+          message: `Il piano Free consente al massimo ${FREE_MAX_FAMILY_MEMBERS} membri. Passa a Premium per aggiungere altri familiari.`,
+        },
+      });
+    }
+
+    broadcastToFamily(familyId, 'member_joined', txResult.member);
+    logger.info('Child profile created', { familyId });
+    res.status(201).json(txResult.member);
+  } catch (error) {
+    logger.error('Create child profile error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione del profilo bambino" } });
   }
 });
 
@@ -512,14 +578,24 @@ router.put('/:familyId/members/:memberId', authenticate, requireFamilyMember(), 
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Membro non trovato" } });
     }
 
-    const isSelf = target.userId === req.user!.userId;
-    if (!isSelf && membership.role !== 'admin') {
+    const isSelf = target.userId !== null && target.userId === req.user!.userId;
+    // I profili bambino (userId NULL) sono gestiti dai genitori: anche un
+    // "adult" può modificarli, oltre all'admin.
+    const isManagedProfile = target.userId === null;
+    const canManageChild = isManagedProfile && (membership.role === 'admin' || membership.role === 'adult');
+    if (!isSelf && membership.role !== 'admin' && !canManageChild) {
       return res.status(403).json({ error: { code: "FORBIDDEN", message: "Puoi modificare solo il tuo profilo" } });
     }
 
     const updateData: any = {};
     if (nickname !== undefined) updateData.nickname = nickname || null;
     if (color) updateData.color = color;
+
+    // Il nome visualizzato è modificabile solo per i profili senza account.
+    const { name } = req.body;
+    if (isManagedProfile && typeof name === 'string' && name.trim().length >= 2) {
+      updateData.name = name.trim().slice(0, 100);
+    }
 
     // Il ruolo lo può cambiare SOLO un admin (mai su se stesso via questa rotta).
     if (role && membership.role === 'admin') {
@@ -543,10 +619,28 @@ router.put('/:familyId/members/:memberId', authenticate, requireFamilyMember(), 
   }
 });
 
-router.delete('/:familyId/members/:memberId', authenticate, requireFamilyAdmin(), async (req: Request, res: Response) => {
+router.delete('/:familyId/members/:memberId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const memberId = getParam(req, 'memberId');
+    const membership = (req as any).membership;
+
+    const [target] = await db.select()
+      .from(familyMembers)
+      .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
+      .limit(1);
+
+    if (!target) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Membro non trovato" } });
+    }
+
+    // Admin può rimuovere chiunque; un "adult" può rimuovere SOLO i profili
+    // bambino senza account (gestione/cancellazione da parte dei genitori).
+    const isManagedProfile = target.userId === null;
+    const allowed = membership.role === 'admin' || (isManagedProfile && membership.role === 'adult');
+    if (!allowed) {
+      return res.status(403).json({ error: { code: "NOT_ADMIN", message: "Solo gli admin possono eseguire questa azione" } });
+    }
 
     await db.delete(familyMembers)
       .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)));

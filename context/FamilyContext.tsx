@@ -28,7 +28,8 @@ function notifyIfFreeLimit(err: unknown): void {
 
 interface FamilyMember {
   id: string;
-  userId: string;
+  // NULL per i profili bambino gestiti dai genitori (senza account/login)
+  userId: string | null;
   name: string;
   nickname: string;
   role: string;

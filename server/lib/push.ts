@@ -144,7 +144,8 @@ export async function sendPushToFamily(
 
     const targetIds = members
       .map((m) => m.userId)
-      .filter((id) => !excluded.has(id));
+      // I profili bambino gestiti hanno userId NULL: nessun account da notificare.
+      .filter((id): id is string => id !== null && !excluded.has(id));
     if (targetIds.length === 0) return;
 
     const [tokens, webSubs] = await Promise.all([

@@ -43,7 +43,8 @@ async function notifyAssignedMember(
       .where(eq(familyMembers.id, event.memberId))
       .limit(1);
 
-    if (!member) return;
+    // Profili bambino gestiti (userId NULL): nessun account, nessuna notifica.
+    if (!member || !member.userId) return;
     if (member.userId === creatorUserId) return;
 
     const title = 'Nuovo evento assegnato';
@@ -236,7 +237,7 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
           .from(familyMembers)
           .where(eq(familyMembers.id, event.memberId))
           .limit(1);
-        if (assignee) excluded.add(assignee.userId);
+        if (assignee?.userId) excluded.add(assignee.userId);
       }
       const body = event.time
         ? `${event.title} · ${event.date} alle ${event.time}`
@@ -270,7 +271,7 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       const creatorName =
         members.find((m) => m.userId === creatorId)?.name || 'Un membro della famiglia';
       const recipients = members.filter(
-        (m) => m.userId !== creatorId && m.email && m.emailVerified && !blockRelated.has(m.userId),
+        (m) => m.userId !== null && m.userId !== creatorId && m.email && m.emailVerified && !blockRelated.has(m.userId),
       );
 
       for (const m of recipients) {

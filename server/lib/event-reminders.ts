@@ -109,7 +109,7 @@ async function processKind(kind: ReminderKind, date: string): Promise<void> {
             .where(eq(familyMembers.familyId, event.familyId));
 
           const recipients = members.filter(
-            (m) => m.email && m.emailVerified && !blockRelated.has(m.userId),
+            (m) => m.userId !== null && m.email && m.emailVerified && !blockRelated.has(m.userId),
           );
           let sent = 0;
           for (const m of recipients) {

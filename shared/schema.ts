@@ -92,9 +92,13 @@ export type Family = typeof families.$inferSelect;
 export const familyMembers = pgTable("family_members", {
   id: uuid("id").primaryKey().defaultRandom(),
   familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // NULL per i "profili bambino" gestiti dai genitori: membri senza account/email.
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
   role: roleEnum("role").notNull(),
   nickname: varchar("nickname", { length: 100 }),
+  // Nome visualizzato per i profili SENZA account (userId NULL); per i membri
+  // con account il nome resta quello di users.name.
+  name: varchar("name", { length: 100 }),
   color: varchar("color", { length: 7 }).notNull(),
   points: integer("points").default(0),
   joinedAt: timestamp("joined_at").defaultNow().notNull(),

@@ -174,7 +174,8 @@ async function notifyChoreAssignee(
       .where(and(eq(familyMembers.id, chore.assignedTo), eq(familyMembers.familyId, familyId)))
       .limit(1);
 
-    if (!member || member.userId === actorUserId) return;
+    // Profili bambino gestiti (userId NULL): nessun account, nessuna push.
+    if (!member || !member.userId || member.userId === actorUserId) return;
 
     // Niente push tra utenti in blocco reciproco.
     const blockRelated = await getBlockRelatedUserIds(actorUserId, familyId);

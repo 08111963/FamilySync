@@ -21,12 +21,13 @@ const ROLES = [
 ];
 
 type Role = "admin" | "adult" | "teen" | "child";
-type Channel = "email" | "whatsapp" | "qr";
+type Channel = "email" | "whatsapp" | "qr" | "child";
 
 const CHANNELS: { value: Channel; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { value: "email", label: "Email", icon: "mail" },
   { value: "whatsapp", label: "WhatsApp", icon: "logo-whatsapp" },
   { value: "qr", label: "QR code", icon: "qr-code" },
+  { value: "child", label: "Bambino", icon: "happy" },
 ];
 
 export default function AddMemberScreen() {
@@ -37,6 +38,10 @@ export default function AddMemberScreen() {
   // Solo un admin può assegnare il ruolo "admin": gli altri membri non lo vedono.
   const isAdmin = currentFamily?.myRole === "admin";
   const availableRoles = isAdmin ? ROLES : ROLES.filter((r) => r.value !== "admin");
+
+  // Il profilo bambino (senza email) può essere creato solo da un genitore (admin/adult).
+  const canCreateChild = currentFamily?.myRole === "admin" || currentFamily?.myRole === "adult";
+  const availableChannels = canCreateChild ? CHANNELS : CHANNELS.filter((c) => c.value !== "child");
 
   const [channel, setChannel] = useState<Channel>("email");
 
@@ -55,6 +60,46 @@ export default function AddMemberScreen() {
   const [linkError, setLinkError] = useState<string | null>(null);
 
   const [copied, setCopied] = useState(false);
+
+  // --- Flusso profilo BAMBINO (senza account/email, gestito dai genitori) ---
+  const [childName, setChildName] = useState("");
+  const [childCreated, setChildCreated] = useState<string | null>(null);
+  const [childLoading, setChildLoading] = useState(false);
+  const [childError, setChildError] = useState<string | null>(null);
+
+  const handleCreateChild = async () => {
+    if (!currentFamily) return;
+    const trimmed = childName.trim();
+    if (trimmed.length < 2) {
+      setChildError("Inserisci un nome di almeno 2 caratteri");
+      return;
+    }
+    setChildLoading(true);
+    setChildError(null);
+    try {
+      await apiRequest("POST", `/api/families/${currentFamily.id}/child-profiles`, { name: trimmed });
+      setChildCreated(trimmed);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err: any) {
+      const msg = typeof err?.message === "string" ? err.message : "";
+      let friendly = "Errore nella creazione del profilo. Riprova.";
+      if (msg.includes("MEMBER_LIMIT_REACHED")) {
+        friendly = "Il piano Free consente al massimo 5 membri. Passa a Premium per aggiungere altri familiari.";
+      } else if (msg.includes("FORBIDDEN") || msg.includes("403")) {
+        friendly = "Solo un genitore (admin o adulto) può creare un profilo bambino.";
+      }
+      setChildError(friendly);
+      console.error("Create child profile error:", err);
+    } finally {
+      setChildLoading(false);
+    }
+  };
+
+  const handleNewChild = () => {
+    setChildCreated(null);
+    setChildName("");
+    setChildError(null);
+  };
 
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
@@ -221,7 +266,7 @@ export default function AddMemberScreen() {
         {/* Selettore canale IN CIMA: si sceglie PRIMA come invitare */}
         <Text style={[styles.label, { color: colors.text, marginBottom: 10 }]}>Come vuoi invitare?</Text>
         <View style={styles.channelRow}>
-          {CHANNELS.map((c) => {
+          {availableChannels.map((c) => {
             const active = channel === c.value;
             return (
               <Pressable
@@ -243,7 +288,71 @@ export default function AddMemberScreen() {
           })}
         </View>
 
-        {channel === "email" ? (
+        {channel === "child" ? (
+          !childCreated ? (
+            <>
+              <Text style={[styles.intro, { color: colors.textSecondary }]}>
+                Crea un profilo per un bambino senza email: niente account né login. Il
+                profilo compare in famiglia (faccende, punti, calendario) ed è gestito
+                interamente dai genitori.
+              </Text>
+
+              <View style={styles.field}>
+                <Input
+                  label="Nome del bambino"
+                  placeholder="Es. Sofia"
+                  value={childName}
+                  onChangeText={setChildName}
+                  autoCapitalize="words"
+                  testID="input-child-name"
+                />
+              </View>
+
+              <View style={[styles.noteBox, { backgroundColor: colors.primary + "12" }]}>
+                <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
+                <Text style={[styles.noteText, { color: colors.text }]}>
+                  Nessun dato di contatto del minore viene raccolto. Potrai rinominare o
+                  eliminare il profilo in qualsiasi momento dalla schermata Famiglia.
+                </Text>
+              </View>
+
+              {childError && <Text style={[styles.errorText, { color: colors.error }]}>{childError}</Text>}
+
+              <Button
+                title={childLoading ? "Creazione..." : "Crea profilo bambino"}
+                onPress={handleCreateChild}
+                disabled={childLoading}
+                style={{ marginTop: 8 }}
+                testID="create-child-button"
+              />
+            </>
+          ) : (
+            <View style={styles.successContainer}>
+              <Card>
+                <View style={{ alignItems: "center", gap: 12 }}>
+                  <View style={[styles.successIcon, { backgroundColor: colors.success + "20" }]}>
+                    <Ionicons name="happy" size={48} color={colors.success} />
+                  </View>
+                  <Text style={[styles.successTitle, { color: colors.text }]}>Profilo creato</Text>
+                  <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
+                    {childCreated} ora fa parte della famiglia. Puoi assegnargli faccende,
+                    punti ed eventi dal calendario.
+                  </Text>
+                </View>
+              </Card>
+
+              <View style={styles.bottomButtons}>
+                <Pressable onPress={handleNewChild} style={({ pressed }) => [styles.textButton, pressed && { opacity: 0.6 }]}>
+                  <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                  <Text style={[styles.textButtonLabel, { color: colors.primary }]}>Altro profilo</Text>
+                </Pressable>
+                <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.textButton, pressed && { opacity: 0.6 }]}>
+                  <Text style={[styles.textButtonLabel, { color: colors.textSecondary }]}>Chiudi</Text>
+                </Pressable>
+              </View>
+            </View>
+          )
+        ) : channel === "email" ? (
           !sentTo ? (
             <>
               <Text style={[styles.intro, { color: colors.textSecondary }]}>

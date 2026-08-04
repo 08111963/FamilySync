@@ -81,17 +81,20 @@ export default function FamilyScreen() {
     } catch {}
   };
 
-  const handleMemberAction = (member: { id: string; userId: string; name: string }) => {
+  const handleMemberAction = (member: { id: string; userId: string | null; name: string }) => {
     if (member.userId === user?.id) return;
-    const isBlocked = blockedUserIds.has(member.userId);
+    // Profili bambino gestiti (senza account): niente segnala/blocca.
+    if (!member.userId) return;
+    const memberUserId = member.userId;
+    const isBlocked = blockedUserIds.has(memberUserId);
 
     const goReport = () =>
-      router.push({ pathname: "/report-user", params: { userId: member.userId, familyId: familyId || "" } });
+      router.push({ pathname: "/report-user", params: { userId: memberUserId, familyId: familyId || "" } });
     const toggleBlock = () => {
       if (isBlocked) {
-        handleUnblockUser(member.userId);
+        handleUnblockUser(memberUserId);
       } else {
-        handleBlockUser(member.userId);
+        handleBlockUser(memberUserId);
       }
     };
 
@@ -274,14 +277,14 @@ export default function FamilyScreen() {
                       >
                         <Ionicons name="pencil" size={20} color={colors.primary} />
                       </Pressable>
-                    ) : (
+                    ) : member.userId ? (
                       <Pressable
                         onPress={() => handleMemberAction(member)}
                         style={styles.actionButton}
                       >
                         <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
                       </Pressable>
-                    )}
+                    ) : null}
                     {!isSelf && (
                       <Pressable
                         onPress={() => handleDeleteMember(member.id, member.name)}
