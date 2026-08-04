@@ -402,18 +402,34 @@ export default function FamilyScreen() {
                       )}
                     </View>
                     {isManaged && canManageProfiles && !isEditingMember ? (
-                      <Pressable
-                        onPress={() => {
-                          setEditedMemberName(member.name);
-                          setEditedMemberColor(member.color || AVATAR_COLORS[0]);
-                          setEditedMemberRole(member.role === "teen" ? "teen" : "child");
-                          setEditingMemberId(member.id);
-                        }}
-                        style={styles.actionButton}
-                        testID={`rename-member-${member.id}`}
-                      >
-                        <Ionicons name="pencil" size={20} color={colors.primary} />
-                      </Pressable>
+                      <>
+                        <Pressable
+                          onPress={() => {
+                            setEditedMemberName(member.name);
+                            setEditedMemberColor(member.color || AVATAR_COLORS[0]);
+                            setEditedMemberRole(member.role === "teen" ? "teen" : "child");
+                            setEditingMemberId(member.id);
+                          }}
+                          style={styles.actionButton}
+                          testID={`rename-member-${member.id}`}
+                        >
+                          <Ionicons name="pencil" size={20} color={colors.primary} />
+                        </Pressable>
+                        {/* Promuovi profilo gestito ad account vero via invito email
+                            (punti/storico preservati). */}
+                        <Pressable
+                          onPress={() =>
+                            router.push({
+                              pathname: "/promote-member",
+                              params: { memberId: member.id, memberName: member.name },
+                            })
+                          }
+                          style={styles.actionButton}
+                          testID={`promote-member-${member.id}`}
+                        >
+                          <Ionicons name="person-add-outline" size={20} color={colors.primary} />
+                        </Pressable>
+                      </>
                     ) : isSelf ? (
                       <Pressable
                         onPress={() => router.push("/edit-profile")}

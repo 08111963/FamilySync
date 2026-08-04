@@ -116,6 +116,10 @@ export const familyInvites = pgTable("family_invites", {
   email: varchar("email", { length: 255 }).notNull(),
   invitedName: varchar("invited_name", { length: 255 }),
   invitedBy: uuid("invited_by").notNull().references(() => users.id),
+  // Invito di "promozione": se valorizzato, l'accettazione COLLEGA l'account al
+  // familyMembers esistente (profilo bambino, userId NULL) invece di crearne uno
+  // nuovo. Punti e storico del profilo vengono preservati.
+  memberId: uuid("member_id").references(() => familyMembers.id, { onDelete: "cascade" }),
   acceptedByUserId: uuid("accepted_by_user_id").references(() => users.id),
   role: roleEnum("role").notNull(),
   expiresAt: timestamp("expires_at").notNull(),

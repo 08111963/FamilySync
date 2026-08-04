@@ -69,6 +69,8 @@ router.get('/:token', async (req: Request, res: Response) => {
       invitedName: invite.invitedName,
       familyName: family?.name ?? null,
       userExists: !!existingUser,
+      // true se l'invito collega un profilo bambino esistente (promozione).
+      isPromotion: invite.memberId !== null,
       expiresAt: invite.expiresAt,
     });
   } catch (error) {
@@ -123,8 +125,13 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
       });
     }
 
+    // Invito di PROMOZIONE (memberId valorizzato): l'account viene COLLEGATO al
+    // familyMembers esistente (profilo bambino) preservando punti e storico.
+    // In quel caso il membro conta già nel totale: niente controllo limite.
+    const isPromotion = invite.memberId !== null;
+
     // Piano Free: limite di membri. Verifichiamo prima di creare account+membership.
-    if (await isFamilyMemberLimitReached(invite.familyId)) {
+    if (!isPromotion && await isFamilyMemberLimitReached(invite.familyId)) {
       return res.status(403).json({
         error: {
           code: "MEMBER_LIMIT_REACHED",
@@ -142,7 +149,8 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
       const result = await db.transaction(async (tx) => {
         // Guardia ATOMICA del limite Free: advisory lock per-famiglia + conteggio
         // dentro la transazione, così accettazioni concorrenti non superano 5.
-        if (await isFamilyMemberLimitReachedTx(tx, invite.familyId)) {
+        // (Salta per la promozione: il membro esiste già e conta già nel totale.)
+        if (!isPromotion && await isFamilyMemberLimitReachedTx(tx, invite.familyId)) {
           throw new Error('MEMBER_LIMIT_REACHED');
         }
 
@@ -166,14 +174,35 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
           aiFeaturesEnabled: false,
         }).returning();
 
-        const [member] = await tx.insert(familyMembers).values({
-          familyId: invite.familyId,
-          userId: user.id,
-          role: invite.role,
-          nickname: invite.invitedName || name,
-          color: '#6366F1',
-          points: 0,
-        }).returning();
+        let member;
+        if (isPromotion) {
+          // Collega l'account appena creato al membro esistente SOLO se è
+          // ancora un profilo senza account (userId NULL): punti/storico intatti.
+          const updated = await tx.update(familyMembers)
+            .set({ userId: user.id })
+            .where(and(
+              eq(familyMembers.id, invite.memberId!),
+              eq(familyMembers.familyId, invite.familyId),
+              isNull(familyMembers.userId),
+            ))
+            .returning();
+
+          if (updated.length === 0) {
+            // Profilo eliminato o già collegato: rollback di claim+account.
+            throw new Error('PROMOTION_TARGET_GONE');
+          }
+          member = updated[0];
+        } else {
+          const [inserted] = await tx.insert(familyMembers).values({
+            familyId: invite.familyId,
+            userId: user.id,
+            role: invite.role,
+            nickname: invite.invitedName || name,
+            color: '#6366F1',
+            points: 0,
+          }).returning();
+          member = inserted;
+        }
 
         await tx.update(familyInvites)
           .set({ acceptedByUserId: user.id })
@@ -199,6 +228,11 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
       if (txError?.message === 'INVITE_RACE') {
         return res.status(409).json({ error: { code: "ALREADY_ACCEPTED", message: "Invito già accettato" } });
       }
+      if (txError?.message === 'PROMOTION_TARGET_GONE') {
+        return res.status(409).json({
+          error: { code: "PROFILE_GONE", message: "Il profilo da collegare non esiste più o è già collegato a un account" },
+        });
+      }
       if (txError?.code === '23505') {
         return res.status(409).json({ error: { code: "USER_EXISTS", message: "Esiste già un account con questa email" } });
       }
@@ -207,7 +241,8 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
 
     const [family] = await db.select().from(families).where(eq(families.id, invite.familyId)).limit(1);
 
-    broadcastToFamily(invite.familyId, 'member_joined', createdMember);
+    // Per la promozione il membro esisteva già: agli altri client basta un update.
+    broadcastToFamily(invite.familyId, isPromotion ? 'member_updated' : 'member_joined', createdMember);
 
     const accessToken = generateAccessToken(createdUser);
     const refreshToken = generateRefreshToken(createdUser);

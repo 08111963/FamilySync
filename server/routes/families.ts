@@ -334,6 +334,116 @@ router.post('/:familyId/child-profiles', authenticate, requireFamilyMember(), as
   }
 });
 
+// "Promuovi" un profilo bambino (userId NULL) ad account vero: invia un invito
+// email LEGATO al membro esistente. All'accettazione, l'account creato/loggato
+// viene COLLEGATO a quel familyMembers (set userId) preservando punti e storico.
+// Solo un genitore (admin/adult) può promuovere, coerente con la gestione dei
+// profili bambino. Il ruolo resta quello del membro: nessuna escalation.
+const promoteSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Email non valida"),
+});
+
+router.post('/:familyId/members/:memberId/promote', createInviteLimiter, authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = getParam(req, 'familyId');
+    const memberId = getParam(req, 'memberId');
+    const membership = (req as any).membership;
+
+    if (membership.role !== 'admin' && membership.role !== 'adult') {
+      return res.status(403).json({
+        error: { code: "FORBIDDEN", message: "Solo un genitore (admin o adulto) può promuovere un profilo bambino" },
+      });
+    }
+
+    const parsed = promoteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
+      });
+    }
+    const { email } = parsed.data;
+
+    if (config.isProduction && !isEmailConfigured()) {
+      return res.status(503).json({
+        error: { code: "EMAIL_NOT_CONFIGURED", message: "Il servizio email non è configurato. Impossibile inviare l'invito." },
+      });
+    }
+
+    const [target] = await db.select()
+      .from(familyMembers)
+      .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
+      .limit(1);
+
+    if (!target) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Membro non trovato" } });
+    }
+    if (target.userId !== null) {
+      return res.status(409).json({
+        error: { code: "ALREADY_LINKED", message: "Questo membro ha già un account collegato" },
+      });
+    }
+
+    // Se l'email appartiene già a un membro della famiglia, il collegamento
+    // violerebbe il vincolo unique (family_id, user_id): blocchiamo subito.
+    const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    if (existingUser) {
+      const [alreadyMember] = await db.select()
+        .from(familyMembers)
+        .where(and(eq(familyMembers.familyId, familyId), eq(familyMembers.userId, existingUser.id)))
+        .limit(1);
+      if (alreadyMember) {
+        return res.status(409).json({ error: { code: "ALREADY_MEMBER", message: "Questa persona fa già parte della famiglia" } });
+      }
+    }
+
+    // NB: nessun controllo limite membri: la promozione NON aggiunge un membro,
+    // collega un account a un membro che conta già nel totale.
+
+    const token = generateInviteToken();
+    const tokenHash = hashInviteToken(token);
+    const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+
+    const [family] = await db.select().from(families).where(eq(families.id, familyId)).limit(1);
+    const [inviter] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
+
+    const [createdInvite] = await db.insert(familyInvites).values({
+      familyId,
+      tokenHash,
+      email,
+      invitedName: target.name || target.nickname || null,
+      invitedBy: req.user!.userId,
+      // Il ruolo resta quello del profilo esistente: un non-admin non può
+      // usare la promozione per creare un admin.
+      role: target.role,
+      memberId: target.id,
+      expiresAt,
+    }).returning();
+
+    const baseUrl = process.env.CLIENT_URL || config.getBaseUrl(req);
+    const inviteLink = `${baseUrl}/join/${token}`;
+
+    try {
+      await sendFamilyInviteEmail(email, family.name, inviter.name, inviteLink, target.name || target.nickname || undefined);
+    } catch (mailError) {
+      logger.error('Promotion invite email send failed', { error: String(mailError) });
+      if (config.isProduction) {
+        await db.delete(familyInvites).where(eq(familyInvites.id, createdInvite.id));
+        return res.status(502).json({
+          error: { code: "EMAIL_SEND_FAILED", message: "Invio email fallito. Riprova più tardi." },
+        });
+      }
+    }
+
+    // Non logghiamo mai token o link completi.
+    logger.info('Member promotion invite created', { familyId, memberId });
+
+    res.json({ ok: true, email, expiresAt, inviteLink });
+  } catch (error) {
+    logger.error('Create promotion invite error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione dell'invito" } });
+  }
+});
+
 // Link/QR RIUTILIZZABILE della famiglia: qualsiasi membro ottiene (o crea) un
 // codice invito persistente da condividere via WhatsApp o QR. Chi lo apre entra
 // registrando la PROPRIA email (vedi /api/join-link), fino al limite del piano.
@@ -493,9 +603,14 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
       return res.status(409).json({ error: { code: "ALREADY_MEMBER", message: "Fai già parte di questa famiglia" } });
     }
 
+    // Invito di PROMOZIONE: collega l'account al membro esistente (profilo
+    // bambino) invece di crearne uno nuovo. Nessun controllo limite membri:
+    // il membro conta già nel totale.
+    const isPromotion = invite.memberId !== null;
+
     // Ricontrolliamo il limite del piano Free anche in accettazione: l'invito
     // potrebbe essere stato creato quando c'era ancora posto.
-    if (await isFamilyMemberLimitReached(invite.familyId)) {
+    if (!isPromotion && await isFamilyMemberLimitReached(invite.familyId)) {
       return res.status(403).json({
         error: {
           code: "MEMBER_LIMIT_REACHED",
@@ -509,7 +624,8 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
     const txResult = await db.transaction(async (tx) => {
       // Guardia ATOMICA del limite Free: advisory lock per-famiglia + conteggio
       // dentro la transazione, così accettazioni concorrenti non superano 5.
-      if (await isFamilyMemberLimitReachedTx(tx, invite.familyId)) {
+      // (Salta per la promozione: il membro esiste già e conta già nel totale.)
+      if (!isPromotion && await isFamilyMemberLimitReachedTx(tx, invite.familyId)) {
         return { limitReached: true as const };
       }
 
@@ -520,6 +636,26 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
 
       if (claimed.length === 0) {
         return { conflict: true as const };
+      }
+
+      if (isPromotion) {
+        // Collega l'account al membro esistente SOLO se è ancora un profilo
+        // senza account (userId NULL): punti e storico restano intatti.
+        const updated = await tx.update(familyMembers)
+          .set({ userId: req.user!.userId })
+          .where(and(
+            eq(familyMembers.id, invite.memberId!),
+            eq(familyMembers.familyId, invite.familyId),
+            isNull(familyMembers.userId),
+          ))
+          .returning();
+
+        if (updated.length === 0) {
+          // Profilo eliminato o già collegato nel frattempo: rollback del claim.
+          throw new Error('PROMOTION_TARGET_GONE');
+        }
+
+        return { conflict: false as const, member: updated[0] };
       }
 
       const [member] = await tx.insert(familyMembers).values({
@@ -550,10 +686,19 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
     const newMember = txResult.member;
     const [family] = await db.select().from(families).where(eq(families.id, invite.familyId)).limit(1);
 
-    broadcastToFamily(invite.familyId, 'member_joined', newMember);
+    // Per la promozione il membro esisteva già: agli altri client basta un update.
+    broadcastToFamily(invite.familyId, isPromotion ? 'member_updated' : 'member_joined', newMember);
 
     res.json({ message: 'Invito accettato!', family });
   } catch (error) {
+    if ((error as any)?.message === 'PROMOTION_TARGET_GONE') {
+      return res.status(409).json({
+        error: { code: "PROFILE_GONE", message: "Il profilo da collegare non esiste più o è già collegato a un account" },
+      });
+    }
+    if ((error as any)?.code === '23505') {
+      return res.status(409).json({ error: { code: "ALREADY_MEMBER", message: "Fai già parte di questa famiglia" } });
+    }
     logger.error('Accept invite error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'accettazione dell'invito" } });
   }

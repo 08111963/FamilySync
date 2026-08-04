@@ -13,3 +13,5 @@ description: familyMembers.userId è nullable — membri "profilo bambino" senza
 - Privacy: mai raccogliere dati di contatto del minore; cancellazione solo da parte dei genitori.
 
 Test: `server/__tests__/child-profiles.test.ts`.
+
+**Promozione a account vero:** family_invites.member_id (nullable, FK ON DELETE CASCADE) marca gli inviti di "promozione": all'accettazione (sia nuovo utente sia join da loggato) si fa UPDATE del familyMembers esistente (set userId, WHERE userId IS NULL) invece di INSERT — punti/storico preservati, ruolo invariato. Il controllo limite membri Free va SALTATO per questi inviti (il membro conta già). 0 righe aggiornate = profilo eliminato/già collegato → rollback (PROFILE_GONE). Migrazione 0023 da portare in prod (e la 0022 mancava anche nel DB dev di un task env: verificare le colonne prima dei test).
