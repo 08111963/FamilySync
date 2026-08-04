@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -68,6 +68,28 @@ function getTagColor(index: number): string {
   return TAG_COLORS[index % TAG_COLORS.length] as string;
 }
 
+// Normalizza il testo per la ricerca locale: minuscole e senza accenti,
+// così "ragù" trova anche "ragu" e viceversa.
+function normalizeSearchText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function recipeMatchesQuery(recipe: Recipe, normalizedQuery: string): boolean {
+  const haystack: string[] = [recipe.title];
+  if (recipe.description) haystack.push(recipe.description);
+  const tags = recipe.tags;
+  if (tags) {
+    if (tags.cuisine) haystack.push(tags.cuisine);
+    if (tags.difficulty) haystack.push(tags.difficulty);
+    if (Array.isArray(tags.diet)) haystack.push(...tags.diet);
+    if (Array.isArray(tags.allergens)) haystack.push(...tags.allergens);
+  }
+  return normalizeSearchText(haystack.join(" ")).includes(normalizedQuery);
+}
+
 export default function RecipesScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -90,6 +112,15 @@ export default function RecipesScreen() {
   });
 
   const recipes = recipesQuery.data || [];
+
+  // Filtro locale sulle ricette salvate: mentre scrivi nella barra di ricerca
+  // la lista qui sotto mostra solo le ricette che corrispondono.
+  const trimmedQuery = searchQuery.trim();
+  const filteredRecipes = useMemo(() => {
+    if (trimmedQuery.length < 2) return recipes;
+    const nq = normalizeSearchText(trimmedQuery);
+    return recipes.filter((r) => recipeMatchesQuery(r, nq));
+  }, [recipes, trimmedQuery]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -516,8 +547,16 @@ export default function RecipesScreen() {
         </Pressable>
       ) : null}
 
+      {trimmedQuery.length >= 2 && recipes.length > 0 ? (
+        <Text style={[styles.filterInfo, { color: colors.textSecondary }]}>
+          {filteredRecipes.length === 0
+            ? `Nessuna ricetta salvata per "${trimmedQuery}"`
+            : `${filteredRecipes.length} ricett${filteredRecipes.length === 1 ? "a salvata" : "e salvate"} per "${trimmedQuery}"`}
+        </Text>
+      ) : null}
+
       <FlatList
-        data={recipes}
+        data={filteredRecipes}
         keyExtractor={(item) => item.id}
         renderItem={renderRecipeCard}
         contentContainerStyle={[
@@ -537,6 +576,12 @@ export default function RecipesScreen() {
             <View style={styles.centerContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
             </View>
+          ) : trimmedQuery.length >= 2 && recipes.length > 0 ? (
+            <EmptyState
+              icon="search-outline"
+              title="Nessuna ricetta trovata"
+              subtitle={`Nessuna delle tue ricette salvate corrisponde a "${trimmedQuery}". Premi la freccia per cercarne di nuove con l'AI.`}
+            />
           ) : (
             <EmptyState
               icon="restaurant-outline"
@@ -576,6 +621,12 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     flex: 1,
     textAlign: "center",
+  },
+  filterInfo: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    paddingHorizontal: 20,
+    paddingBottom: 8,
   },
   errorBanner: {
     flexDirection: "row",
