@@ -1077,7 +1077,7 @@ REGOLE:
 - "title": titolo breve e naturale dell'evento (es. "Cena con Marco"), senza data/ora/luogo.
 - "location": il luogo se indicato (es. "da Luigi", "in piscina" → "Luigi", "Piscina"), altrimenti null.
 - "description": eventuali dettagli extra non coperti dagli altri campi, altrimenti null.
-- "date": data in formato YYYY-MM-DD, null se non deducibile.
+- "date": data in formato YYYY-MM-DD, SOLO se il testo menziona esplicitamente una data o un giorno ("domani", "venerdì", "il 15", "giorno 8"). Se il testo NON contiene alcun riferimento a una data (anche se c'è un orario), "date" DEVE essere null: NON usare mai la data di oggi come default, perché l'utente potrebbe aver già scelto un altro giorno.
 - "time": ora di inizio HH:MM (24h), null se non indicata.
 - "endTime": ora di fine HH:MM (24h), null se non indicata.
 - "repeat": frequenza di ripetizione se l'evento è ricorrente: "daily" (ogni giorno o solo alcuni giorni della settimana, es. "tutti i giorni", "ogni martedì e giovedì"), "weekly" (una volta a settimana in uno o più giorni, es. "ogni settimana il lunedì"), "monthly" (in giorni fissi del mese, es. "il 1° e il 15 di ogni mese"). null se l'evento non si ripete.
@@ -1156,7 +1156,7 @@ REGOLE:
 - "points": i punti se indicati (es. "vale 15 punti" → 15), numero intero 1-100, altrimenti null.
 - "difficulty": difficoltà 1-5 solo se indicata esplicitamente (es. "difficoltà 4", "molto difficile" → 5, "facilissima" → 1), altrimenti null.
 - "estimatedMinutes": durata stimata in minuti se indicata (es. "ci vuole mezz'ora" → 30), altrimenti null.
-- "dueDate": data di scadenza YYYY-MM-DD se indicata una scadenza singola, null se non deducibile o se la faccenda è ricorrente.
+- "dueDate": data di scadenza YYYY-MM-DD SOLO se il testo menziona esplicitamente una scadenza singola; null se il testo non contiene riferimenti a una data (NON usare la data di oggi come default) o se la faccenda è ricorrente.
 - "repeat": frequenza se la faccenda è ricorrente: "daily" (ogni giorno o alcuni giorni della settimana), "weekly" (una volta a settimana in uno o più giorni, es. "ogni martedì e giovedì"), "monthly" (giorni fissi del mese, es. "il 1° e il 15 di ogni mese"). null se non si ripete.
 - "weekdays": con repeat "daily" o "weekly", i giorni della settimana come numeri ISO (1=lunedì ... 7=domenica), es. "ogni martedì e giovedì" → [2,4]. Altrimenti [].
 - "monthDays": con repeat "monthly", i giorni del mese (1-31), es. "il 1° e il 15" → [1,15]. Altrimenti [].

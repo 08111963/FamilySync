@@ -10,3 +10,5 @@ description: Convenzioni per il parse-event AI (testo libero → campi evento ca
 - **Regola anti falso-successo**: se l'AI non estrae NESSUN campo utile, lanciare `AiError('AI_BAD_RESPONSE')` invece di rispondere 200 vuoto; il client inoltre mostra successo solo se almeno un campo è stato compilato.
 - **Why:** schema zod con `.catch()` su ogni campo accetta `{}` silenziosamente → il bottone "Compila" sembrerebbe funzionare senza fare nulla (blocker trovato dall'architect).
 - **How to apply:** ogni futura feature "AI compila form" deve validare che la risposta contenga almeno un campo utilizzabile lato server e gestire il no-op lato client.
+
+**Data di default (ago 2026):** i modelli tendevano a restituire la data di OGGI quando il testo aveva solo l'orario, sovrascrivendo il giorno preselezionato dal calendario (bug reale in prod). Regola nei prompt parse-event/parse-chore: date/dueDate DEVE essere null se il testo non menziona esplicitamente una data — mai oggi come default. Se si tocca il prompt, ritestare il caso "evento alle 16" (senza data) → date null.
