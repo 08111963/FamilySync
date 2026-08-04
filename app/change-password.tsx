@@ -8,6 +8,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { Input } from "@/components/Input";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest } from "@/lib/query-client";
 
 export default function ChangePasswordScreen() {
@@ -38,7 +39,20 @@ export default function ChangePasswordScreen() {
 
     setLoading(true);
     try {
-      await apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword });
+      const res = await apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword });
+      // Il cambio password revoca tutti i vecchi refresh token: salviamo la
+      // nuova coppia di token per non far scadere la sessione corrente.
+      try {
+        const data = (await res.json()) as { accessToken?: string; refreshToken?: string };
+        if (data?.accessToken && data?.refreshToken) {
+          const stored = await AsyncStorage.getItem("@family_sync_auth");
+          const auth = stored ? JSON.parse(stored) : {};
+          await AsyncStorage.setItem(
+            "@family_sync_auth",
+            JSON.stringify({ ...auth, accessToken: data.accessToken, refreshToken: data.refreshToken })
+          );
+        }
+      } catch {}
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSuccess(true);
     } catch (err: any) {

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { db } from '../db';
 import { users, emailVerificationTokens, passwordResetTokens, socialSignupTokens } from '../../shared/schema';
-import { eq, and, isNull, gt } from 'drizzle-orm';
+import { eq, and, isNull, gt, sql } from 'drizzle-orm';
 import nodeCrypto from 'crypto';
 import { PRIVACY_POLICY_VERSION } from '../../shared/policy-version';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken, generateMediaToken } from '../lib/jwt';
@@ -56,6 +56,25 @@ const deleteAccountLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => process.env.NODE_ENV === 'test',
+});
+
+/**
+ * Rate limiter DEDICATO al login, con chiave sull'email (non solo sull'IP):
+ * blocca il password spraying mirato a un singolo account anche quando il
+ * limite globale /api lascerebbe budget sufficiente. Disattivato in test.
+ */
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    return email || req.ip || 'unknown';
+  },
+  validate: { keyGeneratorIpFallback: false },
+  message: { error: { code: "RATE_LIMITED", message: "Troppi tentativi di accesso. Riprova tra 15 minuti." } },
 });
 
 const emailSchema = z.string().trim().toLowerCase().email("Email non valida");
@@ -185,7 +204,7 @@ router.post('/signup', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', loginLimiter, async (req: Request, res: Response) => {
   try {
     const parsed = loginSchema.safeParse(req.body);
 
@@ -247,7 +266,14 @@ router.post('/refresh', async (req: Request, res: Response) => {
     if (!user || user.deletedAt) {
       return res.status(401).json({ error: { code: "USER_NOT_FOUND", message: "Utente non trovato" } });
     }
-    
+
+    // Revoca sessioni: un refresh token emesso PRIMA di un cambio/reset password
+    // porta una tokenVersion vecchia e viene rifiutato. I token storici senza
+    // claim valgono come versione 0.
+    if ((payload.tokenVersion ?? 0) !== (user.tokenVersion ?? 0)) {
+      return res.status(401).json({ error: { code: "INVALID_REFRESH_TOKEN", message: "Sessione revocata: accedi di nuovo" } });
+    }
+
     const newAccessToken = generateAccessToken(user);
     
     res.json({ accessToken: newAccessToken });
@@ -358,9 +384,19 @@ router.post('/change-password', authenticate, async (req: Request, res: Response
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    await db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
+    // Incremento tokenVersion: revoca TUTTI i refresh token emessi prima del
+    // cambio password (una sessione rubata non sopravvive al cambio).
+    const [updated] = await db.update(users)
+      .set({ passwordHash, tokenVersion: sql`${users.tokenVersion} + 1`, updatedAt: new Date() })
+      .where(eq(users.id, user.id))
+      .returning();
 
-    res.json({ message: "Password aggiornata con successo" });
+    // Nuova coppia di token per la sessione corrente (quella vecchia è revocata).
+    res.json({
+      message: "Password aggiornata con successo",
+      accessToken: generateAccessToken(updated),
+      refreshToken: generateRefreshToken(updated),
+    });
   } catch (error) {
     logger.error('Change password error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante il cambio password" } });
@@ -569,8 +605,10 @@ router.post('/reset-password', passwordResetLimiter, async (req: Request, res: R
 
     const passwordHash = await bcrypt.hash(newPassword, 12);
 
+    // Anche il reset revoca tutte le sessioni esistenti (tokenVersion + 1):
+    // è il percorso tipico DOPO una compromissione dell'account.
     await db.update(users)
-      .set({ passwordHash })
+      .set({ passwordHash, tokenVersion: sql`${users.tokenVersion} + 1`, updatedAt: new Date() })
       .where(eq(users.id, claimed.userId));
 
     res.json({ message: 'Password reimpostata con successo' });
@@ -834,7 +872,7 @@ router.post('/oauth/complete', socialLoginLimiter, async (req: Request, res: Res
     if (!code) {
       return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'loginCode obbligatorio' } });
     }
-    const { userId } = verifyLoginCode(code);
+    const { userId } = await verifyLoginCode(code);
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!user || user.deletedAt) {
       return res.status(401).json({ error: { code: 'INVALID_CODE', message: 'Codice di accesso non valido' } });

@@ -38,6 +38,13 @@ export interface TokenPayload {
   email: string;
 }
 
+export interface RefreshTokenPayload extends TokenPayload {
+  // Versione dei token al momento dell'emissione: se l'utente cambia password
+  // la versione sul DB viene incrementata e i refresh token vecchi vengono
+  // rifiutati. Assente nei token emessi prima dell'introduzione (trattata come 0).
+  tokenVersion?: number;
+}
+
 export interface MediaTokenPayload {
   userId: string;
   scope: 'media';
@@ -55,7 +62,7 @@ export function generateAccessToken(user: User): string {
 
 export function generateRefreshToken(user: User): string {
   return jwt.sign(
-    { userId: user.id, email: user.email },
+    { userId: user.id, email: user.email, tokenVersion: user.tokenVersion ?? 0 },
     JWT_REFRESH_SECRET,
     { expiresIn: '7d' }
   );
@@ -91,9 +98,9 @@ export function verifyMediaToken(token: string): MediaTokenPayload {
   return decoded;
 }
 
-export function verifyRefreshToken(token: string): TokenPayload {
+export function verifyRefreshToken(token: string): RefreshTokenPayload {
   try {
-    return jwt.verify(token, JWT_REFRESH_SECRET) as TokenPayload;
+    return jwt.verify(token, JWT_REFRESH_SECRET) as RefreshTokenPayload;
   } catch {
     throw new Error('Invalid refresh token');
   }

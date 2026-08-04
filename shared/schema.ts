@@ -60,6 +60,9 @@ export const users = pgTable("users", {
   // (informativa, NON consenso contrattuale). NULL = mai registrata.
   privacyPolicySeenVersion: varchar("privacy_policy_seen_version", { length: 20 }),
   deletedAt: timestamp("deleted_at"),
+  // Versione dei token di sessione: viene incrementata a ogni cambio/reset
+  // password per invalidare TUTTI i refresh token emessi prima (revoca).
+  tokenVersion: integer("token_version").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -735,6 +738,16 @@ export const socialSignupTokens = pgTable("social_signup_tokens", {
 });
 
 export type SocialSignupToken = typeof socialSignupTokens.$inferSelect;
+
+// CODICI OAUTH CONSUMATI — registro CONDIVISO (DB) dei loginCode monouso già
+// usati. Su autoscale girano più istanze: una mappa in-memory non basta a
+// impedire il replay di un codice su un'istanza diversa. L'inserimento è
+// atomico (ON CONFLICT DO NOTHING): se la riga esiste già, il codice è
+// già stato consumato e va rifiutato.
+export const consumedOauthCodes = pgTable("consumed_oauth_codes", {
+  jti: varchar("jti", { length: 64 }).primaryKey(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
 
 // FEEDBACK TESTER — modulo interno "Dacci il tuo parere" (fase di test):
 // bug, suggerimenti e valutazione a stelle. Consultabile solo dal

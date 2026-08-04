@@ -17,6 +17,7 @@
 - [Web deployment](web-deployment.md) — familysync.eu serves the REAL Expo web app (browser, no Expo Go): deploy build = `expo export --platform web` to web-build; Express SPA-serves it; replaced old Expo Go QR static deploy.
 - [Production deploy secrets](deployment-secrets.md) — prod boot needs DATABASE_URL + JWT_SECRET/JWT_REFRESH_SECRET/JWT_MEDIA_SECRET; jwt.ts derives them per-purpose from SESSION_SECRET when unset (fail-closed if both missing).
 - [Password reset conventions](password-reset-conventions.md) — store SHA-256 token hash only; single-use via DELETE…RETURNING; anti-enumeration on EVERY path incl. email-send failure (always generic 200, log only).
+- [Auth token security](auth-token-security.md) — refresh revocation via users.token_version (bump on ogni cambio/reset password); OAuth code monouso su DB (mai in-memory); login limiter per-email; email da client = mai emailVerified true.
 - [Secure invite flow](secure-invite-flow.md) — invito famiglia via email-link: solo tokenHash nel DB, consumo monouso in transazione (claim+membership), rate limiter dedicato, prod email 503/502+rollback, EMAIL_MISMATCH.
 - [Bills split validation parity](bills-split-validation.md) — la validazione numerica FE deve usare la stessa formula grezza del BE (no arrotondamento prima del confronto) e intercettare i codici errore reali del BE.
 - [Dev->Prod data migration](db-dev-prod-migration.md) — dev & prod DBs are SEPARATE; publish copies schema not data; only write path to prod is a token-gated app endpoint.

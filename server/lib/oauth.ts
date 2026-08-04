@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { lt } from 'drizzle-orm';
+import { db } from '../db';
+import { consumedOauthCodes } from '../../shared/schema';
 import { logger } from './logger';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -111,17 +114,7 @@ interface LoginCodePayload {
   purpose: 'oauth-login-code';
 }
 
-// Registro in-memory dei codici già consumati (TTL breve): rende il codice
-// davvero monouso anche entro la finestra di validità del JWT.
-const consumedLoginCodes = new Map<string, number>();
 const LOGIN_CODE_TTL_MS = 2 * 60 * 1000;
-
-function pruneConsumedCodes() {
-  const now = Date.now();
-  for (const [jti, expiresAt] of consumedLoginCodes) {
-    if (expiresAt <= now) consumedLoginCodes.delete(jti);
-  }
-}
 
 /**
  * Codice di login monouso (breve scadenza): viene passato nel redirect di
@@ -135,17 +128,33 @@ export function signLoginCode(userId: string): string {
   });
 }
 
-/** Verifica e CONSUMA il codice: un secondo utilizzo viene rifiutato. */
-export function verifyLoginCode(code: string): { userId: string } {
+/**
+ * Verifica e CONSUMA il codice: un secondo utilizzo viene rifiutato.
+ * Il registro dei codici consumati vive sul DB CONDIVISO (non in-memory):
+ * su autoscale girano più istanze e una mappa per-processo permetterebbe il
+ * replay dello stesso codice su un'istanza diversa. L'INSERT è atomico:
+ * ON CONFLICT DO NOTHING → zero righe inserite = codice già usato.
+ */
+export async function verifyLoginCode(code: string): Promise<{ userId: string }> {
   const decoded = jwt.verify(code, LOGIN_CODE_SECRET) as LoginCodePayload;
   if (decoded.purpose !== 'oauth-login-code' || !decoded.userId || !decoded.jti) {
     throw new Error('Invalid login code');
   }
-  pruneConsumedCodes();
-  if (consumedLoginCodes.has(decoded.jti)) {
+  if (decoded.jti.length > 64) {
+    throw new Error('Invalid login code');
+  }
+  const inserted = await db
+    .insert(consumedOauthCodes)
+    .values({ jti: decoded.jti, expiresAt: new Date(Date.now() + LOGIN_CODE_TTL_MS) })
+    .onConflictDoNothing()
+    .returning({ jti: consumedOauthCodes.jti });
+  if (inserted.length === 0) {
     throw new Error('Login code already used');
   }
-  consumedLoginCodes.set(decoded.jti, Date.now() + LOGIN_CODE_TTL_MS);
+  // Pulizia best-effort delle righe scadute (fail-safe: non blocca il login).
+  Promise.resolve(
+    db.delete(consumedOauthCodes).where(lt(consumedOauthCodes.expiresAt, new Date()))
+  ).catch((err) => logger.warn('Consumed oauth codes cleanup failed', { error: String(err) }));
   return { userId: decoded.userId };
 }
 

@@ -4,8 +4,11 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { getParam } from '../lib/http-params';
+import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db';
-import { families, familyMembers, users } from '../../shared/schema';
+import { families, familyMembers, users, emailVerificationTokens } from '../../shared/schema';
+import { sendVerificationEmail, isVerificationEmailConfigured } from '../lib/email';
+import { config } from '../lib/config';
 import { eq, and } from 'drizzle-orm';
 import { generateAccessToken, generateRefreshToken } from '../lib/jwt';
 import { isFamilyMemberLimitReached, isFamilyMemberLimitReachedTx, FREE_MAX_FAMILY_MEMBERS } from '../lib/entitlements';
@@ -63,9 +66,12 @@ router.get('/:code', async (req: Request, res: Response) => {
 });
 
 // POST /api/join-link/:code/accept — NUOVO utente: inserisce la PROPRIA email,
-// crea l'account (email verificata), entra in famiglia come "adult" e fa
-// auto-login. Il link è MULTI-USO: non viene consumato, entrano più persone
-// fino al limite del piano.
+// crea l'account, entra in famiglia come "adult" e fa auto-login. Il link è
+// MULTI-USO: non viene consumato, entrano più persone fino al limite del piano.
+// SICUREZZA: l'email è fornita dal client e NON è verificata — l'account nasce
+// con emailVerified=false e riceve l'email di conferma come nel signup normale.
+// Altrimenti chiunque abbia il link potrebbe "occupare" l'email di un'altra
+// persona con verifica già attiva (squatting + bypass di requireEmailVerified).
 router.post('/:code/accept', async (req: Request, res: Response) => {
   try {
     const code = getParam(req, 'code');
@@ -123,7 +129,7 @@ router.post('/:code/accept', async (req: Request, res: Response) => {
           email,
           passwordHash,
           name,
-          emailVerified: true,
+          emailVerified: false,
           termsAcceptedAt: new Date(),
           // Consenso AI opt-in: mai attivo di default per i nuovi account.
           aiFeaturesEnabled: false,
@@ -162,11 +168,31 @@ router.post('/:code/accept', async (req: Request, res: Response) => {
 
     broadcastToFamily(family.id, 'member_joined', createdMember);
 
+    // Email di verifica come nel signup normale: l'utente deve dimostrare di
+    // possedere l'indirizzo prima di usare gli endpoint requireEmailVerified.
+    try {
+      const verificationToken = uuidv4();
+      await db.insert(emailVerificationTokens).values({
+        userId: createdUser.id,
+        token: verificationToken,
+        expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+      });
+      if (!config.isProduction || isVerificationEmailConfigured()) {
+        await sendVerificationEmail(email, name, verificationToken);
+      } else {
+        logger.warn('Join-link verification email skipped: email service not fully configured', { userId: createdUser.id });
+      }
+    } catch (mailError) {
+      // L'account e la membership sono già creati: non far fallire la risposta,
+      // l'utente può richiedere un nuovo invio dall'app.
+      logger.error('Join-link verification email failed', { error: String(mailError) });
+    }
+
     const accessToken = generateAccessToken(createdUser);
     const refreshToken = generateRefreshToken(createdUser);
 
     res.status(201).json({
-      user: { id: createdUser.id, email: createdUser.email, name: createdUser.name, emailVerified: true },
+      user: { id: createdUser.id, email: createdUser.email, name: createdUser.name, emailVerified: false },
       accessToken,
       refreshToken,
       family,
