@@ -35,6 +35,20 @@ interface Feature {
   gradient: [string, string];
 }
 
+interface Benefit {
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+}
+
+// Vantaggi concreti per la famiglia (il "perché"), distinti dalle funzioni (il "cosa").
+const BENEFITS: Benefit[] = [
+  { icon: "time-outline", text: "Meno tempo a organizzare, più tempo insieme" },
+  { icon: "alert-circle-outline", text: "Basta dimenticanze: bollette, impegni e scadenze sempre sotto controllo" },
+  { icon: "people-outline", text: "Tutti sanno chi fa cosa: niente discussioni sulle faccende" },
+  { icon: "happy-outline", text: "I ragazzi collaborano volentieri grazie a punti e premi" },
+  { icon: "wallet-outline", text: "Spese di casa chiare e divise senza malintesi" },
+];
+
 const FEATURES: Feature[] = [
   {
     icon: "calendar",
@@ -182,6 +196,27 @@ export default function WelcomeScreen() {
           </Text>
         </Animated.View>
 
+        <View style={styles.benefitsSection}>
+          <Animated.Text
+            entering={FadeInDown.delay(200).duration(500)}
+            style={styles.sectionLabel}
+          >
+            Perché FamilySync
+          </Animated.Text>
+          {BENEFITS.map((benefit, index) => (
+            <Animated.View
+              key={index}
+              entering={FadeInDown.delay(250 + index * 70).duration(500)}
+              style={styles.benefitRow}
+            >
+              <View style={styles.benefitIconWrap}>
+                <Ionicons name={benefit.icon} size={17} color="#FFFFFF" />
+              </View>
+              <Text style={styles.benefitText}>{benefit.text}</Text>
+            </Animated.View>
+          ))}
+        </View>
+
         <View style={styles.featuresSection}>
           <Animated.Text
             entering={FadeInDown.delay(250).duration(500)}
@@ -324,6 +359,30 @@ const styles = StyleSheet.create({
   featuresSection: {
     gap: 12,
     marginBottom: 36,
+  },
+  benefitsSection: {
+    gap: 10,
+    marginBottom: 32,
+  },
+  benefitRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  benefitIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  benefitText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+    color: "rgba(255,255,255,0.92)",
+    lineHeight: 20,
   },
   sectionLabel: {
     fontSize: 14,
