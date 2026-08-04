@@ -589,7 +589,14 @@ router.put('/:familyId/members/:memberId', authenticate, requireFamilyMember(), 
 
     const updateData: any = {};
     if (nickname !== undefined) updateData.nickname = nickname || null;
-    if (color) updateData.color = color;
+    if (color) {
+      // Stesso formato imposto alla creazione (#RRGGBB): evita valori
+      // arbitrari salvati nel varchar(7).
+      if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color)) {
+        return res.status(400).json({ error: { code: "INVALID_COLOR", message: "Colore non valido: usa il formato #RRGGBB" } });
+      }
+      updateData.color = color;
+    }
 
     // Il nome visualizzato è modificabile solo per i profili senza account.
     const { name } = req.body;
@@ -597,9 +604,27 @@ router.put('/:familyId/members/:memberId', authenticate, requireFamilyMember(), 
       updateData.name = name.trim().slice(0, 100);
     }
 
-    // Il ruolo lo può cambiare SOLO un admin (mai su se stesso via questa rotta).
-    if (role && membership.role === 'admin') {
-      updateData.role = role;
+    if (role) {
+      if (isManagedProfile) {
+        // Profili gestiti (senza account): admin e adult possono cambiare il
+        // ruolo, ma solo tra i ruoli "figlio" — mai promuovere un profilo
+        // senza account ad adulto/admin.
+        const managedRoles = ['child', 'teen'];
+        if (!managedRoles.includes(role)) {
+          return res.status(400).json({ error: { code: "INVALID_ROLE", message: "Ruolo non valido per un profilo gestito (consentiti: child, teen)" } });
+        }
+        if (membership.role === 'admin' || membership.role === 'adult') {
+          updateData.role = role;
+        }
+      } else if (membership.role === 'admin') {
+        // Membri con account: il ruolo lo può cambiare SOLO un admin
+        // (mai su se stesso via questa rotta).
+        const accountRoles = ['admin', 'adult', 'teen', 'child'];
+        if (!accountRoles.includes(role)) {
+          return res.status(400).json({ error: { code: "INVALID_ROLE", message: "Ruolo non valido" } });
+        }
+        updateData.role = role;
+      }
     }
 
     if (Object.keys(updateData).length === 0) {

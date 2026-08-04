@@ -17,6 +17,29 @@ import { NativePushTestButton } from "@/components/NativePushTestButton";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { trackEvent } from "@/lib/test-analytics";
 
+// Stessa palette usata in edit-profile per gli account: coerenza visiva.
+const AVATAR_COLORS = [
+  "#6366F1",
+  "#8B5CF6",
+  "#EC4899",
+  "#EF4444",
+  "#F59E0B",
+  "#10B981",
+  "#14B8A6",
+  "#0EA5E9",
+  "#3B82F6",
+  "#84CC16",
+  "#F97316",
+  "#64748B",
+];
+
+// Ruoli consentiti per i profili gestiti (senza account): il backend rifiuta
+// tutto il resto (mai promuovere un profilo gestito ad adulto/admin).
+const MANAGED_ROLES = [
+  { value: "child", label: "Figlio/a" },
+  { value: "teen", label: "Adolescente" },
+] as const;
+
 export default function FamilyScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
@@ -26,6 +49,8 @@ export default function FamilyScreen() {
   const [editedName, setEditedName] = useState(data.familyName);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editedMemberName, setEditedMemberName] = useState("");
+  const [editedMemberColor, setEditedMemberColor] = useState<string>(AVATAR_COLORS[0]);
+  const [editedMemberRole, setEditedMemberRole] = useState<string>("child");
 
   const leaderboard = getLeaderboard();
   const familyId = currentFamily?.id;
@@ -126,18 +151,22 @@ export default function FamilyScreen() {
   // Genitori/adulti possono rinominare i profili bambino gestiti (senza account).
   const canManageProfiles = ["admin", "adult", "parent"].includes(currentFamily?.myRole || "");
 
-  const handleSaveMemberName = async (memberId: string) => {
+  const handleSaveManagedMember = async (memberId: string) => {
     const name = editedMemberName.trim();
     if (name.length < 2) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      await updateMember(memberId, { name });
+      await updateMember(memberId, {
+        name,
+        color: editedMemberColor,
+        role: editedMemberRole as any,
+      });
       setEditingMemberId(null);
     } catch {
       if (Platform.OS === "web") {
-        alert("Impossibile rinominare il profilo. Riprova.");
+        alert("Impossibile aggiornare il profilo. Riprova.");
       } else {
-        Alert.alert("Errore", "Impossibile rinominare il profilo. Riprova.");
+        Alert.alert("Errore", "Impossibile aggiornare il profilo. Riprova.");
       }
     }
   };
@@ -279,6 +308,7 @@ export default function FamilyScreen() {
                     <Avatar name={member.name} color={member.color} size={48} avatarUrl={member.avatarUrl} />
                     <View style={styles.memberInfo}>
                       {isEditingMember ? (
+                        <>
                         <View style={styles.memberEditRow}>
                           <TextInput
                             style={[
@@ -295,13 +325,51 @@ export default function FamilyScreen() {
                             <Ionicons name="close" size={22} color={colors.textSecondary} />
                           </Pressable>
                           <Pressable
-                            onPress={() => handleSaveMemberName(member.id)}
+                            onPress={() => handleSaveManagedMember(member.id)}
                             style={styles.actionButton}
                             testID={`save-member-name-${member.id}`}
                           >
                             <Ionicons name="checkmark" size={22} color={colors.success} />
                           </Pressable>
                         </View>
+                        <View style={styles.colorRow}>
+                          {AVATAR_COLORS.map((c) => (
+                            <Pressable
+                              key={c}
+                              onPress={() => setEditedMemberColor(c)}
+                              style={[
+                                styles.colorSwatch,
+                                { backgroundColor: c },
+                                editedMemberColor === c && { borderColor: colors.text, borderWidth: 2 },
+                              ]}
+                              testID={`member-color-${member.id}-${c.slice(1)}`}
+                            />
+                          ))}
+                        </View>
+                        <View style={styles.roleRow}>
+                          {MANAGED_ROLES.map((r) => {
+                            const active = editedMemberRole === r.value;
+                            return (
+                              <Pressable
+                                key={r.value}
+                                onPress={() => setEditedMemberRole(r.value)}
+                                style={[
+                                  styles.roleOption,
+                                  {
+                                    backgroundColor: active ? colors.primary : colors.surface,
+                                    borderColor: active ? colors.primary : colors.border,
+                                  },
+                                ]}
+                                testID={`member-role-${member.id}-${r.value}`}
+                              >
+                                <Text style={{ color: active ? "#FFFFFF" : colors.text, fontSize: 13, fontWeight: "600" }}>
+                                  {r.label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        </>
                       ) : (
                         <Text style={[styles.memberName, { color: colors.text }]}>
                           {member.name}
@@ -337,6 +405,8 @@ export default function FamilyScreen() {
                       <Pressable
                         onPress={() => {
                           setEditedMemberName(member.name);
+                          setEditedMemberColor(member.color || AVATAR_COLORS[0]);
+                          setEditedMemberRole(member.role === "teen" ? "teen" : "child");
                           setEditingMemberId(member.id);
                         }}
                         style={styles.actionButton}
@@ -865,6 +935,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Inter_400Regular",
     marginTop: 4,
+  },
+  colorRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 8,
+  },
+  colorSwatch: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+  },
+  roleRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 8,
+  },
+  roleOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
   },
   memberEditRow: {
     flexDirection: "row",

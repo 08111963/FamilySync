@@ -110,4 +110,54 @@ describe("membro non-admin modifica il proprio profilo", { skip: hasDb ? false :
     }, memberToken);
     assert.equal(res.status, 400, `atteso 400, ricevuto ${res.status}`);
   });
+
+  test("un colore non valido viene rifiutato con INVALID_COLOR", async () => {
+    const res = await request("PUT", `/api/families/${familyId}/members/${memberMembershipId}`, {
+      color: "rosso",
+    }, memberToken);
+    const body = await res.json();
+    assert.equal(res.status, 400, `atteso 400, ricevuto ${res.status}`);
+    assert.equal(body.error?.code, "INVALID_COLOR");
+  });
+
+  describe("profili gestiti (senza account)", () => {
+    let managedId: string;
+
+    before(async () => {
+      const [child] = await db.insert(familyMembers).values({
+        familyId, userId: null, role: "child", name: "Piccolo", color: "#F59E0B", points: 0,
+      }).returning();
+      managedId = child.id;
+    });
+
+    test("un adult PUÒ cambiare colore e ruolo (child→teen) di un profilo gestito", async () => {
+      const res = await request("PUT", `/api/families/${familyId}/members/${managedId}`, {
+        color: "#0EA5E9", role: "teen", name: "Piccolo Grande",
+      }, memberToken);
+      const text = await res.text();
+      assert.equal(res.status, 200, `atteso 200, ricevuto ${res.status}: ${text}`);
+      const body = JSON.parse(text);
+      assert.equal(body.color, "#0EA5E9");
+      assert.equal(body.role, "teen");
+      assert.equal(body.name, "Piccolo Grande");
+    });
+
+    test("un profilo gestito NON può essere promosso ad adult/admin (INVALID_ROLE)", async () => {
+      for (const role of ["adult", "admin"]) {
+        const res = await request("PUT", `/api/families/${familyId}/members/${managedId}`, {
+          role,
+        }, memberToken);
+        const body = await res.json();
+        assert.equal(res.status, 400, `role=${role}: atteso 400, ricevuto ${res.status}`);
+        assert.equal(body.error?.code, "INVALID_ROLE");
+      }
+    });
+
+    test("colore non valido su profilo gestito rifiutato", async () => {
+      const res = await request("PUT", `/api/families/${familyId}/members/${managedId}`, {
+        color: "#12345",
+      }, memberToken);
+      assert.equal(res.status, 400);
+    });
+  });
 });
