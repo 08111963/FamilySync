@@ -423,40 +423,12 @@ export default function RecipesScreen() {
     [colors, currentFamily]
   );
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topInset + 16 }]}>
-        <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)")} style={styles.headerButton}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>
-          Le Mie Ricette
-        </Text>
-        <View style={styles.headerActions}>
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push("/recipes/add" as any);
-            }}
-            style={styles.headerButton}
-            testID="button-add-recipe"
-          >
-            <Ionicons name="add-circle-outline" size={26} color={colors.primary} />
-          </Pressable>
-          <Pressable
-            onPress={handleGenerateAi}
-            disabled={generatingAi}
-            style={styles.headerButton}
-          >
-            {generatingAi ? (
-              <ActivityIndicator size="small" color={colors.secondary} />
-            ) : (
-              <Ionicons name="sparkles" size={24} color={colors.secondary} />
-            )}
-          </Pressable>
-        </View>
-      </View>
-
+  // Tutti i controlli sopra la lista scorrono insieme alle ricette:
+  // resta fissa solo la barra di navigazione in alto.
+  const listHeader = (
+    // Compensa il paddingHorizontal del contenuto della lista: le sezioni
+    // interne hanno già i propri margini orizzontali da 20.
+    <View style={{ marginHorizontal: -20 }}>
       {aiError ? (
         <View style={[styles.errorBanner, { backgroundColor: colors.error + "15" }]}>
           <Ionicons name="warning-outline" size={16} color={colors.error} />
@@ -589,16 +561,54 @@ export default function RecipesScreen() {
             : `${filteredRecipes.length} ricett${filteredRecipes.length === 1 ? "a salvata" : "e salvate"} per "${trimmedSavedQuery}"`}
         </Text>
       ) : null}
+    </View>
+  );
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: topInset + 16 }]}>
+        <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)")} style={styles.headerButton}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </Pressable>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
+          Le Mie Ricette
+        </Text>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/recipes/add" as any);
+            }}
+            style={styles.headerButton}
+            testID="button-add-recipe"
+          >
+            <Ionicons name="add-circle-outline" size={26} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={handleGenerateAi}
+            disabled={generatingAi}
+            style={styles.headerButton}
+          >
+            {generatingAi ? (
+              <ActivityIndicator size="small" color={colors.secondary} />
+            ) : (
+              <Ionicons name="sparkles" size={24} color={colors.secondary} />
+            )}
+          </Pressable>
+        </View>
+      </View>
 
       <FlatList
         data={filteredRecipes}
         keyExtractor={(item) => item.id}
         renderItem={renderRecipeCard}
+        ListHeaderComponent={listHeader}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: bottomInset + 24 },
         ]}
-        scrollEnabled={recipes.length > 0}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
