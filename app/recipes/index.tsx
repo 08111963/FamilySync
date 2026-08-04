@@ -101,6 +101,7 @@ export default function RecipesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [savedQuery, setSavedQuery] = useState("");
   const [searching, setSearching] = useState(false);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
@@ -113,14 +114,14 @@ export default function RecipesScreen() {
 
   const recipes = recipesQuery.data || [];
 
-  // Filtro locale sulle ricette salvate: mentre scrivi nella barra di ricerca
-  // la lista qui sotto mostra solo le ricette che corrispondono.
-  const trimmedQuery = searchQuery.trim();
+  // Ricerca dedicata alle ricette SALVATE (separata dalla ricerca AI):
+  // filtra solo la lista qui sotto, senza chiamare l'AI.
+  const trimmedSavedQuery = savedQuery.trim();
   const filteredRecipes = useMemo(() => {
-    if (trimmedQuery.length < 2) return recipes;
-    const nq = normalizeSearchText(trimmedQuery);
+    if (trimmedSavedQuery.length < 2) return recipes;
+    const nq = normalizeSearchText(trimmedSavedQuery);
     return recipes.filter((r) => recipeMatchesQuery(r, nq));
-  }, [recipes, trimmedQuery]);
+  }, [recipes, trimmedSavedQuery]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -466,6 +467,10 @@ export default function RecipesScreen() {
         </View>
       ) : null}
 
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>
+        ✨ Genera nuove ricette con l'AI
+      </Text>
+
       <Pressable
         onPress={handleGenerateAi}
         disabled={generatingAi || searching}
@@ -497,7 +502,7 @@ export default function RecipesScreen() {
         <Ionicons name="search" size={20} color={colors.textSecondary} />
         <TextInput
           style={[styles.searchInput, { color: colors.text }]}
-          placeholder="Cerca una ricetta... es. pasta al forno"
+          placeholder="Chiedi una ricetta all'AI... es. pasta al forno"
           placeholderTextColor={colors.textSecondary}
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -551,11 +556,37 @@ export default function RecipesScreen() {
         </Pressable>
       ) : null}
 
-      {trimmedQuery.length >= 2 && recipes.length > 0 ? (
+      <View style={[styles.sectionDivider, { borderTopColor: colors.border }]} />
+
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>
+        📖 Le tue ricette salvate{recipes.length > 0 ? ` (${recipes.length})` : ""}
+      </Text>
+
+      {recipes.length > 0 ? (
+        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name="search" size={20} color={colors.textSecondary} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Cerca tra le ricette salvate..."
+            placeholderTextColor={colors.textSecondary}
+            value={savedQuery}
+            onChangeText={setSavedQuery}
+            returnKeyType="done"
+            testID="saved-recipes-search"
+          />
+          {savedQuery.length > 0 ? (
+            <Pressable onPress={() => setSavedQuery("")} hitSlop={8}>
+              <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
+      {trimmedSavedQuery.length >= 2 && recipes.length > 0 ? (
         <Text style={[styles.filterInfo, { color: colors.textSecondary }]}>
           {filteredRecipes.length === 0
-            ? `Nessuna ricetta salvata per "${trimmedQuery}"`
-            : `${filteredRecipes.length} ricett${filteredRecipes.length === 1 ? "a salvata" : "e salvate"} per "${trimmedQuery}"`}
+            ? `Nessuna ricetta salvata per "${trimmedSavedQuery}"`
+            : `${filteredRecipes.length} ricett${filteredRecipes.length === 1 ? "a salvata" : "e salvate"} per "${trimmedSavedQuery}"`}
         </Text>
       ) : null}
 
@@ -580,11 +611,11 @@ export default function RecipesScreen() {
             <View style={styles.centerContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
             </View>
-          ) : trimmedQuery.length >= 2 && recipes.length > 0 ? (
+          ) : trimmedSavedQuery.length >= 2 && recipes.length > 0 ? (
             <EmptyState
               icon="search-outline"
               title="Nessuna ricetta trovata"
-              subtitle={`Nessuna delle tue ricette salvate corrisponde a "${trimmedQuery}". Premi la freccia per cercarne di nuove con l'AI.`}
+              subtitle={`Nessuna delle tue ricette salvate corrisponde a "${trimmedSavedQuery}". Prova con un'altra parola, oppure genera ricette nuove con l'AI qui sopra.`}
             />
           ) : (
             <EmptyState
@@ -625,6 +656,18 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     flex: 1,
     textAlign: "center",
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  sectionDivider: {
+    borderTopWidth: 1,
+    marginHorizontal: 20,
+    marginTop: 6,
+    marginBottom: 12,
   },
   filterInfo: {
     fontSize: 13,
