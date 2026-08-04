@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { createServer, type Server } from "node:http";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -102,8 +102,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // con cache lunga. Montate PRIMA di /uploads autenticato.
   // In modalità STORAGE_MODE=object-storage servite dal bucket (persistente su
   // autoscale); express.static resta come fallback per file legacy su disco.
+  // Le foto pubbliche (ricette/avatar) devono essere caricabili anche da pagine
+  // su un'altra origine (es. anteprima di sviluppo Metro): helmet imposta
+  // Cross-Origin-Resource-Policy: same-origin di default, che fa fallire il
+  // caricamento delle <img> cross-origin nel browser. Le rilassiamo SOLO qui.
+  const allowCrossOriginImages = (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  };
+
   app.use(
     '/uploads/recipe-images',
+    allowCrossOriginImages,
     createUploadsObjectHandler('/uploads/recipe-images', { cacheControl: 'public, max-age=2592000, immutable' }),
     express.static('uploads/recipe-images', { maxAge: '30d', immutable: true })
   );
@@ -114,7 +124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // In modalità STORAGE_MODE=object-storage i file /uploads vengono serviti dal
   // bucket Replit Object Storage (persistente su autoscale); express.static resta
   // come fallback per eventuali file legacy ancora su disco locale.
-  app.use('/uploads/avatars', createUploadsObjectHandler('/uploads/avatars'), express.static('uploads/avatars', { maxAge: '7d' }));
+  app.use('/uploads/avatars', allowCrossOriginImages, createUploadsObjectHandler('/uploads/avatars'), express.static('uploads/avatars', { maxAge: '7d' }));
 
   app.use('/uploads', authenticateMedia, requireEmailVerified, createUploadsObjectHandler('/uploads'), express.static('uploads'));
 

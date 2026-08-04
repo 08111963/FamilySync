@@ -310,16 +310,17 @@ export default function RecipesScreen() {
             },
           ]}
         >
-          {item.imageUrl ? (
-            <View style={styles.recipeImageWrap}>
-              <RecipeAiImage
-                title={item.title}
-                imageUrl={item.imageUrl}
-                height={130}
-                borderRadius={12}
-              />
-            </View>
-          ) : null}
+          <RecipeAiImage
+            title={item.title}
+            imageUrl={item.imageUrl}
+            familyId={currentFamily?.id}
+            // Ricetta salvata senza foto: recupera dalla cache foto del server
+            // (nessuna generazione AI, nessuna quota). Se non c'è, niente foto.
+            resolveOnly
+            height={130}
+            borderRadius={12}
+            wrapStyle={styles.recipeImageWrap}
+          />
           <View style={styles.recipeCardHeader}>
             <Text
               style={[styles.recipeTitle, { color: colors.text }]}

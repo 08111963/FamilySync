@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, View, ActivityIndicator } from "react-native";
+import { StyleSheet, View, ActivityIndicator, type StyleProp, type ViewStyle } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -82,7 +82,8 @@ async function flushResolveQueue() {
 async function requestRecipeImage(
   familyId: string,
   title: string,
-  description?: string
+  description?: string,
+  resolveOnly?: boolean
 ): Promise<string> {
   const key = cacheKey(title);
   const cached = urlCache.get(key);
@@ -91,7 +92,7 @@ async function requestRecipeImage(
   // Dedup per (famiglia, titolo): la stessa foto è un asset condiviso tra
   // famiglie, ma la richiesta HTTP è autorizzata per famiglia, quindi una
   // richiesta di un'altra famiglia non deve agganciarsi a quella in corso.
-  const flightKey = `${familyId}:${key}`;
+  const flightKey = `${familyId}:${resolveOnly ? "r" : "g"}:${key}`;
   const pending = inFlight.get(flightKey);
   if (pending) return pending;
 
@@ -101,6 +102,10 @@ async function requestRecipeImage(
       //    generazione e risposta quasi istantanea.
       const resolved = await resolveCachedUrl(familyId, title);
       if (resolved) return resolved;
+
+      // Modalità solo-cache (liste di ricette salvate): niente generazione,
+      // niente consumo di quota. Se la foto non esiste, semplicemente non c'è.
+      if (resolveOnly) throw new Error("not cached");
 
       // 2) Cache miss: generazione AI individuale (lenta).
       const data = await apiFetch<{ url: string }>(
@@ -131,6 +136,8 @@ export function RecipeAiImage({
   imageUrl,
   height = 150,
   borderRadius = 12,
+  resolveOnly = false,
+  wrapStyle,
 }: {
   familyId?: string;
   title: string;
@@ -138,6 +145,15 @@ export function RecipeAiImage({
   imageUrl?: string | null;
   height?: number;
   borderRadius?: number;
+  /**
+   * Solo lookup della cache foto sul server (nessuna generazione AI, nessuna
+   * quota). Se la foto non esiste il componente non renderizza nulla:
+   * pensato per le liste di ricette salvate senza imageUrl.
+   */
+  resolveOnly?: boolean;
+  /** Stile del contenitore, applicato SOLO se l'immagine viene renderizzata
+   * (così una card senza foto non ha margini vuoti). */
+  wrapStyle?: StyleProp<ViewStyle>;
 }) {
   const { colors } = useTheme();
   const preset = imageUrl || getCachedRecipeImage(title) || null;
@@ -147,7 +163,7 @@ export function RecipeAiImage({
   useEffect(() => {
     if (relUrl || failed || !familyId) return;
     let cancelled = false;
-    requestRecipeImage(familyId, title, description)
+    requestRecipeImage(familyId, title, description, resolveOnly)
       .then((url) => {
         if (!cancelled) setRelUrl(url);
       })
@@ -157,43 +173,53 @@ export function RecipeAiImage({
     return () => {
       cancelled = true;
     };
-  }, [relUrl, failed, familyId, title, description]);
+  }, [relUrl, failed, familyId, title, description, resolveOnly]);
+
+  // In modalità solo-cache niente segnaposto: se la foto non c'è (o sta
+  // ancora arrivando) la card resta semplicemente senza immagine.
+  if (resolveOnly && !relUrl) return null;
 
   if (failed || (!relUrl && !familyId)) {
     return (
-      <View
-        style={[
-          styles.placeholder,
-          { height, borderRadius, backgroundColor: colors.surface, borderColor: colors.border },
-        ]}
-      >
-        <Ionicons name="restaurant-outline" size={28} color={colors.textSecondary} />
+      <View style={wrapStyle}>
+        <View
+          style={[
+            styles.placeholder,
+            { height, borderRadius, backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <Ionicons name="restaurant-outline" size={28} color={colors.textSecondary} />
+        </View>
       </View>
     );
   }
 
   if (!relUrl) {
     return (
-      <View
-        style={[
-          styles.placeholder,
-          { height, borderRadius, backgroundColor: colors.surface, borderColor: colors.border },
-        ]}
-      >
-        <ActivityIndicator size="small" color={colors.textSecondary} />
+      <View style={wrapStyle}>
+        <View
+          style={[
+            styles.placeholder,
+            { height, borderRadius, backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <ActivityIndicator size="small" color={colors.textSecondary} />
+        </View>
       </View>
     );
   }
 
   return (
-    <Image
-      source={{ uri: toAbsoluteUploadUrl(relUrl) }}
-      style={{ width: "100%", height, borderRadius }}
-      contentFit="cover"
-      transition={250}
-      onError={() => setFailed(true)}
-      accessibilityLabel={`Foto di ${title}`}
-    />
+    <View style={wrapStyle}>
+      <Image
+        source={{ uri: toAbsoluteUploadUrl(relUrl) }}
+        style={{ width: "100%", height, borderRadius }}
+        contentFit="cover"
+        transition={250}
+        onError={() => setFailed(true)}
+        accessibilityLabel={`Foto di ${title}`}
+      />
+    </View>
   );
 }
 

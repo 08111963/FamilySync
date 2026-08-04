@@ -220,16 +220,17 @@ export default function RecipeDetailScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {recipe.imageUrl ? (
-          <View style={styles.heroImageWrap}>
-            <RecipeAiImage
-              title={recipe.title}
-              imageUrl={recipe.imageUrl}
-              height={200}
-              borderRadius={16}
-            />
-          </View>
-        ) : null}
+        <RecipeAiImage
+          title={recipe.title}
+          imageUrl={recipe.imageUrl}
+          familyId={currentFamily?.id}
+          // Senza foto salvata: prova la cache foto del server, senza
+          // generare nulla (nessuna quota). Se manca, nessuna immagine.
+          resolveOnly
+          height={200}
+          borderRadius={16}
+          wrapStyle={styles.heroImageWrap}
+        />
         <Text style={[styles.recipeTitle, { color: colors.text }]}>
           {recipe.title}
         </Text>
