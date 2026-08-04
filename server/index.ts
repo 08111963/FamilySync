@@ -15,6 +15,7 @@ import { startBillReminderScheduler } from './lib/bill-reminders';
 import { startEventReminderScheduler } from './lib/event-reminders';
 import { startUploadIntegrityScheduler } from './lib/upload-integrity';
 import { startMealPlanBalanceScheduler } from './lib/meal-plan-balance-monitor';
+import { checkWebBuildStaleness, type WebBuildStaleness } from './lib/web-build-staleness';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -297,12 +298,39 @@ function configureExpoAndLanding(app: express.Application) {
 
   // Endpoint leggerissimo (fuori da /api: niente auth né rate limiter) usato
   // dall'app web per accorgersi che il server ha una build più recente.
+  // Controllo staleness: la build statica in web-build/ resta indietro dopo
+  // le modifiche frontend (vedi .agents/memory/expo-static-web-build.md).
+  // Calcolato all'avvio, loggato subito e riesposto in /build-version.
+  let staleness: WebBuildStaleness | null = null;
+  void checkWebBuildStaleness()
+    .then((result) => {
+      staleness = result;
+      if (result.status === "stale") {
+        logger.warn(`[web-build staleness] ${result.message}`);
+      } else {
+        log(`[web-build staleness] ${result.message}`);
+      }
+    })
+    .catch((err) => {
+      log(`[web-build staleness] check failed: ${String(err)}`);
+    });
+
   app.get("/build-version", (_req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
     if (!buildVersion) {
       return res.status(404).json({ error: "NO_WEB_BUILD" });
     }
-    res.json({ version: buildVersion });
+    res.json({
+      version: buildVersion,
+      staleness: staleness
+        ? {
+            status: staleness.status,
+            webBuildMtime: staleness.webBuildMtime,
+            lastFrontendCommit: staleness.lastFrontendCommit,
+            note: staleness.message,
+          }
+        : { status: "unknown", note: "controllo staleness non ancora completato" },
+    });
   });
 
   // Alias di compatibilità: i bundle web GIÀ distribuiti (vecchio UpdateBanner)
