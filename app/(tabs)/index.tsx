@@ -92,6 +92,9 @@ export default function HomeScreen() {
               <Text style={{ fontSize: 14, fontFamily: "Inter_400Regular", color: colors.textSecondary, textAlign: "center" }}>
                 Inizia a coordinare eventi, spesa e faccende con la tua famiglia
               </Text>
+              <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: colors.textSecondary, textAlign: "center" }}>
+                Vivi da solo? Crea comunque il tuo spazio personale: tutte le funzioni si sbloccano subito e potrai invitare altri in qualsiasi momento.
+              </Text>
               <TextInput
                 style={{
                   height: 48,
