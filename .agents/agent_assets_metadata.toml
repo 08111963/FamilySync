@@ -151,3 +151,10 @@ uri = "file://attached_assets/report-sicurezza-2026-08-04.pdf"
 type = "pdf"
 title = "Report di Sicurezza FamilySync"
 description = "Scansione del 4 agosto 2026: 8 punti deboli trovati, correzioni già fatte (CSP, feed calendario), interventi in corso (IDOR, token)."
+
+[[outputs]]
+id = "FaCwDmpWrGJvvUxyrwJxd"
+uri = "file://attached_assets/guida-profilo-bambino-senza-email.pdf"
+type = "pdf"
+title = "Guida: aggiungere un familiare senza email"
+description = "Come creare e gestire un profilo bambino (senza account né email) in FamilySync, passo per passo."

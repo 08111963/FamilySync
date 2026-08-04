@@ -111,10 +111,11 @@ Solo l'**amministratore** può rinominare il gruppo:
 3. Scrivi il nuovo nome e conferma con il segno di **spunta** (✓); per annullare tocca la **X**
 
 ### Invitare Membri
-Per aggiungere i tuoi familiari hai **tre modi**, tutti dalla scheda **Famiglia** → **Aggiungi**:
+Per aggiungere i tuoi familiari hai **quattro modi**, tutti dalla scheda **Famiglia** → **Aggiungi**:
 - **Email**: inserisci il **nome** (facoltativo) e l'**email** del familiare, scegli il **ruolo** (Admin, Adulto, Adolescente o Figlio/a) e tocca **Invia Invito**. Riceverà un'email con un **link sicuro** personale: lo aprirà, sceglierà la password ed entrerà nella famiglia.
 - **WhatsApp**: FamilySync crea un **unico link riutilizzabile** e lo invia direttamente su WhatsApp con un messaggio già pronto.
 - **QR code**: mostra il **codice QR** dello stesso link: chi lo inquadra con il telefono entra nella famiglia.
+- **Bambino**: per i più piccoli **senza email** crei un **profilo bambino** con il solo nome, gestito dai genitori (niente account né login).
 
 > Con WhatsApp e QR il link è **unico e riutilizzabile**: puoi condividerlo con più persone. Chi entra da questo link avrà il ruolo **"Adulto"** (puoi cambiarlo dopo dalla schermata Famiglia).
 
@@ -588,6 +589,8 @@ Quando inviti un membro scegli uno di questi ruoli:
 - **Adolescente**: accesso alle funzionalità con un ruolo dedicato
 - **Figlio/a**: accesso alle funzionalità base
 
+> I bambini **senza email** non hanno bisogno di un account: puoi creare per loro un **profilo bambino** gestito dai genitori (vedi la sezione "Sistema di Inviti" → "Profilo Bambino").
+
 ### Azioni sui Membri
 - Tocca l'icona con i tre puntini accanto a un membro per **Segnalare** o **Bloccare/Sbloccare** quella persona
 - Solo gli amministratori possono **rimuovere** un membro dal gruppo (icona cestino)
@@ -596,7 +599,7 @@ Quando inviti un membro scegli uno di questi ruoli:
 
 ## 11. Sistema di Inviti
 
-FamilySync offre **tre modi** per invitare un familiare: **Email** (link personale), **WhatsApp** e **QR code** (un unico link riutilizzabile). Scegli quello più comodo dalla scheda **Famiglia** → **Aggiungi**.
+FamilySync offre **quattro modi** per aggiungere un familiare: **Email** (link personale), **WhatsApp**, **QR code** (un unico link riutilizzabile) e **Bambino** (profilo senza email, gestito dai genitori). Scegli quello più comodo dalla scheda **Famiglia** → **Aggiungi**.
 
 ### A. Invito via Email (link personale)
 1. Vai alla scheda **Famiglia** e tocca **Aggiungi** nella sezione Membri
@@ -623,6 +626,23 @@ FamilySync offre **tre modi** per invitare un familiare: **Email** (link persona
 - È **unico e riutilizzabile**: puoi condividerlo con più familiari
 - Chi entra da questo link avrà il ruolo **"Adulto"** (puoi cambiarlo dopo dalla schermata Famiglia)
 - Possono entrare fino al **limite del piano**: 5 membri col Free, illimitati col Premium
+
+### C. Profilo Bambino (senza email)
+
+Per i bambini che **non hanno un'email** (ad esempio i minori di 14 anni) non serve nessun invito: il genitore crea direttamente un **profilo bambino**.
+
+1. Vai alla scheda **Famiglia** e tocca **Aggiungi**
+2. Scegli **Bambino**
+3. Inserisci solo il **nome** del bambino (es. "Sofia") e tocca **Crea profilo bambino**
+
+**Come funziona il profilo bambino**
+- **Niente email, niente password, niente login**: il bambino non accede all'app
+- Il profilo compare in famiglia come tutti gli altri membri: puoi **assegnargli faccende**, fargli **guadagnare punti**, farlo comparire nel **calendario** e nella **classifica**
+- È **gestito interamente dai genitori**: Admin e Adulti possono **rinominarlo** o **eliminarlo** in qualsiasi momento dalla schermata Famiglia
+- **Privacy garantita**: non viene raccolto nessun dato di contatto del minore
+- Il profilo **conta nel limite membri** del piano (5 col Free, illimitati col Premium)
+
+> Quando il bambino cresce e ha una sua email, potrà essere invitato normalmente con il ruolo più adatto.
 
 ### Come si Unisce alla Famiglia
 Quando il familiare apre il link (email, WhatsApp o QR):
