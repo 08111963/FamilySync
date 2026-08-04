@@ -356,6 +356,9 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
   };
 
   const handlePressIn = () => {
+    // Il tocco sul microfono è un gesto dell'utente: sblocca subito la voce
+    // del browser, così la lettura automatica dei risultati non viene bloccata.
+    primeSpeech();
     const action = decidePressIn({
       transcribing,
       lockedByOther,
@@ -496,10 +499,49 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
 export function speakText(text: string) {
   const content = (text || "").trim();
   if (!content) return;
-  Speech.stop();
-  chunkText(content).forEach((chunk) => {
-    Speech.speak(chunk, { language: "it-IT" });
-  });
+  try {
+    Speech.stop();
+    if (Platform.OS === "web") {
+      // Chrome (soprattutto Android) può lasciare speechSynthesis "in pausa":
+      // senza resume() la lettura non parte e non dà alcun errore.
+      const synth = (globalThis as any)?.speechSynthesis;
+      synth?.resume?.();
+    }
+    chunkText(content).forEach((chunk) => {
+      Speech.speak(chunk, { language: "it-IT" });
+    });
+  } catch (err) {
+    // Mai bloccare l'app se la sintesi vocale del browser fallisce.
+    console.warn("speakText failed", err);
+  }
+}
+
+let speechPrimed = false;
+
+/**
+ * "Sblocca" la sintesi vocale del browser. Chrome su Android blocca
+ * speechSynthesis.speak() se la prima chiamata non avviene dentro un tocco
+ * dell'utente: chiamare questa funzione DENTRO l'handler del pulsante
+ * (prima di qualsiasi await) fa partire un'utterance muta che abilita
+ * le letture successive, anche quelle avviate a fine richiesta AI.
+ * Su iOS/Android nativo non fa nulla.
+ */
+export function primeSpeech() {
+  if (Platform.OS !== "web" || speechPrimed) return;
+  try {
+    const g = globalThis as any;
+    const synth = g?.speechSynthesis;
+    const Utter = g?.SpeechSynthesisUtterance;
+    if (!synth || !Utter) return;
+    const u = new Utter(" ");
+    u.volume = 0;
+    u.rate = 10;
+    synth.speak(u);
+    synth.resume?.();
+    speechPrimed = true;
+  } catch {
+    // ignora: la lettura verrà comunque tentata normalmente
+  }
 }
 
 /** Divide un testo lungo in blocchi pronunciabili (limite TTS Android ~4000 caratteri). */

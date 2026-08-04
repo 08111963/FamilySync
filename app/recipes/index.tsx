@@ -22,7 +22,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import AiPrivacyNotice from "@/components/AiPrivacyNotice";
 import { useTheme } from "@/hooks/useTheme";
-import { VoiceInput, speakText } from "@/components/VoiceInput";
+import { VoiceInput, speakText, primeSpeech } from "@/components/VoiceInput";
 import { useAutoSpeak } from "@/hooks/useAutoSpeak";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiFetch, getApiUrl } from "@/lib/query-client";
@@ -229,7 +229,11 @@ export default function RecipesScreen() {
   };
 
   // Il toggle lettura ad alta voce vale anche per la ricerca avviata dal pulsante.
-  const handleSearch = () => runAiSearch(searchQuery, { speakResults: autoSpeak });
+  const handleSearch = () => {
+    // Sblocca la voce del browser dentro il tocco (Chrome Android).
+    if (autoSpeak) primeSpeech();
+    return runAiSearch(searchQuery, { speakResults: autoSpeak });
+  };
 
   // Dettatura vocale: inserisce il testo, avvia subito la ricerca AI
   // e legge ad alta voce le ricette trovate.

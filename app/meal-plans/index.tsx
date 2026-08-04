@@ -21,7 +21,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import AiPrivacyNotice from "@/components/AiPrivacyNotice";
 import { useTheme } from "@/hooks/useTheme";
-import { VoiceInput, SpeakButton, speakText } from "@/components/VoiceInput";
+import { VoiceInput, SpeakButton, speakText, primeSpeech } from "@/components/VoiceInput";
 import { useAutoSpeak } from "@/hooks/useAutoSpeak";
 import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiStream } from "@/lib/query-client";
@@ -606,8 +606,16 @@ export default function MealPlansScreen() {
 
   // Il toggle "L'AI legge il piano ad alta voce" vale per QUALSIASI generazione,
   // non solo per quella avviata a voce col microfono.
-  const handleGenerate = () => fetchMealPlanStream({ speak: autoSpeak });
-  const handleGenerateAlternative = () => fetchAlternativeStream({ speak: autoSpeak });
+  const handleGenerate = () => {
+    // primeSpeech va chiamato DENTRO il tocco: sblocca la voce del browser
+    // (Chrome Android) così la lettura a fine generazione non viene bloccata.
+    if (autoSpeak) primeSpeech();
+    return fetchMealPlanStream({ speak: autoSpeak });
+  };
+  const handleGenerateAlternative = () => {
+    if (autoSpeak) primeSpeech();
+    return fetchAlternativeStream({ speak: autoSpeak });
+  };
 
   // Dettatura completa: l'utente detta dieta, allergie e preferenze in una volta;
   // al rilascio si genera subito il piano e a fine generazione viene letto ad alta voce.

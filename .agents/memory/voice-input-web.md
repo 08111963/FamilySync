@@ -17,3 +17,8 @@ Su web i tocchi del microfono NON passano dal Pressable (che confonde pointercan
 
 - Alert.alert di react-native-web è un NO-OP: su web ogni errore mostrato via Alert è invisibile. Usare un helper (window.alert o toast) per i messaggi d'errore utente su web (fatto in VoiceInput con showAlert).
 - Le PWA installate da familysync.eu conservano a lungo il bundle vecchio: dopo un Republish serve chiudere l'app e riaprirla (o reinstallarla) per vedere la versione nuova.
+
+## TTS su web (Chrome Android)
+- speechSynthesis viene bloccato se la prima speak() non parte dentro un gesto utente: chiamare `primeSpeech()` (components/VoiceInput.tsx) DENTRO l'handler del tocco, prima di qualsiasi await; la lettura a fine richiesta AI poi funziona.
+- Aggiungere sempre `speechSynthesis.resume()` prima di parlare: Chrome può restare "paused" senza errori.
+- Il bundle minificato concatena i template literal: per verificare se una feature è in prod, grep su sottostringhe corte e letterali, non su frasi intere.
