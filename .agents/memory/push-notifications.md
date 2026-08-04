@@ -15,4 +15,4 @@ description: Convenzioni push Expo + web push VAPID, esclusione blocchi, rebind 
 ## Notifica di prova (owner-only)
 - Pulsante web "Invia notifica di prova" gated via endpoint /access + APP_OWNER_EMAILS (404 ai non owner, come test-analytics); invia SOLO all'endpoint del browser corrente verificando che appartenga all'utente; rate limit per-utente dedicato.
 
-**Promemoria bollette mirati (ago 2026):** push+email solo a responsabile (bills.assignedTo) + membri in bill_splits, mappati membro→userId (profili bambino NULL saltati); fallback famiglia intera se nessun coinvolto o solo bambini. Query di mapping vincolata a familyId (difesa in profondità).
+**Destinatari promemoria (ago 2026, decisione del proprietario):** bollette, eventi e TUTTE le notifiche vanno SEMPRE a tutta la famiglia. Un tentativo di destinatari mirati (responsabile+ripartizione) è stato esplicitamente annullato dall'utente: non riproporlo.
