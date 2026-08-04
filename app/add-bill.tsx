@@ -328,6 +328,9 @@ function BillForm({
                   >
                     <Avatar name={member.name} color={member.color} size={28} />
                     <Text style={[styles.memberName, { color: colors.text }]}>{member.name}</Text>
+                    {!member.userId && (
+                      <Text style={[styles.managedLabel, { color: colors.textSecondary }]}>Gestito</Text>
+                    )}
                   </Pressable>
                 ))}
               </View>
@@ -455,6 +458,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   memberName: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  managedLabel: { fontSize: 11, fontFamily: "Inter_400Regular" },
   row: {
     flexDirection: "row",
     alignItems: "center",

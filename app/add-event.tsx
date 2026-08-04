@@ -510,6 +510,9 @@ export default function AddEventScreen() {
                   >
                     <Avatar name={member.name} color={member.color} size={32} />
                     <Text style={[styles.memberName, { color: colors.text }]}>{member.name}</Text>
+                    {!member.userId && (
+                      <Text style={[styles.managedLabel, { color: colors.textSecondary }]}>Gestito</Text>
+                    )}
                   </Pressable>
                 ))}
               </View>
@@ -720,6 +723,10 @@ const styles = StyleSheet.create({
   memberName: {
     fontSize: 14,
     fontFamily: "Inter_500Medium",
+  },
+  managedLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
   },
   colorOptions: {
     flexDirection: "row",

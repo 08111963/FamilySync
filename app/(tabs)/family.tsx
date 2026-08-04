@@ -20,10 +20,12 @@ import { trackEvent } from "@/lib/test-analytics";
 export default function FamilyScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { data, currentFamily, setFamilyName, deleteMember, getLeaderboard } = useFamily();
+  const { data, currentFamily, setFamilyName, updateMember, deleteMember, getLeaderboard } = useFamily();
   const { logout, user } = useAuth();
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(data.familyName);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [editedMemberName, setEditedMemberName] = useState("");
 
   const leaderboard = getLeaderboard();
   const familyId = currentFamily?.id;
@@ -121,6 +123,24 @@ export default function FamilyScreen() {
   };
 
   const isAdmin = currentFamily?.myRole === "admin";
+  // Genitori/adulti possono rinominare i profili bambino gestiti (senza account).
+  const canManageProfiles = ["admin", "adult", "parent"].includes(currentFamily?.myRole || "");
+
+  const handleSaveMemberName = async (memberId: string) => {
+    const name = editedMemberName.trim();
+    if (name.length < 2) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await updateMember(memberId, { name });
+      setEditingMemberId(null);
+    } catch {
+      if (Platform.OS === "web") {
+        alert("Impossibile rinominare il profilo. Riprova.");
+      } else {
+        Alert.alert("Errore", "Impossibile rinominare il profilo. Riprova.");
+      }
+    }
+  };
 
   const handleSaveName = () => {
     if (editedName.trim().length >= 2) {
@@ -251,25 +271,80 @@ export default function FamilyScreen() {
             {data.members.map((member) => {
               const badge = getRoleBadge(member.role);
               const isSelf = member.userId === user?.id;
+              const isManaged = !member.userId;
+              const isEditingMember = editingMemberId === member.id;
               return (
                 <Card key={member.id}>
                   <View style={styles.memberRow}>
                     <Avatar name={member.name} color={member.color} size={48} avatarUrl={member.avatarUrl} />
                     <View style={styles.memberInfo}>
-                      <Text style={[styles.memberName, { color: colors.text }]}>
-                        {member.name}
-                        {isSelf ? " (tu)" : ""}
-                      </Text>
+                      {isEditingMember ? (
+                        <View style={styles.memberEditRow}>
+                          <TextInput
+                            style={[
+                              styles.memberNameInput,
+                              { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text },
+                            ]}
+                            value={editedMemberName}
+                            onChangeText={setEditedMemberName}
+                            autoFocus
+                            keyboardAppearance={isDark ? "dark" : "light"}
+                            testID={`member-name-input-${member.id}`}
+                          />
+                          <Pressable onPress={() => setEditingMemberId(null)} style={styles.actionButton}>
+                            <Ionicons name="close" size={22} color={colors.textSecondary} />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleSaveMemberName(member.id)}
+                            style={styles.actionButton}
+                            testID={`save-member-name-${member.id}`}
+                          >
+                            <Ionicons name="checkmark" size={22} color={colors.success} />
+                          </Pressable>
+                        </View>
+                      ) : (
+                        <Text style={[styles.memberName, { color: colors.text }]}>
+                          {member.name}
+                          {isSelf ? " (tu)" : ""}
+                        </Text>
+                      )}
                       <View style={styles.memberMeta}>
                         <View style={[styles.roleBadge, { backgroundColor: badge.color + "20" }]}>
                           <Text style={[styles.roleBadgeText, { color: badge.color }]}>{badge.label}</Text>
                         </View>
+                        {isManaged && (
+                          <View
+                            style={[styles.managedBadge, { backgroundColor: colors.textSecondary + "20" }]}
+                            testID={`managed-badge-${member.id}`}
+                          >
+                            <Ionicons name="shield-checkmark-outline" size={11} color={colors.textSecondary} />
+                            <Text style={[styles.roleBadgeText, { color: colors.textSecondary }]}>
+                              Profilo gestito
+                            </Text>
+                          </View>
+                        )}
                         <Text style={[styles.memberPoints, { color: colors.textSecondary }]}>
                           {member.points} punti
                         </Text>
                       </View>
+                      {isManaged && (
+                        <Text style={[styles.managedHint, { color: colors.textSecondary }]}>
+                          Senza account: gestito dai genitori
+                        </Text>
+                      )}
                     </View>
-                    {isSelf ? (
+                    {isManaged && canManageProfiles && !isEditingMember ? (
+                      <Pressable
+                        onPress={() => {
+                          setEditedMemberName(member.name);
+                          setEditingMemberId(member.id);
+                        }}
+                        style={styles.actionButton}
+                        testID={`rename-member-${member.id}`}
+                      >
+                        <Ionicons name="pencil" size={20} color={colors.primary} />
+                      </Pressable>
+                    ) : isSelf ? (
                       <Pressable
                         onPress={() => router.push("/edit-profile")}
                         style={styles.actionButton}
@@ -777,6 +852,34 @@ const styles = StyleSheet.create({
   memberPoints: {
     fontSize: 13,
     fontFamily: "Inter_400Regular",
+  },
+  managedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  managedHint: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 4,
+  },
+  memberEditRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 4,
+  },
+  memberNameInput: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   deleteButton: {
     padding: 8,
