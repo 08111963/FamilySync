@@ -65,41 +65,62 @@ export function WebUpdateBanner() {
 
     let cancelled = false;
 
-    const check = async () => {
+    // Se il controllo fallisce (es. rete assente per un attimo mentre il
+    // telefono ripristina la pagina), riprova a breve invece di aspettare
+    // il prossimo giro di polling: altrimenti una pagina vecchia resta
+    // senza avviso per minuti.
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const checkWithRetry = async () => {
       if (runningVersion.current === null) {
-        // Versione in esecuzione letta dai bundle della pagina: rileva anche
-        // un'app GIÀ vecchia alla prima apertura dopo un Republish.
         runningVersion.current = await computeRunningVersion();
-        if (runningVersion.current === null) {
-          // Ambiente senza bundle statici (dev Metro) o senza WebCrypto:
-          // impossibile identificare la build in esecuzione, banner disattivo.
-          return;
-        }
+        if (runningVersion.current === null) return;
       }
       const serverVersion = await fetchServerVersion();
-      if (cancelled || !serverVersion) return;
+      if (cancelled) return;
+      if (!serverVersion) {
+        if (!retryTimer) {
+          retryTimer = setTimeout(() => {
+            retryTimer = null;
+            void checkWithRetry();
+          }, 10_000);
+        }
+        return;
+      }
       if (serverVersion !== runningVersion.current) {
         setUpdateAvailable(true);
       }
     };
 
-    void check();
-    const interval = setInterval(check, POLL_INTERVAL_MS);
+    void checkWithRetry();
+    const interval = setInterval(checkWithRetry, POLL_INTERVAL_MS);
 
     const onVisible = () => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        void check();
+        void checkWithRetry();
       }
+    };
+    // pageshow con persisted=true = pagina ripristinata dalla back/forward
+    // cache del browser (frequente su Chrome Android): i timer erano fermi,
+    // quindi va rifatto subito il confronto di versione.
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) void checkWithRetry();
     };
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", onVisible);
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("pageshow", onPageShow as EventListener);
     }
 
     return () => {
       cancelled = true;
       clearInterval(interval);
+      if (retryTimer) clearTimeout(retryTimer);
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", onVisible);
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("pageshow", onPageShow as EventListener);
       }
     };
   }, []);
