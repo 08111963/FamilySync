@@ -19,3 +19,5 @@ Regole:
 ## Redirect URI in dev (porta obbligatoria)
 Il dominio Replit dev SENZA porta (externalPort 80) punta a Metro/Expo web (8081), NON al backend: un callback OAuth senza `:5000` viene "servito" dalla SPA e l'utente torna al benvenuto senza errori. `getPublicBaseUrl()` in dev deve includere `:5000`, e l'URI `https://<REPLIT_DEV_DOMAIN>:5000/api/auth/google/callback` va registrato nella Google Cloud Console (match esatto, porta inclusa).
 **Come diagnosticare:** nei log backend si vede `google/start 302` ma MAI `google/callback` → il callback finisce altrove (Metro o prod).
+
+**AuthGate e rotte pubbliche (ago 2026):** la pagina di completamento registrazione social (`social-complete`) DEVE stare nel gruppo rotte pubbliche di AuthGate: il nuovo utente ci arriva NON autenticato (solo signupToken). Senza eccezione veniva rimbalzato su /welcome e il signup Google web falliva in prod. Regola generale: ogni nuova pagina raggiungibile prima del login va aggiunta a `inPublicGroup` in app/_layout.tsx.

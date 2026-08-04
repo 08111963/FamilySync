@@ -90,7 +90,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (isLoading) return;
 
     const root = segments[0];
-    const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "join-link" || root === "legal" || root === "help" || root === "forgot-password" || root === "reset-password";
+    // "social-complete" è pubblica: il nuovo utente Google/Apple arriva qui
+    // NON ancora autenticato (ha solo il signupToken) per completare la
+    // registrazione; senza questa eccezione verrebbe rimbalzato su /welcome.
+    const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "join-link" || root === "legal" || root === "help" || root === "forgot-password" || root === "reset-password" || root === "social-complete";
     const needsVerification = isAuthenticated && !!user && user.emailVerified === false;
     const inVerifyScreen = root === "verify-email";
     // Onboarding privacy: utenti esistenti senza fascia d'età / accettazione Termini.
