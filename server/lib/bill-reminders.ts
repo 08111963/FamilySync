@@ -2,13 +2,14 @@ import { db } from '../db';
 import {
   bills,
   billReminderLog,
+  billSplits,
   familyMembers,
   users,
 } from '../../shared/schema';
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import { logger } from './logger';
 import { sendBillReminderEmail, isEmailConfigured } from './email';
-import { sendPushToFamily } from './push';
+import { sendPushToFamily, sendPushToUser } from './push';
 import { startDurableScheduler } from './scheduled-jobs';
 
 const TZ = 'Europe/Rome';
@@ -84,23 +85,58 @@ async function processKind(kind: ReminderKind, dueDate: string): Promise<void> {
       const body = `"${bill.title}" di € ${bill.amount} ${whenText} (${formatDateIt(bill.dueDate)})`;
 
       try {
-        // Push (nativo + web) a tutta la famiglia — gli errori interni sono
-        // già gestiti/loggati dentro sendPushToFamily.
-        await sendPushToFamily(bill.familyId, {
-          title,
-          body,
-          data: { type: 'bill_reminder', billId: bill.id },
-        });
+        // Destinatari mirati: responsabile della bolletta + membri con una
+        // quota nella ripartizione. Se nessuno dei due è impostato, il
+        // promemoria va a tutta la famiglia (comportamento precedente).
+        const involvedMemberIds = new Set<string>();
+        if (bill.assignedTo) involvedMemberIds.add(bill.assignedTo);
+        const splits = await db
+          .select({ memberId: billSplits.memberId })
+          .from(billSplits)
+          .where(eq(billSplits.billId, bill.id));
+        for (const s of splits) involvedMemberIds.add(s.memberId);
 
-        // Email ai membri con email verificata.
+        // Mappa membro -> account: i profili bambino (userId NULL) non hanno
+        // account da notificare e vengono saltati.
+        let targetUserIds: string[] | null = null;
+        if (involvedMemberIds.size > 0) {
+          const involvedMembers = await db
+            .select({ userId: familyMembers.userId })
+            .from(familyMembers)
+            .where(and(
+              inArray(familyMembers.id, Array.from(involvedMemberIds)),
+              // Difesa in profondità: mai mappare membri di un'altra famiglia.
+              eq(familyMembers.familyId, bill.familyId),
+            ));
+          const ids = involvedMembers
+            .map((m) => m.userId)
+            .filter((id): id is string => id !== null);
+          // Solo profili bambino coinvolti (nessun account): avvisa i genitori
+          // ricadendo su tutta la famiglia, altrimenti il promemoria si perde.
+          if (ids.length > 0) targetUserIds = Array.from(new Set(ids));
+        }
+
+        // Push (nativo + web): solo ai coinvolti, o a tutta la famiglia come
+        // fallback — gli errori interni sono già gestiti/loggati.
+        const payload = { title, body, data: { type: 'bill_reminder', billId: bill.id } };
+        if (targetUserIds) {
+          await Promise.all(targetUserIds.map((uid) => sendPushToUser(uid, payload)));
+        } else {
+          await sendPushToFamily(bill.familyId, payload);
+        }
+
+        // Email ai membri con email verificata (stessi destinatari delle push).
         if (isEmailConfigured()) {
           const members = await db
-            .select({ email: users.email, name: users.name, emailVerified: users.emailVerified })
+            .select({ userId: familyMembers.userId, email: users.email, name: users.name, emailVerified: users.emailVerified })
             .from(familyMembers)
             .innerJoin(users, eq(users.id, familyMembers.userId))
             .where(eq(familyMembers.familyId, bill.familyId));
 
-          const recipients = members.filter((m) => m.email && m.emailVerified);
+          const targetSet = targetUserIds ? new Set(targetUserIds) : null;
+          const recipients = members.filter(
+            (m) => m.email && m.emailVerified && (!targetSet || (m.userId && targetSet.has(m.userId))),
+          );
           let sent = 0;
           for (const m of recipients) {
             try {
