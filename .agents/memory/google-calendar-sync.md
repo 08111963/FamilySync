@@ -12,3 +12,9 @@ description: Per-user OAuth (calendar.events) writes FamilySync events straight 
 - `prompt=consent` + `access_type=offline` obbligatori per avere sempre il refresh_token; scope verificato nella risposta token (MISSING_CALENDAR_SCOPE se l'utente non spunta la casella).
 - **Owner action**: lo scope calendar.events richiede verifica su Google Cloud Console (consent screen) prima della produzione.
 - Il feed ICS resta l'alternativa per Apple/Outlook.
+
+## Setup Google Cloud Console (fatto 2026-08-05, owner)
+- Ogni nuovo callback OAuth (es. /api/calendar-sync/google/callback) va aggiunto agli "URI di reindirizzamento autorizzati" del client web, altrimenti redirect_uri_mismatch.
+- La **Google Calendar API va abilitata** nel progetto (calendar-json.googleapis.com) — senza, il consenso OAuth riesce ma ogni insert fallisce 403 "API has not been used".
+- App OAuth in stato "Test in corso": solo Utenti di prova (max 100) possono collegare; per tutti serve "Pubblica app" (avviso app non verificata) + verifica Google per scope sensibile calendar.events (guida in guida-verifica-google-calendar.md).
+- Le tabelle gcal sono arrivate in prod col Republish (publish sincronizza lo schema).
