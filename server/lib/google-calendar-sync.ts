@@ -12,6 +12,7 @@ import {
 import { getBlockRelatedUserIds } from './block-filter';
 import { getPublicBaseUrl } from './oauth';
 import { logger } from './logger';
+import { startDurableScheduler } from './scheduled-jobs';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -574,4 +575,64 @@ export async function backfillUserCalendar(userId: string): Promise<void> {
       await recordSyncError(userId, 'Copia iniziale degli eventi non completata.').catch(() => {});
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Riconciliazione periodica: recupera gli eventi rimasti fuori da Google
+// dopo errori temporanei (rate limit, rete). La scrittura in tempo reale
+// avviene in background su crea/modifica/cancella: se Google fallisce lì,
+// l'evento resta senza riga in google_calendar_event_links finché qualcuno
+// non lo ri-modifica. Questo job colma i buchi riusando backfillUserCalendar
+// (che salta gli eventi già collegati: nessun doppione, vincolo UNIQUE
+// user+event sul mapping).
+// ---------------------------------------------------------------------------
+
+/** Nome del job nella tabella scheduled_job_runs. */
+export const GCAL_RECONCILE_JOB_NAME = 'gcal_reconcile_hourly';
+
+/** Ogni quanto questa istanza tenta il claim. */
+const GCAL_RECONCILE_POLL_INTERVAL_MS = 60 * 60 * 1000; // ogni ora
+
+/**
+ * Finestra minima tra due run: poco meno dell'intervallo di poll, così la
+ * cadenza resta davvero oraria anche se i tick arrivano in ritardo.
+ */
+export const GCAL_RECONCILE_MIN_INTERVAL_MS = 50 * 60 * 1000;
+
+/**
+ * Un singolo passaggio di riconciliazione (esportato per i test):
+ * per ogni utente con collegamento 'active' esegue il backfill degli eventi
+ * futuri non ancora sincronizzati. backfillUserCalendar gestisce già i propri
+ * errori per-utente (log + lastError, mai throw): un utente con problemi non
+ * blocca gli altri.
+ */
+export async function runGcalReconcileOnce(): Promise<void> {
+  const rows = await db
+    .select({ userId: googleCalendarConnections.userId })
+    .from(googleCalendarConnections)
+    .where(eq(googleCalendarConnections.status, 'active'));
+  for (const { userId } of rows) {
+    await backfillUserCalendar(userId);
+  }
+}
+
+/**
+ * Avvia lo scheduler di riconciliazione Google Calendar: claim atomico e
+ * durevole su DB (scheduled_job_runs), stesso pattern dei promemoria eventi.
+ * Sicuro con più istanze: una sola vince il claim, e comunque il mapping
+ * unique user+event previene i doppioni su Google.
+ */
+export function startGcalReconcileScheduler(): void {
+  if (!isGoogleCalendarSyncConfigured()) {
+    logger.info('Gcal reconcile scheduler NON avviato: OAuth Google non configurato.');
+    return;
+  }
+  startDurableScheduler({
+    jobName: GCAL_RECONCILE_JOB_NAME,
+    minIntervalMs: GCAL_RECONCILE_MIN_INTERVAL_MS,
+    pollIntervalMs: GCAL_RECONCILE_POLL_INTERVAL_MS,
+    // Primo giro dopo 90 secondi (dopo i promemoria, lascia respirare l'avvio).
+    firstRunDelayMs: 90 * 1000,
+    run: runGcalReconcileOnce,
+  });
 }

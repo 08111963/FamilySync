@@ -15,6 +15,7 @@ import { startBillReminderScheduler } from './lib/bill-reminders';
 import { startEventReminderScheduler } from './lib/event-reminders';
 import { startUploadIntegrityScheduler } from './lib/upload-integrity';
 import { startMealPlanBalanceScheduler } from './lib/meal-plan-balance-monitor';
+import { startGcalReconcileScheduler } from './lib/google-calendar-sync';
 import { checkWebBuildStaleness, type WebBuildStaleness } from './lib/web-build-staleness';
 
 const app = express();
@@ -540,6 +541,9 @@ function setupErrorHandler(app: express.Application) {
       // Valutazione settimanale equilibrio piani mediterranei AI reali
       // (opt-in via MEAL_PLAN_BALANCE_MONITOR=true: consuma quota AI).
       startMealPlanBalanceScheduler();
+      // Riconciliazione Google Calendar: recupera gli eventi non sincronizzati
+      // dopo errori temporanei (backfill periodico, dedup su mapping unique).
+      startGcalReconcileScheduler();
     },
   );
 })();
