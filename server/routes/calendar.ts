@@ -5,7 +5,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { calendarEvents, familyMembers, families, users } from '../../shared/schema';
-import { eq, and, gte, lte, isNull } from 'drizzle-orm';
+import { eq, and, gte, lte, isNull, inArray } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily, notifyUserInFamily } from '../lib/websocket';
@@ -15,6 +15,7 @@ import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 import { sendNewEventEmail, isEmailConfigured } from '../lib/email';
 import { parseRecurrenceRule, expandOccurrences, isRealIsoDate } from '../../shared/chore-recurrence';
+import { syncCreatedEvents, syncUpdatedEvent, syncDeletedEvents, getLinksForEvents } from '../lib/google-calendar-sync';
 
 /** Numero massimo di occorrenze materializzate per un evento ricorrente. */
 const MAX_RECURRENCE_OCCURRENCES = 60;
@@ -224,6 +225,8 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
     // rate limiter globale e il calendario restava vuoto).
     broadcastToFamily(familyId, 'event_created', event);
     void notifyAssignedMember(familyId, event, req.user!.userId);
+    // Scrittura immediata nei Google Calendar collegati (in background).
+    void syncCreatedEvents(familyId, inserted, req.user!.userId);
 
     // Push agli altri membri della famiglia (l'assegnatario riceve già la sua
     // notifica dedicata; esclusi anche gli utenti in blocco reciproco col creatore).
@@ -329,6 +332,8 @@ router.put('/:familyId/:eventId', authenticate, requireFamilyMember(), async (re
     }
 
     broadcastToFamily(familyId, 'event_updated', event);
+    // Aggiornamento immediato nei Google Calendar collegati (in background).
+    void syncUpdatedEvent(event);
     res.json(event);
   } catch (error) {
     logger.error('Update event error', { error: String(error) });
@@ -342,35 +347,60 @@ router.delete('/:familyId/:eventId', authenticate, requireFamilyMember(), async 
     const eventId = getParam(req, 'eventId');
     const scope = getQuery(req, 'scope');
 
-    const [deleted] = await db
-      .delete(calendarEvents)
+    // L'evento va letto (non cancellato) per primo: per le serie dobbiamo
+    // conoscere TUTTI gli id coinvolti e leggere i mapping Google PRIMA della
+    // delete, che li rimuove in cascata (perderemmo i googleEventId).
+    const [target] = await db
+      .select()
+      .from(calendarEvents)
       .where(and(eq(calendarEvents.id, eventId), eq(calendarEvents.familyId, familyId)))
-      .returning();
+      .limit(1);
 
-    // Se richiesto, elimina anche tutte le altre occorrenze della stessa serie.
-    if (scope === 'series' && deleted?.recurrenceRule) {
-      if (deleted.seriesId) {
+    if (!target) {
+      broadcastToFamily(familyId, 'event_deleted', { eventId, scope: 'single' });
+      return res.json({ message: 'Evento eliminato' });
+    }
+
+    const idsToDelete: string[] = [target.id];
+    if (scope === 'series' && target.recurrenceRule) {
+      if (target.seriesId) {
         // Serie nuove: identificate in modo univoco dal seriesId.
-        await db.delete(calendarEvents).where(
-          and(
+        const rows = await db
+          .select({ id: calendarEvents.id })
+          .from(calendarEvents)
+          .where(and(
             eq(calendarEvents.familyId, familyId),
-            eq(calendarEvents.seriesId, deleted.seriesId),
-          ),
-        );
+            eq(calendarEvents.seriesId, target.seriesId),
+          ));
+        for (const r of rows) if (!idsToDelete.includes(r.id)) idsToDelete.push(r.id);
       } else {
         // Serie create prima dell'introduzione del seriesId: fallback sui campi
         // discriminanti disponibili (titolo, regola, orario, creatore).
         const conditions = [
           eq(calendarEvents.familyId, familyId),
-          eq(calendarEvents.title, deleted.title),
-          eq(calendarEvents.recurrenceRule, deleted.recurrenceRule),
-          eq(calendarEvents.createdBy, deleted.createdBy),
+          eq(calendarEvents.title, target.title),
+          eq(calendarEvents.recurrenceRule, target.recurrenceRule),
+          eq(calendarEvents.createdBy, target.createdBy),
           isNull(calendarEvents.seriesId),
-          deleted.time === null ? isNull(calendarEvents.time) : eq(calendarEvents.time, deleted.time),
+          target.time === null ? isNull(calendarEvents.time) : eq(calendarEvents.time, target.time),
         ];
-        await db.delete(calendarEvents).where(and(...conditions));
+        const rows = await db
+          .select({ id: calendarEvents.id })
+          .from(calendarEvents)
+          .where(and(...conditions));
+        for (const r of rows) if (!idsToDelete.includes(r.id)) idsToDelete.push(r.id);
       }
     }
+
+    const gcalLinks = await getLinksForEvents(idsToDelete);
+
+    await db.delete(calendarEvents).where(and(
+      eq(calendarEvents.familyId, familyId),
+      inArray(calendarEvents.id, idsToDelete),
+    ));
+
+    // Rimozione immediata dai Google Calendar collegati (in background).
+    void syncDeletedEvents(gcalLinks);
 
     broadcastToFamily(familyId, 'event_deleted', { eventId, scope: scope === 'series' ? 'series' : 'single' });
     res.json({ message: 'Evento eliminato' });

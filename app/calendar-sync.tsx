@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert, Share, Linking } from "react-native";
+import * as WebBrowser from "expo-web-browser";
+import * as ExpoLinking from "expo-linking";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -30,6 +32,107 @@ export default function CalendarSyncScreen() {
   });
 
   const feedUrl = data?.url;
+
+  // Collegamento diretto Google Calendar (per utente).
+  const gcalQueryKey = ["/api/calendar-sync/google/status"];
+  const gcalQuery = useQuery<{
+    available: boolean;
+    connected: boolean;
+    status?: "active" | "expired";
+    email?: string | null;
+    lastError?: string | null;
+  }>({
+    queryKey: gcalQueryKey,
+    queryFn: () => apiFetch(`/api/calendar-sync/google/status`),
+  });
+  const gcal = gcalQuery.data;
+  const [gcalBusy, setGcalBusy] = useState(false);
+
+  // Al ritorno dal consenso Google (web: la pagina si ricarica con ?gcal=...).
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get("gcal");
+    if (!outcome) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    if (outcome === "connected") {
+      void queryClient.invalidateQueries({ queryKey: gcalQueryKey });
+      showMessage("Fatto", "Google Calendar collegato! Gli eventi futuri stanno arrivando nel tuo calendario.");
+    } else if (outcome === "denied") {
+      showMessage("Attenzione", "Collegamento annullato: non è stato dato il consenso a Google.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleGcalConnect = async () => {
+    if (gcalBusy) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setGcalBusy(true);
+    try {
+      // Il returnUrl riporta l'utente su QUESTA pagina dopo il consenso.
+      let returnUrl =
+        Platform.OS === "web" && typeof window !== "undefined"
+          ? `${window.location.origin}/calendar-sync`
+          : ExpoLinking.createURL("calendar-sync");
+      if (returnUrl.startsWith("exp://") && returnUrl.includes("ngrok")) {
+        returnUrl = returnUrl.replace(/^exp:\/\//, "exps://");
+      }
+      const { url } = await apiFetch<{ url: string }>(`/api/calendar-sync/google/start-url`, {
+        method: "POST",
+        body: { returnUrl },
+      });
+      if (Platform.OS === "web") {
+        window.location.href = url;
+        return;
+      }
+      const result = await WebBrowser.openAuthSessionAsync(url, returnUrl, { showInRecents: true });
+      if (result.type === "success" && result.url) {
+        await queryClient.invalidateQueries({ queryKey: gcalQueryKey });
+        if (result.url.includes("gcal=connected")) {
+          showMessage("Fatto", "Google Calendar collegato! Gli eventi futuri stanno arrivando nel tuo calendario.");
+        } else if (result.url.includes("gcal=denied")) {
+          showMessage("Attenzione", "Collegamento annullato: non è stato dato il consenso a Google.");
+        }
+      } else {
+        // Rete di sicurezza (Android può ritornare "dismiss" dopo il redirect).
+        setTimeout(() => void queryClient.invalidateQueries({ queryKey: gcalQueryKey }), 1200);
+      }
+    } catch {
+      showMessage("Errore", "Non sono riuscito ad avviare il collegamento con Google. Riprova.");
+    } finally {
+      setGcalBusy(false);
+    }
+  };
+
+  const handleGcalDisconnect = async () => {
+    if (gcalBusy) return;
+    const doDisconnect = async () => {
+      setGcalBusy(true);
+      try {
+        await apiFetch(`/api/calendar-sync/google/disconnect`, { method: "POST" });
+        await queryClient.invalidateQueries({ queryKey: gcalQueryKey });
+        showMessage("Fatto", "Google Calendar scollegato. Gli eventi già copiati restano nel tuo calendario.");
+      } catch {
+        showMessage("Errore", "Non sono riuscito a scollegare. Riprova.");
+      } finally {
+        setGcalBusy(false);
+      }
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm("Scollegare Google Calendar? I nuovi eventi non verranno più sincronizzati.")) {
+        void doDisconnect();
+      }
+    } else {
+      Alert.alert(
+        "Scollegare Google Calendar?",
+        "I nuovi eventi non verranno più sincronizzati automaticamente.",
+        [
+          { text: "Annulla", style: "cancel" },
+          { text: "Scollega", style: "destructive", onPress: () => void doDisconnect() },
+        ]
+      );
+    }
+  };
 
   const showMessage = (title: string, message: string) => {
     if (Platform.OS === "web") {
@@ -173,6 +276,90 @@ export default function CalendarSyncScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 34 + 24, gap: 16 }}
         showsVerticalScrollIndicator={false}
       >
+        {gcal?.available !== false && (
+          <Card>
+            <View style={styles.cardHeader}>
+              <View style={[styles.cardIcon, { backgroundColor: "#4285F420" }]}>
+                <Ionicons name="logo-google" size={20} color="#4285F4" />
+              </View>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>
+                Collega Google Calendar (consigliato)
+              </Text>
+            </View>
+            {gcalQuery.isLoading ? (
+              <Text style={[styles.cardText, { color: colors.textSecondary }]}>Caricamento...</Text>
+            ) : gcal?.connected && gcal.status === "active" ? (
+              <>
+                <View style={styles.statusRow}>
+                  <Ionicons name="checkmark-circle" size={18} color="#34C759" />
+                  <Text style={[styles.cardText, { color: colors.text, marginBottom: 0, flex: 1 }]}>
+                    Collegato{gcal.email ? ` come ${gcal.email}` : ""}. I nuovi eventi vengono
+                    scritti subito nel tuo Google Calendar.
+                  </Text>
+                </View>
+                {!!gcal.lastError && (
+                  <Text style={[styles.cardText, { color: colors.error }]}>
+                    Ultimo problema: {gcal.lastError}
+                  </Text>
+                )}
+                <Pressable
+                  onPress={handleGcalDisconnect}
+                  disabled={gcalBusy}
+                  style={[styles.actionBtnOutline, { borderColor: colors.error, alignSelf: "flex-start", opacity: gcalBusy ? 0.6 : 1 }]}
+                  testID="gcal-disconnect"
+                >
+                  <Ionicons name="unlink-outline" size={18} color={colors.error} />
+                  <Text style={[styles.actionBtnOutlineText, { color: colors.error }]}>
+                    {gcalBusy ? "Scollego..." : "Scollega"}
+                  </Text>
+                </Pressable>
+              </>
+            ) : gcal?.connected && gcal.status === "expired" ? (
+              <>
+                <View style={styles.statusRow}>
+                  <Ionicons name="alert-circle" size={18} color={colors.error} />
+                  <Text style={[styles.cardText, { color: colors.error, marginBottom: 0, flex: 1 }]}>
+                    Collegamento scaduto o revocato: gli eventi non vengono più sincronizzati.
+                    Ricollega il tuo account per riprendere.
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={handleGcalConnect}
+                  disabled={gcalBusy}
+                  style={[styles.actionBtn, { backgroundColor: "#4285F4", alignSelf: "flex-start", opacity: gcalBusy ? 0.6 : 1 }]}
+                  testID="gcal-reconnect"
+                >
+                  <Ionicons name="logo-google" size={18} color="#FFFFFF" />
+                  <Text style={styles.actionBtnText}>{gcalBusy ? "Apro Google..." : "Ricollega"}</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.cardText, { color: colors.text }]}>
+                  Il modo più affidabile: colleghi il tuo account Google una volta sola e ogni
+                  evento della famiglia viene scritto SUBITO nel tuo Google Calendar (anche
+                  modifiche e cancellazioni), senza le attese del link "da URL".
+                </Text>
+                <Text style={[styles.cardText, { color: colors.textSecondary }]}>
+                  Vale solo per il tuo account: ogni membro della famiglia può collegare il suo.
+                  Puoi scollegarti quando vuoi.
+                </Text>
+                <Pressable
+                  onPress={handleGcalConnect}
+                  disabled={gcalBusy}
+                  style={[styles.actionBtn, { backgroundColor: "#4285F4", alignSelf: "flex-start", opacity: gcalBusy ? 0.6 : 1 }]}
+                  testID="gcal-connect"
+                >
+                  <Ionicons name="logo-google" size={18} color="#FFFFFF" />
+                  <Text style={styles.actionBtnText}>
+                    {gcalBusy ? "Apro Google..." : "Collega Google Calendar"}
+                  </Text>
+                </Pressable>
+              </>
+            )}
+          </Card>
+        )}
+
         {Platform.OS !== "web" && (
           <Card>
             <View style={styles.cardHeader}>
@@ -429,6 +616,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Inter_600SemiBold",
     flex: 1,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginBottom: 10,
   },
   cardText: {
     fontSize: 14,

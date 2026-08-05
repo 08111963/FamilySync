@@ -12,6 +12,7 @@ import invitesRoutes, { inviteLimiter } from "./routes/invites";
 import joinLinkRoutes, { joinLinkLimiter } from "./routes/join-link";
 import calendarRoutes from "./routes/calendar";
 import calendarFeedRoutes from "./routes/calendar-feed";
+import googleCalendarSyncRoutes from "./routes/google-calendar-sync";
 import shoppingRoutes from "./routes/shopping";
 import choresRoutes from "./routes/chores";
 import rewardsRoutes from "./routes/rewards";
@@ -81,6 +82,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/join-link', joinLinkLimiter, joinLinkRoutes);
   app.use('/api/families', authenticate, requireEmailVerified, familiesRoutes);
   app.use('/api/calendar', authenticate, requireEmailVerified, calendarRoutes);
+  // Google Calendar sync: auth applicata per-rotta (il callback OAuth è pubblico).
+  app.use('/api/calendar-sync', googleCalendarSyncRoutes);
   app.use('/api/shopping', authenticate, requireEmailVerified, shoppingRoutes);
   app.use('/api/chores', authenticate, requireEmailVerified, choresRoutes);
   app.use('/api/rewards', authenticate, requireEmailVerified, rewardsRoutes);

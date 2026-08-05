@@ -154,6 +154,37 @@ export const calendarEvents = pgTable("calendar_events", {
 
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 
+// GOOGLE CALENDAR SYNC — collegamento personale (per utente) al Google
+// Calendar via OAuth: il refresh token è CIFRATO lato server (AES-256-GCM,
+// chiave derivata da SESSION_SECRET). status='expired' quando il token viene
+// revocato/scade: fail-visibile, l'app chiede di ricollegare.
+export const googleCalendarConnections = pgTable("google_calendar_connections", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  googleEmail: varchar("google_email", { length: 255 }),
+  refreshTokenEnc: text("refresh_token_enc").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'expired'
+  lastError: text("last_error"),
+  lastSyncAt: timestamp("last_sync_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type GoogleCalendarConnection = typeof googleCalendarConnections.$inferSelect;
+
+// Mapping evento FamilySync → evento Google Calendar (per utente collegato).
+export const googleCalendarEventLinks = pgTable("google_calendar_event_links", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  eventId: uuid("event_id").notNull().references(() => calendarEvents.id, { onDelete: "cascade" }),
+  googleEventId: varchar("google_event_id", { length: 255 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  unique("gcal_event_links_user_event_unique").on(table.userId, table.eventId),
+  index("gcal_event_links_event_idx").on(table.eventId),
+]);
+
+export type GoogleCalendarEventLink = typeof googleCalendarEventLinks.$inferSelect;
+
 // SHOPPING LISTS
 export const shoppingLists = pgTable("shopping_lists", {
   id: uuid("id").primaryKey().defaultRandom(),
