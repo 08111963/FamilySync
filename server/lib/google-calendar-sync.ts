@@ -609,12 +609,16 @@ export async function backfillUserCalendar(userId: string): Promise<void> {
 
     let pushed = 0;
     for (const { familyId } of memberships) {
+      // Stessa esclusione di syncCreatedEvents: gli eventi creati da utenti in
+      // blocco reciproco con il destinatario non vanno copiati sul suo Google.
+      const blockRelated = new Set(await getBlockRelatedUserIds(userId, familyId));
       const events = await db
         .select()
         .from(calendarEvents)
         .where(and(eq(calendarEvents.familyId, familyId), gte(calendarEvents.date, today)));
       for (const ev of events) {
         if (existing.has(ev.id)) continue;
+        if (ev.createdBy && ev.createdBy !== userId && blockRelated.has(ev.createdBy)) continue;
         if (pushed >= BACKFILL_MAX_EVENTS) return;
         await pushEventToUser(userId, ev);
         pushed += 1;

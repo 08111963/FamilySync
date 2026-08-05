@@ -122,6 +122,7 @@ import {
   calendarEvents,
   googleCalendarConnections,
   googleCalendarEventLinks,
+  blocks,
 } from "../../shared/schema";
 
 const hasDb = !!process.env.DATABASE_URL;
@@ -478,6 +479,30 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
       "il secondo backfill deve saltare l'evento già collegato",
     );
     assert.equal((await getLinksForEvents([ev.id])).length, 1, "un solo link, mai duplicato");
+  });
+
+  test("backfill: esclude gli eventi creati da utenti in blocco reciproco", async () => {
+    const familyId = await makeFamily();
+    const target = await makeUser("backfill-target", familyId);
+    const blocked = await makeUser("backfill-blocked", familyId);
+
+    // Blocco reciproco: target ha bloccato "blocked" (basta una direzione).
+    await db.insert(blocks).values({ familyId, blockerUserId: target, blockedUserId: blocked });
+
+    const own = await makeDbEvent("Mio evento", target, familyId, "2099-04-01");
+    const fromBlocked = await makeDbEvent("Evento del bloccato", blocked, familyId, "2099-04-02");
+
+    calls = [];
+    await backfillUserCalendar(target);
+
+    const posts = calls.filter((c) => c.method === "POST" && c.url === CAL_PREFIX);
+    const pushedIds = posts.map((c) => c.body.extendedProperties.private.familySyncEventId);
+    assert.ok(pushedIds.includes(own.id), "il proprio evento deve essere copiato");
+    assert.ok(!pushedIds.includes(fromBlocked.id), "l'evento dell'utente bloccato NON deve essere copiato");
+
+    // Nessun link creato per l'evento dell'utente bloccato verso target.
+    const links = await getLinksForEvents([fromBlocked.id]);
+    assert.equal(links.filter((l) => l.userId === target).length, 0);
   });
 
   test("backfill: rispetta il tetto di 250 eventi", async () => {
