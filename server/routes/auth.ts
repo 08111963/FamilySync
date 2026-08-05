@@ -241,7 +241,18 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
     const refreshToken = generateRefreshToken(user);
     
     res.json({
-      user: { id: user.id, email: user.email, name: user.name, emailVerified: user.emailVerified },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        emailVerified: user.emailVerified,
+        ageBand: user.ageBand,
+        needsOnboarding: !user.ageBand || !user.termsAcceptedAt,
+        // Avviso non bloccante: la Privacy Policy è cambiata rispetto all'ultima
+        // versione vista (stessi campi di GET /me, così il banner appare subito).
+        privacyPolicyUpdated: user.privacyPolicySeenVersion !== PRIVACY_POLICY_VERSION,
+        privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+      },
       accessToken,
       refreshToken,
     });
@@ -823,7 +834,18 @@ router.post('/social/complete', socialLoginLimiter, async (req: Request, res: Re
 
 function issueSessionResponse(user: typeof users.$inferSelect) {
   return {
-    user: { id: user.id, email: user.email, name: user.name, emailVerified: user.emailVerified },
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      emailVerified: user.emailVerified,
+      ageBand: user.ageBand,
+      needsOnboarding: !user.ageBand || !user.termsAcceptedAt,
+      // Come POST /login e GET /me: il banner "Privacy Policy aggiornata"
+      // deve poter apparire subito anche dopo il login social.
+      privacyPolicyUpdated: user.privacyPolicySeenVersion !== PRIVACY_POLICY_VERSION,
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+    },
     accessToken: generateAccessToken(user),
     refreshToken: generateRefreshToken(user),
   };

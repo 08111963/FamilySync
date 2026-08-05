@@ -26,3 +26,6 @@ The backend (port 5000) serves a static Expo web export from `web-build/` alongs
 ## Patch centralizzata
 - `scripts/patch-web-build.sh <dir>` applica lang=it + link manifest PWA (idempotente); usarlo dopo OGNI export locale e già integrato nel build di deploy (.replit [deployment] via deployConfig).
 - Il build di publish RI-ESPORTA web-build da zero: patch manuali su web-build vengono perse se non sono nello script.
+
+## Cache Metro e EXPO_PUBLIC_DOMAIN
+- `expo export` può riusare il bundle in cache Metro: se il primo export era senza EXPO_PUBLIC_DOMAIN, ri-esportare CON la env non basta — serve `expo export -c` per rigenerare col dominio baked. Verificare sempre con grep del dominio nel bundle.
