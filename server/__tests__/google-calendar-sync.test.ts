@@ -17,6 +17,7 @@ import {
   syncDeletedEvents,
   getLinksForEvents,
   backfillUserCalendar,
+  removeBlockedEventLinks,
 } from "../lib/google-calendar-sync";
 import type { CalendarEvent } from "../../shared/schema";
 
@@ -503,6 +504,68 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
     // Nessun link creato per l'evento dell'utente bloccato verso target.
     const links = await getLinksForEvents([fromBlocked.id]);
     assert.equal(links.filter((l) => l.userId === target).length, 0);
+  });
+
+  // -------------------------------------------------------------------------
+  // Pulizia retroattiva: link creati PRIMA del fix del backfill verso eventi
+  // di utenti in blocco reciproco → DELETE su Google e link rimosso.
+  // -------------------------------------------------------------------------
+
+  test("cleanup: rimuove da Google gli eventi di utenti bloccati già copiati, lasciando gli altri", async () => {
+    const familyId = await makeFamily();
+    const target = await makeUser("cleanup-target", familyId);
+    const blocked = await makeUser("cleanup-blocked", familyId);
+
+    await db.insert(blocks).values({ familyId, blockerUserId: target, blockedUserId: blocked });
+
+    const own = await makeDbEvent("Mio evento ok", target, familyId, "2099-05-01");
+    const fromBlocked = await makeDbEvent("Copiato prima del fix", blocked, familyId, "2099-05-02");
+
+    // Link "storici": entrambi già copiati sul Google Calendar di target.
+    await db.insert(googleCalendarEventLinks).values([
+      { userId: target, eventId: own.id, googleEventId: "gid-keep" },
+      { userId: target, eventId: fromBlocked.id, googleEventId: "gid-purge" },
+    ]);
+    // Il link del creatore bloccato verso il PROPRIO evento non va toccato.
+    await db.insert(googleCalendarEventLinks).values({
+      userId: blocked, eventId: fromBlocked.id, googleEventId: "gid-own-of-blocked",
+    });
+
+    calls = [];
+    await removeBlockedEventLinks();
+
+    const dels = calls.filter((c) => c.method === "DELETE");
+    assert.deepEqual(dels.map((c) => c.url), [`${CAL_PREFIX}/gid-purge`], "DELETE solo per l'evento dell'utente bloccato");
+
+    const linksBlockedEv = await getLinksForEvents([fromBlocked.id]);
+    assert.equal(linksBlockedEv.filter((l) => l.userId === target).length, 0, "link target→evento bloccato rimosso");
+    assert.equal(linksBlockedEv.filter((l) => l.userId === blocked).length, 1, "il creatore mantiene il suo link");
+    assert.equal((await getLinksForEvents([own.id])).length, 1, "il link all'evento proprio resta");
+  });
+
+  test("cleanup: 404 su Google → link comunque rimosso; errore 500 → link mantenuto per il retry", async () => {
+    const familyId = await makeFamily();
+    const target = await makeUser("cleanup-err", familyId);
+    const blocked = await makeUser("cleanup-err-blocked", familyId);
+    await db.insert(blocks).values({ familyId, blockerUserId: blocked, blockedUserId: target });
+
+    const ev404 = await makeDbEvent("Già sparito su Google", blocked, familyId, "2099-05-03");
+    const ev500 = await makeDbEvent("Errore temporaneo", blocked, familyId, "2099-05-04");
+    await db.insert(googleCalendarEventLinks).values([
+      { userId: target, eventId: ev404.id, googleEventId: "gid-404" },
+      { userId: target, eventId: ev500.id, googleEventId: "gid-500" },
+    ]);
+
+    handler = (c) => {
+      if (c.method !== "DELETE") return undefined;
+      if (c.url.endsWith("/gid-404")) return new Response("Not Found", { status: 404 });
+      if (c.url.endsWith("/gid-500")) return new Response("Server Error", { status: 500 });
+      return undefined;
+    };
+    await removeBlockedEventLinks();
+
+    assert.equal((await getLinksForEvents([ev404.id])).length, 0, "404 = già rimosso: link cancellato");
+    assert.equal((await getLinksForEvents([ev500.id])).length, 1, "500 = link mantenuto, ritenterà");
   });
 
   test("backfill: rispetta il tetto di 250 eventi", async () => {

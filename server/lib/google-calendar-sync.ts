@@ -656,6 +656,62 @@ const GCAL_RECONCILE_POLL_INTERVAL_MS = 60 * 60 * 1000; // ogni ora
 export const GCAL_RECONCILE_MIN_INTERVAL_MS = 50 * 60 * 1000;
 
 /**
+ * Rimuove dai Google Calendar gli eventi di utenti in blocco reciproco con il
+ * destinatario che erano stati copiati PRIMA del fix del backfill (righe in
+ * google_calendar_event_links create quando l'esclusione non esisteva).
+ * Cancella l'evento dal Google Calendar dell'utente e rimuove il link.
+ * Esportata per i test; usata dalla riconciliazione oraria.
+ */
+export async function removeBlockedEventLinks(): Promise<void> {
+  try {
+    // Tutti i link dove l'evento è stato creato da un ALTRO utente.
+    const rows = await db
+      .select({
+        linkId: googleCalendarEventLinks.id,
+        userId: googleCalendarEventLinks.userId,
+        googleEventId: googleCalendarEventLinks.googleEventId,
+        createdBy: calendarEvents.createdBy,
+        familyId: calendarEvents.familyId,
+      })
+      .from(googleCalendarEventLinks)
+      .innerJoin(calendarEvents, eq(calendarEvents.id, googleCalendarEventLinks.eventId));
+
+    // Cache blocchi per coppia (utente, famiglia): una query per coppia.
+    const blockCache = new Map<string, Set<string>>();
+    for (const row of rows) {
+      if (!row.createdBy || row.createdBy === row.userId) continue;
+      const cacheKey = `${row.userId}:${row.familyId}`;
+      let blockRelated = blockCache.get(cacheKey);
+      if (!blockRelated) {
+        blockRelated = new Set(await getBlockRelatedUserIds(row.userId, row.familyId));
+        blockCache.set(cacheKey, blockRelated);
+      }
+      if (!blockRelated.has(row.createdBy)) continue;
+      try {
+        const res = await gcalFetch(row.userId, 'DELETE', `/${encodeURIComponent(row.googleEventId)}`);
+        // 404/410 = già rimosso su Google: va bene, togliamo comunque il link.
+        if (!res.ok && res.status !== 404 && res.status !== 410) {
+          const text = await res.text();
+          logger.error('Gcal blocked-event cleanup delete failed', {
+            userId: row.userId,
+            status: res.status,
+            body: text.slice(0, 200),
+          });
+          continue; // link mantenuto: ritenterà alla prossima riconciliazione
+        }
+        await db.delete(googleCalendarEventLinks).where(eq(googleCalendarEventLinks.id, row.linkId));
+      } catch (err) {
+        if (!(err instanceof GcalConnectionExpiredError)) {
+          logger.error('Gcal blocked-event cleanup failed', { userId: row.userId, error: String(err) });
+        }
+      }
+    }
+  } catch (err) {
+    logger.error('Gcal blocked-event cleanup fanout failed', { error: String(err) });
+  }
+}
+
+/**
  * Un singolo passaggio di riconciliazione (esportato per i test):
  * per ogni utente con collegamento 'active' esegue il backfill degli eventi
  * futuri non ancora sincronizzati. backfillUserCalendar gestisce già i propri
@@ -663,6 +719,9 @@ export const GCAL_RECONCILE_MIN_INTERVAL_MS = 50 * 60 * 1000;
  * blocca gli altri.
  */
 export async function runGcalReconcileOnce(): Promise<void> {
+  // Prima la pulizia dei link verso eventi di utenti bloccati (copiati dai
+  // backfill precedenti al fix), poi il backfill dei buchi.
+  await removeBlockedEventLinks();
   const rows = await db
     .select({ userId: googleCalendarConnections.userId })
     .from(googleCalendarConnections)
