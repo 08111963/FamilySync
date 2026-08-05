@@ -16,6 +16,7 @@ import {
   syncUpdatedEvent,
   syncDeletedEvents,
   getLinksForEvents,
+  backfillUserCalendar,
 } from "../lib/google-calendar-sync";
 import type { CalendarEvent } from "../../shared/schema";
 
@@ -176,10 +177,15 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
     return u!.id;
   }
 
-  async function makeDbEvent(title: string, createdBy: string, familyId: string): Promise<CalendarEvent> {
+  async function makeDbEvent(
+    title: string,
+    createdBy: string,
+    familyId: string,
+    date = "2026-09-01",
+  ): Promise<CalendarEvent> {
     const [e] = await db
       .insert(calendarEvents)
-      .values({ familyId, title, date: "2026-09-01", time: "18:00", color: "#6366F1", createdBy })
+      .values({ familyId, title, date, time: "18:00", color: "#6366F1", createdBy })
       .returning();
     eventIds.push(e!.id);
     return e as CalendarEvent;
@@ -419,5 +425,80 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
     assert.equal(conn.status, "active", "un 500 non deve invalidare il collegamento");
     assert.match(conn.lastError ?? "", /500/);
     assert.equal((await getLinksForEvents([ev.id])).length, 0);
+  });
+
+  // -------------------------------------------------------------------------
+  // Backfill iniziale (backfillUserCalendar): niente duplicati, niente eventi
+  // passati, tetto BACKFILL_MAX_EVENTS rispettato, lastSyncAt aggiornato.
+  // -------------------------------------------------------------------------
+
+  test("backfill: copia solo eventi futuri, salta i già collegati, aggiorna lastSyncAt", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("backfill", familyId);
+
+    const past = await makeDbEvent("Evento passato", userId, familyId, "2020-01-01");
+    const future1 = await makeDbEvent("Futuro nuovo", userId, familyId, "2099-01-01");
+    const future2 = await makeDbEvent("Futuro già collegato", userId, familyId, "2099-01-02");
+    // future2 è già sincronizzato: il backfill NON deve toccarlo.
+    await db.insert(googleCalendarEventLinks).values({ userId, eventId: future2.id, googleEventId: "gid-already" });
+
+    await backfillUserCalendar(userId);
+
+    const posts = calls.filter((c) => c.method === "POST" && c.url === CAL_PREFIX);
+    assert.equal(posts.length, 1, "deve creare SOLO l'evento futuro non ancora collegato");
+    assert.equal(posts[0]!.body.extendedProperties.private.familySyncEventId, future1.id);
+
+    // Nessun duplicato: il link di future2 resta quello originale.
+    const links2 = await getLinksForEvents([future2.id]);
+    assert.equal(links2.length, 1);
+    assert.equal(links2[0]!.googleEventId, "gid-already");
+    // L'evento passato non ha alcun link.
+    assert.equal((await getLinksForEvents([past.id])).length, 0);
+    // Il nuovo futuro ha esattamente un link.
+    assert.equal((await getLinksForEvents([future1.id])).length, 1);
+
+    const conn = await getConn(userId);
+    assert.ok(conn.lastSyncAt, "lastSyncAt deve essere aggiornato dopo il backfill");
+    assert.equal(conn.lastError, null);
+  });
+
+  test("backfill ripetuto: seconda esecuzione non crea alcun duplicato", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("backfill-idem", familyId);
+    const ev = await makeDbEvent("Idempotente", userId, familyId, "2099-03-01");
+
+    await backfillUserCalendar(userId);
+    assert.equal(calls.filter((c) => c.method === "POST" && c.url === CAL_PREFIX).length, 1);
+
+    calls = [];
+    await backfillUserCalendar(userId);
+    assert.equal(
+      calls.filter((c) => c.method === "POST" && c.url === CAL_PREFIX).length,
+      0,
+      "il secondo backfill deve saltare l'evento già collegato",
+    );
+    assert.equal((await getLinksForEvents([ev.id])).length, 1, "un solo link, mai duplicato");
+  });
+
+  test("backfill: rispetta il tetto di 250 eventi", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("backfill-cap", familyId);
+
+    // 252 eventi futuri inseriti in batch (oltre il tetto di 250).
+    const rows = Array.from({ length: 252 }, (_, i) => ({
+      familyId,
+      title: `Cap ${i}`,
+      date: "2099-06-01",
+      time: "10:00",
+      color: "#6366F1",
+      createdBy: userId,
+    }));
+    const inserted = await db.insert(calendarEvents).values(rows).returning({ id: calendarEvents.id });
+    for (const r of inserted) eventIds.push(r.id);
+
+    await backfillUserCalendar(userId);
+
+    const posts = calls.filter((c) => c.method === "POST" && c.url === CAL_PREFIX);
+    assert.equal(posts.length, 250, "mai più di BACKFILL_MAX_EVENTS creazioni");
   });
 });
