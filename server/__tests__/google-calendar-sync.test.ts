@@ -1,7 +1,10 @@
-import { test, describe } from "node:test";
+import { test, describe, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { eq } from "drizzle-orm";
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || "test-session-secret";
+process.env.GOOGLE_OAUTH_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID || "test-client-id";
+process.env.GOOGLE_OAUTH_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET || "test-client-secret";
 
 import {
   encryptToken,
@@ -9,6 +12,10 @@ import {
   signGcalOauthState,
   verifyGcalOauthState,
   eventToGooglePayload,
+  syncCreatedEvents,
+  syncUpdatedEvent,
+  syncDeletedEvents,
+  getLinksForEvents,
 } from "../lib/google-calendar-sync";
 import type { CalendarEvent } from "../../shared/schema";
 
@@ -96,5 +103,321 @@ describe("eventToGooglePayload", () => {
   test("endTime <= time rolls end to next day (crossing midnight)", () => {
     const p = eventToGooglePayload(makeEvent({ time: "22:00", endTime: "01:00" })) as any;
     assert.deepEqual(p.end, { dateTime: "2026-08-11T01:00:00", timeZone: "Europe/Rome" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test end-to-end con fetch mockato: create/update/delete verso calendar/v3,
+// retry su 401 e transizione a 'expired' su invalid_grant. Richiede il DB
+// (connessioni e link vengono scritti su tabelle reali), ma NESSUNA chiamata
+// esce verso Google: globalThis.fetch è sostituita.
+// ---------------------------------------------------------------------------
+
+import { db } from "../db";
+import {
+  users,
+  families,
+  familyMembers,
+  calendarEvents,
+  googleCalendarConnections,
+  googleCalendarEventLinks,
+} from "../../shared/schema";
+
+const hasDb = !!process.env.DATABASE_URL;
+
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const CAL_PREFIX = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+
+interface RecordedCall {
+  url: string;
+  method: string;
+  auth: string | null;
+  body: any;
+}
+
+describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? false : "DATABASE_URL non impostata" }, () => {
+  const realFetch = globalThis.fetch;
+  let calls: RecordedCall[] = [];
+  // Handler configurabile per ogni test: riceve la chiamata registrata e
+  // ritorna la Response simulata; se ritorna undefined si usa il default.
+  let handler: (call: RecordedCall) => Response | undefined = () => undefined;
+  let tokenCounter = 0;
+
+  const userIds: string[] = [];
+  const familyIds: string[] = [];
+  const eventIds: string[] = [];
+
+  // Ogni test usa una famiglia dedicata: il fan-out di syncCreatedEvents
+  // altrimenti raggiungerebbe anche gli utenti dei test precedenti.
+  async function makeFamily(): Promise<string> {
+    const [f] = await db.insert(families).values({ name: "Gcal E2E Test Family" }).returning({ id: families.id });
+    familyIds.push(f!.id);
+    return f!.id;
+  }
+
+  async function makeUser(label: string, familyId: string): Promise<string> {
+    const [u] = await db
+      .insert(users)
+      .values({
+        email: `gcal-e2e-${label}-${Date.now()}@example.com`,
+        passwordHash: "x",
+        name: `Gcal E2E ${label}`,
+        emailVerified: true,
+      })
+      .returning({ id: users.id });
+    userIds.push(u!.id);
+    await db.insert(familyMembers).values({ familyId, userId: u!.id, role: "admin", color: "#00ff00" });
+    await db.insert(googleCalendarConnections).values({
+      userId: u!.id,
+      googleEmail: `${label}@gmail.com`,
+      refreshTokenEnc: encryptToken(`refresh-${label}`),
+      status: "active",
+    });
+    return u!.id;
+  }
+
+  async function makeDbEvent(title: string, createdBy: string, familyId: string): Promise<CalendarEvent> {
+    const [e] = await db
+      .insert(calendarEvents)
+      .values({ familyId, title, date: "2026-09-01", time: "18:00", color: "#6366F1", createdBy })
+      .returning();
+    eventIds.push(e!.id);
+    return e as CalendarEvent;
+  }
+
+  async function getConn(userId: string) {
+    const [c] = await db
+      .select()
+      .from(googleCalendarConnections)
+      .where(eq(googleCalendarConnections.userId, userId));
+    return c!;
+  }
+
+  before(async () => {
+    globalThis.fetch = (async (input: any, init?: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      const method = (init?.method || "GET").toUpperCase();
+      const headers = init?.headers || {};
+      const call: RecordedCall = {
+        url,
+        method,
+        auth: headers.Authorization ?? null,
+        body: init?.body
+          ? typeof init.body === "string"
+            ? safeParse(init.body)
+            : Object.fromEntries(new URLSearchParams(String(init.body)))
+          : null,
+      };
+      calls.push(call);
+      const custom = handler(call);
+      if (custom) return custom;
+      // Default: token endpoint rilascia un token nuovo, calendar API ok.
+      if (url === TOKEN_URL) {
+        tokenCounter += 1;
+        return json200({ access_token: `tok-${tokenCounter}`, expires_in: 3600 });
+      }
+      if (url.startsWith(CAL_PREFIX)) {
+        if (method === "DELETE") return new Response(null, { status: 204 });
+        return json200({ id: `gid-${calls.length}` });
+      }
+      throw new Error(`Chiamata fetch inattesa nel test: ${method} ${url}`);
+    }) as typeof fetch;
+  });
+
+  after(async () => {
+    globalThis.fetch = realFetch;
+    for (const id of familyIds) await db.delete(families).where(eq(families.id, id));
+    for (const id of userIds) await db.delete(users).where(eq(users.id, id));
+  });
+
+  beforeEach(() => {
+    calls = [];
+    handler = () => undefined;
+  });
+
+  function safeParse(s: string): any {
+    try { return JSON.parse(s); } catch { return s; }
+  }
+  function json200(body: unknown): Response {
+    return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+
+  test("evento creato → POST corretto su calendar/v3, link salvato, lastSyncAt aggiornato", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("create", familyId);
+    const ev = await makeDbEvent("Cena di prova", userId, familyId);
+
+    await syncCreatedEvents(familyId, [ev], userId);
+
+    // 1) refresh token, 2) POST insert evento
+    const tokenCall = calls.find((c) => c.url === TOKEN_URL);
+    assert.ok(tokenCall, "deve rinnovare l'access token col refresh token");
+    assert.equal(tokenCall!.body.grant_type, "refresh_token");
+    assert.equal(tokenCall!.body.refresh_token, "refresh-create");
+
+    const post = calls.find((c) => c.url === CAL_PREFIX && c.method === "POST");
+    assert.ok(post, "deve fare POST su calendar/v3 events");
+    assert.match(post!.auth ?? "", /^Bearer tok-/);
+    assert.equal(post!.body.summary, "Cena di prova");
+    assert.equal(post!.body.extendedProperties.private.familySyncEventId, ev.id);
+    assert.deepEqual(post!.body.start, { dateTime: "2026-09-01T18:00:00", timeZone: "Europe/Rome" });
+
+    const links = await getLinksForEvents([ev.id]);
+    assert.equal(links.length, 1);
+    assert.equal(links[0]!.userId, userId);
+    assert.match(links[0]!.googleEventId, /^gid-/);
+
+    const conn = await getConn(userId);
+    assert.equal(conn.status, "active");
+    assert.ok(conn.lastSyncAt, "lastSyncAt deve essere valorizzato dopo un sync riuscito");
+    assert.equal(conn.lastError, null);
+  });
+
+  test("evento modificato → PATCH sull'id Google giusto", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("update", familyId);
+    const ev = await makeDbEvent("Da aggiornare", userId, familyId);
+    await db.insert(googleCalendarEventLinks).values({ userId, eventId: ev.id, googleEventId: "gid-update-1" });
+
+    const updated = { ...ev, title: "Titolo nuovo" } as CalendarEvent;
+    await syncUpdatedEvent(updated);
+
+    const patch = calls.find((c) => c.method === "PATCH");
+    assert.ok(patch, "deve fare PATCH");
+    assert.equal(patch!.url, `${CAL_PREFIX}/gid-update-1`);
+    assert.equal(patch!.body.summary, "Titolo nuovo");
+  });
+
+  test("PATCH su evento cancellato a mano su Google (404) → ricreato con POST", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("recreate", familyId);
+    const ev = await makeDbEvent("Sparito su Google", userId, familyId);
+    await db.insert(googleCalendarEventLinks).values({ userId, eventId: ev.id, googleEventId: "gid-gone" });
+
+    handler = (c) => (c.method === "PATCH" ? new Response("Not Found", { status: 404 }) : undefined);
+    await syncUpdatedEvent(ev);
+
+    const post = calls.find((c) => c.method === "POST" && c.url === CAL_PREFIX);
+    assert.ok(post, "dopo il 404 deve ricreare l'evento con POST");
+    const links = await getLinksForEvents([ev.id]);
+    assert.equal(links.length, 1);
+    assert.notEqual(links[0]!.googleEventId, "gid-gone");
+  });
+
+  test("evento eliminato → DELETE sull'id Google; 404 tollerato senza errori", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("delete", familyId);
+    await syncDeletedEvents([
+      { userId, googleEventId: "gid-del-1" },
+      { userId, googleEventId: "gid-del-2" },
+    ]);
+
+    const dels = calls.filter((c) => c.method === "DELETE");
+    assert.equal(dels.length, 2);
+    assert.deepEqual(
+      dels.map((c) => c.url).sort(),
+      [`${CAL_PREFIX}/gid-del-1`, `${CAL_PREFIX}/gid-del-2`],
+    );
+
+    // 404 = già rimosso: nessun lastError registrato.
+    calls = [];
+    handler = (c) => (c.method === "DELETE" ? new Response("Not Found", { status: 404 }) : undefined);
+    await syncDeletedEvents([{ userId, googleEventId: "gid-del-3" }]);
+    const conn = await getConn(userId);
+    assert.equal(conn.lastError, null);
+  });
+
+  test("401 dalla calendar API → un solo retry con token fresco, poi ok", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("retry401", familyId);
+    const ev = await makeDbEvent("Retry 401", userId, familyId);
+
+    let first401Done = false;
+    handler = (c) => {
+      if (c.method === "POST" && c.url === CAL_PREFIX && !first401Done) {
+        first401Done = true;
+        return new Response("Unauthorized", { status: 401 });
+      }
+      return undefined;
+    };
+
+    await syncCreatedEvents(familyId, [ev], userId);
+
+    const posts = calls.filter((c) => c.method === "POST" && c.url === CAL_PREFIX);
+    assert.equal(posts.length, 2, "un tentativo + un retry");
+    assert.notEqual(posts[0]!.auth, posts[1]!.auth, "il retry deve usare un token nuovo");
+    const tokenCalls = calls.filter((c) => c.url === TOKEN_URL);
+    assert.equal(tokenCalls.length, 2, "deve rinnovare il token per il retry");
+    assert.equal((await getLinksForEvents([ev.id])).length, 1);
+    assert.equal((await getConn(userId)).status, "active");
+  });
+
+  test("401 anche dopo il retry → collegamento marcato 'expired'", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("double401", familyId);
+    const ev = await makeDbEvent("Doppio 401", userId, familyId);
+
+    handler = (c) =>
+      c.method === "POST" && c.url === CAL_PREFIX ? new Response("Unauthorized", { status: 401 }) : undefined;
+
+    await syncCreatedEvents(familyId, [ev], userId);
+
+    const conn = await getConn(userId);
+    assert.equal(conn.status, "expired");
+    assert.ok(conn.lastError, "deve spiegare il motivo nel lastError");
+    assert.equal((await getLinksForEvents([ev.id])).length, 0, "nessun link salvato");
+  });
+
+  test("invalid_grant sul refresh → collegamento marcato 'expired', nessuna chiamata calendar", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("invalidgrant", familyId);
+    const ev = await makeDbEvent("Invalid grant", userId, familyId);
+
+    handler = (c) =>
+      c.url === TOKEN_URL
+        ? new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 })
+        : undefined;
+
+    await syncCreatedEvents(familyId, [ev], userId);
+
+    const conn = await getConn(userId);
+    assert.equal(conn.status, "expired");
+    assert.match(conn.lastError ?? "", /ricollega/i);
+    assert.equal(calls.filter((c) => c.url.startsWith(CAL_PREFIX)).length, 0, "mai chiamata la calendar API");
+
+    // Con lo stato 'expired' i sync successivi NON riprovano il refresh.
+    calls = [];
+    await syncCreatedEvents(familyId, [ev], userId);
+    assert.equal(calls.length, 0, "collegamento expired ⇒ utente escluso dal fan-out");
+  });
+
+  test("scope insufficiente (403) → collegamento marcato 'expired'", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("noscope", familyId);
+    const ev = await makeDbEvent("Senza scope", userId, familyId);
+
+    handler = (c) =>
+      c.method === "POST" && c.url === CAL_PREFIX
+        ? new Response(JSON.stringify({ error: { errors: [{ reason: "insufficientPermissions" }] } }), { status: 403 })
+        : undefined;
+
+    await syncCreatedEvents(familyId, [ev], userId);
+    assert.equal((await getConn(userId)).status, "expired");
+  });
+
+  test("errore temporaneo Google (500) → lastError registrato ma collegamento resta attivo", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("http500", familyId);
+    const ev = await makeDbEvent("Errore 500", userId, familyId);
+
+    handler = (c) =>
+      c.method === "POST" && c.url === CAL_PREFIX ? new Response("Server Error", { status: 500 }) : undefined;
+
+    await syncCreatedEvents(familyId, [ev], userId);
+
+    const conn = await getConn(userId);
+    assert.equal(conn.status, "active", "un 500 non deve invalidare il collegamento");
+    assert.match(conn.lastError ?? "", /500/);
+    assert.equal((await getLinksForEvents([ev.id])).length, 0);
   });
 });
