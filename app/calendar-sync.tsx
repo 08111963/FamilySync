@@ -15,6 +15,12 @@ import { Card } from "@/components/Card";
 import { apiFetch, queryClient } from "@/lib/query-client";
 import { syncEventsToDeviceCalendar } from "@/lib/device-calendar";
 
+// Google risponde "access_denied" sia quando l'utente annulla il consenso sia
+// quando l'app OAuth è ancora "In test" e l'account non è tra gli utenti di
+// prova. Il messaggio copre entrambi i casi in modo comprensibile.
+const GCAL_ACCESS_DENIED_MESSAGE =
+  "Google non ha autorizzato il collegamento. Se non hai annullato tu, è perché questa funzione è ancora in fase beta: al momento può usarla solo un gruppo ristretto di tester. Stiamo completando la verifica di Google per aprirla a tutti — riprova tra qualche tempo.";
+
 export default function CalendarSyncScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -60,6 +66,8 @@ export default function CalendarSyncScreen() {
       showMessage("Fatto", "Google Calendar collegato! Gli eventi futuri stanno arrivando nel tuo calendario.");
     } else if (outcome === "denied") {
       showMessage("Attenzione", "Collegamento annullato: non è stato dato il consenso a Google.");
+    } else if (outcome === "access_denied") {
+      showMessage("Attenzione", GCAL_ACCESS_DENIED_MESSAGE);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -90,6 +98,8 @@ export default function CalendarSyncScreen() {
         await queryClient.invalidateQueries({ queryKey: gcalQueryKey });
         if (result.url.includes("gcal=connected")) {
           showMessage("Fatto", "Google Calendar collegato! Gli eventi futuri stanno arrivando nel tuo calendario.");
+        } else if (result.url.includes("gcal=access_denied")) {
+          showMessage("Attenzione", GCAL_ACCESS_DENIED_MESSAGE);
         } else if (result.url.includes("gcal=denied")) {
           showMessage("Attenzione", "Collegamento annullato: non è stato dato il consenso a Google.");
         }

@@ -99,8 +99,18 @@ router.get('/google/callback', async (req: Request, res: Response) => {
     const { userId, returnUrl } = verifyGcalOauthState(state);
     if (!isAllowedReturnUrl(returnUrl)) return res.status(400).send('returnUrl non valido.');
     const sep = returnUrl.includes('?') ? '&' : '?';
+    const oauthError = typeof req.query.error === 'string' ? req.query.error : '';
+    if (oauthError === 'access_denied') {
+      // Due casi possibili con lo stesso errore Google:
+      // 1) l'utente ha premuto "Annulla" sulla schermata di consenso;
+      // 2) l'app OAuth è ancora "In test" e l'account non è tra gli utenti di
+      //    prova (Google blocca con access_denied finché la verifica non è
+      //    completata). Il client mostra un messaggio che copre entrambi.
+      logger.warn('Gcal callback: access_denied da Google (consenso negato o utente non tester)');
+      return res.redirect(`${returnUrl}${sep}gcal=access_denied`);
+    }
     if (!code) {
-      // L'utente ha negato il consenso: torno all'app senza collegare nulla.
+      // Nessun code e nessun errore riconosciuto: torno all'app senza collegare nulla.
       return res.redirect(`${returnUrl}${sep}gcal=denied`);
     }
     const tokens = await exchangeGcalCode(code);
