@@ -15,6 +15,10 @@ interface User {
   emailVerified: boolean;
   ageBand?: 'under14' | '14_17' | 'adult' | null;
   needsOnboarding?: boolean;
+  /** true se la Privacy Policy è cambiata rispetto all'ultima versione vista */
+  privacyPolicyUpdated?: boolean;
+  /** versione corrente della Privacy Policy lato server */
+  privacyPolicyVersion?: string;
 }
 
 interface AuthContextType {

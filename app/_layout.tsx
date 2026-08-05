@@ -32,6 +32,7 @@ if (isPushSupported()) {
 // Registra il token push quando l'utente è autenticato e gestisce il tap
 // sulla notifica navigando alla schermata indicata in data.route.
 import { WebUpdateBanner } from "@/components/WebUpdateBanner";
+import { PolicyUpdateBanner } from "@/components/PolicyUpdateBanner";
 function PushNotificationsManager() {
   const { isAuthenticated, accessToken, user } = useAuth();
   const router = useRouter();
@@ -204,6 +205,7 @@ export default function RootLayout() {
                       <TestAnalyticsTracker />
                       <PushNotificationsManager />
                       <RootLayoutNav />
+                      <PolicyUpdateBanner />
                       {Platform.OS === "web" && <WebUpdateBanner />}
                     </AuthGate>
                   </KeyboardProvider>

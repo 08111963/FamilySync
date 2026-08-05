@@ -300,9 +300,35 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
       // Onboarding richiesto per account creati prima delle nuove regole:
       // fascia d'età mancante o Termini mai accettati esplicitamente.
       needsOnboarding: !user.ageBand || !user.termsAcceptedAt,
+      // Avviso non bloccante: la Privacy Policy è cambiata rispetto all'ultima
+      // versione vista dall'utente (informativa, NON un nuovo consenso).
+      privacyPolicyUpdated: user.privacyPolicySeenVersion !== PRIVACY_POLICY_VERSION,
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION,
     });
   } catch (error) {
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero utente" } });
+  }
+});
+
+/**
+ * Presa visione dell'avviso "Privacy Policy aggiornata": salva la versione
+ * corrente come vista, così il banner in-app non viene più mostrato.
+ * È un'informativa (non un consenso): nessuna registrazione nel registro consensi.
+ */
+router.post('/privacy-policy-ack', authenticate, async (req: Request, res: Response) => {
+  try {
+    const [row] = await db
+      .update(users)
+      .set({ privacyPolicySeenVersion: PRIVACY_POLICY_VERSION, updatedAt: new Date() })
+      .where(eq(users.id, req.user!.userId))
+      .returning({ id: users.id });
+    if (!row) {
+      return res.status(404).json({ error: { code: 'USER_NOT_FOUND', message: 'Utente non trovato' } });
+    }
+    res.json({ ok: true, privacyPolicySeenVersion: PRIVACY_POLICY_VERSION });
+  } catch (error) {
+    logger.error('Privacy policy ack error', { error: String(error) });
+    res.status(500).json({ error: { code: 'SERVER_ERROR', message: 'Errore durante il salvataggio della presa visione' } });
   }
 });
 
