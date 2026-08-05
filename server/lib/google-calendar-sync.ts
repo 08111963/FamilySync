@@ -7,9 +7,12 @@ import {
   familyMembers,
   googleCalendarConnections,
   googleCalendarEventLinks,
+  users,
   type CalendarEvent,
 } from '../../shared/schema';
 import { getBlockRelatedUserIds } from './block-filter';
+import { sendPushToUser } from './push';
+import { sendGcalConnectionExpiredEmail } from './email';
 import { getPublicBaseUrl } from './oauth';
 import { logger } from './logger';
 import { startDurableScheduler } from './scheduled-jobs';
@@ -173,13 +176,62 @@ export class GcalConnectionExpiredError extends Error {
 // token concorrenti).
 const accessTokenCache = new Map<string, { token: string; expiresAt: number }>();
 
-/** Segna il collegamento come scaduto: fail-visibile, mai silenzioso. */
-async function markConnectionExpired(userId: string, reason: string): Promise<void> {
+/**
+ * Segna il collegamento come scaduto: fail-visibile, mai silenzioso.
+ * Alla PRIMA transizione active→expired avvisa subito l'utente (push + email,
+ * best-effort). Il dedup è atomico: l'UPDATE tocca solo righe ancora 'active',
+ * quindi anche con chiamate concorrenti la notifica parte una volta sola.
+ */
+export async function markConnectionExpired(userId: string, reason: string): Promise<void> {
   accessTokenCache.delete(userId);
-  await db
+  const transitioned = await db
     .update(googleCalendarConnections)
     .set({ status: 'expired', lastError: reason.slice(0, 500), updatedAt: new Date() })
-    .where(eq(googleCalendarConnections.userId, userId));
+    .where(
+      and(
+        eq(googleCalendarConnections.userId, userId),
+        eq(googleCalendarConnections.status, 'active'),
+      ),
+    )
+    .returning({ userId: googleCalendarConnections.userId });
+  if (transitioned.length === 0) {
+    // Già 'expired' (o collegamento assente): aggiorna solo il motivo, niente notifica.
+    await db
+      .update(googleCalendarConnections)
+      .set({ lastError: reason.slice(0, 500), updatedAt: new Date() })
+      .where(eq(googleCalendarConnections.userId, userId));
+    return;
+  }
+  await notifyConnectionExpired(userId, reason);
+}
+
+/** Avvisa l'utente (push + email) che deve ricollegare Google Calendar. Best-effort. */
+async function notifyConnectionExpired(userId: string, reason: string): Promise<void> {
+  try {
+    await sendPushToUser(userId, {
+      title: 'Google Calendar scollegato',
+      body: 'Il collegamento è scaduto: ricollegalo per continuare a ricevere gli eventi nel tuo calendario.',
+      data: { type: 'gcal_connection_expired', url: '/calendar-sync' },
+    });
+  } catch (err) {
+    logger.error('Gcal expired push notify failed', { userId, error: String(err) });
+  }
+  try {
+    const [user] = await db
+      .select({ email: users.email, name: users.name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (user?.email) {
+      await sendGcalConnectionExpiredEmail({
+        to: user.email,
+        recipientName: user.name,
+        reason,
+      });
+    }
+  } catch (err) {
+    logger.error('Gcal expired email notify failed', { userId, error: String(err) });
+  }
 }
 
 /** Registra l'ultimo errore di sync senza invalidare il collegamento. */

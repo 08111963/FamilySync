@@ -242,6 +242,41 @@ export async function sendEventReminderEmail(params: {
 }
 
 /**
+ * Avvisa l'utente che il collegamento con Google Calendar è scaduto/revocato e
+ * va ricollegato. Inviata UNA sola volta per transizione active→expired (il
+ * dedup è a monte, nel chiamante). Best-effort: gli errori vanno solo loggati.
+ */
+export async function sendGcalConnectionExpiredEmail(params: {
+  to: string;
+  recipientName: string;
+  reason?: string | null;
+}) {
+  if (!isEmailConfigured()) {
+    console.log(`[DEV] Collegamento Google Calendar scaduto — email per ${params.to}`);
+    return;
+  }
+
+  const name = escapeHtml(params.recipientName);
+  const reason = params.reason ? escapeHtml(params.reason) : '';
+  const base = clientBaseUrl();
+  const link = base ? `${base}/calendar-sync` : '';
+
+  await sendEmail({
+    to: params.to,
+    subject: 'Il collegamento con Google Calendar è scaduto: ricollegalo',
+    html: `
+      <h2>Ciao ${name}!</h2>
+      <p>Il collegamento tra FamilySync e il tuo <strong>Google Calendar</strong> non è più valido:
+      i nuovi eventi della famiglia <strong>non vengono più copiati</strong> nel tuo calendario.</p>
+      ${reason ? `<p>Dettaglio: ${reason}</p>` : ''}
+      <p>Per riprendere la sincronizzazione basta ricollegare l'account dalla pagina "Sincronizza calendario".</p>
+      ${link ? `<p><a href="${link}">Ricollega Google Calendar</a></p>` : ''}
+      <p style="color:#888;font-size:12px;">Ricevi questa email perché avevi collegato Google Calendar a FamilySync.</p>
+    `,
+  });
+}
+
+/**
  * Avviso di nuovo evento creato in calendario. Inviata (fire-and-forget dal
  * chiamante) agli ALTRI membri della famiglia con email verificata — mai
  * all'autore. Per le serie ricorrenti si invia UNA sola email per la serie.
