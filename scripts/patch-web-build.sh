@@ -15,6 +15,13 @@ fi
 
 sed -i 's/<html lang="en"/<html lang="it"/' "$INDEX"
 
+# Il service worker deve restare allineato alla fonte in public/: se una
+# versione stantia resta in web-build, le notifiche web push si comportano
+# in modo diverso da quanto testato (es. tag che si sovrascrivono).
+if [ -f "public/sw.js" ]; then
+  cp public/sw.js "$DIR/sw.js"
+fi
+
 if ! grep -q 'rel="manifest"' "$INDEX"; then
   sed -i 's|</head>|<link rel="manifest" href="/manifest.json"/><link rel="apple-touch-icon" href="/icon-192.png"/><meta name="theme-color" content="#FF6B6B"/></head>|' "$INDEX"
 fi
