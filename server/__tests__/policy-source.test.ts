@@ -33,7 +33,7 @@ test("nessun testo legale duplicato hardcoded nella schermata mobile", () => {
 
 test("la fonte unica contiene le correzioni obbligatorie v2.1", () => {
   const all = JSON.stringify(PRIVACY_POLICY_SECTIONS);
-  assert.equal(PRIVACY_POLICY_SECTIONS.length, 22);
+  assert.equal(PRIVACY_POLICY_SECTIONS.length, 23);
   assert.match(PRIVACY_POLICY_INTRO, new RegExp(PRIVACY_POLICY_VERSION.replace(".", "\\.")));
   assert.ok(all.includes("Fascia di età (obbligatoria)"), "età obbligatoria");
   assert.ok(all.includes("consenso specifico e separato"), "consenso ai_health separato");
@@ -46,4 +46,21 @@ test("la fonte unica contiene le correzioni obbligatorie v2.1", () => {
   assert.ok(!all.includes("OpenAI, L.L.C."), "nessuna denominazione contrattuale inventata");
   assert.ok(!all.includes("Data Privacy Framework"), "nessun meccanismo di trasferimento inventato");
   assert.ok(!all.includes("Clausole Contrattuali Standard"), "nessun meccanismo di trasferimento inventato");
+});
+
+test("la fonte unica contiene il paragrafo Google Calendar (verifica Google)", () => {
+  const all = JSON.stringify(PRIVACY_POLICY_SECTIONS);
+  const section = PRIVACY_POLICY_SECTIONS.find((s) =>
+    s.title.includes("Google Calendar"),
+  );
+  assert.ok(section, "sezione dedicata Google Calendar presente");
+  const text = JSON.stringify(section);
+  assert.ok(text.includes("refresh token"), "menziona il refresh token");
+  assert.ok(text.includes("in forma cifrata"), "token conservato cifrato");
+  assert.ok(text.includes("Email dell'account Google"), "email account collegato");
+  assert.ok(text.includes("scrive, aggiorna e cancella"), "uso scope calendar.events");
+  assert.ok(text.includes("non legge e non modifica"), "nessuna lettura eventi altrui");
+  assert.ok(text.includes("Limited Use"), "richiamo alla Google API Services User Data Policy");
+  assert.ok(text.includes("myaccount.google.com/permissions"), "revoca lato Google");
+  assert.ok(text.includes("art. 6.1.a"), "base giuridica consenso");
 });
