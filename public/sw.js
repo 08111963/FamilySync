@@ -21,7 +21,13 @@ self.addEventListener('push', (event) => {
       icon: '/favicon.ico',
       badge: '/favicon.ico',
       data: payload.data || {},
-      tag: payload.data && payload.data.type ? String(payload.data.type) : undefined,
+      // Tag univoco per elemento: due promemoria dello stesso tipo (es. due
+      // eventi di oggi) NON devono sostituirsi a vicenda nella tendina.
+      tag: payload.data && payload.data.type
+        ? [payload.data.type, payload.data.eventId, payload.data.billId, payload.data.choreId]
+            .filter(Boolean)
+            .join(':')
+        : undefined,
     })
   );
 });
