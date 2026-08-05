@@ -354,6 +354,24 @@ export default function CalendarSyncScreen() {
                   Vale solo per il tuo account: ogni membro della famiglia può collegare il suo.
                   Puoi scollegarti quando vuoi.
                 </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 8,
+                    backgroundColor: "#FF950015",
+                    borderRadius: 10,
+                    padding: 10,
+                    marginBottom: 12,
+                  }}
+                  testID="gcal-beta-notice"
+                >
+                  <Ionicons name="information-circle" size={18} color="#FF9500" style={{ marginTop: 1 }} />
+                  <Text style={[styles.cardText, { color: colors.textSecondary, marginBottom: 0, flex: 1 }]}>
+                    L'app è in fase di test: Google potrebbe mostrarti un avviso "app non
+                    verificata". È normale — tocca "Avanzate" e poi "Vai a familysync.eu" per
+                    continuare. L'avviso sparirà quando Google completerà la verifica.
+                  </Text>
+                </View>
                 <Pressable
                   onPress={handleGcalConnect}
                   disabled={gcalBusy}
