@@ -207,3 +207,52 @@ uri = "file://attached_assets/generated_images/welcome-classifica.jpg"
 type = "image"
 title = "Classifica Familiare"
 description = "Proposta foto per la sezione 'Cosa puoi fare'"
+
+[[outputs]]
+id = "vU5pniKfLLIPI05Wfaffm"
+uri = "file://attached_assets/generated_images/welcome2-calendario.jpg"
+type = "image"
+title = "Calendario Condiviso (v2)"
+description = "Nuova proposta: foto centrata sull'oggetto della funzione"
+
+[[outputs]]
+id = "Vw6caiy2be4vLrVhi2mvJ"
+uri = "file://attached_assets/generated_images/welcome2-spesa.jpg"
+type = "image"
+title = "Liste della Spesa (v2)"
+description = "Nuova proposta: foto centrata sull'oggetto della funzione"
+
+[[outputs]]
+id = "Z0d7xVVD0-UDWM0wNo3pP"
+uri = "file://attached_assets/generated_images/welcome2-faccende.jpg"
+type = "image"
+title = "Faccende con Punti (v2)"
+description = "Nuova proposta: foto centrata sull'oggetto della funzione"
+
+[[outputs]]
+id = "5SfIgCBO8tTEcIAJCM2Lw"
+uri = "file://attached_assets/generated_images/welcome2-ai.jpg"
+type = "image"
+title = "Suggerimenti AI (v2)"
+description = "Nuova proposta: foto centrata sull'oggetto della funzione"
+
+[[outputs]]
+id = "QMUcL_5sqMvGlHgAiQrJU"
+uri = "file://attached_assets/generated_images/welcome2-chat.jpg"
+type = "image"
+title = "Chat Familiare (v2)"
+description = "Nuova proposta: foto centrata sull'oggetto della funzione"
+
+[[outputs]]
+id = "iAP8Ou7SXzecXDe2ownN-"
+uri = "file://attached_assets/generated_images/welcome2-sync.jpg"
+type = "image"
+title = "Sincronizzazione Real-time (v2)"
+description = "Nuova proposta: foto centrata sull'oggetto della funzione"
+
+[[outputs]]
+id = "qbU3FeWI5d_aJk2fivm9K"
+uri = "file://attached_assets/generated_images/welcome2-classifica.jpg"
+type = "image"
+title = "Classifica Familiare (v2)"
+description = "Nuova proposta: foto centrata sull'oggetto della funzione"
