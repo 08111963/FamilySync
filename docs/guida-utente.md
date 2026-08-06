@@ -648,8 +648,11 @@ I minori di 14 anni non possono avere un account con email e password: per loro 
 Se vuoi che il bambino usi l'app **dal suo telefono o tablet**, non serve creargli un'email: puoi generare un **codice di accesso**.
 
 **Come si genera il codice (genitore)**
+
+> Attenzione: il codice **non** si genera dalla pagina di invito, ma dalla scheda **Famiglia**, dopo aver creato il profilo.
+
 1. Vai alla scheda **Famiglia** e trova il profilo bambino nella lista Membri
-2. Tocca l'azione **codice di accesso** sulla sua riga
+2. Tocca l'**icona a forma di chiave** sulla sua riga
 3. Ti viene mostrato un codice del tipo **ABCD-EFGH**: segnalo o condividilo subito, viene mostrato **una sola volta**
 
 **Come entra il bambino**
