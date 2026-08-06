@@ -23,25 +23,25 @@ type Feature = { icon: keyof typeof Ionicons.glyphMap; title: string; descriptio
 
 const ADVANTAGES = [
   ["Basta dimenticanze: impegni e scadenze sempre sotto controllo", "Più tempo da vivere insieme"],
-  ["Spese di casa chiare, senza doppioni o malintesi"],
   ["Decidete prima e la sera non dovete più pensarci"],
   ["Cucinate con quello che avete già in dispensa"],
-  ["Tutti sanno chi fa cosa, senza discussioni", "I ragazzi collaborano volentieri grazie a punti e premi"],
-  ["Messaggi importanti sempre a portata di mano"],
   ["Una settimana più leggera, con meno cose da organizzare"],
+  ["Spese di casa chiare, senza doppioni o malintesi"],
+  ["Messaggi importanti sempre a portata di mano"],
   ["Ogni modifica arriva subito a tutta la famiglia"],
+  ["Tutti sanno chi fa cosa, senza discussioni", "I ragazzi collaborano volentieri grazie a punti e premi"],
   ["Un modo leggero per riconoscere l'impegno di tutti"],
 ] as const;
 
 const FEATURES: Feature[] = [
   { icon: "calendar", title: "Calendario condiviso", description: "Gli impegni di tutti, finalmente nello stesso posto.", gradient: ["#66A6FF", "#4384E8"] },
-  { icon: "cart", title: "Liste della spesa", description: "Una lista viva, sempre aggiornata mentre siete al supermercato.", gradient: ["#38D9A9", "#159B81"] },
   { icon: "restaurant", title: "Piano pasti settimanale", description: "Decidete insieme cosa portare in tavola, senza pensarci ogni sera.", gradient: ["#FFB86B", "#E67E32"] },
   { icon: "book", title: "Ricette con AI", description: "Trasforma quello che hai già in dispensa in idee buone e semplici.", gradient: ["#F7A8C4", "#D85B8A"] },
-  { icon: "checkbox", title: "Faccende con punti", description: "Trasforma i compiti quotidiani in una piccola sfida di squadra.", gradient: ["#B197FC", "#7950F2"] },
-  { icon: "chatbubbles", title: "Chat familiare", description: "Il filo diretto della famiglia, per le cose importanti e quelle di ogni giorno.", gradient: ["#3DD5D5", "#159A9C"] },
   { icon: "sparkles", title: "Suggerimenti AI", description: "Idee pratiche per organizzare meglio la settimana.", gradient: ["#FFD166", "#F09F3E"] },
+  { icon: "cart", title: "Liste della spesa", description: "Una lista viva, sempre aggiornata mentre siete al supermercato.", gradient: ["#38D9A9", "#159B81"] },
+  { icon: "chatbubbles", title: "Chat familiare", description: "Il filo diretto della famiglia, per le cose importanti e quelle di ogni giorno.", gradient: ["#3DD5D5", "#159A9C"] },
   { icon: "sync", title: "Sincronizzazione in tempo reale", description: "Ogni modifica arriva subito su tutti i dispositivi.", gradient: ["#FF9F8D", "#E76F51"] },
+  { icon: "checkbox", title: "Faccende con punti", description: "Trasforma i compiti quotidiani in una piccola sfida di squadra.", gradient: ["#B197FC", "#7950F2"] },
   { icon: "trophy", title: "Classifica familiare", description: "Un modo leggero per riconoscere l'impegno di tutti.", gradient: ["#F783AC", "#D9488B"] },
 ];
 
@@ -104,7 +104,7 @@ function RankingPreview() {
 }
 
 function FeatureSection({ item, index, isWide }: { item: Feature; index: number; isWide: boolean }) {
-  const kind = index === 0 ? "calendar" : index === 1 ? "shopping" : index === 2 ? "meals" : index === 3 ? "recipes" : index === 4 ? "chores" : index === 5 ? "chat" : index === 6 ? "ai" : index === 7 ? "sync" : "ranking";
+  const kind = index === 0 ? "calendar" : index === 1 ? "meals" : index === 2 ? "recipes" : index === 3 ? "ai" : index === 4 ? "shopping" : index === 5 ? "chat" : index === 6 ? "sync" : index === 7 ? "chores" : "ranking";
   return <Animated.View entering={FadeInDown.delay(300 + index * 100).duration(600)} style={[styles.featureSection, isWide && index % 2 === 1 && styles.featureReverse, !isWide && styles.featureStacked]}><View style={styles.featureCopy}><Text style={styles.featureTitle}>{item.title}</Text><Text style={styles.featureDescription}>{item.description}</Text><View style={styles.advantageList}>{ADVANTAGES[index].map((advantage) => <View style={styles.advantage} key={advantage}><View style={[styles.ruleDot, { backgroundColor: item.gradient[0] }]} /><Text style={styles.advantageText}>{advantage}</Text></View>)}</View></View><Phone kind={kind} /></Animated.View>;
 }
 
