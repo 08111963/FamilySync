@@ -18,3 +18,7 @@ description: Convenzioni per le immagini generate dall'AI per le ricette (cache 
 - Header CORP: helmet mette `Cross-Origin-Resource-Policy: same-origin` di default e il browser BLOCCA le `<img>` cross-origin (anteprima Metro su origine diversa → icone rotte, mentre curl risponde 200). I mount pubblici `/uploads/recipe-images` e `/uploads/avatars` devono forzare `cross-origin`; su `/uploads` autenticato resta same-origin.
 - Ricette salvate senza `imageUrl` (foto pronta DOPO il salvataggio): il client le mostra con `RecipeAiImage resolveOnly` (solo lookup batch cache, nessuna generazione/quota; null su miss). Mai renderizzare la generazione automatica dalle liste salvate.
 - Prewarm in background: dopo i suggerimenti ricette il server pre-genera le foto mancanti (concorrenza 2, fire-and-forget dopo `res.json`). Riusa la stessa Map in-flight (nessun doppio consumo quota) e si FERMA al primo esito limited/unavailable — la quota famiglia vale anche per il prewarm.
+
+## Lentezza generazione (deciso 2026-08-06 con l'owner)
+- gpt-image-1 quality 'low' impiega comunque 50-80s nei momenti di punta (anche 504 >120s): è variabilità di OpenAI, non un bug.
+- **Decisione owner**: lasciare tutto com'è; solo se il ritardo diventa frequente, aggiungere un generatore di riserva (Replicate/fal.ai/xAI) come fallback su timeout. Non riproporre task asincroni sulle foto senza che il problema si ripresenti.
