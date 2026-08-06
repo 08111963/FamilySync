@@ -902,6 +902,10 @@ export default function MealPlansScreen() {
             )}
           </Pressable>
 
+          <Text style={[styles.aiDisclaimerText, { color: colors.textSecondary }]} testID="mealplan-ai-disclaimer">
+            I piani pasti sono generati dall'intelligenza artificiale e non da un nutrizionista: non sostituiscono il parere di un medico o professionista. Per esigenze particolari consulta uno specialista.
+          </Text>
+
           {aiDisabledError && (
             <View style={[styles.aiDisabledBox, { backgroundColor: colors.error + "15", borderColor: colors.error + "40" }]}>
               <Ionicons name="warning-outline" size={20} color={colors.error} />
@@ -1541,6 +1545,13 @@ const styles = StyleSheet.create({
   altButtonText: {
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
+  },
+  aiDisclaimerText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 17,
+    marginTop: 10,
+    textAlign: "center",
   },
   aiDisabledBox: {
     flexDirection: "row",

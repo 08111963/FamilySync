@@ -538,6 +538,8 @@ Per generare un nuovo piano settimanale:
 4. Tocca il pulsante **Genera Piano Pasti** per avviare la generazione AI
 5. L'AI creerà un piano completo per 7 giorni con colazione, pranzo, cena e spuntini
 
+> **Importante**: i piani pasti sono generati dall'intelligenza artificiale, **non da un nutrizionista**. Non sostituiscono il parere di un medico o di un professionista della nutrizione: per diete particolari, allergie gravi o esigenze di salute, consulta sempre uno specialista.
+
 **Detta e genera (a voce)**: nella tab Genera trovi la card **"Detta e genera"** con un unico microfono. Tieni premuto e detta in una volta sola dieta, allergie e preferenze (es. "siamo vegetariani, niente frutta secca, piatti veloci la sera"): al rilascio la generazione parte da sola e il piano ti viene **letto ad alta voce**, giorno per giorno.
 
 **Lettura vocale automatica (attiva/disattiva)**: nella stessa card trovi l'interruttore **"L'AI legge il piano ad alta voce"**. Quando è attivo, dopo aver dettato l'AI legge automaticamente il piano; quando è spento, il piano viene generato in silenzio. La scelta viene ricordata sul tuo dispositivo. Il pulsante **altoparlante** per ascoltare a richiesta resta sempre disponibile.
