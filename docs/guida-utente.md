@@ -53,7 +53,7 @@ L'app ha 7 schede principali in fondo allo schermo:
 
 - [ ] Creare la famiglia e darle un nome
 - [ ] Invitare tutti i membri della famiglia (via email, WhatsApp o QR code)
-- [ ] Per i bambini sotto i 14 anni (senza email): creare il profilo bambino e, se vuoi farlo entrare dal suo dispositivo, generare il codice di accesso
+- [ ] Creare il profilo bambino per i minori di 14 anni e generare il codice di accesso per farli entrare dal loro dispositivo
 - [ ] Creare i primi eventi nel Calendario condiviso
 - [ ] Creare la prima lista della Spesa
 - [ ] Assegnare le prime Faccende ai membri
