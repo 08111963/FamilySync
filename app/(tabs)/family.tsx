@@ -362,6 +362,12 @@ export default function FamilyScreen() {
               const isSelf = member.userId === user?.id;
               const isManaged = !member.userId;
               const isEditingMember = editingMemberId === member.id;
+              // Su schermi stretti troppe icone in riga si sovrappongono:
+              // per i profili gestiti/bambino le azioni vanno in una riga
+              // dedicata sotto le info, con etichetta.
+              const showActionsRow =
+                canManageProfiles && !isEditingMember && !isChildUser &&
+                (isManaged || member.hasChildDeviceAccess);
               return (
                 <Card key={member.id}>
                   <View style={styles.memberRow}>
@@ -472,63 +478,7 @@ export default function FamilyScreen() {
                         </Text>
                       )}
                     </View>
-                    {isManaged && canManageProfiles && !isEditingMember ? (
-                      <>
-                        <Pressable
-                          onPress={() => {
-                            setEditedMemberName(member.name);
-                            setEditedMemberColor(member.color || AVATAR_COLORS[0]);
-                            setEditedMemberRole(member.role === "teen" ? "teen" : "child");
-                            setEditingMemberId(member.id);
-                          }}
-                          style={styles.actionButton}
-                          testID={`rename-member-${member.id}`}
-                        >
-                          <Ionicons name="pencil" size={20} color={colors.primary} />
-                        </Pressable>
-                        {/* Codice di accesso "dispositivo bambino": il bambino
-                            entra dal suo dispositivo senza email/password. */}
-                        <Pressable
-                          onPress={() => handleGenerateChildCode(member)}
-                          style={styles.actionButton}
-                          testID={`child-access-member-${member.id}`}
-                        >
-                          <Ionicons name="key-outline" size={20} color={colors.primary} />
-                        </Pressable>
-                        {/* Promuovi profilo gestito ad account vero via invito email
-                            (punti/storico preservati). */}
-                        <Pressable
-                          onPress={() =>
-                            router.push({
-                              pathname: "/promote-member",
-                              params: { memberId: member.id, memberName: member.name },
-                            })
-                          }
-                          style={styles.actionButton}
-                          testID={`promote-member-${member.id}`}
-                        >
-                          <Ionicons name="person-add-outline" size={20} color={colors.primary} />
-                        </Pressable>
-                      </>
-                    ) : member.hasChildDeviceAccess && canManageProfiles && !isEditingMember ? (
-                      <>
-                        {/* Nuovo codice (nuovo dispositivo) + revoca accesso. */}
-                        <Pressable
-                          onPress={() => handleGenerateChildCode(member)}
-                          style={styles.actionButton}
-                          testID={`child-access-member-${member.id}`}
-                        >
-                          <Ionicons name="key-outline" size={20} color={colors.primary} />
-                        </Pressable>
-                        <Pressable
-                          onPress={() => handleRevokeChildAccess(member)}
-                          style={styles.actionButton}
-                          testID={`revoke-child-access-${member.id}`}
-                        >
-                          <Ionicons name="remove-circle-outline" size={20} color={colors.error} />
-                        </Pressable>
-                      </>
-                    ) : isSelf ? (
+                    {isSelf ? (
                       <Pressable
                         onPress={() => router.push("/edit-profile")}
                         style={styles.actionButton}
@@ -544,7 +494,7 @@ export default function FamilyScreen() {
                         <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
                       </Pressable>
                     ) : null}
-                    {!isSelf && !isChildUser && (
+                    {!isSelf && !isChildUser && !showActionsRow && (
                       <Pressable
                         onPress={() => handleDeleteMember(member.id, member.name)}
                         style={styles.deleteButton}
@@ -553,6 +503,81 @@ export default function FamilyScreen() {
                       </Pressable>
                     )}
                   </View>
+                  {showActionsRow && (
+                    <View style={[styles.memberActionsRow, { borderTopColor: colors.border }]}>
+                      {isManaged ? (
+                        <>
+                          <Pressable
+                            onPress={() => {
+                              setEditedMemberName(member.name);
+                              setEditedMemberColor(member.color || AVATAR_COLORS[0]);
+                              setEditedMemberRole(member.role === "teen" ? "teen" : "child");
+                              setEditingMemberId(member.id);
+                            }}
+                            style={[styles.memberActionChip, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                            testID={`rename-member-${member.id}`}
+                          >
+                            <Ionicons name="pencil" size={15} color={colors.primary} />
+                            <Text style={[styles.memberActionChipText, { color: colors.text }]}>Modifica</Text>
+                          </Pressable>
+                          {/* Codice di accesso "dispositivo bambino": il bambino
+                              entra dal suo dispositivo senza email/password. */}
+                          <Pressable
+                            onPress={() => handleGenerateChildCode(member)}
+                            style={[styles.memberActionChip, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                            testID={`child-access-member-${member.id}`}
+                          >
+                            <Ionicons name="key-outline" size={15} color={colors.primary} />
+                            <Text style={[styles.memberActionChipText, { color: colors.text }]}>Codice</Text>
+                          </Pressable>
+                          {/* Promuovi profilo gestito ad account vero via invito email
+                              (punti/storico preservati). */}
+                          <Pressable
+                            onPress={() =>
+                              router.push({
+                                pathname: "/promote-member",
+                                params: { memberId: member.id, memberName: member.name },
+                              })
+                            }
+                            style={[styles.memberActionChip, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                            testID={`promote-member-${member.id}`}
+                          >
+                            <Ionicons name="person-add-outline" size={15} color={colors.primary} />
+                            <Text style={[styles.memberActionChipText, { color: colors.text }]}>Account</Text>
+                          </Pressable>
+                        </>
+                      ) : (
+                        <>
+                          {/* Nuovo codice (nuovo dispositivo) + revoca accesso. */}
+                          <Pressable
+                            onPress={() => handleGenerateChildCode(member)}
+                            style={[styles.memberActionChip, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                            testID={`child-access-member-${member.id}`}
+                          >
+                            <Ionicons name="key-outline" size={15} color={colors.primary} />
+                            <Text style={[styles.memberActionChipText, { color: colors.text }]}>Codice</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleRevokeChildAccess(member)}
+                            style={[styles.memberActionChip, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                            testID={`revoke-child-access-${member.id}`}
+                          >
+                            <Ionicons name="remove-circle-outline" size={15} color={colors.error} />
+                            <Text style={[styles.memberActionChipText, { color: colors.error }]}>Revoca</Text>
+                          </Pressable>
+                        </>
+                      )}
+                      {!isSelf && (
+                        <Pressable
+                          onPress={() => handleDeleteMember(member.id, member.name)}
+                          style={[styles.memberActionChip, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                        >
+                          <Ionicons name="trash-outline" size={15} color={colors.error} />
+                          <Text style={[styles.memberActionChipText, { color: colors.error }]}>Elimina</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  )}
                 </Card>
               );
             })}
@@ -1029,8 +1054,30 @@ const styles = StyleSheet.create({
   },
   memberMeta: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: 8,
+  },
+  memberActionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  memberActionChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  memberActionChipText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
   },
   roleBadge: {
     paddingHorizontal: 8,
