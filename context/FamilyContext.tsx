@@ -36,6 +36,10 @@ interface FamilyMember {
   color: string;
   points: number;
   avatarUrl?: string;
+  // true per i profili gestiti dai genitori (incluso accesso "dispositivo bambino")
+  isManagedProfile?: boolean;
+  // true se il profilo ha un accesso "dispositivo bambino" attivo (codice PIN)
+  hasChildDeviceAccess?: boolean;
 }
 
 interface CalendarEvent {

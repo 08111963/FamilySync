@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { googleCalendarConnections } from '../../shared/schema';
-import { authenticate, requireEmailVerified } from '../middleware/auth';
+import { authenticate, requireEmailVerified, blockChildAccount } from '../middleware/auth';
 import { isAllowedReturnUrl } from '../lib/oauth';
 import {
   GOOGLE_CALENDAR_SCOPE,
@@ -27,7 +27,7 @@ import { logger } from '../lib/logger';
 const router = Router();
 
 /** Stato del collegamento dell'utente corrente. */
-router.get('/google/status', authenticate, requireEmailVerified, async (req: Request, res: Response) => {
+router.get('/google/status', authenticate, requireEmailVerified, blockChildAccount, async (req: Request, res: Response) => {
   try {
     if (!isGoogleCalendarSyncConfigured()) {
       return res.json({ available: false, connected: false });
@@ -64,7 +64,7 @@ router.get('/google/status', authenticate, requireEmailVerified, async (req: Req
  * autenticato qui (Bearer), quindi lo state firmato lega il collegamento
  * all'utente giusto anche se il callback è pubblico.
  */
-router.post('/google/start-url', authenticate, requireEmailVerified, (req: Request, res: Response) => {
+router.post('/google/start-url', authenticate, requireEmailVerified, blockChildAccount, (req: Request, res: Response) => {
   if (!isGoogleCalendarSyncConfigured()) {
     return res.status(503).json({ error: { code: 'NOT_CONFIGURED', message: 'Collegamento Google non configurato' } });
   }
@@ -130,7 +130,7 @@ router.get('/google/callback', async (req: Request, res: Response) => {
 });
 
 /** Scollega: revoca il token presso Google e rimuove collegamento e mapping. */
-router.post('/google/disconnect', authenticate, requireEmailVerified, async (req: Request, res: Response) => {
+router.post('/google/disconnect', authenticate, requireEmailVerified, blockChildAccount, async (req: Request, res: Response) => {
   try {
     await disconnectGoogleCalendar(req.user!.userId);
     res.json({ message: 'Google Calendar scollegato' });

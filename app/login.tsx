@@ -285,6 +285,18 @@ export default function LoginScreen() {
               </TouchableOpacity>
             )}
 
+            {!isSignup && (
+              <TouchableOpacity
+                onPress={() => router.push('/child-login')}
+                style={styles.forgotButton}
+                testID="child-login-link"
+              >
+                <Text style={[styles.forgotText, { color: colors.primary }]}>
+                  Sei un bambino con un codice? Entra qui
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {isSignup && (
               <View style={styles.inputContainer}>
                 <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />

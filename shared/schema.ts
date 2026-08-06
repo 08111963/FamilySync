@@ -63,6 +63,11 @@ export const users = pgTable("users", {
   // Versione dei token di sessione: viene incrementata a ogni cambio/reset
   // password per invalidare TUTTI i refresh token emessi prima (revoca).
   tokenVersion: integer("token_version").default(0).notNull(),
+  // Account "dispositivo bambino": creato attivando un codice di accesso
+  // generato dal genitore (nessuna email reale, email sintetica non recapitabile).
+  // Gli endpoint vietati ai bambini (bollette, budget, ecc.) rifiutano questi
+  // account lato server (fail-closed), vedi middleware blockChildAccount.
+  isChildAccount: boolean("is_child_account").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -128,6 +133,25 @@ export const familyInvites = pgTable("family_invites", {
 });
 
 export type FamilyInvite = typeof familyInvites.$inferSelect;
+
+// CHILD ACCESS CODES — codici di accesso "dispositivo bambino".
+// Il genitore (admin/adult) genera un codice per un profilo bambino gestito
+// (familyMembers.userId NULL); il bambino lo inserisce sul suo dispositivo ed
+// entra senza email/password. Solo l'HASH del codice è salvato (pattern invito
+// sicuro), consumo monouso in transazione, scadenza breve, revocabile.
+export const childAccessCodes = pgTable("child_access_codes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id").notNull().references(() => families.id, { onDelete: "cascade" }),
+  memberId: uuid("member_id").notNull().references(() => familyMembers.id, { onDelete: "cascade" }),
+  codeHash: varchar("code_hash", { length: 255 }).notNull().unique(),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type ChildAccessCode = typeof childAccessCodes.$inferSelect;
 
 // CALENDAR EVENTS
 export const calendarEvents = pgTable("calendar_events", {

@@ -94,7 +94,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     // "social-complete" è pubblica: il nuovo utente Google/Apple arriva qui
     // NON ancora autenticato (ha solo il signupToken) per completare la
     // registrazione; senza questa eccezione verrebbe rimbalzato su /welcome.
-    const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "join-link" || root === "legal" || root === "help" || root === "forgot-password" || root === "reset-password" || root === "social-complete";
+    const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "join-link" || root === "legal" || root === "help" || root === "forgot-password" || root === "reset-password" || root === "social-complete" || root === "child-login";
     const needsVerification = isAuthenticated && !!user && user.emailVerified === false;
     const inVerifyScreen = root === "verify-email";
     // Onboarding privacy: utenti esistenti senza fascia d'età / accettazione Termini.
@@ -125,6 +125,7 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
       <Stack.Screen name="welcome" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="child-login" options={{ headerShown: false }} />
       <Stack.Screen name="social-complete" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="verify-email" options={{ headerShown: false, gestureEnabled: false }} />

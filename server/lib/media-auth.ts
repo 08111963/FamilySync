@@ -116,7 +116,8 @@ export function __resetMediaAccessStoreForTest(): void {
  */
 export async function resolveUploadFileAccess(
   userId: string,
-  fileUrlOrPath: string
+  fileUrlOrPath: string,
+  opts?: { excludeBillAttachments?: boolean }
 ): Promise<string | null> {
   const fileUrl = normalizeUploadFileUrl(fileUrlOrPath);
 
@@ -131,6 +132,12 @@ export async function resolveUploadFileAccess(
       if (blocked) return null;
     }
     return chatRow.familyId;
+  }
+
+  // Account "dispositivo bambino": le bollette sono un'area vietata, quindi
+  // anche i loro allegati NON sono mai risolvibili (fail-closed).
+  if (opts?.excludeBillAttachments) {
+    return null;
   }
 
   const billRow = await activeMediaAccessStore.findBillAttachmentAccess(userId, fileUrl);

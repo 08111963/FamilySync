@@ -55,14 +55,16 @@ export default function FamilyScreen() {
   const leaderboard = getLeaderboard();
   const familyId = currentFamily?.id;
 
+  // Le rotte di moderazione (preferenze AI, blocchi) sono vietate agli account
+  // "dispositivo bambino" lato server: non interrogarle affatto per loro.
   const { data: prefsData } = useQuery<{ aiFeaturesEnabled: boolean }>({
     queryKey: ["/api/moderation/preferences"],
-    enabled: !!user,
+    enabled: !!user && user.isChildAccount !== true,
   });
 
   const { data: blocksData } = useQuery<{ id: string; blockedUserId: string; blockedUserName: string }[]>({
     queryKey: ["/api/moderation/blocks", familyId],
-    enabled: !!familyId,
+    enabled: !!familyId && user?.isChildAccount !== true,
   });
 
   const blockedUserIds = new Set((blocksData || []).map((b) => b.blockedUserId));
@@ -150,6 +152,62 @@ export default function FamilyScreen() {
   const isAdmin = currentFamily?.myRole === "admin";
   // Genitori/adulti possono rinominare i profili bambino gestiti (senza account).
   const canManageProfiles = ["admin", "adult", "parent"].includes(currentFamily?.myRole || "");
+  // Vista ridotta per gli account "dispositivo bambino" (accesso con codice PIN):
+  // niente gestione membri né funzionalità da adulti. Il server blocca comunque.
+  const isChildUser = user?.isChildAccount === true;
+
+  // Genera il codice di accesso "dispositivo bambino" per un profilo gestito:
+  // viene mostrato UNA volta (nel DB resta solo l'hash).
+  const handleGenerateChildCode = async (member: { id: string; name: string }) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const res = await apiRequest(
+        "POST",
+        `/api/families/${familyId}/members/${member.id}/child-access`
+      );
+      const body = (await res.json()) as { code: string; expiresAt: string };
+      const msg = `Codice per ${member.name}:\n\n${body.code}\n\nValido 48 ore, funziona una sola volta. ${member.name} deve inserirlo nella schermata "Sei un bambino con un codice?" del login sul suo dispositivo.`;
+      if (Platform.OS === "web") {
+        alert(msg);
+      } else {
+        Alert.alert("Codice di accesso", msg);
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/families", familyId] });
+    } catch (e: any) {
+      const msg = e?.body?.error?.message || "Impossibile generare il codice. Riprova.";
+      if (Platform.OS === "web") alert(msg);
+      else Alert.alert("Errore", msg);
+    }
+  };
+
+  // Revoca l'accesso "dispositivo bambino": il profilo torna gestito
+  // (punti e storico intatti) e il dispositivo del bambino viene disconnesso.
+  const handleRevokeChildAccess = (member: { id: string; name: string }) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const doRevoke = async () => {
+      try {
+        await apiRequest("DELETE", `/api/families/${familyId}/members/${member.id}/child-access`);
+        queryClient.invalidateQueries({ queryKey: ["/api/families", familyId] });
+      } catch {
+        if (Platform.OS === "web") alert("Impossibile revocare l'accesso. Riprova.");
+        else Alert.alert("Errore", "Impossibile revocare l'accesso. Riprova.");
+      }
+    };
+    if (Platform.OS === "web") {
+      if (confirm(`Revocare l'accesso di ${member.name} dal suo dispositivo? Punti e storico restano.`)) {
+        doRevoke();
+      }
+    } else {
+      Alert.alert(
+        "Revoca accesso",
+        `${member.name} non potrà più usare l'app dal suo dispositivo finché non generi un nuovo codice. Punti e storico restano.`,
+        [
+          { text: "Annulla", style: "cancel" },
+          { text: "Revoca", style: "destructive", onPress: doRevoke },
+        ]
+      );
+    }
+  };
 
   const handleSaveManagedMember = async (memberId: string) => {
     const name = editedMemberName.trim();
@@ -275,16 +333,18 @@ export default function FamilyScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Membri</Text>
-          <Pressable
-            onPress={() => router.push("/add-member")}
-            style={({ pressed }) => [
-              styles.addMemberButton,
-              { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
-            ]}
-          >
-            <Ionicons name="add" size={20} color="#FFFFFF" />
-            <Text style={styles.addMemberText}>Aggiungi</Text>
-          </Pressable>
+          {!isChildUser && (
+            <Pressable
+              onPress={() => router.push("/add-member")}
+              style={({ pressed }) => [
+                styles.addMemberButton,
+                { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
+              ]}
+            >
+              <Ionicons name="add" size={20} color="#FFFFFF" />
+              <Text style={styles.addMemberText}>Aggiungi</Text>
+            </Pressable>
+          )}
         </View>
 
         {data.members.length === 0 ? (
@@ -391,6 +451,17 @@ export default function FamilyScreen() {
                             </Text>
                           </View>
                         )}
+                        {member.hasChildDeviceAccess && (
+                          <View
+                            style={[styles.managedBadge, { backgroundColor: colors.success + "20" }]}
+                            testID={`child-device-badge-${member.id}`}
+                          >
+                            <Ionicons name="phone-portrait-outline" size={11} color={colors.success} />
+                            <Text style={[styles.roleBadgeText, { color: colors.success }]}>
+                              Dispositivo collegato
+                            </Text>
+                          </View>
+                        )}
                         <Text style={[styles.memberPoints, { color: colors.textSecondary }]}>
                           {member.points} punti
                         </Text>
@@ -415,6 +486,15 @@ export default function FamilyScreen() {
                         >
                           <Ionicons name="pencil" size={20} color={colors.primary} />
                         </Pressable>
+                        {/* Codice di accesso "dispositivo bambino": il bambino
+                            entra dal suo dispositivo senza email/password. */}
+                        <Pressable
+                          onPress={() => handleGenerateChildCode(member)}
+                          style={styles.actionButton}
+                          testID={`child-access-member-${member.id}`}
+                        >
+                          <Ionicons name="key-outline" size={20} color={colors.primary} />
+                        </Pressable>
                         {/* Promuovi profilo gestito ad account vero via invito email
                             (punti/storico preservati). */}
                         <Pressable
@@ -430,6 +510,24 @@ export default function FamilyScreen() {
                           <Ionicons name="person-add-outline" size={20} color={colors.primary} />
                         </Pressable>
                       </>
+                    ) : member.hasChildDeviceAccess && canManageProfiles && !isEditingMember ? (
+                      <>
+                        {/* Nuovo codice (nuovo dispositivo) + revoca accesso. */}
+                        <Pressable
+                          onPress={() => handleGenerateChildCode(member)}
+                          style={styles.actionButton}
+                          testID={`child-access-member-${member.id}`}
+                        >
+                          <Ionicons name="key-outline" size={20} color={colors.primary} />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => handleRevokeChildAccess(member)}
+                          style={styles.actionButton}
+                          testID={`revoke-child-access-${member.id}`}
+                        >
+                          <Ionicons name="remove-circle-outline" size={20} color={colors.error} />
+                        </Pressable>
+                      </>
                     ) : isSelf ? (
                       <Pressable
                         onPress={() => router.push("/edit-profile")}
@@ -438,7 +536,7 @@ export default function FamilyScreen() {
                       >
                         <Ionicons name="pencil" size={20} color={colors.primary} />
                       </Pressable>
-                    ) : member.userId ? (
+                    ) : member.userId && !isChildUser ? (
                       <Pressable
                         onPress={() => handleMemberAction(member)}
                         style={styles.actionButton}
@@ -446,7 +544,7 @@ export default function FamilyScreen() {
                         <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
                       </Pressable>
                     ) : null}
-                    {!isSelf && (
+                    {!isSelf && !isChildUser && (
                       <Pressable
                         onPress={() => handleDeleteMember(member.id, member.name)}
                         style={styles.deleteButton}
@@ -543,6 +641,9 @@ export default function FamilyScreen() {
         </View>
       </View>
 
+      {/* Funzionalità da adulti: nascoste agli account "dispositivo bambino"
+          (il server blocca comunque gli endpoint corrispondenti). */}
+      {!isChildUser && (
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Funzionalita</Text>
@@ -657,6 +758,7 @@ export default function FamilyScreen() {
           )}
         </View>
       </View>
+      )}
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
@@ -719,6 +821,8 @@ export default function FamilyScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
           </Card>
+          {!isChildUser && (
+          <>
           <Card onPress={() => router.push("/contact-support")}>
             <View style={styles.featureLinkRow}>
               <View style={[styles.featureLinkIcon, { backgroundColor: colors.primary + "20" }]}>
@@ -747,6 +851,8 @@ export default function FamilyScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
           </Card>
+          </>
+          )}
           {feedbackAccess?.ok && (
             <Card onPress={() => router.push("/admin/feedback")}>
               <View style={styles.featureLinkRow}>

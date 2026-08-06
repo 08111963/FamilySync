@@ -10,7 +10,7 @@ import { PRIVACY_POLICY_VERSION } from '../../shared/policy-version';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken, generateMediaToken } from '../lib/jwt';
 import { resolveUploadFileAccess, userIsFamilyMember } from '../lib/media-auth';
 import { sendVerificationEmail, sendPasswordResetEmail, isPasswordResetEmailConfigured, isVerificationEmailConfigured } from '../lib/email';
-import { authenticate, requireEmailVerified } from '../middleware/auth';
+import { authenticate, requireEmailVerified, blockChildAccount } from '../middleware/auth';
 import { logger } from '../lib/logger';
 import { v4 as uuidv4 } from 'uuid';
 import rateLimit from 'express-rate-limit';
@@ -308,6 +308,9 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
       avatarUrl: user.avatarUrl,
       emailVerified: user.emailVerified,
       ageBand: user.ageBand,
+      // true per gli account "dispositivo bambino" (accesso con codice PIN):
+      // il client mostra la vista ridotta; il server blocca comunque le aree vietate.
+      isChildAccount: user.isChildAccount === true,
       // Onboarding richiesto per account creati prima delle nuove regole:
       // fascia d'età mancante o Termini mai accettati esplicitamente.
       needsOnboarding: !user.ageBand || !user.termsAcceptedAt,
@@ -326,7 +329,7 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
  * corrente come vista, così il banner in-app non viene più mostrato.
  * È un'informativa (non un consenso): nessuna registrazione nel registro consensi.
  */
-router.post('/privacy-policy-ack', authenticate, async (req: Request, res: Response) => {
+router.post('/privacy-policy-ack', authenticate, blockChildAccount, async (req: Request, res: Response) => {
   try {
     const [row] = await db
       .update(users)
@@ -356,7 +359,7 @@ const onboardingSchema = z.object({
  * d'età obbligatoria, accettazione esplicita dei Termini). Non tocca nessun
  * altro dato dell'utente: nessuna perdita di famiglie, liste o contenuti.
  */
-router.post('/onboarding', authenticate, async (req: Request, res: Response) => {
+router.post('/onboarding', authenticate, blockChildAccount, async (req: Request, res: Response) => {
   try {
     const parsed = onboardingSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -393,7 +396,7 @@ router.post('/onboarding', authenticate, async (req: Request, res: Response) => 
   }
 });
 
-router.post('/change-password', authenticate, async (req: Request, res: Response) => {
+router.post('/change-password', authenticate, blockChildAccount, async (req: Request, res: Response) => {
   try {
     const parsed = changePasswordSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -470,7 +473,7 @@ router.post('/verify-email', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/resend-verification-email', authenticate, async (req: Request, res: Response) => {
+router.post('/resend-verification-email', authenticate, blockChildAccount, async (req: Request, res: Response) => {
   try {
     const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
 
@@ -512,6 +515,10 @@ router.post('/resend-verification-email', authenticate, async (req: Request, res
 router.post('/media-token', authenticate, requireEmailVerified, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
+    // Gli account "dispositivo bambino" possono ottenere media token SOLO per
+    // le aree loro consentite (es. file chat): gli allegati bollette sono
+    // esclusi sia qui che alla verifica del token (claim child, fail-closed).
+    const isChild = req.user!.isChildAccount === true;
 
     const rawFilePath = typeof req.body?.filePath === 'string' ? req.body.filePath.trim() : '';
     let filePath: string | undefined;
@@ -532,7 +539,7 @@ router.post('/media-token', authenticate, requireEmailVerified, async (req: Requ
     }
 
     if (filePath) {
-      const fileFamilyId = await resolveUploadFileAccess(userId, filePath);
+      const fileFamilyId = await resolveUploadFileAccess(userId, filePath, { excludeBillAttachments: isChild });
       if (!fileFamilyId) {
         return res.status(403).json({ error: { code: "NOT_AUTHORIZED", message: "Non hai i permessi per accedere a questo file" } });
       }
@@ -545,7 +552,7 @@ router.post('/media-token', authenticate, requireEmailVerified, async (req: Requ
       }
     }
 
-    const mediaToken = generateMediaToken(userId, { familyId, filePath });
+    const mediaToken = generateMediaToken(userId, { familyId, filePath, child: isChild });
 
     res.json({ mediaToken, expiresIn: 300 });
   } catch (error) {
@@ -657,7 +664,9 @@ router.post('/reset-password', passwordResetLimiter, async (req: Request, res: R
 
 // Eliminazione account: accessibile a qualsiasi utente autenticato (anche con
 // email non verificata, perche e un diritto fondamentale e richiesto dagli store).
-router.delete('/account', deleteAccountLimiter, authenticate, async (req: Request, res: Response) => {
+// Gli account "dispositivo bambino" non possono auto-eliminarsi: la revoca
+// dell'accesso spetta al genitore (DELETE .../child-access), fail-closed.
+router.delete('/account', deleteAccountLimiter, authenticate, blockChildAccount, async (req: Request, res: Response) => {
   try {
     const parsed = deleteAccountSchema.safeParse(req.body);
     if (!parsed.success) {

@@ -14,6 +14,8 @@ interface User {
   avatarUrl?: string;
   emailVerified: boolean;
   ageBand?: 'under14' | '14_17' | 'adult' | null;
+  /** true per gli account "dispositivo bambino" (accesso con codice PIN) */
+  isChildAccount?: boolean;
   needsOnboarding?: boolean;
   /** true se la Privacy Policy è cambiata rispetto all'ultima versione vista */
   privacyPolicyUpdated?: boolean;

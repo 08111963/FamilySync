@@ -3,7 +3,8 @@ import { createServer, type Server } from "node:http";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { setupWebSocket } from "./lib/websocket";
-import { authenticate, authenticateMedia, requireEmailVerified } from "./middleware/auth";
+import { authenticate, authenticateMedia, requireEmailVerified, blockChildAccount, blockChildWrites } from "./middleware/auth";
+import childAccessRoutes, { childAccessLimiter } from "./routes/child-access";
 import { createUploadsObjectHandler } from "./lib/upload-storage";
 
 import authRoutes from "./routes/auth";
@@ -80,29 +81,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Link/QR RIUTILIZZABILE: router PUBBLICO (lookup stato + accept nuovo utente
   // con la PROPRIA email), montato senza authenticate, con rate limiter dedicato.
   app.use('/api/join-link', joinLinkLimiter, joinLinkRoutes);
-  app.use('/api/families', authenticate, requireEmailVerified, familiesRoutes);
+  // Accesso "dispositivo bambino": endpoint PUBBLICO di attivazione codice,
+  // con rate limiter stretto dedicato (anti brute-force sui codici corti).
+  app.use('/api/child-access', childAccessLimiter, childAccessRoutes);
+  // Gli account bambino possono LEGGERE famiglia/membri ma non modificare nulla
+  // (gestione membri, inviti, impostazioni, generazione codici = solo genitori).
+  app.use('/api/families', authenticate, requireEmailVerified, blockChildWrites, familiesRoutes);
   app.use('/api/calendar', authenticate, requireEmailVerified, calendarRoutes);
   // Google Calendar sync: auth applicata per-rotta (il callback OAuth è pubblico).
   app.use('/api/calendar-sync', googleCalendarSyncRoutes);
   app.use('/api/shopping', authenticate, requireEmailVerified, shoppingRoutes);
   app.use('/api/chores', authenticate, requireEmailVerified, choresRoutes);
   app.use('/api/rewards', authenticate, requireEmailVerified, rewardsRoutes);
-  app.use('/api/pantry', authenticate, requireEmailVerified, pantryRoutes);
-  app.use('/api/expenses', authenticate, requireEmailVerified, expensesRoutes);
-  app.use('/api/ai', authenticate, requireEmailVerified, aiRoutes);
-  app.use('/api/payments', authenticate, requireEmailVerified, paymentsRoutes);
+  app.use('/api/pantry', authenticate, requireEmailVerified, blockChildAccount, pantryRoutes);
+  app.use('/api/expenses', authenticate, requireEmailVerified, blockChildAccount, expensesRoutes);
+  app.use('/api/ai', authenticate, requireEmailVerified, blockChildAccount, aiRoutes);
+  app.use('/api/payments', authenticate, requireEmailVerified, blockChildAccount, paymentsRoutes);
   // Webhook RevenueCat: pubblico (nessun JWT), autenticato via header. Va
   // registrato PRIMA del mount autenticato di /api/purchases.
   app.post('/api/purchases/webhook', handleRevenueCatWebhook);
-  app.use('/api/purchases', authenticate, requireEmailVerified, purchasesRoutes);
-  app.use('/api/moderation', authenticate, requireEmailVerified, moderationRoutes);
-  app.use('/api/recipes', authenticate, requireEmailVerified, recipesRoutes);
-  app.use('/api/meal-plans', authenticate, requireEmailVerified, mealPlansRoutes);
+  app.use('/api/purchases', authenticate, requireEmailVerified, blockChildAccount, purchasesRoutes);
+  // Moderazione (preferenze AI/consensi, blocchi, segnalazioni) vietata agli
+  // account bambino: sono impostazioni self-service da adulti; il filtro chat
+  // dei blocchi resta applicato lato server indipendentemente da chi legge.
+  app.use('/api/moderation', authenticate, requireEmailVerified, blockChildAccount, moderationRoutes);
+  app.use('/api/recipes', authenticate, requireEmailVerified, blockChildAccount, recipesRoutes);
+  app.use('/api/meal-plans', authenticate, requireEmailVerified, blockChildAccount, mealPlansRoutes);
   app.use('/api/chat', authenticate, requireEmailVerified, chatRoutes);
   app.use('/api/notifications', authenticate, requireEmailVerified, notificationsRoutes);
-  app.use('/api/bills', authenticate, requireEmailVerified, billsRoutes);
-  app.use('/api/support', authenticate, requireEmailVerified, supportRoutes);
-  app.use('/api/profile', authenticate, requireEmailVerified, profileRoutes);
+  // Aree VIETATE agli account bambino (fail-closed lato server, non solo UI):
+  // bollette, budget/spese, pagamenti, acquisti, AI, dispensa, ricette, piani
+  // pasto, assistenza, feedback.
+  app.use('/api/bills', authenticate, requireEmailVerified, blockChildAccount, billsRoutes);
+  app.use('/api/support', authenticate, requireEmailVerified, blockChildAccount, supportRoutes);
+  // Profilo self-service (avatar) vietato agli account "dispositivo bambino":
+  // avatar e nome dei profili bambino li gestisce il genitore dal tab Famiglia.
+  app.use('/api/profile', authenticate, requireEmailVerified, blockChildAccount, profileRoutes);
   // Analytics interna TEMPORANEA (periodo di test): attiva solo con
   // ENABLE_TEST_ANALYTICS=true; pannello riservato a APP_OWNER_EMAILS.
   // Il check del flag PRIMA di authenticate: con flag off gli endpoint
@@ -112,7 +126,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Feedback tester ("Dacci il tuo parere"): invio per tutti gli utenti
   // verificati, consultazione riservata al proprietario (APP_OWNER_EMAILS).
-  app.use('/api/feedback', authenticate, requireEmailVerified, feedbackRouter);
+  app.use('/api/feedback', authenticate, requireEmailVerified, blockChildAccount, feedbackRouter);
   app.use('/api/admin/feedback', authenticate, feedbackAdminRouter);
 
   // Feed ICS del calendario famiglia: PUBBLICO (nessun JWT), protetto da token

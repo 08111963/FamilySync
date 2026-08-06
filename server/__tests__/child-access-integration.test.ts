@@ -1,0 +1,215 @@
+import { test, describe, before, after } from "node:test";
+import assert from "node:assert/strict";
+import express from "express";
+import type { Server } from "node:http";
+import { eq, inArray } from "drizzle-orm";
+import { db } from "../db";
+import { users, families, familyMembers, childAccessCodes, bills, billAttachments, chatMessages, entitlements } from "../../shared/schema";
+import { registerRoutes } from "../routes";
+import { generateAccessToken } from "../lib/jwt";
+
+/**
+ * Test di INTEGRAZIONE dell'accesso "dispositivo bambino" contro il DB reale e
+ * l'app Express completa: generazione codice, attivazione monouso, aree vietate
+ * (fail-closed) e revoca. Richiede DATABASE_URL.
+ */
+const hasDb = !!process.env.DATABASE_URL;
+
+describe("accesso dispositivo bambino (DB + HTTP)", { skip: hasDb ? false : "DATABASE_URL non impostata" }, () => {
+  let server: Server;
+  let baseUrl: string;
+
+  const created = { users: [] as string[], families: [] as string[] };
+
+  let adminId: string;
+  let adminToken: string;
+  let familyId: string;
+  let memberId: string; // profilo bambino gestito (userId NULL)
+
+  const uniq = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  function request(method: string, path: string, body?: unknown, token?: string) {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return fetch(`${baseUrl}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  }
+
+  before(async () => {
+    const app = express();
+    app.use(express.json());
+    await registerRoutes(app);
+    server = app.listen(0);
+    const addr = server.address();
+    baseUrl = `http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`;
+
+    const [admin] = await db.insert(users).values({
+      email: `parent-${uniq()}@test.local`,
+      passwordHash: "x".repeat(20),
+      name: "Parent",
+      emailVerified: true,
+      termsAcceptedAt: new Date(),
+    }).returning();
+    created.users.push(admin.id);
+    adminId = admin.id;
+    adminToken = generateAccessToken(admin);
+
+    const [fam] = await db.insert(families).values({ name: `Fam-${uniq()}` }).returning();
+    created.families.push(fam.id);
+    familyId = fam.id;
+    await db.insert(familyMembers).values({ familyId, userId: adminId, role: "admin", nickname: "p", color: "#6366F1", points: 0 });
+    const [child] = await db.insert(familyMembers).values({ familyId, userId: null, role: "child", nickname: "Luca", color: "#F59E0B", points: 5 }).returning();
+    memberId = child.id;
+  });
+
+  after(async () => {
+    server?.close();
+    if (created.families.length) {
+      await db.delete(childAccessCodes).where(inArray(childAccessCodes.familyId, created.families));
+      await db.delete(familyMembers).where(inArray(familyMembers.familyId, created.families));
+      await db.delete(families).where(inArray(families.id, created.families));
+    }
+    // include lo shadow user creato dall'attivazione
+    const shadow = await db.select({ id: users.id }).from(users).where(eq(users.email, `child-${memberId}@child.familysync.invalid`.toLowerCase()));
+    const ids = [...created.users, ...shadow.map((s) => s.id)];
+    if (ids.length) await db.delete(users).where(inArray(users.id, ids));
+  });
+
+  let plainCode: string;
+  let childToken: string;
+
+  test("il genitore genera un codice (una sola volta in chiaro)", async () => {
+    const res = await request("POST", `/api/families/${familyId}/members/${memberId}/child-access`, undefined, adminToken);
+    assert.equal(res.status, 201);
+    const body = await res.json();
+    assert.match(body.code, /^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    plainCode = body.code;
+    // nel DB c'è solo l'hash, mai il codice in chiaro
+    const rows = await db.select().from(childAccessCodes).where(eq(childAccessCodes.memberId, memberId));
+    assert.equal(rows.length, 1);
+    assert.notEqual(rows[0].codeHash, plainCode.replace("-", ""));
+  });
+
+  test("l'attivazione crea lo shadow user e restituisce i token", async () => {
+    const res = await request("POST", `/api/child-access/activate`, { code: plainCode });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.user.isChildAccount, true);
+    assert.ok(body.accessToken && body.refreshToken);
+    childToken = body.accessToken;
+    // membro collegato, punti conservati
+    const [m] = await db.select().from(familyMembers).where(eq(familyMembers.id, memberId));
+    assert.ok(m.userId);
+    assert.equal(m.points, 5);
+  });
+
+  test("il codice è monouso: il replay fallisce con errore generico", async () => {
+    const res = await request("POST", `/api/child-access/activate`, { code: plainCode });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.error.code, "CODE_INVALID");
+  });
+
+  test("aree consentite: famiglia, faccende, /me", async () => {
+    for (const path of [`/api/families/${familyId}`, `/api/chores/${familyId}`, `/api/auth/me`]) {
+      const res = await request("GET", path, undefined, childToken);
+      assert.equal(res.status, 200, path);
+    }
+    const me = await (await request("GET", `/api/auth/me`, undefined, childToken)).json();
+    assert.equal(me.isChildAccount, true);
+  });
+
+  test("aree vietate: 403 fail-closed per il bambino", async () => {
+    const denied: Array<[string, string, unknown?]> = [
+      ["GET", `/api/bills/${familyId}`],
+      ["GET", `/api/expenses/${familyId}/summary`],
+      ["POST", `/api/families`, { name: "x" }],
+      ["POST", `/api/families/${familyId}/members/${memberId}/child-access`],
+      ["DELETE", `/api/auth/account`, { password: "x" }],
+      ["POST", `/api/auth/change-password`, { currentPassword: "a", newPassword: "b" }],
+      ["POST", `/api/auth/onboarding`, {}],
+      ["POST", `/api/auth/privacy-policy-ack`, {}],
+      ["POST", `/api/auth/resend-verification-email`],
+      ["DELETE", `/api/profile/avatar`],
+      ["GET", `/api/moderation/preferences`],
+      ["PATCH", `/api/moderation/preferences`, { aiFeaturesEnabled: true }],
+      ["GET", `/api/moderation/consents`],
+      ["GET", `/api/moderation/blocks/${familyId}`],
+    ];
+    for (const [method, path, body] of denied) {
+      const res = await request(method, path, body, childToken);
+      assert.equal(res.status, 403, `${method} ${path} -> ${res.status}`);
+    }
+  });
+
+  test("media token: il bambino NON può ottenere/usare token per allegati bollette", async () => {
+    const billFile = `/uploads/bills/test-${uniq()}.pdf`;
+    const chatFile = `/uploads/chat/test-${uniq()}.png`;
+
+    // famiglia Premium (gli allegati bollette sono una funzione Premium)
+    await db.insert(entitlements).values({ familyId, platform: "google", productId: "premium_test", status: "active", expiresAt: null });
+    const [bill] = await db.insert(bills).values({ familyId, title: "Luce", amount: "10.00", dueDate: "2030-01-01" }).returning();
+    await db.insert(billAttachments).values({ billId: bill.id, familyId, fileUrl: billFile, uploadedBy: adminId });
+    await db.insert(chatMessages).values({ familyId, userId: adminId, messageType: "image", fileUrl: chatFile });
+
+    // il genitore PUÒ ottenere un token per l'allegato bolletta
+    const adultTok = await request("POST", `/api/auth/media-token`, { filePath: billFile }, adminToken);
+    assert.equal(adultTok.status, 200);
+
+    // il bambino NO (403), ma può per i file chat (area consentita)
+    const childBill = await request("POST", `/api/auth/media-token`, { filePath: billFile }, childToken);
+    assert.equal(childBill.status, 403);
+    const childChat = await request("POST", `/api/auth/media-token`, { filePath: chatFile }, childToken);
+    assert.equal(childChat.status, 200);
+
+    // un token bambino family-scoped non serve comunque file bolletta (claim child verificato alla lettura)
+    const scoped = await request("POST", `/api/auth/media-token`, { familyId }, childToken);
+    assert.equal(scoped.status, 200);
+    const { mediaToken } = await scoped.json();
+    const fetchBill = await fetch(`${baseUrl}${billFile}?token=${encodeURIComponent(mediaToken)}`);
+    assert.equal(fetchBill.status, 403);
+    // lo stesso token bambino sui file chat supera l'autorizzazione (il file
+    // fisico non esiste su disco: 404, ma NON 403)
+    const fetchChat = await fetch(`${baseUrl}${chatFile}?token=${encodeURIComponent(mediaToken)}`);
+    assert.notEqual(fetchChat.status, 403);
+  });
+
+  test("la revoca scollega il membro e invalida subito il token", async () => {
+    const res = await request("DELETE", `/api/families/${familyId}/members/${memberId}/child-access`, undefined, adminToken);
+    assert.equal(res.status, 200);
+    const me = await request("GET", `/api/auth/me`, undefined, childToken);
+    assert.equal(me.status, 401);
+    // profilo di nuovo gestito, punti intatti
+    const [m] = await db.select().from(familyMembers).where(eq(familyMembers.id, memberId));
+    assert.equal(m.userId, null);
+    assert.equal(m.points, 5);
+  });
+
+  test("RIATTIVAZIONE dopo revoca: nuovo codice → attiva di nuovo (shadow user ripristinato)", async () => {
+    // il genitore genera un nuovo codice per lo stesso profilo
+    const gen = await request("POST", `/api/families/${familyId}/members/${memberId}/child-access`, undefined, adminToken);
+    assert.equal(gen.status, 201);
+    const { code } = await gen.json();
+
+    // l'attivazione deve RIUSARE lo shadow user soft-eliminato (email sintetica
+    // deterministica già presente in users), non fallire per email duplicata
+    const act = await request("POST", `/api/child-access/activate`, { code });
+    assert.equal(act.status, 200);
+    const body = await act.json();
+    assert.equal(body.user.isChildAccount, true);
+
+    // il nuovo token funziona, il vecchio (pre-revoca) resta invalido
+    const meNew = await request("GET", `/api/auth/me`, undefined, body.accessToken);
+    assert.equal(meNew.status, 200);
+    const meOld = await request("GET", `/api/auth/me`, undefined, childToken);
+    assert.equal(meOld.status, 401);
+
+    // membro ricollegato allo stesso shadow user, punti intatti
+    const [m] = await db.select().from(familyMembers).where(eq(familyMembers.id, memberId));
+    assert.ok(m.userId);
+    assert.equal(m.points, 5);
+  });
+});

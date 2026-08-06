@@ -4,7 +4,8 @@ import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { families, familyMembers, familyInvites, users, calendarEvents, shoppingItems, shoppingLists, chores } from '../../shared/schema';
+import { families, familyMembers, familyInvites, users, calendarEvents, shoppingItems, shoppingLists, chores, childAccessCodes } from '../../shared/schema';
+import { generateChildAccessCode, hashChildAccessCode, formatChildAccessCode, CHILD_CODE_TTL_MS } from '../lib/child-access';
 import { eq, and, isNull, sql } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember, requireFamilyAdmin } from '../middleware/family';
@@ -142,7 +143,10 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
         points: m.member.points,
         avatarUrl: m.user?.avatarUrl ?? null,
         // true per i profili gestiti dai genitori (nessun account/login)
-        isManagedProfile: !m.user,
+        // NB: un profilo con accesso "dispositivo bambino" resta gestito.
+        isManagedProfile: !m.user || m.user.isChildAccount === true,
+        // true se il profilo ha un accesso "dispositivo bambino" attivo
+        hasChildDeviceAccess: m.user?.isChildAccount === true,
       })),
     });
   } catch (error) {
@@ -441,6 +445,137 @@ router.post('/:familyId/members/:memberId/promote', createInviteLimiter, authent
   } catch (error) {
     logger.error('Create promotion invite error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione dell'invito" } });
+  }
+});
+
+// ACCESSO "DISPOSITIVO BAMBINO" — il genitore (admin/adult) genera un codice
+// monouso e a scadenza per un profilo bambino gestito. Il codice viene mostrato
+// UNA volta in chiaro; nel DB resta solo l'hash (pattern invito sicuro).
+router.post('/:familyId/members/:memberId/child-access', createInviteLimiter, authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = getParam(req, 'familyId');
+    const memberId = getParam(req, 'memberId');
+    const membership = (req as any).membership;
+
+    if (membership.role !== 'admin' && membership.role !== 'adult') {
+      return res.status(403).json({
+        error: { code: "FORBIDDEN", message: "Solo un genitore (admin o adulto) può generare un codice di accesso" },
+      });
+    }
+
+    const [target] = await db.select({ member: familyMembers, user: users })
+      .from(familyMembers)
+      .leftJoin(users, eq(familyMembers.userId, users.id))
+      .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
+      .limit(1);
+
+    if (!target) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Membro non trovato" } });
+    }
+    // Consentito SOLO per profili gestiti (senza account) o già collegati a un
+    // account "dispositivo bambino" (rigenerazione per nuovo dispositivo).
+    if (target.member.userId !== null && target.user?.isChildAccount !== true) {
+      return res.status(409).json({
+        error: { code: "ALREADY_LINKED", message: "Questo membro ha già un account: non serve un codice di accesso" },
+      });
+    }
+
+    const code = generateChildAccessCode();
+    const codeHash = hashChildAccessCode(code);
+    const expiresAt = new Date(Date.now() + CHILD_CODE_TTL_MS);
+
+    await db.transaction(async (tx) => {
+      // Un solo codice pendente per profilo: revoca quelli precedenti non usati.
+      await tx.update(childAccessCodes)
+        .set({ revokedAt: new Date() })
+        .where(and(
+          eq(childAccessCodes.memberId, memberId),
+          isNull(childAccessCodes.usedAt),
+          isNull(childAccessCodes.revokedAt),
+        ));
+
+      await tx.insert(childAccessCodes).values({
+        familyId,
+        memberId,
+        codeHash,
+        createdBy: req.user!.userId,
+        expiresAt,
+      });
+    });
+
+    // Mai loggare il codice in chiaro.
+    logger.info('Child access code created', { familyId, memberId });
+
+    res.status(201).json({ code: formatChildAccessCode(code), expiresAt });
+  } catch (error) {
+    logger.error('Create child access code error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella generazione del codice" } });
+  }
+});
+
+// Revoca dell'accesso "dispositivo bambino": annulla i codici pendenti e, se il
+// profilo è collegato a un account bambino, lo scollega e disattiva l'account
+// (deletedAt → il middleware authenticate rifiuta subito ogni richiesta).
+// Il profilo torna "gestito" e resta promuovibile: punti e storico intatti.
+router.delete('/:familyId/members/:memberId/child-access', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  try {
+    const familyId = getParam(req, 'familyId');
+    const memberId = getParam(req, 'memberId');
+    const membership = (req as any).membership;
+
+    if (membership.role !== 'admin' && membership.role !== 'adult') {
+      return res.status(403).json({
+        error: { code: "FORBIDDEN", message: "Solo un genitore (admin o adulto) può revocare l'accesso" },
+      });
+    }
+
+    const [target] = await db.select({ member: familyMembers, user: users })
+      .from(familyMembers)
+      .leftJoin(users, eq(familyMembers.userId, users.id))
+      .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
+      .limit(1);
+
+    if (!target) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Membro non trovato" } });
+    }
+    // Mai toccare account veri da questo endpoint.
+    if (target.member.userId !== null && target.user?.isChildAccount !== true) {
+      return res.status(409).json({
+        error: { code: "NOT_CHILD_DEVICE", message: "Questo membro ha un account completo: non è un accesso bambino" },
+      });
+    }
+
+    const updatedMember = await db.transaction(async (tx) => {
+      await tx.update(childAccessCodes)
+        .set({ revokedAt: new Date() })
+        .where(and(
+          eq(childAccessCodes.memberId, memberId),
+          isNull(childAccessCodes.usedAt),
+          isNull(childAccessCodes.revokedAt),
+        ));
+
+      if (target.member.userId && target.user?.isChildAccount === true) {
+        const [unlinked] = await tx.update(familyMembers)
+          .set({ userId: null })
+          .where(eq(familyMembers.id, memberId))
+          .returning();
+        // Disattiva l'account bambino: deletedAt blocca subito le richieste
+        // (authenticate) e il bump di tokenVersion revoca i refresh token.
+        await tx.update(users)
+          .set({ deletedAt: new Date(), tokenVersion: sql`${users.tokenVersion} + 1`, updatedAt: new Date() })
+          .where(eq(users.id, target.member.userId));
+        return unlinked;
+      }
+      return target.member;
+    });
+
+    broadcastToFamily(familyId, 'member_updated', updatedMember);
+    logger.info('Child access revoked', { familyId, memberId });
+
+    res.json({ ok: true });
+  } catch (error) {
+    logger.error('Revoke child access error', { error: String(error) });
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella revoca dell'accesso" } });
   }
 });
 

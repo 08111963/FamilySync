@@ -8,7 +8,7 @@ import { normalizeUploadFileUrl, resolveUploadFileAccess, authorizeMediaRequest 
 declare global {
   namespace Express {
     interface Request {
-      user?: { userId: string; email: string; };
+      user?: { userId: string; email: string; isChildAccount?: boolean };
     }
   }
 }
@@ -33,7 +33,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     // poter accedere ad alcun endpoint protetto ("disconnessione da tutti i
     // dispositivi"). Lookup su PK indicizzata.
     const [record] = await db
-      .select({ deletedAt: users.deletedAt })
+      .select({ deletedAt: users.deletedAt, isChildAccount: users.isChildAccount, tokenVersion: users.tokenVersion })
       .from(users)
       .where(eq(users.id, payload.userId))
       .limit(1);
@@ -42,7 +42,16 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       return res.status(401).json({ error: { code: "INVALID_TOKEN", message: "Token non valido o scaduto" } });
     }
 
-    req.user = payload;
+    // Account "dispositivo bambino": revoca/riattivazione bumpano tokenVersion
+    // e devono invalidare SUBITO anche gli access token del vecchio dispositivo
+    // (fail-closed: un claim mancante non passa il confronto).
+    if (record.isChildAccount === true && (payload as { tokenVersion?: number }).tokenVersion !== (record.tokenVersion ?? 0)) {
+      return res.status(401).json({ error: { code: "INVALID_TOKEN", message: "Token non valido o scaduto" } });
+    }
+
+    // Flag "account dispositivo bambino" caricato una volta qui: i middleware
+    // blockChildAccount/blockChildWrites lo usano senza query aggiuntive.
+    req.user = { ...payload, isChildAccount: record.isChildAccount === true };
     next();
   } catch {
     return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante l'autenticazione" } });
@@ -68,7 +77,11 @@ export async function authenticateMedia(req: Request, res: Response, next: NextF
   const requestedFileUrl = normalizeUploadFileUrl(req.path);
 
   try {
-    const fileFamilyId = await resolveUploadFileAccess(payload.userId, requestedFileUrl);
+    // Il claim child nel media token esclude gli allegati bollette anche in
+    // fase di verifica: un token bambino non può mai servire file vietati.
+    const fileFamilyId = await resolveUploadFileAccess(payload.userId, requestedFileUrl, {
+      excludeBillAttachments: payload.child === true,
+    });
 
     const decision = authorizeMediaRequest({
       requestedFileUrl,
@@ -114,6 +127,40 @@ export async function requireEmailVerified(req: Request, res: Response, next: Ne
   } catch {
     return res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore durante la verifica email" } });
   }
+}
+
+const CHILD_FORBIDDEN = {
+  error: { code: "CHILD_FORBIDDEN", message: "Questa funzione non è disponibile per gli accessi bambino" },
+} as const;
+
+/**
+ * Blocco fail-closed per gli account "dispositivo bambino" (accesso con codice
+ * PIN): le aree vietate (bollette, budget, pagamenti, AI, impostazioni…) devono
+ * rifiutare lato server, non solo nascondere nel client. Da montare DOPO
+ * authenticate (usa il flag caricato lì; in sua assenza rifiuta per sicurezza).
+ */
+export function blockChildAccount(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ error: { code: "NO_TOKEN", message: "Token di autenticazione mancante" } });
+  }
+  // fail-closed: il flag è valorizzato da authenticate; se manca (percorso
+  // anomalo, es. token media) rifiutiamo comunque.
+  if (req.user.isChildAccount !== false) {
+    return res.status(403).json(CHILD_FORBIDDEN);
+  }
+  next();
+}
+
+/**
+ * Variante per i router che i bambini devono poter LEGGERE (famiglia, membri):
+ * blocca solo i metodi di scrittura per gli account bambino, così restano
+ * vietate gestione membri, inviti, impostazioni famiglia e generazione codici.
+ */
+export function blockChildWrites(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.isChildAccount === true && req.method !== 'GET' && req.method !== 'HEAD') {
+    return res.status(403).json(CHILD_FORBIDDEN);
+  }
+  next();
 }
 
 export function optionalAuth(req: Request, res: Response, next: NextFunction) {

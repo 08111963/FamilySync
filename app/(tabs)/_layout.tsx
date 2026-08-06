@@ -10,10 +10,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Colors from "@/constants/colors";
 import { useFamily } from "@/context/FamilyContext";
+import { useAuth } from "@/context/AuthContext";
 
 function NativeTabLayout() {
   const { getPendingChores } = useFamily();
+  const { user } = useAuth();
   const pendingCount = getPendingChores().length;
+  // Vista ridotta per gli account "dispositivo bambino": niente Bollette.
+  // Il server blocca comunque gli endpoint vietati (fail-closed).
+  const isChild = user?.isChildAccount === true;
 
   return (
     <NativeTabs>
@@ -34,10 +39,12 @@ function NativeTabLayout() {
         <Label>Faccende</Label>
         {pendingCount > 0 && <Badge>{String(pendingCount)}</Badge>}
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="bills">
-        <Icon sf={{ default: "doc.text", selected: "doc.text.fill" }} />
-        <Label>Bollette</Label>
-      </NativeTabs.Trigger>
+      {!isChild && (
+        <NativeTabs.Trigger name="bills">
+          <Icon sf={{ default: "doc.text", selected: "doc.text.fill" }} />
+          <Label>Bollette</Label>
+        </NativeTabs.Trigger>
+      )}
       <NativeTabs.Trigger name="chat">
         <Icon sf={{ default: "bubble.left.and.bubble.right", selected: "bubble.left.and.bubble.right.fill" }} />
         <Label>Chat</Label>
@@ -58,7 +65,10 @@ function ClassicTabLayout() {
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
   const { getPendingChores } = useFamily();
+  const { user } = useAuth();
   const pendingCount = getPendingChores().length;
+  // Vista ridotta per gli account "dispositivo bambino": niente Bollette.
+  const isChild = user?.isChildAccount === true;
 
   return (
     <Tabs
@@ -147,6 +157,8 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="bills"
         options={{
+          // href null = tab nascosto e rotta non raggiungibile per i bambini
+          href: isChild ? null : undefined,
           title: "Bollette",
           tabBarIcon: ({ color, focused }) => (
             isIOS ? (

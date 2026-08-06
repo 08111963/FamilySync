@@ -1,4 +1,6 @@
 import { Resend } from 'resend';
+import { isChildSyntheticEmail } from './child-access';
+import { logger } from './logger';
 
 // Le variabili d'ambiente vengono lette a RUNTIME (non a load-time) così che le
 // funzioni di configurazione riflettano sempre lo stato reale del processo e
@@ -71,6 +73,13 @@ export function isSupportEmailConfigured(): boolean {
  * conciso. Lancia in caso di errore API (il chiamante gestisce/logga).
  */
 async function sendEmail(params: { to: string; subject: string; html: string; replyTo?: string }): Promise<void> {
+  // Guardia: gli account "dispositivo bambino" hanno un'email sintetica NON
+  // recapitabile (@child.familysync.invalid). Nessun flusso deve mai provare a
+  // inviare loro email: skip silenzioso (fail-safe, nessun errore Resend).
+  if (isChildSyntheticEmail(params.to)) {
+    logger.warn('Email verso indirizzo sintetico bambino ignorata', { subject: params.subject });
+    return;
+  }
   const resend = new Resend(apiKey());
   // Default: le risposte vanno alla casella di assistenza. Un chiamante può
   // sovrascrivere il Reply-To (es. richiesta di assistenza: rispondere all'utente).

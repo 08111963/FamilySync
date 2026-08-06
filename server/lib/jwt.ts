@@ -50,11 +50,17 @@ export interface MediaTokenPayload {
   scope: 'media';
   familyId?: string;
   filePath?: string;
+  // true per i token emessi ad account "dispositivo bambino": la verifica
+  // media esclude le aree vietate (es. allegati bollette), fail-closed.
+  child?: boolean;
 }
 
 export function generateAccessToken(user: User): string {
   return jwt.sign(
-    { userId: user.id, email: user.email },
+    // tokenVersion nel claim: per gli account "dispositivo bambino" la revoca
+    // e la riattivazione devono invalidare SUBITO anche gli access token
+    // (verifica in authenticate); per gli adulti resta informativo.
+    { userId: user.id, email: user.email, tokenVersion: user.tokenVersion ?? 0 },
     JWT_SECRET,
     { expiresIn: '15m' }
   );
@@ -78,7 +84,7 @@ export function verifyAccessToken(token: string): TokenPayload {
 
 export function generateMediaToken(
   userId: string,
-  opts?: { familyId?: string; filePath?: string }
+  opts?: { familyId?: string; filePath?: string; child?: boolean }
 ): string {
   const payload: MediaTokenPayload = { userId, scope: 'media' };
   if (opts?.familyId) {
@@ -86,6 +92,9 @@ export function generateMediaToken(
   }
   if (opts?.filePath) {
     payload.filePath = opts.filePath;
+  }
+  if (opts?.child) {
+    payload.child = true;
   }
   return jwt.sign(payload, JWT_MEDIA_SECRET, { expiresIn: '5m' });
 }
