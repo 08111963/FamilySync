@@ -657,8 +657,25 @@ Se vuoi che il bambino usi l'app **dal suo telefono o tablet**, non serve crearg
 
 **Cose importanti da sapere**
 - Il codice funziona **una sola volta** e scade dopo **48 ore**: se scade o serve un nuovo dispositivo, genera semplicemente un nuovo codice
-- Il bambino vede solo le sue cose: **faccende, punti e premi, calendario, chat e classifica**
-- Le aree per adulti (**bollette, budget, abbonamento, gestione della famiglia**) e le **funzioni AI** restano bloccate, e il blocco è applicato dai nostri server, non solo nascosto nell'app
+
+**A cosa ha accesso il bambino**
+- **Calendario**: vede gli eventi della famiglia e può aggiungere i suoi
+- **Faccende**: vede le faccende assegnate e le segna come completate, guadagnando punti
+- **Punti, premi e classifica**: controlla i suoi punti, riscatta i premi e vede la classifica della famiglia
+- **Liste della spesa**: vede le liste e può aggiungere o spuntare articoli
+- **Chat**: legge e scrive nella chat di famiglia
+- **Famiglia**: vede i membri del gruppo (solo in lettura, non può modificare nulla)
+- **Notifiche**: riceve i promemoria sul suo dispositivo
+
+**Cosa resta riservato agli adulti**
+- **Bollette, budget e spese**
+- **Abbonamento Premium e pagamenti**
+- **Dispensa, ricette e piano pasti**
+- **Funzioni AI** (suggerimenti automatici, dettatura)
+- **Gestione della famiglia**: inviti, ruoli, impostazioni, generazione codici
+- **Impostazioni del profilo**: foto e nome del bambino li gestisce il genitore dalla scheda Famiglia
+
+> Questi blocchi sono applicati dai nostri **server**, non solo nascosti nell'app: anche provandoci, dal dispositivo del bambino non si può accedere alle aree per adulti.
 - Il genitore può **revocare l'accesso in qualsiasi momento** dalla scheda Famiglia: il bambino non entrerà più dal suo dispositivo, ma **punti e storico restano**
 
 **E se il genitore vuole creare un'email al bambino?**
