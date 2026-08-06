@@ -158,3 +158,52 @@ uri = "file://attached_assets/guida-profilo-bambino-senza-email.pdf"
 type = "pdf"
 title = "Guida: aggiungere un familiare senza email"
 description = "Come creare e gestire un profilo bambino (senza account né email) in FamilySync, passo per passo."
+
+[[outputs]]
+id = "4hS5wUpjXgx5C79DdiwjO"
+uri = "file://attached_assets/generated_images/welcome-calendario.jpg"
+type = "image"
+title = "Calendario Condiviso"
+description = "Proposta foto per la sezione 'Cosa puoi fare'"
+
+[[outputs]]
+id = "MySvsA-2YpFXmokx3dsTS"
+uri = "file://attached_assets/generated_images/welcome-spesa.jpg"
+type = "image"
+title = "Liste della Spesa"
+description = "Proposta foto per la sezione 'Cosa puoi fare'"
+
+[[outputs]]
+id = "1EXYZ_DAs8Pvptx05JNPd"
+uri = "file://attached_assets/generated_images/welcome-faccende.jpg"
+type = "image"
+title = "Faccende con Punti"
+description = "Proposta foto per la sezione 'Cosa puoi fare'"
+
+[[outputs]]
+id = "YkWmIpqeRshB5MUYt6vU2"
+uri = "file://attached_assets/generated_images/welcome-ai.jpg"
+type = "image"
+title = "Suggerimenti AI"
+description = "Proposta foto per la sezione 'Cosa puoi fare'"
+
+[[outputs]]
+id = "gve4z3WHTD-0Vukcjdjec"
+uri = "file://attached_assets/generated_images/welcome-chat.jpg"
+type = "image"
+title = "Chat Familiare"
+description = "Proposta foto per la sezione 'Cosa puoi fare'"
+
+[[outputs]]
+id = "yHQ67VQkNy3m9TKHamRNY"
+uri = "file://attached_assets/generated_images/welcome-sync.jpg"
+type = "image"
+title = "Sincronizzazione Real-time"
+description = "Proposta foto per la sezione 'Cosa puoi fare'"
+
+[[outputs]]
+id = "CezNU-SE1i3kZ3S_rqP4f"
+uri = "file://attached_assets/generated_images/welcome-classifica.jpg"
+type = "image"
+title = "Classifica Familiare"
+description = "Proposta foto per la sezione 'Cosa puoi fare'"
