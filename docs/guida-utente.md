@@ -116,7 +116,7 @@ Per aggiungere i tuoi familiari hai **quattro modi**, tutti dalla scheda **Famig
 - **Email**: inserisci il **nome** (facoltativo) e l'**email** del familiare, scegli il **ruolo** (Admin, Adulto, Adolescente o Figlio/a) e tocca **Invia Invito**. Riceverà un'email con un **link sicuro** personale: lo aprirà, sceglierà la password ed entrerà nella famiglia.
 - **WhatsApp**: FamilySync crea un **unico link riutilizzabile** e lo invia direttamente su WhatsApp con un messaggio già pronto.
 - **QR code**: mostra il **codice QR** dello stesso link: chi lo inquadra con il telefono entra nella famiglia.
-- **Bambino**: pensato per i bambini **sotto i 14 anni**, che non possono avere un account con email. Tu (genitore) inserisci solo il suo **nome** e il bambino compare subito in famiglia: puoi assegnargli faccende, punti e premi, senza che lui debba fare nulla. Se poi vuoi che usi l'app **dal suo telefono o tablet**, generi un **codice di accesso** dalla scheda Famiglia: lui lo inserisce ed entra, senza email né password (vedi "Sistema di Inviti" → "Profilo Bambino").
+- **Bambino**: per i minori di 14 anni, che non possono avere un account proprio. Il bambino entra nell'app **solo con un codice (PIN) generato dal genitore**: il genitore crea il profilo con il nome del bambino, genera il codice dalla scheda Famiglia e il bambino lo inserisce sul suo dispositivo — senza email né password (vedi "Sistema di Inviti" → "Profilo Bambino").
 
 > Con WhatsApp e QR il link è **unico e riutilizzabile**: puoi condividerlo con più persone. Chi entra da questo link avrà il ruolo **"Adulto"** (puoi cambiarlo dopo dalla schermata Famiglia).
 
