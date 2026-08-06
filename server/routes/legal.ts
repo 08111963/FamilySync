@@ -173,6 +173,14 @@ router.get('/minori', (_req: Request, res: Response) => {
       <li>Le funzioni di intelligenza artificiale (i "suggerimenti automatici") <strong>non sono disponibili</strong> per te</li>
     </ul>
 
+    <h2>Se entri con un codice</h2>
+    <ul>
+      <li>Un genitore puo' darti un <strong>codice</strong> per entrare nell'app dal tuo telefono o tablet, senza email e senza password</li>
+      <li>Il codice funziona una volta sola e dura poco: se non funziona piu', chiedi al genitore di dartene uno nuovo</li>
+      <li>Con il tuo accesso vedi le tue cose (faccende, punti, calendario, chat), ma alcune parti dell'app (per esempio le bollette) restano solo per gli adulti</li>
+      <li>Il genitore puo' spegnere il tuo accesso quando vuole: i tuoi punti restano salvati</li>
+    </ul>
+
     <h2>Consigli utili</h2>
     <ul>
       <li>Non scrivere in chat o nelle note informazioni molto personali (es. dati sulla salute) se non serve</li>

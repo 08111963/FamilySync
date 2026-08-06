@@ -30,7 +30,7 @@ export default function MinorsPrivacyScreen() {
         </Text>
 
         <Section title="Cosa sappiamo di te" icon="person-circle-outline" colors={colors}>
-          <Bullet colors={colors}>Il tuo nome (o soprannome) e la tua email, che servono per farti entrare nell'app</Bullet>
+          <Bullet colors={colors}>Il tuo nome (o soprannome) e, se hai un account tuo, la tua email: servono per farti entrare nell'app. Se invece entri con un codice, l'email non serve</Bullet>
           <Bullet colors={colors}>Le cose che tu e la tua famiglia scrivete nell'app: eventi del calendario, liste della spesa, faccende, messaggi in chat</Bullet>
         </Section>
 
@@ -42,6 +42,13 @@ export default function MinorsPrivacyScreen() {
           <Bullet colors={colors}>Non puoi creare un account da solo/a: serve un genitore o un adulto che si occupa di te</Bullet>
           <Bullet colors={colors}>Il tuo profilo viene creato e controllato da un adulto della famiglia</Bullet>
           <Bullet colors={colors}>Le funzioni di intelligenza artificiale (i "suggerimenti automatici") non sono disponibili per te</Bullet>
+        </Section>
+
+        <Section title="Se entri con un codice" icon="key-outline" colors={colors}>
+          <Bullet colors={colors}>Un genitore può darti un codice per entrare nell'app dal tuo telefono o tablet, senza email e senza password</Bullet>
+          <Bullet colors={colors}>Il codice funziona una volta sola e dura poco: se non funziona più, chiedi al genitore di dartene uno nuovo</Bullet>
+          <Bullet colors={colors}>Con il tuo accesso vedi le tue cose (faccende, punti, calendario, chat), ma alcune parti dell'app (per esempio le bollette) restano solo per gli adulti</Bullet>
+          <Bullet colors={colors}>Il genitore può spegnere il tuo accesso quando vuole: i tuoi punti restano salvati</Bullet>
         </Section>
 
         <Section title="Consigli utili" icon="bulb-outline" colors={colors}>

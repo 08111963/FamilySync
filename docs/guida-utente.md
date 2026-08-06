@@ -115,7 +115,7 @@ Per aggiungere i tuoi familiari hai **quattro modi**, tutti dalla scheda **Famig
 - **Email**: inserisci il **nome** (facoltativo) e l'**email** del familiare, scegli il **ruolo** (Admin, Adulto, Adolescente o Figlio/a) e tocca **Invia Invito**. Riceverà un'email con un **link sicuro** personale: lo aprirà, sceglierà la password ed entrerà nella famiglia.
 - **WhatsApp**: FamilySync crea un **unico link riutilizzabile** e lo invia direttamente su WhatsApp con un messaggio già pronto.
 - **QR code**: mostra il **codice QR** dello stesso link: chi lo inquadra con il telefono entra nella famiglia.
-- **Bambino**: per i più piccoli **senza email** crei un **profilo bambino** con il solo nome, gestito dai genitori (niente account né login).
+- **Bambino**: per i più piccoli **senza email** crei un **profilo bambino** con il solo nome, gestito dai genitori. Se vuoi, puoi poi generare un **codice di accesso** per farlo entrare dal suo dispositivo (vedi "Sistema di Inviti" → "Profilo Bambino").
 
 > Con WhatsApp e QR il link è **unico e riutilizzabile**: puoi condividerlo con più persone. Chi entra da questo link avrà il ruolo **"Adulto"** (puoi cambiarlo dopo dalla schermata Famiglia).
 
@@ -589,7 +589,7 @@ Quando inviti un membro scegli uno di questi ruoli:
 - **Adolescente**: accesso alle funzionalità con un ruolo dedicato
 - **Figlio/a**: accesso alle funzionalità base
 
-> I bambini **senza email** non hanno bisogno di un account: puoi creare per loro un **profilo bambino** gestito dai genitori (vedi la sezione "Sistema di Inviti" → "Profilo Bambino").
+> I bambini **senza email** non hanno bisogno di un account: puoi creare per loro un **profilo bambino** gestito dai genitori e, se vuoi, farli entrare dal loro dispositivo con un **codice di accesso** (vedi la sezione "Sistema di Inviti" → "Profilo Bambino").
 
 ### Azioni sui Membri
 - Tocca l'icona con i tre puntini accanto a un membro per **Segnalare** o **Bloccare/Sbloccare** quella persona
@@ -636,11 +636,30 @@ Per i bambini che **non hanno un'email** (ad esempio i minori di 14 anni) non se
 3. Inserisci solo il **nome** del bambino (es. "Sofia") e tocca **Crea profilo bambino**
 
 **Come funziona il profilo bambino**
-- **Niente email, niente password, niente login**: il bambino non accede all'app
+- **Niente email, niente password**: per creare il profilo non serve nessun dato di contatto del bambino
 - Il profilo compare in famiglia come tutti gli altri membri: puoi **assegnargli faccende**, fargli **guadagnare punti**, farlo comparire nel **calendario** e nella **classifica**
 - È **gestito interamente dai genitori**: Admin e Adulti possono **rinominarlo** o **eliminarlo** in qualsiasi momento dalla schermata Famiglia
 - **Privacy garantita**: non viene raccolto nessun dato di contatto del minore
 - Il profilo **conta nel limite membri** del piano (5 col Free, illimitati col Premium)
+
+### D. Accesso del bambino dal suo dispositivo (codice)
+
+Se vuoi che il bambino usi l'app **dal suo telefono o tablet**, non serve creargli un'email: puoi generare un **codice di accesso**.
+
+**Come si genera il codice (genitore)**
+1. Vai alla scheda **Famiglia** e trova il profilo bambino nella lista Membri
+2. Tocca l'azione **codice di accesso** sulla sua riga
+3. Ti viene mostrato un codice del tipo **ABCD-EFGH**: segnalo o condividilo subito, viene mostrato **una sola volta**
+
+**Come entra il bambino**
+1. Sul suo dispositivo apre FamilySync e, nella schermata di accesso, tocca **"Sei un bambino con un codice?"**
+2. Inserisce il codice ricevuto dal genitore ed entra: **niente email, niente password**
+
+**Cose importanti da sapere**
+- Il codice funziona **una sola volta** e scade dopo **48 ore**: se scade o serve un nuovo dispositivo, genera semplicemente un nuovo codice
+- Il bambino vede solo le sue cose: **faccende, punti e premi, calendario, chat e classifica**
+- Le aree per adulti (**bollette, budget, abbonamento, gestione della famiglia**) e le **funzioni AI** restano bloccate, e il blocco è applicato dai nostri server, non solo nascosto nell'app
+- Il genitore può **revocare l'accesso in qualsiasi momento** dalla scheda Famiglia: il bambino non entrerà più dal suo dispositivo, ma **punti e storico restano**
 
 > Quando il bambino cresce e ha una sua email, potrà essere invitato normalmente con il ruolo più adatto.
 
