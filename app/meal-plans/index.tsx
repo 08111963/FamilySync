@@ -845,6 +845,9 @@ export default function MealPlansScreen() {
                 />
               </View>
               <AiPrivacyNotice />
+              <Text style={[styles.aiDisclaimerText, { color: colors.textSecondary }]} testID="mealplan-ai-disclaimer">
+                I piani pasti sono generati dall'intelligenza artificiale e non da un nutrizionista: non sostituiscono il parere di un medico o professionista. Per esigenze particolari consulta uno specialista.
+              </Text>
               {voicePrefs ? (
                 <View style={[styles.voicePrefsBox, { borderColor: colors.border }]}>
                   <Text style={[styles.voicePrefsText, { color: colors.text }]} numberOfLines={3}>
@@ -901,10 +904,6 @@ export default function MealPlansScreen() {
               </>
             )}
           </Pressable>
-
-          <Text style={[styles.aiDisclaimerText, { color: colors.textSecondary }]} testID="mealplan-ai-disclaimer">
-            I piani pasti sono generati dall'intelligenza artificiale e non da un nutrizionista: non sostituiscono il parere di un medico o professionista. Per esigenze particolari consulta uno specialista.
-          </Text>
 
           {aiDisabledError && (
             <View style={[styles.aiDisabledBox, { backgroundColor: colors.error + "15", borderColor: colors.error + "40" }]}>
