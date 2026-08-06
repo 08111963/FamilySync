@@ -8,7 +8,7 @@
 
 1. **Registrati** con nome, email e password
 2. **Crea una famiglia** dalla schermata Home
-3. **Invita i familiari** dalla scheda Famiglia: via **email** (link sicuro personale) oppure con un **link unico via WhatsApp o QR code**
+3. **Invita i familiari** dalla scheda Famiglia: via **email** (link sicuro personale) oppure con un **link unico via WhatsApp o QR code**. Per i **bambini sotto i 14 anni** (senza email) crea un **profilo bambino** e, se vuoi, un **codice di accesso** per farlo entrare dal suo dispositivo
 4. **Personalizza il tuo profilo** (foto e colore) toccando la matita sulla tua riga nella scheda Famiglia
 5. **Usa le 7 schede** per organizzare la vita quotidiana: Home, Calendario, Spesa, Faccende, Bollette, Chat, Famiglia
 6. **Comunica** con la famiglia tramite la Chat in tempo reale
@@ -53,6 +53,7 @@ L'app ha 7 schede principali in fondo allo schermo:
 
 - [ ] Creare la famiglia e darle un nome
 - [ ] Invitare tutti i membri della famiglia (via email, WhatsApp o QR code)
+- [ ] Per i bambini sotto i 14 anni (senza email): creare il profilo bambino e, se vuoi farlo entrare dal suo dispositivo, generare il codice di accesso
 - [ ] Creare i primi eventi nel Calendario condiviso
 - [ ] Creare la prima lista della Spesa
 - [ ] Assegnare le prime Faccende ai membri
