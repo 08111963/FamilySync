@@ -38,7 +38,7 @@ L'app ha 7 schede principali in fondo allo schermo:
 | Ricette | Card "Ricette" dalla Home | Generare ricette AI, cercare ricette, creare ricette proprie, salvare, aggiungere ingredienti alla spesa |
 | Piano Pasti | Card "Piano Pasti" dalla Home | Generare piani settimanali AI, creare/modificare piani manualmente, convertire in lista spesa |
 | Dispensa | Icona vassoio nella scheda Spesa | Vedere cosa c'è in casa, gestire quantità e date di scadenza, evitare sprechi e doppioni |
-| Invita Familiare | Pulsante "Aggiungi" nella scheda Famiglia | Invitare un familiare via email, WhatsApp o QR code |
+| Invita Familiare | Pulsante "Aggiungi" nella scheda Famiglia | Invitare un familiare via email, WhatsApp o QR code; per i minori di 14 anni creare il profilo bambino con accesso tramite codice PIN |
 | Il mio profilo | Icona matita sulla propria riga nella scheda Famiglia | Personalizzare la foto e il colore del proprio profilo |
 | Premium | Sezione Funzionalità nella scheda Famiglia | Attivare l'abbonamento Premium e sbloccare funzioni avanzate |
 | Consigli AI famiglia | Sezione Funzionalità nella scheda Famiglia | Vedere analisi e consigli settimanali generati dall'AI |
