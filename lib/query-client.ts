@@ -5,6 +5,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const AUTH_STORAGE_KEY = "@family_sync_auth";
 
 export function getApiUrl(): string {
+  // Sul web frontend e backend sono serviti dalla stessa origine: usarla
+  // direttamente rende la build portabile (dev, anteprima, produzione)
+  // senza dover "cucire" il dominio dentro il bundle all'export.
+  if (typeof window !== "undefined" && window.location?.origin?.startsWith("http")) {
+    return `${window.location.origin}/`;
+  }
+
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {

@@ -34,3 +34,6 @@ The backend (port 5000) serves a static Expo web export from `web-build/` alongs
 
 ## Cache Metro e EXPO_PUBLIC_DOMAIN
 - `expo export` può riusare il bundle in cache Metro: se il primo export era senza EXPO_PUBLIC_DOMAIN, ri-esportare CON la env non basta — serve `expo export -c` per rigenerare col dominio baked. Verificare sempre con grep del dominio nel bundle.
+
+## API URL sul web (ago 2026)
+`lib/query-client.ts` getApiUrl(): sul web usa `window.location.origin` (build portabile dev/prod); `EXPO_PUBLIC_DOMAIN` serve solo per native. Non serve più impostarlo negli export web. Inoltre `.replit`: external 80 → local 5000 (backend), 8081 → 8081; l'URL dev senza porta ora serve l'app web.
