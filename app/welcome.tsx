@@ -167,7 +167,7 @@ export default function WelcomeScreen() {
 
   const gradientColors: [string, string, string] = isDark
     ? ["#0D0D1A", "#1A1A2E", "#16213E"]
-    : ["#FF6B6B", "#FF8E8E", "#FFB5B5"];
+    : ["#0D9488", "#14B8A6", "#5EEAD4"];
 
   return (
     <LinearGradient colors={gradientColors} style={styles.container}>
@@ -235,16 +235,16 @@ export default function WelcomeScreen() {
             style={({ pressed }) => [
               styles.ctaButton,
               {
-                backgroundColor: isDark ? "#FF6B6B" : "#FFFFFF",
+                backgroundColor: isDark ? "#0D9488" : "#FFFFFF",
                 transform: [{ scale: pressed ? 0.97 : 1 }],
               },
             ]}
             testID="get-started-button"
           >
-            <Text style={[styles.ctaText, { color: isDark ? "#FFFFFF" : "#FF6B6B" }]}>
+            <Text style={[styles.ctaText, { color: isDark ? "#FFFFFF" : "#0D9488" }]}>
               Inizia Ora
             </Text>
-            <Ionicons name="arrow-forward" size={20} color={isDark ? "#FFFFFF" : "#FF6B6B"} />
+            <Ionicons name="arrow-forward" size={20} color={isDark ? "#FFFFFF" : "#0D9488"} />
           </Pressable>
 
           <View style={styles.trustRow}>

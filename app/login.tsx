@@ -190,7 +190,7 @@ export default function LoginScreen() {
 
   return (
     <LinearGradient
-      colors={isDark ? ['#1a1a2e', '#16213e', '#0f3460'] : ['#FF6B6B', '#FF8E8E', '#FFA5A5']}
+      colors={isDark ? ['#1a1a2e', '#16213e', '#0f3460'] : ['#0D9488', '#14B8A6', '#5EEAD4']}
       style={styles.gradient}
     >
       <KeyboardAvoidingView
@@ -583,13 +583,13 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   submitButton: {
-    backgroundColor: '#FF6B6B',
+    backgroundColor: '#0D9488',
     height: 52,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
-    shadowColor: '#FF6B6B',
+    shadowColor: '#0D9488',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -679,8 +679,8 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
   },
   ageOptionSelected: {
-    backgroundColor: '#FF6B6B',
-    borderColor: '#FF6B6B',
+    backgroundColor: '#0D9488',
+    borderColor: '#0D9488',
   },
   ageOptionText: {
     fontSize: 13,
@@ -711,8 +711,8 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   checkboxChecked: {
-    backgroundColor: '#FF6B6B',
-    borderColor: '#FF6B6B',
+    backgroundColor: '#0D9488',
+    borderColor: '#0D9488',
   },
   termsText: {
     fontSize: 13,
