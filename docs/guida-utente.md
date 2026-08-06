@@ -167,6 +167,12 @@ Il calendario condiviso permette a tutta la famiglia di vedere e gestire gli imp
 
 **Dettare il titolo a voce**: accanto al campo Titolo trovi l'icona del **microfono**. Tieni premuto il microfono, pronuncia il titolo dell'evento e rilascia: il testo dettato viene inserito automaticamente. Richiede le funzionalità AI attive.
 
+### Modificare un Evento
+- Nella lista degli eventi del giorno, tocca l'**icona a forma di matita** sull'evento
+- Si apre la schermata con tutti i campi già compilati: cambia quello che serve (es. l'orario di un appuntamento spostato) e tocca **Salva Modifiche**
+- L'evento viene aggiornato, senza crearne uno nuovo
+- Se l'evento fa parte di una serie che si ripete, la modifica vale **solo per quella occorrenza**
+
 ### Eliminare un Evento
 - Nella lista degli eventi del giorno, scorri sull'evento e tocca l'icona di eliminazione
 

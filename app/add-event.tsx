@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Switch, ActivityIndicator, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -31,9 +31,17 @@ type RepeatValue = (typeof REPEAT_OPTIONS)[number]["value"];
 export default function AddEventScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { data, addEvent, currentFamily } = useFamily();
+  const { data, isLoading, addEvent, updateEvent, currentFamily } = useFamily();
   const { user } = useAuth();
-  const params = useLocalSearchParams<{ date?: string }>();
+  const params = useLocalSearchParams<{ date?: string; eventId?: string }>();
+
+  // Modalità modifica: se arriva un eventId la schermata è SOLO di modifica
+  // (mai fallback a creazione: eviterebbe doppioni se gli eventi non sono
+  // ancora caricati). I campi vengono idratati appena l'evento è disponibile.
+  const isEditRoute = typeof params.eventId === "string" && params.eventId.length > 0;
+  const editingEvent = isEditRoute
+    ? data.events.find((e) => e.id === params.eventId)
+    : undefined;
 
   const isRealIso = (iso: string) => {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
@@ -47,28 +55,56 @@ export default function AddEventScreen() {
 
   const now = new Date();
   const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const editDateIso = editingEvent?.date?.slice(0, 10);
   const initialIso =
-    typeof params.date === "string" && isRealIso(params.date) ? params.date : todayIso;
+    editDateIso && isRealIso(editDateIso)
+      ? editDateIso
+      : typeof params.date === "string" && isRealIso(params.date)
+        ? params.date
+        : todayIso;
 
   const [aiText, setAiText] = useState("");
   const [isCompiling, setIsCompiling] = useState(false);
-  const [title, setTitle] = useState("");
-  const [location, setLocation] = useState("");
-  const [description, setDescription] = useState("");
+  const [title, setTitle] = useState(editingEvent?.title ?? "");
+  const [location, setLocation] = useState(editingEvent?.location ?? "");
+  const [description, setDescription] = useState(editingEvent?.description ?? "");
   const [date, setDate] = useState(initialIso);
-  const [time, setTime] = useState("");
-  const [endTime, setEndTime] = useState("");
-  const [isAllDay, setIsAllDay] = useState(true);
+  const [time, setTime] = useState(editingEvent?.time ?? "");
+  const [endTime, setEndTime] = useState(editingEvent?.endTime ?? "");
+  const [isAllDay, setIsAllDay] = useState(editingEvent ? !!editingEvent.allDay : true);
   // Preseleziona il membro corrispondente a CHI sta creando l'evento (non il
   // primo della lista): altrimenti gli eventi finiscono assegnati a un altro.
   const [selectedMember, setSelectedMember] = useState(
-    () => data.members.find((m) => m.userId === user?.id)?.id || data.members[0]?.id || ""
+    () =>
+      editingEvent?.memberId ||
+      data.members.find((m) => m.userId === user?.id)?.id ||
+      data.members[0]?.id ||
+      ""
   );
-  const [selectedColor, setSelectedColor] = useState(EVENT_COLORS[0]);
+  const [selectedColor, setSelectedColor] = useState(editingEvent?.color || EVENT_COLORS[0]);
   const [repeat, setRepeat] = useState<RepeatValue>("none");
   const [dailyWeekdays, setDailyWeekdays] = useState<number[]>([]);
   const [weeklyDays, setWeeklyDays] = useState<number[]>([]);
   const [monthDays, setMonthDays] = useState<number[]>([]);
+
+  // Idrata i campi quando l'evento da modificare arriva DOPO il primo render
+  // (es. apertura diretta della schermata prima che gli eventi siano caricati).
+  const [hydratedEdit, setHydratedEdit] = useState(!isEditRoute || !!editingEvent);
+  useEffect(() => {
+    if (hydratedEdit || !editingEvent) return;
+    setTitle(editingEvent.title);
+    setLocation(editingEvent.location ?? "");
+    setDescription(editingEvent.description ?? "");
+    const d = editingEvent.date?.slice(0, 10);
+    if (d && isRealIso(d)) setDate(d);
+    setTime(editingEvent.time ?? "");
+    setEndTime(editingEvent.endTime ?? "");
+    setIsAllDay(!!editingEvent.allDay);
+    if (editingEvent.memberId) setSelectedMember(editingEvent.memberId);
+    if (editingEvent.color) setSelectedColor(editingEvent.color);
+    setHydratedEdit(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingEvent, hydratedEdit]);
 
   // Deriva giorno settimana/mese dalla data selezionata per i default.
   const eventDayInfo = (() => {
@@ -151,6 +187,23 @@ export default function AddEventScreen() {
   const handleSave = () => {
     if (title.trim() && isRealIso(date)) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (editingEvent) {
+        // Aggiorna l'evento esistente (per le serie ricorrenti: solo questa
+        // occorrenza). I campi svuotati vengono azzerati esplicitamente (null).
+        updateEvent(editingEvent.id, {
+          title: title.trim(),
+          description: description.trim(),
+          location: location.trim() || null,
+          date,
+          time: isAllDay ? null : time || null,
+          endTime: isAllDay ? null : endTime || null,
+          allDay: isAllDay,
+          memberId: selectedMember || null,
+          color: selectedColor,
+        } as unknown as Parameters<typeof updateEvent>[1]);
+        router.back();
+        return;
+      }
       addEvent({
         title: title.trim(),
         description: description.trim() || undefined,
@@ -175,13 +228,40 @@ export default function AddEventScreen() {
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
 
+  // Rotta di modifica ma evento non (ancora) disponibile: niente form, così
+  // non si può salvare per errore un evento nuovo al posto della modifica.
+  if (isEditRoute && !editingEvent) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: topInset + 16 }]}>
+          <Pressable onPress={() => router.back()} style={styles.closeButton}>
+            <Ionicons name="close" size={24} color={colors.text} />
+          </Pressable>
+          <Text style={[styles.title, { color: colors.text }]}>Modifica Evento</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+          {isLoading ? (
+            <ActivityIndicator size="large" color={colors.primary} />
+          ) : (
+            <Text style={{ color: colors.textSecondary, fontSize: 15, textAlign: "center", fontFamily: "Inter_500Medium" }}>
+              Evento non trovato: forse è stato eliminato.
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
         <Pressable onPress={() => router.back()} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Aggiungi Evento</Text>
+        <Text style={[styles.title, { color: colors.text }]}>
+          {editingEvent ? "Modifica Evento" : "Aggiungi Evento"}
+        </Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -317,6 +397,15 @@ export default function AddEventScreen() {
           </View>
         )}
 
+        {editingEvent ? (
+          editingEvent.recurrenceRule ? (
+            <View style={styles.field}>
+              <Text style={[styles.subHint, { color: colors.textSecondary }]}>
+                Questo evento fa parte di una serie che si ripete: le modifiche valgono solo per questa occorrenza.
+              </Text>
+            </View>
+          ) : null
+        ) : (
         <View style={styles.field}>
           <Text style={[styles.label, { color: colors.text }]}>Ripeti</Text>
           <View style={styles.repeatOptions}>
@@ -486,6 +575,7 @@ export default function AddEventScreen() {
             </Text>
           )}
         </View>
+        )}
 
         {data.members.length > 0 && (
           <View style={styles.field}>
@@ -545,7 +635,7 @@ export default function AddEventScreen() {
         </View>
 
         <Button
-          title="Aggiungi Evento"
+          title={editingEvent ? "Salva Modifiche" : "Aggiungi Evento"}
           onPress={handleSave}
           disabled={!title.trim() || !isRealIso(date)}
           style={{ marginTop: 24 }}

@@ -280,6 +280,15 @@ export default function CalendarScreen() {
                             />
                           </Pressable>
                         )}
+                        <Pressable
+                          onPress={() =>
+                            router.push({ pathname: "/add-event", params: { eventId: event.id } })
+                          }
+                          style={styles.actionBtn}
+                          testID={`edit-event-${event.id}`}
+                        >
+                          <Ionicons name="pencil" size={18} color={colors.textSecondary} />
+                        </Pressable>
                         <Pressable onPress={() => handleEventActions(event.id)} style={styles.actionBtn}>
                           <Ionicons name="flag-outline" size={18} color={colors.textSecondary} />
                         </Pressable>
