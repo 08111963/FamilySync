@@ -17,8 +17,21 @@ export async function claimScheduledJobRun(
   jobName: string,
   minIntervalMs: number,
   now = new Date(),
+  /**
+   * Confine di recupero finestra (opzionale): se l'ultimo run è PRECEDENTE a
+   * questo istante (es. apertura della fascia promemoria 7:00), il claim
+   * riesce anche se non è ancora passato `minIntervalMs`. Serve per il caso
+   * autoscale: tick alle 6:51, istanza addormentata, boot alle 7:15 — senza
+   * questo confine il giro delle 7 andrebbe perso fino al tick successivo.
+   */
+  catchUpBoundary?: Date | null,
 ): Promise<boolean> {
-  const cutoff = new Date(now.getTime() - minIntervalMs);
+  let cutoff = new Date(now.getTime() - minIntervalMs);
+  if (catchUpBoundary && catchUpBoundary.getTime() > cutoff.getTime()) {
+    // last_run_at <= cutoff OPPURE last_run_at < boundary ⇒ un unico cutoff:
+    // un istante prima del confine (il confronto SQL resta "<=").
+    cutoff = new Date(catchUpBoundary.getTime() - 1);
+  }
   const result = await db.execute(sql`
     INSERT INTO scheduled_job_runs (job_name, last_run_at)
     VALUES (${jobName}, ${now})
@@ -51,6 +64,28 @@ export async function releaseScheduledJobRun(
 }
 
 /**
+ * Ultima apertura di fascia oraria (ora italiana) già scattata oggi: tra le
+ * ore di inizio passate, restituisce l'istante (Date) dell'apertura più
+ * recente ≤ adesso. Se nessuna fascia è ancora aperta (es. sono le 5 del
+ * mattino), restituisce null. Usato come `catchUpBoundary` del claim: se
+ * l'ultimo run è precedente all'apertura della fascia corrente, si recupera
+ * subito il giro al boot (il dedup per-elemento evita i doppioni).
+ */
+export function latestWindowOpeningInRome(startHours: readonly number[], now = new Date()): Date | null {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Rome',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(now);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? '0');
+  const hour = get('hour');
+  const opened = startHours.filter((h) => h <= hour);
+  if (opened.length === 0) return null;
+  const start = Math.max(...opened);
+  const msSinceOpening = (((hour - start) * 60 + get('minute')) * 60 + get('second')) * 1000;
+  return new Date(now.getTime() - msSinceOpening);
+}
+
+/**
  * Avvia uno scheduler durevole: un tick poco dopo il boot (catch-up dopo i
  * riavvii autoscale) e poi un poll periodico. Il lavoro vero parte solo se il
  * claim atomico riesce (è passata la finestra e nessun'altra istanza l'ha già
@@ -66,13 +101,19 @@ export function startDurableScheduler(options: {
   pollIntervalMs: number;
   /** Ritardo del primo tentativo dopo il boot. */
   firstRunDelayMs: number;
+  /**
+   * Confine di recupero opzionale (valutato ad ogni tick): se restituisce un
+   * Date e l'ultimo run è precedente, il claim riesce anche dentro la
+   * finestra minima (vedi claimScheduledJobRun).
+   */
+  catchUpBoundary?: () => Date | null;
   run: () => Promise<void>;
 }): void {
-  const { jobName, minIntervalMs, pollIntervalMs, firstRunDelayMs, run } = options;
+  const { jobName, minIntervalMs, pollIntervalMs, firstRunDelayMs, catchUpBoundary, run } = options;
   const tick = async () => {
     let claimed = false;
     try {
-      claimed = await claimScheduledJobRun(jobName, minIntervalMs);
+      claimed = await claimScheduledJobRun(jobName, minIntervalMs, new Date(), catchUpBoundary?.());
       if (!claimed) return;
       await run();
     } catch (err) {

@@ -10,7 +10,7 @@ import { logger } from './logger';
 import { sendEventReminderEmail, isEmailConfigured } from './email';
 import { sendPushToFamily } from './push';
 import { getBlockRelatedUserIds } from './block-filter';
-import { startDurableScheduler } from './scheduled-jobs';
+import { startDurableScheduler, latestWindowOpeningInRome } from './scheduled-jobs';
 
 const TZ = 'Europe/Rome';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // ogni ora
@@ -200,6 +200,11 @@ export function startEventReminderScheduler(): void {
     pollIntervalMs: CHECK_INTERVAL_MS,
     // Primo giro dopo 45 secondi (lascia respirare l'avvio del server).
     firstRunDelayMs: 45 * 1000,
+    // Recupero al boot: se l'ultimo run è precedente all'apertura della
+    // fascia corrente (7:00 today / 17:00 tomorrow), il claim riesce anche
+    // dentro la finestra minima — caso autoscale "tick 6:51, boot 7:15".
+    catchUpBoundary: () =>
+      latestWindowOpeningInRome([TODAY_WINDOW.from, TOMORROW_WINDOW.from]),
     run: runEventRemindersOnce,
   });
 }
