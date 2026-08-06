@@ -60,9 +60,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     crossOriginEmbedderPolicy: false,
   }));
 
+  // Limite globale /api: override via env SOLO in sviluppo (utile per i test
+  // UI automatici che generano molte richieste); in produzione resta 100.
+  const apiRateMax =
+    process.env.NODE_ENV !== 'production' && Number(process.env.API_RATE_LIMIT_MAX) > 0
+      ? Number(process.env.API_RATE_LIMIT_MAX)
+      : 100;
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100,
+    max: apiRateMax,
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => req.path === '/api/health',

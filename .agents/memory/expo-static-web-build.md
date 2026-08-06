@@ -27,5 +27,10 @@ The backend (port 5000) serves a static Expo web export from `web-build/` alongs
 - `scripts/patch-web-build.sh <dir>` applica lang=it + link manifest PWA (idempotente); usarlo dopo OGNI export locale e già integrato nel build di deploy (.replit [deployment] via deployConfig).
 - Il build di publish RI-ESPORTA web-build da zero: patch manuali su web-build vengono perse se non sono nello script.
 
+## Test UI su :5000 — origin OBBLIGATORIA
+- Il bundle chiama l'API in URL assoluto `https://$REPLIT_DEV_DOMAIN:5000` e il server ha CSP `connect-src 'self'`: se la pagina è aperta da `localhost:5000` OGNI chiamata API è bloccata dal browser ("Server non raggiungibile", calendario/liste vuote, login KO). I test UI devono navigare SEMPRE sull'origin esterna `https://$REPLIT_DEV_DOMAIN:5000`.
+- Un export locale SENZA EXPO_PUBLIC_DOMAIN produce una preview :5000 che non raggiunge mai l'API (throw inlined). Rigenerare con `CI=1 EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN:5000" npx expo export -c` (Metro fermo, backgrounded con setsid — nohup da ShellExec muore col comando) e verificare col grep del dominio.
+- Rate limiter globale /api (100 req/15min per IP) fa fallire i test UI lunghi con 429: in dev si alza con env `API_RATE_LIMIT_MAX` (override solo NODE_ENV!=production, server/routes.ts).
+
 ## Cache Metro e EXPO_PUBLIC_DOMAIN
 - `expo export` può riusare il bundle in cache Metro: se il primo export era senza EXPO_PUBLIC_DOMAIN, ri-esportare CON la env non basta — serve `expo export -c` per rigenerare col dominio baked. Verificare sempre con grep del dominio nel bundle.
