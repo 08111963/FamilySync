@@ -661,7 +661,11 @@ Se vuoi che il bambino usi l'app **dal suo telefono o tablet**, non serve crearg
 - Le aree per adulti (**bollette, budget, abbonamento, gestione della famiglia**) e le **funzioni AI** restano bloccate, e il blocco è applicato dai nostri server, non solo nascosto nell'app
 - Il genitore può **revocare l'accesso in qualsiasi momento** dalla scheda Famiglia: il bambino non entrerà più dal suo dispositivo, ma **punti e storico restano**
 
-> Quando il bambino cresce e ha una sua email, potrà essere invitato normalmente con il ruolo più adatto.
+**E se il genitore vuole creare un'email al bambino?**
+- **Dai 14 anni in su**: si può fare. Crea l'email per il ragazzo e invitalo normalmente da **Famiglia → Aggiungi → Email**, con il ruolo Adolescente o Figlio/a: avrà un account completo con la sua password
+- **Sotto i 14 anni**: anche con un'email creata dal genitore, la registrazione non è consentita (è l'età minima prevista dalla legge italiana per il consenso digitale, e in fase di registrazione viene chiesta la fascia d'età). Per i più piccoli la strada giusta è il **profilo bambino con codice di accesso**: niente email, e il bambino vede solo le funzioni adatte a lui
+
+> Quando il bambino compie 14 anni e ha una sua email, il profilo può essere promosso a un account completo: punti e storico restano.
 
 ### Come si Unisce alla Famiglia
 Quando il familiare apre il link (email, WhatsApp o QR):
