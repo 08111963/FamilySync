@@ -195,7 +195,7 @@ export default function HomeScreen() {
               <Card
                 key={event.id}
                 style={styles.eventCard}
-                onPress={() => router.push("/add-event")}
+                onPress={() => router.push(`/add-event?eventId=${event.id}`)}
               >
                 <View style={[styles.eventColorBar, { backgroundColor: event.color }]} />
                 <View style={styles.eventContent}>
