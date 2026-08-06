@@ -628,13 +628,13 @@ FamilySync offre **quattro modi** per aggiungere un familiare: **Email** (link p
 - Chi entra da questo link avrà il ruolo **"Adulto"** (puoi cambiarlo dopo dalla schermata Famiglia)
 - Possono entrare fino al **limite del piano**: 5 membri col Free, illimitati col Premium
 
-### C. Profilo Bambino (senza email)
+### C. Profilo Bambino (per i minori di 14 anni)
 
-Per i bambini che **non hanno un'email** (ad esempio i minori di 14 anni) non serve nessun invito: il genitore crea direttamente un **profilo bambino**.
+I minori di 14 anni non possono avere un account con email e password: per loro il genitore crea un **profilo bambino** e, se vuole farli entrare dal loro dispositivo, genera un **codice PIN** (vedi il punto D qui sotto). Per creare il profilo:
 
 1. Vai alla scheda **Famiglia** e tocca **Aggiungi**
 2. Scegli **Bambino**
-3. Inserisci solo il **nome** del bambino (es. "Sofia") e tocca **Crea profilo bambino**
+3. Inserisci il **nome** del bambino (es. "Sofia") e tocca **Crea profilo bambino**
 
 **Come funziona il profilo bambino**
 - **Niente email, niente password**: per creare il profilo non serve nessun dato di contatto del bambino
@@ -658,6 +658,7 @@ Se vuoi che il bambino usi l'app **dal suo telefono o tablet**, non serve crearg
 
 **Cose importanti da sapere**
 - Il codice funziona **una sola volta** e scade dopo **48 ore**: se scade o serve un nuovo dispositivo, genera semplicemente un nuovo codice
+- Il genitore può **revocare l'accesso in qualsiasi momento** dalla scheda Famiglia: il bambino non entrerà più dal suo dispositivo, ma **punti e storico restano**
 
 **A cosa ha accesso il bambino**
 - **Calendario**: vede gli eventi della famiglia e può aggiungere i suoi
@@ -677,7 +678,6 @@ Se vuoi che il bambino usi l'app **dal suo telefono o tablet**, non serve crearg
 - **Impostazioni del profilo**: foto e nome del bambino li gestisce il genitore dalla scheda Famiglia
 
 > Questi blocchi sono applicati dai nostri **server**, non solo nascosti nell'app: anche provandoci, dal dispositivo del bambino non si può accedere alle aree per adulti.
-- Il genitore può **revocare l'accesso in qualsiasi momento** dalla scheda Famiglia: il bambino non entrerà più dal suo dispositivo, ma **punti e storico restano**
 
 **E se il genitore vuole creare un'email al bambino?**
 - **Dai 14 anni in su**: si può fare. Crea l'email per il ragazzo e invitalo normalmente da **Famiglia → Aggiungi → Email**, con il ruolo Adolescente o Figlio/a: avrà un account completo con la sua password
