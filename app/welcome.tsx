@@ -23,14 +23,14 @@ type Feature = { icon: keyof typeof Ionicons.glyphMap; title: string; descriptio
 
 const ADVANTAGES = [
   ["Basta dimenticanze: impegni e scadenze sempre sotto controllo", "Più tempo da vivere insieme"],
-  ["Decidete prima e la sera non dovete più pensarci"],
-  ["Cucinate con quello che avete già in dispensa"],
-  ["Una settimana più leggera, con meno cose da organizzare"],
-  ["Spese di casa chiare, senza doppioni o malintesi"],
+  ["Meno sprechi e meno spese impreviste in cucina"],
+  ["Idee nuove ogni giorno, anche con pochi ingredienti"],
+  ["Consigli su misura per la vostra famiglia"],
+  ["Niente doppioni o dimenticanze al supermercato"],
   ["Messaggi importanti sempre a portata di mano"],
-  ["Ogni modifica arriva subito a tutta la famiglia"],
+  ["Tutti vedono sempre la versione più aggiornata"],
   ["Tutti sanno chi fa cosa, senza discussioni", "I ragazzi collaborano volentieri grazie a punti e premi"],
-  ["Un modo leggero per riconoscere l'impegno di tutti"],
+  ["Una sana competizione che unisce la famiglia"],
 ] as const;
 
 const FEATURES: Feature[] = [
