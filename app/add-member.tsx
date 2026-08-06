@@ -292,9 +292,10 @@ export default function AddMemberScreen() {
           !childCreated ? (
             <>
               <Text style={[styles.intro, { color: colors.textSecondary }]}>
-                Crea un profilo per un bambino senza email: niente account né login. Il
-                profilo compare in famiglia (faccende, punti, calendario) ed è gestito
-                interamente dai genitori.
+                Crea un profilo per un bambino sotto i 14 anni: niente email né password.
+                Il profilo compare in famiglia (faccende, punti, calendario) ed è gestito
+                dai genitori. Dopo, dalla scheda Famiglia potrai generare il codice di
+                accesso per farlo entrare dal suo dispositivo.
               </Text>
 
               <View style={styles.field}>
@@ -336,7 +337,9 @@ export default function AddMemberScreen() {
                   <Text style={[styles.successTitle, { color: colors.text }]}>Profilo creato</Text>
                   <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
                     {childCreated} ora fa parte della famiglia. Puoi assegnargli faccende,
-                    punti ed eventi dal calendario.
+                    punti ed eventi dal calendario. Per farlo entrare dal suo dispositivo,
+                    genera il codice di accesso dalla scheda Famiglia, toccando l'icona a
+                    forma di chiave sulla sua riga.
                   </Text>
                 </View>
               </Card>
