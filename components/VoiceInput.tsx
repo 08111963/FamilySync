@@ -11,6 +11,7 @@ import {
 } from "expo-audio";
 
 import { useTheme } from "@/hooks/useTheme";
+import { trackEvent } from "@/lib/test-analytics";
 import {
   decidePointerCancel,
   decidePressIn,
@@ -256,10 +257,13 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       console.error("Errore trascrizione:", err);
       const msg = err instanceof Error ? err.message : "";
       if (msg === "Nessun audio registrato") {
+        trackEvent("dictation_error", { familyId, metadata: { reason: "no_audio_recorded", durationMs: Math.round(durationMs) } });
         showAlert("Dettatura", "Il microfono non ha registrato nulla. Controlla i permessi del microfono e riprova.");
       } else if (err instanceof TypeError || /network|fetch|connessione|connection/i.test(msg)) {
+        trackEvent("dictation_error", { familyId, metadata: { reason: "upload_failed", durationMs: Math.round(durationMs) } });
         showAlert("Dettatura", "Problema di connessione: l'audio non è stato inviato. Controlla la rete e riprova.");
       } else {
+        trackEvent("dictation_error", { familyId, metadata: { reason: `api:${msg.slice(0, 80)}`, durationMs: Math.round(durationMs) } });
         showAiErrorAlert(err, "Impossibile trascrivere l'audio. Riprova.", "Dettatura");
       }
     } finally {

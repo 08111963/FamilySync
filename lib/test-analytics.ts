@@ -25,7 +25,8 @@ export type TestAnalyticsEventName =
   | "premium_status_checked"
   | "ai_toggle_changed"
   | "delete_account_opened"
-  | "legal_page_opened";
+  | "legal_page_opened"
+  | "dictation_error";
 
 type Metadata = Record<string, string | number | boolean>;
 

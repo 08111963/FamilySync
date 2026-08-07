@@ -34,12 +34,13 @@ export const ALLOWED_EVENTS = new Set([
   'ai_toggle_changed',
   'delete_account_opened',
   'legal_page_opened',
+  'dictation_error',
 ]);
 
 const ALLOWED_PLATFORMS = new Set(['web', 'android', 'ios']);
 
 // Chiavi metadata ammesse (whitelist): mai contenuti liberi degli utenti.
-const ALLOWED_METADATA_KEYS = new Set(['feature', 'status', 'code', 'route', 'source', 'enabled', 'durationMs']);
+const ALLOWED_METADATA_KEYS = new Set(['feature', 'status', 'code', 'route', 'source', 'enabled', 'durationMs', 'reason']);
 const METADATA_VALUE_MAX_LEN = 100;
 
 export function isTestAnalyticsEnabled(): boolean {
