@@ -457,7 +457,7 @@ export async function searchRecipesByQuery(query: string, context: {
     // vincoli non devono MAI contraddire la ricerca (es. "pasta" deve dare pasta).
     const styles = [
       'la versione più CLASSICA e tradizionale italiana della richiesta',
-      'una versione con INGREDIENTI PRINCIPALI DIVERSI dalla versione classica (es. se la classica usa pomodoro, tu usa verdure, legumi, pesce o formaggi diversi): cambia davvero gli abbinamenti',
+      'una versione con INGREDIENTI PRINCIPALI DIVERSI dalla versione classica (es. se la classica usa pomodoro, tu usa verdure, legumi, pesce o formaggi diversi): cambia davvero gli abbinamenti. Usa ingredienti comuni: NIENTE varianti "salutistiche" (integrale, senza glutine, light) se non richieste',
       'una versione CREATIVA o regionale insolita, con TECNICA DI COTTURA DIVERSA dalla classica (es. al forno/gratinata, fredda, ripiena, in padella): sorprendi senza uscire dal tema',
     ];
     const fetchOne = async (style: string, seed: number): Promise<RecipeSuggestion[]> => {
