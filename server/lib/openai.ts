@@ -451,13 +451,14 @@ export async function searchRecipesByQuery(query: string, context: {
     // 3 chiamate in parallelo da 1 ricetta ciascuna invece di 1 chiamata da 3:
     // il tempo è dominato dai token di output, quindi il totale scende a ~1/3.
     // Ogni chiamata ha uno stile diverso per evitare doppioni tra parallele.
-    // Stili con vincoli FORTI e mutuamente esclusivi: senza vincoli sul tipo di
-    // piatto, le 3 chiamate parallele convergono tutte sull'abbinamento più ovvio
-    // (es. "code di gamberi" -> 3 varianti di spaghetti con pomodorini).
+    // Stili con assi di diversità FORTI ma sempre subordinati alla pertinenza:
+    // senza vincoli le 3 chiamate parallele convergono sull'abbinamento più ovvio
+    // (es. "code di gamberi" -> 3 varianti di spaghetti con pomodorini), ma i
+    // vincoli non devono MAI contraddire la ricerca (es. "pasta" deve dare pasta).
     const styles = [
-      'un PRIMO PIATTO classico della tradizione italiana (pasta o risotto)',
-      'un SECONDO PIATTO o piatto unico: VIETATO usare pasta, spaghetti, risotto o altri primi. Esempi di formato: al forno, in padella, alla griglia, in umido, insalata ricca',
-      'un ANTIPASTO, finger food o piatto veloce creativo: VIETATO usare pasta, spaghetti o risotto, e VIETATO ripetere il formato di un secondo classico. Sii originale nell\'abbinamento',
+      'la versione più CLASSICA e tradizionale italiana della richiesta',
+      'una versione con INGREDIENTI PRINCIPALI DIVERSI dalla versione classica (es. se la classica usa pomodoro, tu usa verdure, legumi, pesce o formaggi diversi): cambia davvero gli abbinamenti',
+      'una versione CREATIVA o regionale insolita, con TECNICA DI COTTURA DIVERSA dalla classica (es. al forno/gratinata, fredda, ripiena, in padella): sorprendi senza uscire dal tema',
     ];
     const fetchOne = async (style: string, seed: number): Promise<RecipeSuggestion[]> => {
       const response = await getOpenAiClient().chat.completions.create({

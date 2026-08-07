@@ -23,3 +23,6 @@ Con giorni generati in chiamate indipendenti, le regole "in prosa" sulla distrib
 ## Anti-doppioni piano pasti: confronto fuzzy, non titoli esatti
 L'AI riscrive lo stesso piatto con parole diverse ("Pasta al tonno e pomodorini" / "Spaghetti con tonno e pomodorini"): il dedupe deve usare similarità di Jaccard >=0.6 su token significativi (stopword italiane rimosse, formati di pasta canonicalizzati a "pasta", token numerici mantenuti per i titoli sintetici dei test). Confronto per titolo esatto = doppioni che sfuggono in produzione.
 **Why:** in prod 3 pranzi consecutivi erano lo stesso piatto con titoli leggermente diversi; il log segnava duplicates:0.
+
+## Diversità ricerca ricette (3 chiamate parallele)
+Le 3 chiamate parallele della ricerca ricette convergono sul piatto più ovvio se gli "stili" sono vaghi. I vincoli di diversità devono essere assi RELATIVI alla ricerca (ingredienti diversi, cottura diversa), MAI categorie assolute tipo "vietata la pasta": se l'utente cerca "pasta" il vincolo assoluto vince sulla pertinenza e produce ricette fuori tema.
