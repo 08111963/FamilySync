@@ -254,7 +254,14 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
       }
     } catch (err) {
       console.error("Errore trascrizione:", err);
-      showAiErrorAlert(err, "Impossibile trascrivere l'audio. Riprova.", "Dettatura");
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "Nessun audio registrato") {
+        showAlert("Dettatura", "Il microfono non ha registrato nulla. Controlla i permessi del microfono e riprova.");
+      } else if (err instanceof TypeError || /network|fetch|connessione|connection/i.test(msg)) {
+        showAlert("Dettatura", "Problema di connessione: l'audio non è stato inviato. Controlla la rete e riprova.");
+      } else {
+        showAiErrorAlert(err, "Impossibile trascrivere l'audio. Riprova.", "Dettatura");
+      }
     } finally {
       setTranscribing(false);
       setActiveMic(null);
