@@ -6,7 +6,7 @@ channel = "stable-24_05"
 packages = ["jq", "imagemagick", "chromium", "glib", "nss", "nspr", "at-spi2-atk", "cups", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXrandr", "mesa", "pango", "cairo", "alsa-lib", "xorg.libxcb", "xorg.libX11", "zip"]
 
 [deployment]
-deploymentTarget = "autoscale"
+deploymentTarget = "vm"
 build = ["sh", "-c", "EXPO_PUBLIC_DOMAIN=familysync.eu npx expo export --platform web --output-dir web-build && bash scripts/patch-web-build.sh web-build && npm run server:build"]
 run = ["npm", "run", "server:prod"]
 

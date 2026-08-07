@@ -23,3 +23,6 @@ The app must be usable by opening `https://familysync.eu` in a phone browser (no
 **EXPO_PUBLIC_DOMAIN:** baked into the web bundle at export time (EXPO_PUBLIC_* are inlined). Build sets it to `familysync.eu` so the browser app calls same-origin `/api`. It is also in `[userenv.production]`.
 
 **Re-export needed:** any frontend change requires re-running the web export to refresh `web-build`. The deploy build does this automatically on each publish; for local testing run the export manually.
+
+## Deployment target: vm (2026-08-07)
+Passati da autoscale a Reserved VM (deployConfig target "vm", stessi build/run) perché lo scheduler orario dei promemoria (event-reminders) non gira se l'istanza autoscale è spenta senza traffico. Effettivo solo al prossimo Republish; l'utente vede il prezzo prima di confermare e può annullare (in tal caso tornare ad autoscale). Con VM sempre acceso si risolve anche la classe di problemi "istanze che si riavviano/spente" (segnalazioni file dimenticati, ecc.).
