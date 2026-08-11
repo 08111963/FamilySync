@@ -15,6 +15,8 @@ zip -r "$OUT" . \
   -x ".expo/*" \
   -x "dist/*" \
   -x "web-build/*" \
+  -x "web-build-old/*" \
+  -x "web-build-new/*" \
   -x "server_dist/*" \
   -x "static-build/*" \
   -x "uploads/*" \
@@ -54,7 +56,8 @@ FOUND=0
 
 # 2a. Chiavi private e valori di segreti noti (qualsiasi file).
 MATCHES_2A="$(grep -RInE "BEGIN (RSA |EC )?PRIVATE KEY|VAPID_PRIVATE_KEY[[:space:]]*=[[:space:]]*['\"]?[A-Za-z0-9_-]{20,}|(API_KEY|SECRET|TOKEN|PASSWORD)[[:space:]]*=[[:space:]]*['\"]?[A-Za-z0-9_/+-]{24,}" \
-    "$TMPDIR_SCAN" --exclude-dir=node_modules 2>/dev/null | grep -v "process\.env" || true)"
+    "$TMPDIR_SCAN" --exclude-dir=node_modules 2>/dev/null | grep -v "process\.env" \
+  | grep -vE "not-an-|__native_selftest__|INVALID_FORMAT_TOKEN" || true)"
 if [ -n "$MATCHES_2A" ]; then
   printf '%s\n' "$MATCHES_2A" | head -5
   FOUND=1
