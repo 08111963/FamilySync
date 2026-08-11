@@ -94,6 +94,23 @@ async function throwIfResNotOk(res: Response, route?: string) {
   }
 }
 
+/**
+ * Estrae il messaggio d'errore leggibile restituito dal backend
+ * (formato { error: { code, message } } oppure { error: string } / { message }),
+ * altrimenti restituisce il fallback fornito.
+ */
+export function getApiErrorMessage(err: unknown, fallback: string): string {
+  const body = (err as { body?: any } | null)?.body;
+  if (body) {
+    if (typeof body.error === "object" && body.error && typeof body.error.message === "string") {
+      return body.error.message;
+    }
+    if (typeof body.error === "string" && body.error) return body.error;
+    if (typeof body.message === "string" && body.message) return body.message;
+  }
+  return fallback;
+}
+
 export async function apiRequest(
   method: string,
   route: string,

@@ -14,7 +14,7 @@ import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
 import { WebPushTestButton } from "@/components/WebPushTestButton";
 import { NativePushTestButton } from "@/components/NativePushTestButton";
-import { apiRequest, queryClient } from "@/lib/query-client";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/query-client";
 import { trackEvent } from "@/lib/test-analytics";
 
 // Stessa palette usata in edit-profile per gli account: coerenza visiva.
@@ -220,11 +220,12 @@ export default function FamilyScreen() {
         role: editedMemberRole as any,
       });
       setEditingMemberId(null);
-    } catch {
+    } catch (err) {
+      const msg = getApiErrorMessage(err, "Impossibile aggiornare il profilo. Riprova.");
       if (Platform.OS === "web") {
-        alert("Impossibile aggiornare il profilo. Riprova.");
+        alert(msg);
       } else {
-        Alert.alert("Errore", "Impossibile aggiornare il profilo. Riprova.");
+        Alert.alert("Errore", msg);
       }
     }
   };
@@ -239,9 +240,21 @@ export default function FamilyScreen() {
 
   const handleDeleteMember = (memberId: string, memberName: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const doDelete = async () => {
+      try {
+        await deleteMember(memberId);
+      } catch (err) {
+        const msg = getApiErrorMessage(err, "Impossibile rimuovere il membro. Riprova.");
+        if (Platform.OS === "web") {
+          alert(msg);
+        } else {
+          Alert.alert("Errore", msg);
+        }
+      }
+    };
     if (Platform.OS === "web") {
       if (confirm(`Rimuovere ${memberName} dalla famiglia?`)) {
-        deleteMember(memberId);
+        doDelete();
       }
     } else {
       Alert.alert(
@@ -249,7 +262,7 @@ export default function FamilyScreen() {
         `Sei sicuro di voler rimuovere ${memberName} dalla famiglia?`,
         [
           { text: "Annulla", style: "cancel" },
-          { text: "Rimuovi", style: "destructive", onPress: () => deleteMember(memberId) },
+          { text: "Rimuovi", style: "destructive", onPress: doDelete },
         ]
       );
     }

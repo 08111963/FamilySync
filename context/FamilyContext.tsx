@@ -126,7 +126,7 @@ interface FamilyContextType {
   switchFamily: (familyId: string) => void;
   addMember: (member: { name: string; role: string; avatar: string; color: string }) => void;
   updateMember: (id: string, updates: Partial<FamilyMember>) => Promise<void>;
-  deleteMember: (id: string) => void;
+  deleteMember: (id: string) => Promise<void>;
   addEvent: (event: Omit<CalendarEvent, "id" | "familyId" | "createdBy">) => void;
   updateEvent: (id: string, updates: Partial<CalendarEvent>) => void;
   deleteEvent: (id: string, scope?: "single" | "series") => void;
@@ -307,11 +307,10 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     qc.invalidateQueries({ queryKey: ["/api/families", currentFamilyId] });
   }, [currentFamilyId, qc]);
 
-  const deleteMember = useCallback((id: string) => {
+  const deleteMember = useCallback(async (id: string) => {
     if (!currentFamilyId) return;
-    apiRequest("DELETE", `/api/families/${currentFamilyId}/members/${id}`)
-      .then(() => qc.invalidateQueries({ queryKey: ["/api/families", currentFamilyId] }))
-      .catch(console.error);
+    await apiRequest("DELETE", `/api/families/${currentFamilyId}/members/${id}`);
+    qc.invalidateQueries({ queryKey: ["/api/families", currentFamilyId] });
   }, [currentFamilyId, qc]);
 
   const addEvent = useCallback((event: Omit<CalendarEvent, "id" | "familyId" | "createdBy">) => {
