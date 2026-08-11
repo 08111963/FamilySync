@@ -897,11 +897,23 @@ router.put('/:familyId/members/:memberId', authenticate, requireFamilyMember(), 
           updateData.role = role;
         }
       } else if (membership.role === 'admin') {
-        // Membri con account: il ruolo lo può cambiare SOLO un admin
-        // (mai su se stesso via questa rotta).
+        // Membri con account: il ruolo lo può cambiare SOLO un admin.
         const accountRoles = ['admin', 'adult', 'teen', 'child'];
         if (!accountRoles.includes(role)) {
           return res.status(400).json({ error: { code: "INVALID_ROLE", message: "Ruolo non valido" } });
+        }
+        // Protezione "ultimo admin": una famiglia non deve mai restare senza
+        // amministratori, altrimenti nessuno potrebbe più gestirla (inviti,
+        // ruoli, rimozioni). Se il target è admin e verrebbe declassato,
+        // verifichiamo che non sia l'unico admin rimasto (vale anche quando
+        // l'admin prova a declassare se stesso).
+        if (target.role === 'admin' && role !== 'admin') {
+          const admins = await db.select({ id: familyMembers.id })
+            .from(familyMembers)
+            .where(and(eq(familyMembers.familyId, familyId), eq(familyMembers.role, 'admin')));
+          if (admins.length <= 1) {
+            return res.status(409).json({ error: { code: "LAST_ADMIN", message: "Non puoi cambiare ruolo all'unico amministratore della famiglia. Promuovi prima un altro membro ad admin." } });
+          }
         }
         updateData.role = role;
       }
@@ -945,6 +957,17 @@ router.delete('/:familyId/members/:memberId', authenticate, requireFamilyMember(
     const allowed = membership.role === 'admin' || (isManagedProfile && membership.role === 'adult');
     if (!allowed) {
       return res.status(403).json({ error: { code: "NOT_ADMIN", message: "Solo gli admin possono eseguire questa azione" } });
+    }
+
+    // Protezione "ultimo admin": rimuovere l'unico admin lascerebbe la
+    // famiglia ingestibile (nessuno potrebbe più promuovere o invitare).
+    if (target.role === 'admin') {
+      const admins = await db.select({ id: familyMembers.id })
+        .from(familyMembers)
+        .where(and(eq(familyMembers.familyId, familyId), eq(familyMembers.role, 'admin')));
+      if (admins.length <= 1) {
+        return res.status(409).json({ error: { code: "LAST_ADMIN", message: "Non puoi rimuovere l'unico amministratore della famiglia. Promuovi prima un altro membro ad admin." } });
+      }
     }
 
     await db.delete(familyMembers)

@@ -1,0 +1,84 @@
+Contesto: FamilySync, backend Express/TypeScript con Drizzle ORM su PostgreSQL.
+Devi correggere due criticità di autorizzazione trovate in code review. Prima di
+modificare, leggi per intero i file indicati per capire lo stile e i pattern già
+usati nel resto della route (commenti in italiano, gestione errori, formato
+delle risposte JSON con { error: { code, message } }).
+
+=== CRITICITÀ 1: nessuna protezione "ultimo admin" ===
+
+File: server/routes/families.ts
+
+Problema:
+1. Nella route PATCH /:familyId/members/:memberId, la variabile `isSelf` viene
+   calcolata ma non è mai usata nel blocco che gestisce il cambio ruolo
+   (quello con `else if (membership.role === 'admin') { ... updateData.role = role; }`).
+   Il commento sopra quel blocco dice "mai su se stesso via questa rotta" ma il
+   codice non applica questo vincolo.
+2. Né in questa route né nella DELETE /:familyId/members/:memberId esiste un
+   controllo che impedisca a una famiglia di restare senza alcun membro con
+   ruolo 'admin'.
+
+Fix richiesto:
+- In PATCH /:familyId/members/:memberId: se la richiesta cambia il ruolo di un
+  membro che attualmente è 'admin' verso un ruolo diverso da 'admin' (incluso
+  il caso isSelf), conta quanti membri con role='admin' esistono nella famiglia
+  (query su familyMembers WHERE familyId = :familyId AND role = 'admin'). Se il
+  conteggio è 1 (cioè il target è l'unico admin) e la modifica lo declasserebbe,
+  rifiuta con 409 e un errore chiaro, es:
+  { error: { code: "LAST_ADMIN", message: "Non puoi cambiare ruolo all'unico amministratore della famiglia. Promuovi prima un altro membro ad admin." } }
+- In DELETE /:familyId/members/:memberId: se il target ha role='admin', prima
+  di eliminare verifica che non sia l'unico admin rimasto (stessa query). Se lo
+  è, rifiuta con 409 e:
+  { error: { code: "LAST_ADMIN", message: "Non puoi rimuovere l'unico amministratore della famiglia. Promuovi prima un altro membro ad admin." } }
+- Il controllo va fatto DENTRO la stessa richiesta, prima della query di
+  update/delete (va bene anche in una transazione se preferisci evitare race
+  condition, ma non è strettamente necessario per questo fix).
+- Non toccare la logica esistente per i profili "gestiti" (isManagedProfile,
+  userId null): quel ramo non è coinvolto nel problema.
+
+=== CRITICITÀ 2: DELETE messaggi chat senza verifica di appartenenza famiglia ===
+
+File: server/routes/chat.ts
+
+Problema: la route DELETE /:familyId/messages/:messageId (intorno alla riga 472)
+non chiama mai verifyFamilyMembership(userId, familyId), a differenza delle
+altre route dello stesso file (GET /:familyId/messages e POST /:familyId/messages
+la chiamano esplicitamente; POST /:familyId/upload usa il middleware locale
+requireFamilyMembership). Un utente che non è più membro della famiglia (es.
+rimosso da un admin) potrebbe ancora cancellare messaggi che aveva scritto,
+finché il suo access token resta valido.
+
+Fix richiesto:
+- Aggiungi lo stesso controllo usato nella GET, subito dopo aver ricavato
+  `userId` e `familyId`, prima di qualunque query sul messaggio:
+  const membership = await verifyFamilyMembership(userId, familyId);
+  if (!membership) {
+    return res.status(403).json({ error: "Non fai parte di questa famiglia" });
+  }
+- Mantieni invariato il resto della logica (verifica che message.userId === userId,
+  cancellazione file allegato, broadcast websocket).
+
+=== REQUISITI GENERALI ===
+
+- Segui lo stile esistente del progetto: commenti in italiano che spiegano il
+  "perché" (non solo il "cosa"), stesso formato di risposta errore usato nel
+  resto del file toccato.
+- Non modificare altre route o file oltre a quelli indicati.
+- Aggiungi test in server/__tests__/ per entrambi i fix, seguendo il pattern
+  dei test già esistenti in quella cartella (es. promote-member.test.ts,
+  member-self-edit.test.ts se esistono, o crea un nuovo file
+  last-admin-protection.test.ts e chat-delete-membership.test.ts):
+  - Test 1: un admin che è l'unico admin della famiglia NON può cambiare il
+    proprio ruolo (o quello di un altro admin, se è l'ultimo) tramite PATCH,
+    e riceve 409 LAST_ADMIN.
+  - Test 2: un admin che è l'unico admin della famiglia NON può essere
+    rimosso tramite DELETE, riceve 409 LAST_ADMIN.
+  - Test 3 (positivo): se ci sono 2+ admin, uno di loro può essere declassato
+    o rimosso senza errori.
+  - Test 4: un utente rimosso dalla famiglia (o mai stato membro) che prova a
+    fare DELETE su un messaggio con quel familyId riceve 403, anche se in
+    teoria era l'autore del messaggio.
+- Esegui typecheck (npm run typecheck) e i test rilevanti dopo la modifica,
+  e riportami l'esito.
+- Non toccare threat_model.md in questo task: lo aggiornerò separatamente io
+  una volta confermati i fix.

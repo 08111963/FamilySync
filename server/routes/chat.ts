@@ -475,6 +475,14 @@ router.delete("/:familyId/messages/:messageId", async (req: Request, res: Respon
     const familyId = req.params.familyId as string;
     const messageId = req.params.messageId as string;
 
+    // Come per GET/POST: chi non è (più) membro della famiglia non deve poter
+    // toccare i messaggi, anche se ne era l'autore (es. utente rimosso con
+    // access token ancora valido).
+    const membership = await verifyFamilyMembership(userId, familyId);
+    if (!membership) {
+      return res.status(403).json({ error: "Non fai parte di questa famiglia" });
+    }
+
     const [message] = await db
       .select()
       .from(chatMessages)
