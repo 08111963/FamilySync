@@ -128,7 +128,8 @@ function RootLayoutNav() {
       <Stack.Screen name="child-login" options={{ headerShown: false }} />
       <Stack.Screen name="social-complete" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="verify-email" options={{ headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen name="verify-email/index" options={{ headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen name="verify-email/[token]" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="add-member" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="promote-member" options={{ presentation: "modal", headerShown: false }} />
