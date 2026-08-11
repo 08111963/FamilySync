@@ -511,6 +511,7 @@ export default function FamilyScreen() {
                       <Pressable
                         onPress={() => handleDeleteMember(member.id, member.name)}
                         style={styles.deleteButton}
+                        testID={`delete-member-${member.id}`}
                       >
                         <Ionicons name="trash-outline" size={20} color={colors.error} />
                       </Pressable>
@@ -584,6 +585,7 @@ export default function FamilyScreen() {
                         <Pressable
                           onPress={() => handleDeleteMember(member.id, member.name)}
                           style={[styles.memberActionChip, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                          testID={`delete-member-${member.id}`}
                         >
                           <Ionicons name="trash-outline" size={15} color={colors.error} />
                           <Text style={[styles.memberActionChipText, { color: colors.error }]}>Elimina</Text>
