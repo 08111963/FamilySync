@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { db } from '../db';
+import { scheduleAuthTokenCleanup } from '../lib/auth-token-cleanup';
 import { users, emailVerificationTokens, passwordResetTokens, socialSignupTokens } from '../../shared/schema';
 import { eq, and, isNull, gt, sql } from 'drizzle-orm';
 import nodeCrypto from 'crypto';
@@ -171,6 +172,9 @@ router.post('/signup', async (req: Request, res: Response) => {
     await recordConsent(newUser.id, "terms", true);
     await recordConsent(newUser.id, "ai_features", aiConsent === true);
     
+    // Pulizia opportunistica (throttled, non bloccante) dei token scaduti.
+    scheduleAuthTokenCleanup();
+
     const verificationToken = uuidv4();
     const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
     
@@ -494,6 +498,9 @@ router.post('/resend-verification-email', authenticate, blockChildAccount, async
     await db.delete(emailVerificationTokens)
       .where(eq(emailVerificationTokens.userId, user.id));
 
+    // Pulizia opportunistica (throttled, non bloccante) dei token scaduti.
+    scheduleAuthTokenCleanup();
+
     const verificationToken = uuidv4();
     const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
 
@@ -592,6 +599,9 @@ router.post('/request-password-reset', passwordResetLimiter, async (req: Request
 
     // Un solo link valido per utente: rimuovi eventuali token precedenti.
     await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+
+    // Pulizia opportunistica (throttled, non bloccante) dei token scaduti.
+    scheduleAuthTokenCleanup();
 
     // Salviamo SOLO l'hash; il token in chiaro vive unicamente nel link/email.
     const rawToken = generateResetToken();
@@ -753,6 +763,9 @@ const SOCIAL_SIGNUP_TTL_MS = 15 * 60 * 1000;
  * Nel DB va SOLO l'hash SHA-256 del token; il token in chiaro torna al client.
  */
 async function createSocialSignupToken(profile: OauthProfile, provider: 'google' | 'apple'): Promise<string> {
+  // Pulizia opportunistica (throttled, non bloccante) dei token scaduti.
+  scheduleAuthTokenCleanup();
+
   const token = nodeCrypto.randomBytes(32).toString('hex');
   const tokenHash = nodeCrypto.createHash('sha256').update(token).digest('hex');
   await db.insert(socialSignupTokens).values({

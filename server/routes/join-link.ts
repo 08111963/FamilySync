@@ -7,6 +7,7 @@ import { getParam } from '../lib/http-params';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db';
 import { families, familyMembers, users, emailVerificationTokens } from '../../shared/schema';
+import { scheduleAuthTokenCleanup } from '../lib/auth-token-cleanup';
 import { sendVerificationEmail, isVerificationEmailConfigured } from '../lib/email';
 import { config } from '../lib/config';
 import { eq, and } from 'drizzle-orm';
@@ -171,6 +172,9 @@ router.post('/:code/accept', async (req: Request, res: Response) => {
     // Email di verifica come nel signup normale: l'utente deve dimostrare di
     // possedere l'indirizzo prima di usare gli endpoint requireEmailVerified.
     try {
+      // Pulizia opportunistica (throttled, non bloccante) dei token scaduti.
+      scheduleAuthTokenCleanup();
+
       const verificationToken = uuidv4();
       await db.insert(emailVerificationTokens).values({
         userId: createdUser.id,
