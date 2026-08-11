@@ -22,12 +22,21 @@ const KEYVAL_SECRET_RE =
 // token=... in URL/query/form (access_token=..., code=..., ecc.)
 const URLPARAM_SECRET_RE =
   /\b((?:access_token|refresh_token|id_token|token|code|password|secret|api_key|apikey)=)[^&\s"']+/gi;
+// stile util.inspect: password: 'valore' / "val'ore" / `val"ore` (oggetti
+// passati a console.*). inspect usa apici singoli, doppi o backtick a seconda
+// del contenuto, e può quotare anche la chiave ('api-key': ...).
+const INSPECT_SECRET_RE =
+  /((['"`]?)(?:token|access_token|refresh_token|id_token|password|secret|authorization|apiKey|api_key)\2\s*:\s*)('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`)/gi;
 
 export function redactForLog(input: string): string {
   let s = input;
   if (s.length > MAX_LOG_LEN) s = s.slice(0, MAX_LOG_LEN) + "…[TRONCATO]";
   return s
     .replace(KEYVAL_SECRET_RE, "$1[REDACTED]$2")
+    .replace(INSPECT_SECRET_RE, (_m, prefix: string, _kq: string, val: string) => {
+      const q = val[0];
+      return `${prefix}${q}[REDACTED]${q}`;
+    })
     .replace(URLPARAM_SECRET_RE, "$1[REDACTED]")
     .replace(JWT_RE, "[REDACTED_JWT]")
     .replace(AUTH_HEADER_RE, "$1[REDACTED]")
