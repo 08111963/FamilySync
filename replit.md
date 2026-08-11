@@ -11,6 +11,7 @@ L'app è pensata per essere production-ready per App Store e Google Play: interf
 - Stile di comunicazione preferito: linguaggio semplice e quotidiano.
 - Lingua di comunicazione: rispondere SEMPRE in italiano.
 - Notifiche (bollette, eventi, promemoria): devono arrivare SEMPRE a tutti i membri della famiglia, mai a destinatari mirati (deciso ago 2026).
+- Quando si modificano funzioni visibili all'utente (ruoli, membri, chat, ecc.): aggiornare SEMPRE anche la guida utente (`docs/guida-utente.md`) e, se toccano dati personali, la privacy policy (`shared/privacy-policy-content.ts`).
 
 ## Architettura Sistema
 

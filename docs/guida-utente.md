@@ -120,6 +120,8 @@ Per aggiungere i tuoi familiari hai **quattro modi**, tutti dalla scheda **Famig
 
 > Con WhatsApp e QR il link è **unico e riutilizzabile**: puoi condividerlo con più persone. Chi entra da questo link avrà il ruolo **"Adulto"** (puoi cambiarlo dopo dalla schermata Famiglia).
 
+> **L'unico amministratore non può essere declassato né rimosso**: la famiglia deve avere sempre almeno un admin. Se sei l'unico admin e vuoi cambiare ruolo o uscire, **promuovi prima un altro membro ad admin**; solo dopo potrai completare la modifica (altrimenti l'app mostrerà un avviso).
+
 > Il piano **Free** consente fino a **5 membri** per famiglia. Per aggiungere altri familiari serve l'abbonamento **Premium** (membri illimitati).
 
 > per i dettagli completi su come funziona l'invito leggi la sezione "Sistema di Inviti".
@@ -436,7 +438,7 @@ Tocca l'icona allegato accanto al campo di testo per inviare:
 ### Funzioni Utili
 - **"Sta scrivendo..."**: vedi quando un familiare sta scrivendo un messaggio
 - **Intestazioni data**: i messaggi sono raggruppati per giorno (Oggi, Ieri, o la data)
-- **Eliminare un messaggio**: tieni premuto su un tuo messaggio per eliminarlo
+- **Eliminare un messaggio**: tieni premuto su un tuo messaggio per eliminarlo. Puoi farlo **solo finché fai parte della famiglia**: chi viene rimosso non può più cancellare i messaggi che aveva scritto
 - **Utenti bloccati**: i messaggi degli utenti che hai bloccato non ti vengono mostrati
 
 ---
