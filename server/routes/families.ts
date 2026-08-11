@@ -902,19 +902,6 @@ router.put('/:familyId/members/:memberId', authenticate, requireFamilyMember(), 
         if (!accountRoles.includes(role)) {
           return res.status(400).json({ error: { code: "INVALID_ROLE", message: "Ruolo non valido" } });
         }
-        // Protezione "ultimo admin": una famiglia non deve mai restare senza
-        // amministratori, altrimenti nessuno potrebbe più gestirla (inviti,
-        // ruoli, rimozioni). Se il target è admin e verrebbe declassato,
-        // verifichiamo che non sia l'unico admin rimasto (vale anche quando
-        // l'admin prova a declassare se stesso).
-        if (target.role === 'admin' && role !== 'admin') {
-          const admins = await db.select({ id: familyMembers.id })
-            .from(familyMembers)
-            .where(and(eq(familyMembers.familyId, familyId), eq(familyMembers.role, 'admin')));
-          if (admins.length <= 1) {
-            return res.status(409).json({ error: { code: "LAST_ADMIN", message: "Non puoi cambiare ruolo all'unico amministratore della famiglia. Promuovi prima un altro membro ad admin." } });
-          }
-        }
         updateData.role = role;
       }
     }
@@ -923,10 +910,38 @@ router.put('/:familyId/members/:memberId', authenticate, requireFamilyMember(), 
       return res.status(400).json({ error: { code: "NO_CHANGES", message: "Nessuna modifica fornita" } });
     }
 
-    const [updated] = await db.update(familyMembers)
-      .set(updateData)
-      .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
-      .returning();
+    // Protezione "ultimo admin": una famiglia non deve mai restare senza
+    // amministratori, altrimenti nessuno potrebbe più gestirla (inviti, ruoli,
+    // rimozioni). Se la modifica declassa un admin (incluso se stesso), il
+    // conteggio e l'update devono essere ATOMICI: lock per-famiglia, altrimenti
+    // due declassamenti concorrenti passerebbero entrambi il controllo.
+    const demotesAdmin = !isManagedProfile && target.role === 'admin'
+      && updateData.role !== undefined && updateData.role !== 'admin';
+
+    let updated;
+    if (demotesAdmin) {
+      const result = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`family-members:${familyId}`}))`);
+        const admins = await tx.select({ id: familyMembers.id })
+          .from(familyMembers)
+          .where(and(eq(familyMembers.familyId, familyId), eq(familyMembers.role, 'admin')));
+        if (admins.length <= 1) return { lastAdmin: true as const };
+        const [row] = await tx.update(familyMembers)
+          .set(updateData)
+          .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
+          .returning();
+        return { row };
+      });
+      if ('lastAdmin' in result) {
+        return res.status(409).json({ error: { code: "LAST_ADMIN", message: "Non puoi cambiare ruolo all'unico amministratore della famiglia. Promuovi prima un altro membro ad admin." } });
+      }
+      updated = result.row;
+    } else {
+      [updated] = await db.update(familyMembers)
+        .set(updateData)
+        .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)))
+        .returning();
+    }
 
     broadcastToFamily(familyId, 'member_updated', updated);
     res.json(updated);
@@ -961,17 +976,26 @@ router.delete('/:familyId/members/:memberId', authenticate, requireFamilyMember(
 
     // Protezione "ultimo admin": rimuovere l'unico admin lascerebbe la
     // famiglia ingestibile (nessuno potrebbe più promuovere o invitare).
+    // Conteggio e delete sono ATOMICI (lock per-famiglia): due rimozioni
+    // concorrenti di due admin diversi non devono poter passare entrambe.
     if (target.role === 'admin') {
-      const admins = await db.select({ id: familyMembers.id })
-        .from(familyMembers)
-        .where(and(eq(familyMembers.familyId, familyId), eq(familyMembers.role, 'admin')));
-      if (admins.length <= 1) {
+      const removed = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`family-members:${familyId}`}))`);
+        const admins = await tx.select({ id: familyMembers.id })
+          .from(familyMembers)
+          .where(and(eq(familyMembers.familyId, familyId), eq(familyMembers.role, 'admin')));
+        if (admins.length <= 1) return false;
+        await tx.delete(familyMembers)
+          .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)));
+        return true;
+      });
+      if (!removed) {
         return res.status(409).json({ error: { code: "LAST_ADMIN", message: "Non puoi rimuovere l'unico amministratore della famiglia. Promuovi prima un altro membro ad admin." } });
       }
+    } else {
+      await db.delete(familyMembers)
+        .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)));
     }
-
-    await db.delete(familyMembers)
-      .where(and(eq(familyMembers.id, memberId), eq(familyMembers.familyId, familyId)));
 
     broadcastToFamily(familyId, 'member_removed', { memberId });
     res.json({ message: 'Membro rimosso' });

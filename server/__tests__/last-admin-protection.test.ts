@@ -128,6 +128,33 @@ describe("protezione ultimo admin", { skip: hasDb ? false : "DATABASE_URL non im
     assert.equal(res.status, 200, `atteso 200, ricevuto ${res.status}: ${text}`);
   });
 
+  test("due declassamenti CONCORRENTI non lasciano la famiglia senza admin", async () => {
+    // Stato attuale: resta solo il secondo admin. Ricrea un secondo admin
+    // così da avere di nuovo 2 admin, poi prova a declassarli in parallelo:
+    // al massimo UNO dei due può riuscire (lock per-famiglia).
+    const extra = await seedUser(`admin3-${uniq()}@example.com`);
+    const [em] = await db.insert(familyMembers).values({
+      familyId, userId: extra.id, role: "admin", nickname: "Admin3", color: "#6366F1", points: 0,
+    }).returning();
+
+    const [r1, r2] = await Promise.all([
+      request("PUT", `/api/families/${familyId}/members/${secondAdminMembershipId}`, { role: "adult" }, generateAccessToken(extra)),
+      request("PUT", `/api/families/${familyId}/members/${em.id}`, { role: "adult" }, generateAccessToken(extra)),
+    ]);
+    const statuses = [r1.status, r2.status].sort();
+    assert.deepEqual(statuses, [200, 409], `attesi 200+409, ricevuti ${statuses.join(",")}`);
+
+    const admins = await db.select().from(familyMembers)
+      .where(inArray(familyMembers.familyId, [familyId]))
+      .then((rows) => rows.filter((r) => r.role === "admin"));
+    assert.equal(admins.length, 1, "deve restare esattamente un admin");
+
+    // Ripristina 1 solo admin noto (il secondo) per i test successivi.
+    await db.update(familyMembers).set({ role: "admin" })
+      .where(inArray(familyMembers.id, [secondAdminMembershipId]));
+    await db.delete(familyMembers).where(inArray(familyMembers.id, [em.id]));
+  });
+
   test("un membro non-admin resta comunque escluso (403, non 409)", async () => {
     // L'adult non deve nemmeno arrivare al controllo LAST_ADMIN.
     const adultUser = created.users[2];
