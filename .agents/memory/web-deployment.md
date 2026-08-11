@@ -1,28 +1,14 @@
 ---
-name: Web deployment (app on familysync.eu in browser)
-description: How the production deployment serves the real Expo web app in a browser at the custom domain, instead of the Expo Go QR landing page.
+name: Web deployment
+description: How familysync.eu production is published (Expo web export + Express), deployment target, and port-mapping pitfalls.
 ---
 
-# Serving the Expo web app at the custom domain
+# Web deployment (familysync.eu)
 
-The app must be usable by opening `https://familysync.eu` in a phone browser (no Google Play, no Expo Go).
-
-**Decision:** the production deploy builds an Expo **web export** and Express serves it.
-- Deploy build command (set via `deployConfig`, NOT by editing `.replit` directly — direct edits are blocked): runs `npx expo export --platform web --output-dir web-build` then `npm run server:build`. This **replaced** the old `expo:static:build` (which only produced iOS/Android Expo Go bundles + a QR landing page and never built web).
-- `app.json` `web` needs `"bundler": "metro"` + `"output": "single"` (SPA) for expo-router client routing.
-- `@expo/metro-runtime` is NOT required — `expo export --platform web` succeeds without it (web already bundled fine in dev too).
-
-**Why:** the prior deployment was an "Expo Go static" deploy; browsers got the QR/preview page, never the app. The app already runs on web in dev, so only the production serving was missing.
-
-**How Express serves it (server/index.ts):**
-- `configureExpoAndLanding` runs BEFORE `registerRoutes`, so the SPA catch-all must NOT live there or it would swallow `/api`, `/help`, `/uploads`.
-- Manifest middleware still answers `/` and `/manifest` ONLY when header `expo-platform: ios|android` (keeps Expo Go working); landing page is served only when `web-build/index.html` is absent (fallback).
-- `express.static(web-build)` serves `/` (index.html) + `/_expo/...` assets.
-- `setupWebAppFallback(app)` is registered AFTER `registerRoutes`, before the error handler: for GET requests not starting with `/api` or `/uploads`, it `sendFile(web-build/index.html)` → enables deep links like `/calendario`.
-
-**EXPO_PUBLIC_DOMAIN:** baked into the web bundle at export time (EXPO_PUBLIC_* are inlined). Build sets it to `familysync.eu` so the browser app calls same-origin `/api`. It is also in `[userenv.production]`.
-
-**Re-export needed:** any frontend change requires re-running the web export to refresh `web-build`. The deploy build does this automatically on each publish; for local testing run the export manually.
-
-## Deployment target: vm (2026-08-07)
-Passati da autoscale a Reserved VM (deployConfig target "vm", stessi build/run) perché lo scheduler orario dei promemoria (event-reminders) non gira se l'istanza autoscale è spenta senza traffico. Effettivo solo al prossimo Republish; l'utente vede il prezzo prima di confermare e può annullare (in tal caso tornare ad autoscale). Con VM sempre acceso si risolve anche la classe di problemi "istanze che si riavviano/spente" (segnalazioni file dimenticati, ecc.).
+- familysync.eu serves the REAL Expo web app: deploy build = `expo export --platform web` in `web-build`, patched da `scripts/patch-web-build.sh`; Express la serve come SPA.
+- Target di produzione: **Reserved VM** (sempre acceso) per far girare i promemoria orari senza dipendere dal traffico. Autoscale li faceva partire in ritardo.
+- **Cambiare tipo di deployment richiede unpublish + publish**: il pulsante Republish riusa il tipo esistente e ignora `deploymentTarget` in `.replit`. Percorso UI: Publishing → Manage → "Change deployment type".
+- **Port mapping critico**: la porta con `externalPort = 80` in `.replit` è quella che il deployment VM espone e su cui fa il probe `GET /`. Deve puntare al backend (localPort 5000), NON alla porta Metro/Expo 8081 (che in prod non esiste). Con 8081→80 il promote falliva in timeout senza alcun log runtime.
+  - **Why:** primo publish VM (ago 2026) fallito così; su autoscale la mappatura sbagliata era passata inosservata.
+  - **How to apply:** prima di ogni publish verificare che 5000→80 in `[[ports]]`.
+- Nel publish dopo un unpublish: NON spuntare "Create production database" né "Copy development database" — il DB prod esistente viene ritrovato e riagganciato; il dominio custom resta configurato in Domains.
