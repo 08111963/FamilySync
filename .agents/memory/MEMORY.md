@@ -45,5 +45,6 @@
 - [ZIP di consegna pulito](delivery-zip-export.md) — usare scripts/export-consegna.sh (esclusioni + doppia scansione anti-segreti), mai zip manuale.
 - [Meal plan balance monitor](meal-plan-balance-monitor.md) — eval AI reale settimanale opt-in (MEAL_PLAN_BALANCE_MONITOR=true, solo prod); riusare runMealPlanBalanceEvalOnce, mai duplicare la logica.
 - [Google Calendar direct sync](google-calendar-sync.md) — OAuth per-utente (scope calendar.events, state con userId), refresh token cifrato, fail-visibile 'expired'; nei DELETE leggere i link Google PRIMA (cascade).
+- [Anteprima dev — porte](dev-preview-routing.md) — esterna 80 → backend 5000, mai Metro 8081; Metro orfano serve bundle stantii; login Google web = redirect pagina intera, mai popup.
 - [Assistente AI Home](home-assistant-chat.md) — parse su server, esecuzione via rotte esistenti dal client; conferma obbligatoria; FAB sopra la tab bar; policy bump a ogni nuova funzione AI.
 - [Privacy policy fonte unica](privacy-policy-single-source.md) — testo policy SOLO in shared/privacy-policy-content.ts (web+mobile+DOCX); mai duplicare testi legali; DOCX generato senza dipendenze via scripts/generate-privacy-docx.ts.
