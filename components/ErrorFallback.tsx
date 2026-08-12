@@ -38,13 +38,17 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   // produzione, dove non abbiamo accesso alla console del dispositivo.
   useEffect(() => {
     try {
-      const base =
-        Platform.OS === "web" && typeof window !== "undefined"
-          ? window.location.origin
-          : (process.env.EXPO_PUBLIC_API_URL || "");
+      // Stessa fonte canonica del resto dell'app (lib/query-client.getApiUrl):
+      // origine della pagina sul web, EXPO_PUBLIC_DOMAIN sul nativo.
+      let base = "";
+      if (typeof window !== "undefined" && window.location?.origin?.startsWith("http")) {
+        base = window.location.origin;
+      } else if (process.env.EXPO_PUBLIC_DOMAIN) {
+        base = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+      }
       if (!base) return;
       globalThis
-        .fetch(`${base}/api/client-errors`, {
+        .fetch(new URL("/api/client-errors", base).toString(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
