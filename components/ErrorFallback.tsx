@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { reloadAppAsync } from "expo";
 import {
   StyleSheet,
@@ -33,6 +33,40 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   };
 
   const [isModalVisible, setIsModalVisible] = useState(false);
+
+  // Segnala il crash al server (solo log) così è diagnosticabile anche in
+  // produzione, dove non abbiamo accesso alla console del dispositivo.
+  useEffect(() => {
+    try {
+      const base =
+        Platform.OS === "web" && typeof window !== "undefined"
+          ? window.location.origin
+          : (process.env.EXPO_PUBLIC_API_URL || "");
+      if (!base) return;
+      globalThis
+        .fetch(`${base}/api/client-errors`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: String(error?.message || error || "unknown").slice(0, 1000),
+            stack: error?.stack ? String(error.stack).slice(0, 8000) : undefined,
+            url:
+              Platform.OS === "web" && typeof window !== "undefined"
+                ? window.location.href.slice(0, 500)
+                : undefined,
+            userAgent:
+              typeof navigator !== "undefined" && navigator.userAgent
+                ? navigator.userAgent.slice(0, 500)
+                : undefined,
+            platform: Platform.OS,
+          }),
+        })
+        .catch(() => {});
+    } catch {
+      // La segnalazione non deve mai causare un secondo crash.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleRestart = async () => {
     try {
@@ -84,6 +118,14 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
 
         <Text style={[styles.message, { color: theme.textSecondary }]}>
           Please reload the app to continue.
+        </Text>
+
+        <Text
+          style={[styles.detailText, { color: theme.textSecondary, fontFamily: monoFont }]}
+          selectable
+          numberOfLines={4}
+        >
+          {String(error?.message || "")}
         </Text>
 
         <Pressable
@@ -205,6 +247,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: "center",
     lineHeight: 24,
+  },
+  detailText: {
+    fontSize: 11,
+    textAlign: "center",
+    lineHeight: 16,
+    opacity: 0.7,
+    maxWidth: 480,
   },
   topButton: {
     position: "absolute",

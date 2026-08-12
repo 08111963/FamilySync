@@ -35,6 +35,7 @@ import profileRoutes from "./routes/profile";
 import { testAnalyticsEventsRouter, testAnalyticsAdminRouter, requireTestAnalyticsFlag } from "./routes/test-analytics";
 import { feedbackRouter, feedbackAdminRouter } from "./routes/feedback";
 import maintenanceRoutes from "./routes/maintenance";
+import clientErrorsRoutes, { clientErrorLimiter } from "./routes/client-errors";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(helmet({
@@ -81,6 +82,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  // Segnalazione crash del client (schermata "Something went wrong"): pubblico,
+  // solo log, rate limiter dedicato.
+  app.use('/api/client-errors', clientErrorLimiter, clientErrorsRoutes);
   app.use('/api/auth', authRoutes);
   // Inviti: router PUBBLICO (lookup stato + accept nuovo utente) montato senza
   // authenticate, con rate limiter dedicato.
