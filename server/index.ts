@@ -11,6 +11,7 @@ import { ensureDemoAccount } from './lib/demo-account';
 import { ensureTesterAccounts } from './lib/tester-accounts';
 import { ensureVipAccount } from './lib/vip-account';
 import { ensurePantryUniqueIndex } from './lib/ensure-pantry-schema';
+import { ensureClientCrashSchema } from './lib/ensure-client-crash-schema';
 import { startBillReminderScheduler } from './lib/bill-reminders';
 import { startEventReminderScheduler } from './lib/event-reminders';
 import { startUploadIntegrityScheduler } from './lib/upload-integrity';
@@ -488,6 +489,18 @@ function setupErrorHandler(app: express.Application) {
   } catch (err) {
     log(`pantry unique index ensure failed: ${String(err)}`);
     if (process.env.NODE_ENV === 'production') throw err;
+  }
+
+  // Tabella client_crash_reports (migrazione 0028) PRIMA di accettare
+  // richieste: il DB di produzione è separato e senza tabella ogni report
+  // crash perde la persistenza (l'alert email non scatta mai). Best-effort:
+  // l'endpoint /api/client-errors è già fail-open, quindi qui NON blocchiamo
+  // l'avvio in caso di errore (a differenza dell'indice dispensa).
+  try {
+    const r = await ensureClientCrashSchema();
+    if (r.created) log('client_crash_reports table created (was missing)');
+  } catch (err) {
+    log(`client crash schema ensure failed: ${String(err)}`);
   }
 
   const port = parseInt(process.env.PORT || "5000", 10);

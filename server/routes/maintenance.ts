@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db';
 import { logger } from '../lib/logger';
 import { normalizeEventTimes } from '../lib/normalize-event-times';
+import { ensureClientCrashSchema } from '../lib/ensure-client-crash-schema';
 
 /**
  * Endpoint di manutenzione dati token-gated (pattern db-dev-prod-migration):
@@ -62,6 +63,26 @@ router.post('/apply-event-time-constraint', async (req: Request, res: Response) 
     res.json({ ok: true, repaired });
   } catch (error) {
     logger.error('Maintenance apply-event-time-constraint failed', { error: String(error) });
+    res.status(500).json({ ok: false });
+  }
+});
+
+/**
+ * Applica in produzione la tabella client_crash_reports (migrazione 0028)
+ * e ne riporta lo stato (esistenza + numero righe) per verifica. Idempotente
+ * e ripetibile: stesso ensure eseguito anche all'avvio del server.
+ */
+router.post('/apply-client-crash-reports', async (req: Request, res: Response) => {
+  if (!process.env.MIGRATE_TOKEN) return res.status(404).send('Not found');
+  if (!isAuthorized(req)) return res.status(404).send('Not found');
+  try {
+    const { created } = await ensureClientCrashSchema();
+    const count = await db.execute(sql`SELECT COUNT(*)::int AS n FROM client_crash_reports`);
+    const rows = (count as any).rows?.[0]?.n ?? 0;
+    logger.info('Maintenance apply-client-crash-reports executed', { created, rows });
+    res.json({ ok: true, created, rows });
+  } catch (error) {
+    logger.error('Maintenance apply-client-crash-reports failed', { error: String(error) });
     res.status(500).json({ ok: false });
   }
 });
