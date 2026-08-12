@@ -196,11 +196,18 @@ export async function recordClientCrash(
       }));
 
     try {
-      await sendClientCrashAlertEmail({
+      const recipientCount = await sendClientCrashAlertEmail({
         count: recent.length,
         windowMinutes: Math.round(windowMs / 60000),
         samples,
       });
+      if (recipientCount > 0) {
+        logger.info("CLIENT_CRASH alert email sent", {
+          recipients: recipientCount,
+          count: recent.length,
+          windowMinutes: Math.round(windowMs / 60000),
+        });
+      }
     } catch (err) {
       // Invio fallito: rilascia il claim così il PROSSIMO report ritenta
       // (altrimenti l'alert andrebbe perso per l'intero cooldown).

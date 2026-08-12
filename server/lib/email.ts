@@ -399,6 +399,8 @@ export async function sendFeedbackNotificationEmail(params: {
  * più CLIENT_CRASH ravvicinati dal web (tipicamente browser in-app tipo
  * WhatsApp/Gmail con WebView datato e polyfill mancante). Best-effort:
  * il chiamante logga gli errori e non deve mai bloccare l'endpoint.
+ * Ritorna il numero di destinatari a cui l'email è stata inviata (0 se
+ * APP_OWNER_EMAILS o l'email non sono configurati).
  */
 export async function sendClientCrashAlertEmail(report: {
   count: number;
@@ -410,7 +412,7 @@ export async function sendClientCrashAlertEmail(report: {
     platform?: string;
     at: string;
   }>;
-}) {
+}): Promise<number> {
   const raw = process.env.APP_OWNER_EMAILS || '';
   const recipients = raw.split(',').map((e) => e.trim()).filter(Boolean);
 
@@ -418,13 +420,13 @@ export async function sendClientCrashAlertEmail(report: {
     console.log(
       `[client-crash-alert] APP_OWNER_EMAILS non configurata: ${report.count} crash solo nei log`
     );
-    return;
+    return 0;
   }
   if (!isEmailConfigured()) {
     console.log(
       `[DEV] Client crash alert: ${report.count} crash negli ultimi ${report.windowMinutes} minuti`
     );
-    return;
+    return 0;
   }
 
   const rows = report.samples
@@ -453,6 +455,8 @@ export async function sendClientCrashAlertEmail(report: {
       })
     )
   );
+
+  return recipients.length;
 }
 
 /**
