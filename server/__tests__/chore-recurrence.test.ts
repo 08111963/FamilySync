@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   parseRecurrenceRule,
@@ -7,6 +7,7 @@ import {
   nextDueDate,
   expandOccurrences,
   isRealIsoDate,
+  normalizeTimeOfDay,
 } from "../../shared/chore-recurrence";
 
 // 2026-07-18 è un sabato (ISO 6).
@@ -149,4 +150,26 @@ test("isRealIsoDate: accetta solo YYYY-MM-DD calendariali reali", () => {
   assert.equal(isRealIsoDate(""), false);
   assert.equal(isRealIsoDate(null), false);
   assert.equal(isRealIsoDate(undefined), false);
+});
+
+describe("normalizeTimeOfDay", () => {
+  test("valid HH:MM passthrough", () => {
+    assert.equal(normalizeTimeOfDay("18:30"), "18:30");
+    assert.equal(normalizeTimeOfDay("00:00"), "00:00");
+  });
+  test("tolerant variants normalized", () => {
+    assert.equal(normalizeTimeOfDay("15"), "15:00");
+    assert.equal(normalizeTimeOfDay("9:5"), "09:05");
+    assert.equal(normalizeTimeOfDay("15.30"), "15:30");
+    assert.equal(normalizeTimeOfDay("09:30:00"), "09:30");
+    assert.equal(normalizeTimeOfDay(" 8:00 "), "08:00");
+  });
+  test("invalid values rejected", () => {
+    assert.equal(normalizeTimeOfDay("24:00"), null);
+    assert.equal(normalizeTimeOfDay("12:60"), null);
+    assert.equal(normalizeTimeOfDay("boh"), null);
+    assert.equal(normalizeTimeOfDay(""), null);
+    assert.equal(normalizeTimeOfDay(null), null);
+    assert.equal(normalizeTimeOfDay(undefined), null);
+  });
 });

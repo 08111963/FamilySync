@@ -106,6 +106,31 @@ describe("eventToGooglePayload", () => {
     const p = eventToGooglePayload(makeEvent({ time: "22:00", endTime: "01:00" })) as any;
     assert.deepEqual(p.end, { dateTime: "2026-08-11T01:00:00", timeZone: "Europe/Rome" });
   });
+
+  // Regressione prod 2026-08-12: righe con time="15"/end_time="16" (senza
+  // minuti) producevano dateTime "…T15:00" rifiutati da Google con 400.
+  test("bare-hour times are normalized to HH:MM (prod 400 regression)", () => {
+    const p = eventToGooglePayload(makeEvent({ time: "15", endTime: "16" })) as any;
+    assert.deepEqual(p.start, { dateTime: "2026-08-10T15:00:00", timeZone: "Europe/Rome" });
+    assert.deepEqual(p.end, { dateTime: "2026-08-10T16:00:00", timeZone: "Europe/Rome" });
+  });
+
+  test("single-digit hour is zero-padded", () => {
+    const p = eventToGooglePayload(makeEvent({ time: "9:30", endTime: null })) as any;
+    assert.deepEqual(p.start, { dateTime: "2026-08-10T09:30:00", timeZone: "Europe/Rome" });
+    assert.deepEqual(p.end, { dateTime: "2026-08-10T10:30:00", timeZone: "Europe/Rome" });
+  });
+
+  test("unrecoverable time falls back to all-day instead of a broken payload", () => {
+    const p = eventToGooglePayload(makeEvent({ time: "boh", endTime: null })) as any;
+    assert.deepEqual(p.start, { date: "2026-08-10" });
+    assert.deepEqual(p.end, { date: "2026-08-11" });
+  });
+
+  test("malformed endTime is ignored (falls back to +1h)", () => {
+    const p = eventToGooglePayload(makeEvent({ time: "18:30", endTime: "x" })) as any;
+    assert.deepEqual(p.end, { dateTime: "2026-08-10T19:30:00", timeZone: "Europe/Rome" });
+  });
 });
 
 // ---------------------------------------------------------------------------

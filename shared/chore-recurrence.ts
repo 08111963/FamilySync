@@ -49,6 +49,26 @@ export function isRealIsoDate(value: string | null | undefined): boolean {
   return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d;
 }
 
+/**
+ * Normalizza un orario "HH:MM" (24h). Accetta anche varianti tolleranti che
+ * arrivano da input libero/AI: "9:30" (senza zero iniziale), "15" (solo ora),
+ * "15.30" (punto come separatore), "09:30:00" (con secondi). Ritorna sempre
+ * "HH:MM" zero-padded, oppure null se il valore non è un orario valido.
+ * Fondamentale per Google Calendar: un dateTime malformato (es. "…T15:00"
+ * costruito da time="15") viene rifiutato con 400 Bad Request.
+ */
+export function normalizeTimeOfDay(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const m = /^(\d{1,2})(?:[:.](\d{1,2})(?::\d{1,2})?)?$/.exec(trimmed);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = m[2] !== undefined ? Number(m[2]) : 0;
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
 export function parseRecurrenceRule(rule: string | null | undefined): ParsedRecurrence | null {
   if (!rule) return null;
   const colonIdx = rule.indexOf(":");

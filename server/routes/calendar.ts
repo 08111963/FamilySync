@@ -14,7 +14,7 @@ import { getBlockedUserIds, getBlockRelatedUserIds, applyBlockedFilter } from '.
 import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 import { sendNewEventEmail, isEmailConfigured } from '../lib/email';
-import { parseRecurrenceRule, expandOccurrences, isRealIsoDate } from '../../shared/chore-recurrence';
+import { parseRecurrenceRule, expandOccurrences, isRealIsoDate, normalizeTimeOfDay } from '../../shared/chore-recurrence';
 import { syncCreatedEvents, syncUpdatedEvent, syncDeletedEvents, getLinksForEvents } from '../lib/google-calendar-sync';
 
 /** Numero massimo di occorrenze materializzate per un evento ricorrente. */
@@ -76,12 +76,29 @@ const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]|\r(?!\n)/g
 const stripControlChars = (value: string) => value.replace(CONTROL_CHARS, '');
 const cleanText = (schema: z.ZodString) => schema.transform(stripControlChars);
 
+/**
+ * Orario "HH:MM" normalizzato (accetta "9:30", "15", "15.30"…): un orario
+ * malformato salvato in DB produceva dateTime invalidi verso Google Calendar
+ * (400 Bad Request) e gli eventi non arrivavano mai sul calendario.
+ */
+const normalizedTime = z
+  .string()
+  .transform((v, ctx) => {
+    if (v.trim() === "") return null;
+    const norm = normalizeTimeOfDay(v);
+    if (!norm) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Orario non valido (formato HH:MM)" });
+      return z.NEVER;
+    }
+    return norm;
+  });
+
 const createEventSchema = z.object({
   title: cleanText(z.string().min(1, "Il titolo è obbligatorio").max(200)),
   description: cleanText(z.string().max(2000)).optional(),
   date: z.string().refine(isRealIsoDate, "Data non valida (formato AAAA-MM-GG)"),
-  time: z.string().optional(),
-  endTime: z.string().optional(),
+  time: normalizedTime.optional(),
+  endTime: normalizedTime.optional(),
   allDay: z.boolean().optional().default(false),
   category: z.enum(["work", "school", "sport", "health", "social", "family", "other"]).optional().default("other"),
   location: cleanText(z.string().max(500)).optional(),
@@ -94,8 +111,8 @@ const updateEventSchema = z.object({
   title: cleanText(z.string().min(1).max(200)).optional(),
   description: cleanText(z.string().max(2000)).optional(),
   date: z.string().refine(isRealIsoDate, "Data non valida (formato AAAA-MM-GG)").optional(),
-  time: z.string().nullable().optional(),
-  endTime: z.string().nullable().optional(),
+  time: normalizedTime.nullable().optional(),
+  endTime: normalizedTime.nullable().optional(),
   allDay: z.boolean().optional(),
   category: z.enum(["work", "school", "sport", "health", "social", "family", "other"]).optional(),
   location: cleanText(z.string().max(500)).nullable().optional(),

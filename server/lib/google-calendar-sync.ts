@@ -11,6 +11,7 @@ import {
   type CalendarEvent,
 } from '../../shared/schema';
 import { getBlockRelatedUserIds } from './block-filter';
+import { normalizeTimeOfDay } from '../../shared/chore-recurrence';
 import { sendPushToUser } from './push';
 import { sendGcalConnectionExpiredEmail } from './email';
 import { getPublicBaseUrl } from './oauth';
@@ -380,15 +381,19 @@ export function eventToGooglePayload(ev: CalendarEvent): Record<string, unknown>
     // creati dall'app anche a mano dentro Google Calendar.
     extendedProperties: { private: { familySyncEventId: ev.id } },
   };
-  if (ev.allDay || !ev.time) {
-    // Evento "tutto il giorno": end esclusivo il giorno successivo.
+  // Normalizzazione difensiva: in DB esistono orari malformati ("15" senza
+  // minuti) salvati prima della validazione — un dateTime tipo "…T15:00"
+  // (costruito da "15") viene rifiutato da Google con 400 Bad Request.
+  const startTime = ev.allDay ? null : normalizeTimeOfDay(ev.time);
+  if (!startTime) {
+    // Evento "tutto il giorno" (o con orario irrecuperabile): end esclusivo
+    // il giorno successivo.
     base.start = { date: ev.date };
     base.end = { date: addDays(ev.date, 1) };
     return base;
   }
-  const startTime = ev.time;
   let endDate = ev.date;
-  let endTime = ev.endTime;
+  let endTime = normalizeTimeOfDay(ev.endTime);
   if (endTime) {
     // Come nel feed ICS: se la fine è <= inizio, l'evento scavalca la mezzanotte.
     if (endTime <= startTime) endDate = addDays(ev.date, 1);
