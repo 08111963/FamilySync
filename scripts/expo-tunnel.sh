@@ -30,7 +30,15 @@ pkill -f "preview-proxy.cjs" 2>/dev/null || true
 sleep 1
 fuser -k 8081/tcp 2>/dev/null || true
 fuser -k 8082/tcp 2>/dev/null || true
-sleep 1
+# Aspetta che le porte siano davvero libere (kill asincrono) per evitare EADDRINUSE.
+for i in $(seq 1 20); do
+  if ! fuser 8081/tcp 2>/dev/null && ! fuser 8082/tcp 2>/dev/null; then
+    break
+  fi
+  fuser -k -9 8081/tcp 2>/dev/null || true
+  fuser -k -9 8082/tcp 2>/dev/null || true
+  sleep 0.5
+done
 
 export EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN:5000"
 
