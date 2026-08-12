@@ -4,7 +4,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { mealPlans, mealPlanItems, recipes, recipeIngredients, shoppingLists, shoppingItems } from '../../shared/schema';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { logger } from '../lib/logger';
@@ -131,12 +131,18 @@ router.get('/:familyId/meal-plans', authenticate, requireFamilyMember(), async (
   try {
     const familyId = getParam(req, 'familyId');
 
-    const plans = await db.select()
+    // Conteggio pasti aggregato (LEFT JOIN + COUNT) invece di caricare tutti gli items.
+    const plans = await db.select({
+      plan: mealPlans,
+      itemCount: sql<number>`count(${mealPlanItems.id})::int`,
+    })
       .from(mealPlans)
+      .leftJoin(mealPlanItems, eq(mealPlanItems.mealPlanId, mealPlans.id))
       .where(eq(mealPlans.familyId, familyId))
+      .groupBy(mealPlans.id)
       .orderBy(desc(mealPlans.weekStartDate));
 
-    res.json(plans);
+    res.json(plans.map(({ plan, itemCount }) => ({ ...plan, itemCount })));
   } catch (error) {
     logger.error('List meal plans error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero dei piani pasti" } });

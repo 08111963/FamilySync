@@ -50,7 +50,8 @@ interface MealPlan {
   familyId: string;
   title: string;
   weekStartDate: string;
-  items: MealPlanItem[];
+  items?: MealPlanItem[];
+  itemCount?: number;
   createdAt: string;
 }
 
@@ -269,7 +270,7 @@ function PlanCard({
             {formatWeekDate(plan.weekStartDate)}
           </Text>
           <Text style={[styles.planCount, { color: colors.textSecondary }]}>
-            {plan.items?.length || 0} pasti
+            {plan.itemCount ?? plan.items?.length ?? 0} pasti
           </Text>
         </View>
         <View style={styles.planActions}>
