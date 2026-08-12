@@ -23,14 +23,14 @@ fi
 # Kill any leftover personal ngrok from previous runs (frees port 4040).
 pkill -f "node_modules/.cache/ngrok/ngrok" 2>/dev/null || true
 
-# Free port 8081 if a previous Expo/Metro instance survived a workflow restart,
-# otherwise "expo start" exits immediately with "Port 8081 is being used".
-for pid in $(fuser 8081/tcp 2>/dev/null); do
-  kill -TERM "$pid" 2>/dev/null || true
-done
+# Free ports 8081/8082 from any previous Expo/Metro/proxy instance that
+# survived a workflow restart, otherwise expo/proxy exit with "port in use".
+pkill -f "expo start" 2>/dev/null || true
+pkill -f "preview-proxy.cjs" 2>/dev/null || true
 sleep 1
 fuser -k 8081/tcp 2>/dev/null || true
 fuser -k 8082/tcp 2>/dev/null || true
+sleep 1
 
 export EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN:5000"
 
@@ -51,7 +51,9 @@ echo "[tunnel] Scan the Expo Go QR below on Android to connect."
 
 # Run Expo in the foreground and forward termination signals so a workflow
 # restart shuts down cleanly.
+# Expo può fallire (es. tunnel giù) senza compromettere l'anteprima web:
+# il processo "principale" del workflow è il proxy, non Metro.
 npx expo start --tunnel --port 8082 &
 EXPO_PID=$!
 trap 'kill -TERM "$EXPO_PID" "$PROXY_PID" 2>/dev/null || true' TERM INT
-wait "$EXPO_PID"
+wait "$PROXY_PID"
