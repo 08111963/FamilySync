@@ -93,7 +93,7 @@ const normalizedTime = z
     return norm;
   });
 
-const createEventSchema = z.object({
+export const createEventSchema = z.object({
   title: cleanText(z.string().min(1, "Il titolo è obbligatorio").max(200)),
   description: cleanText(z.string().max(2000)).optional(),
   date: z.string().refine(isRealIsoDate, "Data non valida (formato AAAA-MM-GG)"),
@@ -107,7 +107,7 @@ const createEventSchema = z.object({
   recurrenceRule: z.string().optional(),
 });
 
-const updateEventSchema = z.object({
+export const updateEventSchema = z.object({
   title: cleanText(z.string().min(1).max(200)).optional(),
   description: cleanText(z.string().max(2000)).optional(),
   date: z.string().refine(isRealIsoDate, "Data non valida (formato AAAA-MM-GG)").optional(),
@@ -120,6 +120,27 @@ const updateEventSchema = z.object({
   memberId: z.string().nullable().optional(),
   recurrenceRule: z.string().nullable().optional(),
 }).strict();
+
+/**
+ * Risposta di validazione per gli eventi: se l'errore riguarda il formato
+ * degli orari (time/endTime non "HH:MM") risponde 422 con codice esplicito
+ * INVALID_TIME_FORMAT, altrimenti il consueto 400 VALIDATION_ERROR.
+ */
+export function sendEventValidationError(res: Response, error: z.ZodError) {
+  const fieldErrors = error.flatten().fieldErrors as Record<string, string[] | undefined>;
+  if (fieldErrors.time?.length || fieldErrors.endTime?.length) {
+    return res.status(422).json({
+      error: {
+        code: "INVALID_TIME_FORMAT",
+        message: "Orario non valido: usa il formato HH:MM (es. 15:30)",
+        details: fieldErrors,
+      },
+    });
+  }
+  return res.status(400).json({
+    error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: fieldErrors },
+  });
+}
 
 /** Base URL pubblica del backend (dietro proxy: trust proxy e' attivo). */
 function feedBaseUrl(req: Request): string {
@@ -190,9 +211,7 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
     const parsed = createEventSchema.safeParse(req.body);
 
     if (!parsed.success) {
-      return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
-      });
+      return sendEventValidationError(res, parsed.error);
     }
 
     // Se c'è una regola di ricorrenza deve essere valida.
@@ -328,9 +347,7 @@ router.put('/:familyId/:eventId', authenticate, requireFamilyMember(), async (re
 
     const parsed = updateEventSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "Dati non validi", details: parsed.error.flatten().fieldErrors },
-      });
+      return sendEventValidationError(res, parsed.error);
     }
 
     if (parsed.data.recurrenceRule && !parseRecurrenceRule(parsed.data.recurrenceRule)) {

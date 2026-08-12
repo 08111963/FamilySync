@@ -13,6 +13,7 @@ import {
   unique,
   numeric,
   date,
+  check,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -174,7 +175,11 @@ export const calendarEvents = pgTable("calendar_events", {
   createdBy: uuid("created_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  // Integrità orari: NULL oppure "HH:MM" (migrazione 0026).
+  check("calendar_events_time_format_check", sql`${table.time} IS NULL OR ${table.time} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  check("calendar_events_end_time_format_check", sql`${table.endTime} IS NULL OR ${table.endTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+]);
 
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 
