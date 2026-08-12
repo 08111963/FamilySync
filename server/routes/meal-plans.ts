@@ -18,6 +18,9 @@ const router = Router();
 
 const createMealPlanSchema = z.object({
   weekStartDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  // Se true, sostituisce atomicamente (stessa transazione) l'eventuale piano
+  // esistente per la stessa settimana: mai finestre in cui il piano è perso.
+  replace: z.boolean().optional(),
   title: z.string().optional(),
   preferences: z.object({
     diet: z.string().optional(),
@@ -51,33 +54,62 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
       });
     }
 
-    const { items, ...planData } = parsed.data;
+    const { items, replace, ...planData } = parsed.data;
 
-    // Una sola settimana per famiglia: se esiste già un piano per quella data, 409.
-    const [existing] = await db.select({ id: mealPlans.id })
-      .from(mealPlans)
-      .where(and(eq(mealPlans.familyId, familyId), eq(mealPlans.weekStartDate, planData.weekStartDate)))
-      .limit(1);
+    if (!replace) {
+      // Una sola settimana per famiglia: se esiste già un piano per quella data, 409.
+      const [existing] = await db.select({ id: mealPlans.id })
+        .from(mealPlans)
+        .where(and(eq(mealPlans.familyId, familyId), eq(mealPlans.weekStartDate, planData.weekStartDate)))
+        .limit(1);
 
-    if (existing) {
-      return res.status(409).json({
-        error: {
-          code: "PLAN_EXISTS",
-          message: "Esiste già un piano pasti per questa settimana. Eliminalo prima di crearne uno nuovo.",
-          planId: existing.id,
-        },
-      });
+      if (existing) {
+        return res.status(409).json({
+          error: {
+            code: "PLAN_EXISTS",
+            message: "Esiste già un piano pasti per questa settimana. Eliminalo prima di crearne uno nuovo.",
+            planId: existing.id,
+          },
+        });
+      }
     }
 
-    let plan;
+    let result;
     try {
-      [plan] = await db.insert(mealPlans).values({
-        familyId,
-        createdByUserId: req.user!.userId,
-        weekStartDate: planData.weekStartDate,
-        title: planData.title,
-        preferences: planData.preferences,
-      }).returning();
+      // Tutto in UNA transazione: se replace=true il vecchio piano viene
+      // eliminato e quello nuovo inserito atomicamente — se qualcosa fallisce
+      // il vecchio piano resta intatto.
+      result = await db.transaction(async (tx) => {
+        if (replace) {
+          await tx.delete(mealPlans).where(
+            and(eq(mealPlans.familyId, familyId), eq(mealPlans.weekStartDate, planData.weekStartDate))
+          );
+        }
+        const [plan] = await tx.insert(mealPlans).values({
+          familyId,
+          createdByUserId: req.user!.userId,
+          weekStartDate: planData.weekStartDate,
+          title: planData.title,
+          preferences: planData.preferences,
+        }).returning();
+
+        let insertedItems: any[] = [];
+        if (items.length > 0) {
+          insertedItems = await tx.insert(mealPlanItems).values(
+            items.map((item) => ({
+              mealPlanId: plan.id,
+              date: item.date,
+              mealType: item.mealType,
+              recipeId: item.recipeId ?? null,
+              titleOverride: item.titleOverride ?? null,
+              servings: item.servings,
+              notes: item.notes,
+              ingredients: item.ingredients ?? null,
+            }))
+          ).returning();
+        }
+        return { plan, insertedItems };
+      });
     } catch (insertErr) {
       // Race condition: vincolo unique (familyId, weekStartDate) scattato tra il check e l'insert.
       if (isUniqueViolation(insertErr)) {
@@ -88,23 +120,7 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
       throw insertErr;
     }
 
-    let insertedItems: any[] = [];
-    if (items.length > 0) {
-      insertedItems = await db.insert(mealPlanItems).values(
-        items.map((item) => ({
-          mealPlanId: plan.id,
-          date: item.date,
-          mealType: item.mealType,
-          recipeId: item.recipeId ?? null,
-          titleOverride: item.titleOverride ?? null,
-          servings: item.servings,
-          notes: item.notes,
-          ingredients: item.ingredients ?? null,
-        }))
-      ).returning();
-    }
-
-    res.status(201).json({ ...plan, items: insertedItems });
+    res.status(201).json({ ...result.plan, items: result.insertedItems });
   } catch (error) {
     logger.error('Create meal plan error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione del piano pasti" } });

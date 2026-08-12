@@ -24,7 +24,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { VoiceInput, SpeakButton, speakText, primeSpeech } from "@/components/VoiceInput";
 import { useAutoSpeak } from "@/hooks/useAutoSpeak";
 import { useFamily } from "@/context/FamilyContext";
-import { apiRequest, apiStream } from "@/lib/query-client";
+import { apiRequest, apiStream, getApiErrorMessage } from "@/lib/query-client";
 import { freeLimitMessage } from "@/lib/plan-limit";
 import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
 
@@ -366,6 +366,8 @@ export default function MealPlansScreen() {
   const [voicePrefs, setVoicePrefs] = useState("");
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Lock sincrono contro il doppio tocco su "Salva piano" (setSaving è asincrono).
+  const savingRef = useRef(false);
   const [aiPlans, setAiPlans] = useState<AiMealPlanResponse[]>([]);
   const [selectedPlanIndex, setSelectedPlanIndex] = useState(0);
 
@@ -629,12 +631,17 @@ export default function MealPlansScreen() {
   const handleSavePlan = async () => {
     const chosenPlan = aiPlans[selectedPlanIndex];
     if (!currentFamily || !chosenPlan) return;
+    // Lock sincrono anti doppio tocco: setSaving non è immediato.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    try {
-      await apiRequest("POST", `/api/meal-plans/${currentFamily.id}/meal-plans`, {
+
+    const doSave = (replace: boolean) =>
+      apiRequest("POST", `/api/meal-plans/${currentFamily.id}/meal-plans`, {
         title: chosenPlan.title,
         weekStartDate: chosenPlan.weekStartDate ?? weekStart,
+        replace,
         items: chosenPlan.items.map((i) => ({
           date: i.date,
           mealType: i.mealType,
@@ -643,17 +650,64 @@ export default function MealPlansScreen() {
           ingredients: i.ingredients || null,
         })),
       });
+
+    const onSaved = () => {
       qc.invalidateQueries({ queryKey: ["/api/meal-plans", currentFamily.id, "meal-plans"] });
       setAiPlans([]);
       setActiveTab("plans");
-    } catch {
-      if (Platform.OS === "web") {
-        window.alert("Impossibile salvare il piano.");
-      } else {
-        Alert.alert("Errore", "Impossibile salvare il piano.");
-      }
-    } finally {
+    };
+
+    const finish = () => {
+      savingRef.current = false;
       setSaving(false);
+    };
+
+    // Sostituzione atomica sul server (replace=true): il vecchio piano viene
+    // rimpiazzato in un'unica transazione, mai perso a metà.
+    const replaceExisting = async () => {
+      try {
+        await doSave(true);
+        onSaved();
+      } catch (err) {
+        const msg = getApiErrorMessage(err, "Impossibile sostituire il piano esistente. Riprova.");
+        if (Platform.OS === "web") window.alert(msg);
+        else Alert.alert("Errore", msg);
+      } finally {
+        finish();
+      }
+    };
+
+    try {
+      await doSave(false);
+      onSaved();
+      finish();
+    } catch (err: any) {
+      if (err?.body?.error?.code === "PLAN_EXISTS") {
+        const question =
+          "Esiste già un piano pasti per questa settimana. Vuoi sostituirlo con quello nuovo?";
+        if (Platform.OS === "web") {
+          if (window.confirm(question)) {
+            await replaceExisting();
+          } else {
+            finish();
+          }
+        } else {
+          Alert.alert(
+            "Piano già presente",
+            question,
+            [
+              { text: "Annulla", style: "cancel", onPress: finish },
+              { text: "Sostituisci", style: "destructive", onPress: () => void replaceExisting() },
+            ],
+            { cancelable: true, onDismiss: finish }
+          );
+        }
+        return;
+      }
+      const msg = getApiErrorMessage(err, "Impossibile salvare il piano.");
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Errore", msg);
+      finish();
     }
   };
 
