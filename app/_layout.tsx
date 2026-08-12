@@ -1,3 +1,6 @@
+// PRIMA di ogni altro import: polyfill per WebView Android datati (browser
+// in-app WhatsApp/Gmail) — vedi lib/runtime-polyfills.ts.
+import "@/lib/runtime-polyfills";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, usePathname, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
