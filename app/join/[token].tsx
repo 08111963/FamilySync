@@ -376,7 +376,7 @@ export default function JoinFamilyScreen() {
             colors.primary,
             "Verifica prima la tua email",
             `Per accettare l'invito devi prima verificare l'indirizzo ${user?.email}. Controlla la tua casella di posta o richiedi una nuova email di verifica.`,
-            { label: "Vai alla verifica email", onPress: () => router.push("/verify-email") },
+            { label: "Vai alla verifica email", onPress: () => router.push(`/verify-email?returnTo=${encodeURIComponent(`/join/${token}`)}` as any) },
             { label: "Torna alla Home", onPress: goHome }
           )}
 

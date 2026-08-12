@@ -338,7 +338,7 @@ export default function JoinLinkScreen() {
             colors.primary,
             "Verifica prima la tua email",
             `Per entrare nella famiglia devi prima verificare l'indirizzo ${user?.email}. Controlla la tua casella di posta o richiedi una nuova email di verifica.`,
-            { label: "Vai alla verifica email", onPress: () => router.push("/verify-email") },
+            { label: "Vai alla verifica email", onPress: () => router.push(`/verify-email?returnTo=${encodeURIComponent(`/join-link/${code}`)}` as any) },
             { label: "Torna alla Home", onPress: goHome }
           )}
 
