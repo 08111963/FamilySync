@@ -4,8 +4,8 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { db } from '../db';
 import { scheduleAuthTokenCleanup } from '../lib/auth-token-cleanup';
-import { users, emailVerificationTokens, passwordResetTokens, socialSignupTokens } from '../../shared/schema';
-import { eq, and, isNull, gt, sql } from 'drizzle-orm';
+import { users, emailVerificationTokens, passwordResetTokens, socialSignupTokens, oauthCallbackResults } from '../../shared/schema';
+import { eq, and, isNull, gt, lt, sql } from 'drizzle-orm';
 import nodeCrypto from 'crypto';
 import { PRIVACY_POLICY_VERSION } from '../../shared/policy-version';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken, generateMediaToken } from '../lib/jwt';
@@ -901,8 +901,25 @@ router.get('/google/start', socialLoginLimiter, (req: Request, res: Response) =>
  * returnUrl con un codice di login monouso (mai i token di sessione nell'URL).
  */
 router.get('/google/callback', socialLoginLimiter, async (req: Request, res: Response) => {
+  // Alcuni browser mobile (Chrome Android / browser in-app) richiamano questo
+  // callback DUE volte con lo stesso authorization code. Google accetta il
+  // code una sola volta: senza dedup la richiesta "visibile" all'utente può
+  // essere la seconda, che fallirebbe con invalid_grant. Registriamo quindi il
+  // redirect prodotto dal primo scambio (TTL 2 min, DB condiviso tra istanze)
+  // e reindirizziamo le richieste duplicate allo stesso risultato.
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  const codeHash = code ? nodeCrypto.createHash('sha256').update(code).digest('hex') : '';
+  const findCachedRedirect = async (): Promise<string | null> => {
+    if (!codeHash) return null;
+    const [row] = await db
+      .select()
+      .from(oauthCallbackResults)
+      .where(eq(oauthCallbackResults.codeHash, codeHash))
+      .limit(1);
+    if (row && row.expiresAt.getTime() > Date.now()) return row.redirectUrl;
+    return null;
+  };
   try {
-    const code = typeof req.query.code === 'string' ? req.query.code : '';
     const state = typeof req.query.state === 'string' ? req.query.state : '';
     if (!code || !state) {
       return res.status(400).send('Richiesta non valida.');
@@ -911,22 +928,54 @@ router.get('/google/callback', socialLoginLimiter, async (req: Request, res: Res
     if (!isAllowedReturnUrl(returnUrl)) {
       return res.status(400).send('returnUrl non valido.');
     }
+    const cached = await findCachedRedirect();
+    if (cached) {
+      return res.redirect(cached);
+    }
     const profile = await exchangeGoogleCode(code);
     const user = await findSocialUser(profile);
     const sep = returnUrl.includes('?') ? '&' : '?';
+    let redirectTo: string;
     if (!user) {
       // Nuovo utente: NIENTE account finché non completa la registrazione
       // (fascia d'età, presa visione privacy, accettazione Termini).
       const signupToken = await createSocialSignupToken(profile, 'google');
       const nameParam = profile.name ? `&suggestedName=${encodeURIComponent(profile.name.slice(0, 100))}` : '';
-      return res.redirect(`${returnUrl}${sep}signupToken=${encodeURIComponent(signupToken)}${nameParam}`);
+      redirectTo = `${returnUrl}${sep}signupToken=${encodeURIComponent(signupToken)}${nameParam}`;
+    } else {
+      await activatePendingTrialsForUser(user.id);
+      const loginCode = signLoginCode(user.id);
+      redirectTo = `${returnUrl}${sep}loginCode=${encodeURIComponent(loginCode)}`;
     }
-    await activatePendingTrialsForUser(user.id);
-    const loginCode = signLoginCode(user.id);
-    res.redirect(`${returnUrl}${sep}loginCode=${encodeURIComponent(loginCode)}`);
+    // Salvataggio best-effort del risultato per le richieste duplicate;
+    // pulizia best-effort delle righe scadute.
+    try {
+      await db
+        .insert(oauthCallbackResults)
+        .values({ codeHash, redirectUrl: redirectTo, expiresAt: new Date(Date.now() + 2 * 60 * 1000) })
+        .onConflictDoNothing();
+      db.delete(oauthCallbackResults)
+        .where(lt(oauthCallbackResults.expiresAt, new Date()))
+        .catch?.(() => {});
+    } catch (cacheErr) {
+      logger.warn('OAuth callback result cache failed', { error: String(cacheErr) });
+    }
+    res.redirect(redirectTo);
   } catch (error: any) {
     if (error?.code === 'ACCOUNT_DELETED') {
       return res.status(403).send('Questo account è stato eliminato.');
+    }
+    // Richiesta duplicata: lo scambio è fallito (invalid_grant) ma il primo
+    // scambio potrebbe aver già prodotto un redirect valido. Piccola attesa
+    // per coprire anche le richieste quasi-concorrenti.
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const cached = await findCachedRedirect();
+        if (cached) return res.redirect(cached);
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    } catch {
+      // fall-through all'errore generico
     }
     logger.error('Google OAuth callback error', { error: String(error) });
     res.status(500).send("Errore durante l'accesso con Google. Riprova.");

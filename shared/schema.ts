@@ -817,6 +817,18 @@ export const consumedOauthCodes = pgTable("consumed_oauth_codes", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
+// RISULTATI CALLBACK OAUTH — alcuni browser mobile (Chrome Android, browser
+// in-app) richiamano il callback Google DUE volte con lo stesso authorization
+// code: il secondo scambio con Google fallisce con invalid_grant e l'utente
+// vede un errore. Registriamo su DB (condiviso tra istanze) il redirect
+// prodotto dal primo scambio, così la richiesta duplicata viene reindirizzata
+// allo stesso risultato invece di fallire. TTL breve (2 minuti).
+export const oauthCallbackResults = pgTable("oauth_callback_results", {
+  codeHash: varchar("code_hash", { length: 64 }).primaryKey(),
+  redirectUrl: text("redirect_url").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
 // FEEDBACK TESTER — modulo interno "Dacci il tuo parere" (fase di test):
 // bug, suggerimenti e valutazione a stelle. Consultabile solo dal
 // proprietario dell'app (APP_OWNER_EMAILS).
