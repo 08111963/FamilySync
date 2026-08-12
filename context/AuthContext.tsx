@@ -50,6 +50,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const refreshTokenRef = useRef<string | null>(null);
+  // Ref sempre allineata a `user`: permette a refreshAccessToken/refreshUser
+  // di restare STABILI (identità useCallback fissa). Se dipendessero da `user`,
+  // ogni setUser rigenererebbe la catena refreshUser → handleCheck →
+  // useFocusEffect (verify-email) causando un loop infinito (React #185).
+  const userRef = useRef<User | null>(null);
+  userRef.current = user;
 
   const updateRefreshToken = useCallback((token: string | null) => {
     setRefreshToken(token);
@@ -95,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
     }
-    return doRefresh(currentRefreshToken, user);
+    return doRefresh(currentRefreshToken, userRef.current);
 
     async function doRefresh(token: string, currentUser: User | null): Promise<string | null> {
       try {
@@ -128,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
     }
-  }, [user, clearAuth]);
+  }, [clearAuth]);
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -315,7 +321,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!res.ok) return null;
 
       const userData = (await res.json()) as User;
-      setUser(userData);
+      // Evita re-render inutili (e potenziali loop) se i dati non sono cambiati.
+      if (JSON.stringify(userData) !== JSON.stringify(userRef.current)) {
+        setUser(userData);
+      }
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({
         ...auth,
         accessToken: token,

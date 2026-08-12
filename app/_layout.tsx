@@ -112,7 +112,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       router.replace("/welcome");
     } else if (needsVerification && !verificationAllowed) {
       router.replace("/verify-email");
-    } else if (needsOnboarding && !onboardingAllowed) {
+    } else if (needsOnboarding && !needsVerification && !onboardingAllowed) {
+      // NB: la guardia !needsVerification è essenziale. Un account con email
+      // NON verificata E onboarding incompleto altrimenti rimbalzerebbe
+      // all'infinito tra /verify-email e /onboarding (React #185): prima
+      // si verifica l'email, poi si completa l'onboarding.
       router.replace("/onboarding");
     } else if (isAuthenticated && !needsVerification && !needsOnboarding && (inVerifyScreen || inOnboardingScreen || (inPublicGroup && root !== "join" && root !== "join-link" && root !== "legal" && root !== "help" && root !== "forgot-password" && root !== "reset-password"))) {
       router.replace("/");
