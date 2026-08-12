@@ -78,6 +78,15 @@ export async function loginWithGoogle(): Promise<SocialLoginResult | null> {
   const startUrl = new URL("/api/auth/google/start", getApiUrl());
   startUrl.searchParams.set("returnUrl", returnUrl);
 
+  // Sul web usiamo il redirect a pagina intera (flusso OAuth standard):
+  // il popup viene spesso bloccato o "perso" da vari browser (e non funziona
+  // affatto dentro un iframe). Al ritorno Google riporta su
+  // /login?loginCode=..., già gestito dalla schermata di login.
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.location.assign(startUrl.toString());
+    return null; // la pagina sta per essere sostituita dal flusso Google
+  }
+
   // Su Android (specialmente in Expo Go) openAuthSessionAsync a volte ritorna
   // "dismiss" anche quando il redirect è avvenuto: ascoltiamo anche l'evento
   // di deep link come rete di sicurezza per catturare comunque l'URL di ritorno.
