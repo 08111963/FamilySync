@@ -2,7 +2,7 @@
 // in-app WhatsApp/Gmail) — vedi lib/runtime-polyfills.ts.
 import "@/lib/runtime-polyfills";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack, usePathname, useRouter, useSegments } from "expo-router";
+import { Stack, useGlobalSearchParams, usePathname, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { Alert, Platform, View } from "react-native";
@@ -89,11 +89,23 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const pathname = usePathname();
+  // NB: nel layout radice serve useGlobalSearchParams: useLocalSearchParams
+  // non vede i parametri della schermata attiva (returnTo arriverebbe vuoto).
+  const params = useGlobalSearchParams<{ returnTo?: string }>();
 
   useEffect(() => {
     if (isLoading) return;
 
     const root = segments[0];
+    // Se l'utente stava aprendo un link d'invito ma deve prima verificare
+    // l'email o completare l'onboarding, ricordiamo la destinazione (returnTo)
+    // per riportarlo all'invito alla fine, invece di lasciarlo sulla home
+    // "Crea la tua famiglia". Accettiamo SOLO percorsi interni /join*.
+    const rawReturnTo = typeof params.returnTo === "string" ? params.returnTo : undefined;
+    const safeReturnTo = rawReturnTo && /^\/join(-link)?\/[A-Za-z0-9_-]+$/.test(rawReturnTo) ? rawReturnTo : undefined;
+    const inviteReturnTo = (root === "join" || root === "join-link") && pathname ? pathname : safeReturnTo;
+    const withReturnTo = (base: string) => (inviteReturnTo ? `${base}?returnTo=${encodeURIComponent(inviteReturnTo)}` : base);
     // "social-complete" è pubblica: il nuovo utente Google/Apple arriva qui
     // NON ancora autenticato (ha solo il signupToken) per completare la
     // registrazione; senza questa eccezione verrebbe rimbalzato su /welcome.
@@ -114,17 +126,18 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated && !inPublicGroup && !inVerifyScreen) {
       router.replace("/welcome");
     } else if (needsVerification && !verificationAllowed) {
-      router.replace("/verify-email");
+      router.replace(withReturnTo("/verify-email") as any);
     } else if (needsOnboarding && !needsVerification && !onboardingAllowed) {
       // NB: la guardia !needsVerification è essenziale. Un account con email
       // NON verificata E onboarding incompleto altrimenti rimbalzerebbe
       // all'infinito tra /verify-email e /onboarding (React #185): prima
       // si verifica l'email, poi si completa l'onboarding.
-      router.replace("/onboarding");
+      router.replace(withReturnTo("/onboarding") as any);
     } else if (isAuthenticated && !needsVerification && !needsOnboarding && (inVerifyScreen || inOnboardingScreen || (inPublicGroup && root !== "join" && root !== "join-link" && root !== "legal" && root !== "help" && root !== "forgot-password" && root !== "reset-password"))) {
-      router.replace("/");
+      // Se c'era un invito in sospeso, torna lì invece che alla home.
+      router.replace((safeReturnTo || "/") as any);
     }
-  }, [isAuthenticated, isLoading, user, segments]);
+  }, [isAuthenticated, isLoading, user, segments, pathname, params.returnTo]);
 
   return <>{children}</>;
 }

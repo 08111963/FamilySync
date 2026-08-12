@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 import { apiRequest } from '@/lib/query-client';
@@ -19,6 +19,9 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { refreshUser, logout } = useAuth();
+  // Se l'utente stava aprendo un link d'invito, dopo l'onboarding torna lì.
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
+  const safeReturnTo = typeof returnTo === 'string' && /^\/join(-link)?\/[A-Za-z0-9_-]+$/.test(returnTo) ? returnTo : null;
 
   const [ageBand, setAgeBand] = useState<'under14' | '14_17' | 'adult' | null>(null);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -50,7 +53,7 @@ export default function OnboardingScreen() {
       });
       await refreshUser();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/');
+      router.replace((safeReturnTo || '/') as any);
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setError(err?.message || 'Salvataggio non riuscito. Riprova.');
