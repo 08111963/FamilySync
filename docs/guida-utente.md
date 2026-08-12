@@ -568,6 +568,8 @@ Per generare un nuovo piano settimanale:
 ### Salvare un Piano Pasti
 - Quando sei soddisfatto del piano, tocca **Salva Piano**
 - Il piano viene salvato e apparirà nella tab **I Miei Piani**
+- **Una sola settimana per piano**: se esiste già un piano salvato per la stessa settimana, l'app ti chiede se vuoi **sostituirlo** con quello nuovo. Se confermi, il vecchio piano viene sostituito; se annulli, resta tutto com'era
+- Gli ingredienti **non** finiscono da soli nella lista della spesa: dopo il salvataggio, usa **Converti in Lista Spesa** dalla tab I Miei Piani (vedi più sotto)
 
 ### Creare un Piano Manualmente
 Se preferisci decidere tu i pasti senza usare l'AI:
