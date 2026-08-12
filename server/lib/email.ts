@@ -395,6 +395,67 @@ export async function sendFeedbackNotificationEmail(params: {
 }
 
 /**
+ * Avvisa il proprietario dell'app (APP_OWNER_EMAILS) che sono arrivati
+ * più CLIENT_CRASH ravvicinati dal web (tipicamente browser in-app tipo
+ * WhatsApp/Gmail con WebView datato e polyfill mancante). Best-effort:
+ * il chiamante logga gli errori e non deve mai bloccare l'endpoint.
+ */
+export async function sendClientCrashAlertEmail(report: {
+  count: number;
+  windowMinutes: number;
+  samples: Array<{
+    message: string;
+    url?: string;
+    userAgent?: string;
+    platform?: string;
+    at: string;
+  }>;
+}) {
+  const raw = process.env.APP_OWNER_EMAILS || '';
+  const recipients = raw.split(',').map((e) => e.trim()).filter(Boolean);
+
+  if (recipients.length === 0) {
+    console.log(
+      `[client-crash-alert] APP_OWNER_EMAILS non configurata: ${report.count} crash solo nei log`
+    );
+    return;
+  }
+  if (!isEmailConfigured()) {
+    console.log(
+      `[DEV] Client crash alert: ${report.count} crash negli ultimi ${report.windowMinutes} minuti`
+    );
+    return;
+  }
+
+  const rows = report.samples
+    .map(
+      (s) =>
+        `<tr><td>${escapeHtml(s.at)}</td><td>${escapeHtml(s.message)}</td><td>${escapeHtml(s.url ?? '-')}</td><td>${escapeHtml(s.platform ?? '-')}</td><td style="font-size:11px;">${escapeHtml(s.userAgent ?? '-')}</td></tr>`
+    )
+    .join('');
+
+  await Promise.all(
+    recipients.map((to) =>
+      sendEmail({
+        to,
+        subject: `[FamilySync] ${report.count} crash client negli ultimi ${report.windowMinutes} min`,
+        html: `
+          <h2>Crash ripetuti del client web</h2>
+          <p>Ricevuti <strong>${report.count}</strong> report CLIENT_CRASH negli ultimi <strong>${report.windowMinutes}</strong> minuti.
+          Se lo user agent indica un browser in-app (WhatsApp/Gmail/Instagram), probabilmente manca un polyfill:
+          controlla il messaggio d'errore qui sotto e <code>lib/runtime-polyfills.ts</code>.</p>
+          <table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+            <tr><th>Quando (UTC)</th><th>Messaggio</th><th>URL</th><th>Piattaforma</th><th>User agent</th></tr>
+            ${rows}
+          </table>
+          <p style="color:#888;font-size:12px;">Dettagli completi (stack) nei log server con tag CLIENT_CRASH. Soglia/finestra/cooldown configurabili via CLIENT_CRASH_ALERT_THRESHOLD / _WINDOW_MINUTES / _COOLDOWN_MINUTES.</p>
+        `,
+      })
+    )
+  );
+}
+
+/**
  * Avvisa il proprietario dell'app (APP_OWNER_EMAILS) che la scansione di
  * integrità degli upload ha trovato allegati orfani (file_url/avatar_url che
  * puntano a file inesistenti). Best-effort: il chiamante logga gli errori e

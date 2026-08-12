@@ -2,6 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { logger } from "../lib/logger";
+import { recordClientCrash } from "../lib/client-crash-alert";
 
 // Endpoint PUBBLICO di segnalazione crash del client (ErrorBoundary).
 // Solo log server-side: nessun dato viene salvato su DB né restituito.
@@ -40,6 +41,9 @@ router.post("/", (req, res) => {
     stack: stack ? stack.slice(0, 2000) : undefined,
     componentStack: componentStack ? componentStack.slice(0, 4000) : undefined,
   });
+  // Alert automatico al proprietario se i crash superano la soglia nella
+  // finestra configurata (best-effort, non blocca mai la risposta).
+  recordClientCrash({ message, url, userAgent, platform });
   res.status(204).end();
 });
 
