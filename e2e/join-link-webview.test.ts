@@ -37,6 +37,10 @@ const OLD_WEBVIEW_INIT = `
   delete String.prototype.replaceAll;
   delete Object.hasOwn;
   delete globalThis.structuredClone;
+  // Caso reale (browser in-app WhatsApp su Android): ResizeObserver assente
+  // crashava /join-link con "ResizeObserver is not defined".
+  delete globalThis.ResizeObserver;
+  delete window.matchMedia;
   if (globalThis.crypto) { try { delete globalThis.crypto.randomUUID; } catch (e) {} }
 `;
 

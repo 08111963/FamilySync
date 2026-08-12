@@ -119,6 +119,89 @@ if (typeof g.structuredClone !== "function") {
   } as AnyFn);
 }
 
+// ResizeObserver: assente in alcuni WebView in-app (caso reale: browser
+// interno di WhatsApp su Android — crash "ResizeObserver is not defined"
+// aprendo /join-link). Fallback minimale: notifica la dimensione iniziale
+// dell'elemento e ri-notifica al resize della finestra. Sufficiente per
+// react-native-web, che lo usa per misurare i layout.
+if (typeof g.ResizeObserver !== "function" && typeof window !== "undefined") {
+  class ResizeObserverFallback {
+    private callback: (entries: unknown[], observer: unknown) => void;
+    private targets = new Set<Element>();
+    private onResize = () => this.notify();
+
+    constructor(callback: (entries: unknown[], observer: unknown) => void) {
+      this.callback = callback;
+      window.addEventListener("resize", this.onResize);
+    }
+
+    private makeEntry(target: Element) {
+      const rect = target.getBoundingClientRect();
+      return {
+        target,
+        contentRect: rect,
+        borderBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+        contentBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+        devicePixelContentBoxSize: [{ inlineSize: rect.width, blockSize: rect.height }],
+      };
+    }
+
+    private notify() {
+      if (this.targets.size === 0) return;
+      const entries = Array.from(this.targets, (t) => this.makeEntry(t));
+      try {
+        this.callback(entries, this);
+      } catch {
+        // mai propagare errori dal fallback
+      }
+    }
+
+    observe(target: Element) {
+      if (!target || this.targets.has(target)) return;
+      this.targets.add(target);
+      // Notifica iniziale asincrona, come l'API reale.
+      setTimeout(() => {
+        if (this.targets.has(target)) {
+          try {
+            this.callback([this.makeEntry(target)], this);
+          } catch {
+            // no-op
+          }
+        }
+      }, 0);
+    }
+
+    unobserve(target: Element) {
+      this.targets.delete(target);
+    }
+
+    disconnect() {
+      this.targets.clear();
+      window.removeEventListener("resize", this.onResize);
+    }
+  }
+  define(globalThis, "ResizeObserver", ResizeObserverFallback as unknown as AnyFn);
+}
+
+// matchMedia: alcuni WebView minimali non lo espongono; stub inerte
+// (nessuna media query soddisfatta, listener no-op) per evitare crash.
+if (typeof window !== "undefined" && typeof (window as unknown as Record<string, unknown>).matchMedia !== "function") {
+  define(window, "matchMedia", function (query: string) {
+    return {
+      matches: false,
+      media: String(query),
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    };
+  } as AnyFn);
+}
+
 const cryptoObj = g.crypto as { randomUUID?: unknown; getRandomValues?: (a: Uint8Array) => Uint8Array } | undefined;
 if (cryptoObj && typeof cryptoObj.getRandomValues === "function" && typeof cryptoObj.randomUUID !== "function") {
   define(cryptoObj as object, "randomUUID", function () {

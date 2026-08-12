@@ -7,6 +7,8 @@ description: Perché il bundle web crashava sui browser in-app Android e come re
 
 **Fix:** `lib/runtime-polyfills.ts`, importato come PRIMO import di `app/_layout.tsx` (guard `typeof`, no-op su runtime moderni/Hermes). Non rimuovere né spostare quell'import.
 
+**Secondo caso reale (2026-08):** i WebView in-app possono anche non avere `ResizeObserver` (crash "ResizeObserver is not defined" su /join-link aperto dal browser interno di WhatsApp) e `matchMedia`: entrambi polyfillati nello stesso file (ResizeObserver = fallback su getBoundingClientRect + resize della finestra).
+
 **How to apply:**
 - Se ricompare un crash solo su browser in-app: `grep` sul bundle esportato per nuovi metodi moderni (es. `Object.groupBy`, `Array.fromAsync`) e aggiungerli al polyfill.
 - Verifica riproducibile: `e2e/join-link-webview.test.ts` simula il WebView vecchio cancellando i metodi con `addInitScript` prima del bundle.
