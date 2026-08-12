@@ -137,6 +137,21 @@ La schermata Home è il centro di comando della tua famiglia. Qui trovi:
 - **Faccende da Fare**: le faccende più urgenti ancora da completare, con punti e assegnatario
 - **Classifica Punti**: i primi membri della famiglia per punti accumulati completando le faccende
 
+### Assistente AI (🤖)
+Nella Home trovi un **pulsante rotondo con il robot (🤖)**, sempre visibile in basso a destra anche mentre scorri la pagina. Toccandolo si apre l'**Assistente FamilySync**: scrivi o **detta col microfono** cosa vuoi aggiungere, e lui smista tutto nelle sezioni giuste.
+
+Ad esempio: *"Domani alle 18 dentista per Anna, spazzatura ogni martedì a Marco, e metti latte e pane nella spesa"* — una sola frase può creare più cose insieme:
+- **Eventi** sul calendario (con data, ora, luogo e ripetizione)
+- **Faccende** (con assegnatario, punti e ricorrenza)
+- **Articoli** nella lista della spesa
+- **Bollette** da ricordare
+- **Premi** riscattabili con i punti (solo admin/adulto)
+- **Pasti** nel piano settimanale
+
+Prima di salvare, l'assistente ti mostra **sempre un riepilogo** ("Sto per aggiungere: …") e aspetta la tua **Conferma**: niente viene creato senza il tuo ok. Gli elementi creati inviano le stesse notifiche degli inserimenti manuali.
+
+> L'assistente è una **funzione AI**: richiede il consenso alle Funzioni AI (Famiglia → Centro Privacy) e rientra nelle quote del tuo piano (Free/Premium). Non è disponibile per i profili bambino.
+
 ### Accesso Rapido
 In fondo alla Home trovi due card di accesso rapido:
 - **Ricette**: tocca per andare direttamente alla schermata Ricette, dove puoi generare, cercare e consultare le tue ricette

@@ -1249,3 +1249,122 @@ REGOLE:
     throw mapOpenAiError(error);
   }
 }
+
+/**
+ * Assistente Home: estrae da UNA frase (o dettatura) in italiano una LISTA di
+ * azioni da creare nelle varie sezioni dell'app (faccende, eventi, spesa,
+ * bollette, premi, pasti). La quota è gestita dalla rotta con withAiUsage.
+ * Riusa gli stessi schemi "tolleranti" (catch) dei parser singoli: campi
+ * malformati diventano null/[] invece di far fallire tutta la risposta.
+ */
+const assistantShoppingItemSchema = z.object({
+  name: z.string().catch(''),
+  quantity: z.number().positive().max(100000).nullable().catch(null),
+  unit: z.enum(['pcs', 'g', 'kg', 'ml', 'l']).nullable().catch(null),
+});
+
+const assistantBillSchema = z.object({
+  title: z.string().catch(''),
+  amount: z.number().min(0).max(1000000).nullable().catch(null),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+  category: z.enum(['luce', 'gas', 'acqua', 'telefono', 'scuola', 'assicurazione', 'tasse', 'altro']).nullable().catch(null),
+});
+
+const assistantRewardSchema = z.object({
+  title: z.string().catch(''),
+  description: z.string().nullable().catch(null),
+  pointsCost: z.number().int().min(1).max(100000).nullable().catch(null),
+});
+
+const assistantMealSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+  mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).nullable().catch(null),
+  title: z.string().catch(''),
+});
+
+const assistantActionsSchema = z.object({
+  events: z.array(parsedEventSchema).max(10).catch([]),
+  chores: z.array(parsedChoreSchema).max(10).catch([]),
+  shoppingItems: z.array(assistantShoppingItemSchema).max(20).catch([]),
+  bills: z.array(assistantBillSchema).max(10).catch([]),
+  rewards: z.array(assistantRewardSchema).max(10).catch([]),
+  meals: z.array(assistantMealSchema).max(15).catch([]),
+});
+
+export type AssistantActions = z.infer<typeof assistantActionsSchema>;
+
+export async function parseAssistantActionsFromText(input: {
+  text: string;
+  todayIso: string;
+  weekdayName: string;
+  memberNames?: string[];
+}): Promise<AssistantActions> {
+  assertAiConfigured();
+  const memberList = (input.memberNames ?? []).slice(0, 20).map((n) => n.slice(0, 60));
+  try {
+    const response = await getOpenAiClient().chat.completions.create({
+      model: 'gpt-5-mini',
+      reasoning_effort: 'minimal',
+      messages: [{
+        role: 'system',
+        content: `Sei l'assistente di un'app di organizzazione familiare. Da una frase in italiano estrai TUTTE le cose da creare, smistandole nelle liste giuste. Una frase può contenere più cose insieme.
+
+REGOLE GENERALI:
+- Oggi è ${input.todayIso} (${input.weekdayName}), fuso orario Europe/Rome. Risolvi date relative ("domani", "venerdì", "il 15") in date assolute FUTURE (mai nel passato).
+- Metti in ogni lista SOLO ciò che l'utente chiede davvero di aggiungere. Liste vuote [] se non pertinente.
+- NON inventare dati non presenti nel testo: i campi non indicati restano null.
+
+"events" (eventi calendario: appuntamenti, visite, sport, compleanni, promemoria con data/ora):
+- oggetti {"title","location","description","date","time","endTime","repeat","weekdays","monthDays","assigneeName"}
+- "date" YYYY-MM-DD solo se il testo indica un giorno; "time"/"endTime" HH:MM (24h) o null.
+- "repeat": "daily"|"weekly"|"monthly"|null; "weekdays" numeri ISO 1=lunedì..7=domenica; "monthDays" 1-31; altrimenti [].
+
+"chores" (faccende domestiche/compiti da fare in casa):
+- oggetti {"title","description","points","difficulty","estimatedMinutes","dueDate","repeat","weekdays","monthDays","assigneeName"}
+- "points" 1-100 solo se indicati; "dueDate" solo per scadenza singola esplicita; ricorrenze come per gli eventi.
+
+"shoppingItems" (cose da comprare / lista della spesa):
+- oggetti {"name","quantity","unit"}; "quantity" numero o null; "unit" tra "pcs" (pezzi),"g","kg","ml","l" o null.
+
+"bills" (bollette/pagamenti da ricordare: luce, gas, affitto, rate):
+- oggetti {"title","amount","dueDate","category"}; "amount" in euro o null; "category" tra "luce","gas","acqua","telefono","scuola","assicurazione","tasse","altro" o null.
+
+"rewards" (premi/badge riscattabili con i punti, es. "premio gelato da 50 punti"):
+- oggetti {"title","description","pointsCost"}.
+
+"meals" (piano pasti, es. "sabato a cena lasagne"):
+- oggetti {"date","mealType","title"}; "mealType" tra "breakfast","lunch","dinner","snack".
+${memberList.length > 0 ? `\n- "assigneeName" (eventi e faccende): se il testo dice a chi è assegnato (es. "per Marco", "tocca a Anna"), scegli il nome ESATTO più vicino da questa lista: ${JSON.stringify(memberList)}. null se non indicato o nessun nome corrisponde.` : '\n- "assigneeName": sempre null.'}
+- Rispondi SOLO con JSON: {"events":[...],"chores":[...],"shoppingItems":[...],"bills":[...],"rewards":[...],"meals":[...]}`,
+      }, {
+        role: 'user',
+        content: input.text,
+      }],
+      response_format: { type: 'json_object' },
+    });
+
+    const content = response.choices[0].message.content || '{}';
+    const parsed = assistantActionsSchema.parse(JSON.parse(content));
+
+    // Scarta le voci senza nemmeno il titolo/nome (inutilizzabili a valle).
+    parsed.events = parsed.events.filter((e) => e.title.trim().length > 0);
+    parsed.chores = parsed.chores.filter((c) => c.title.trim().length > 0);
+    parsed.shoppingItems = parsed.shoppingItems.filter((s) => s.name.trim().length > 0);
+    parsed.bills = parsed.bills.filter((b) => b.title.trim().length > 0);
+    parsed.rewards = parsed.rewards.filter((r) => r.title.trim().length > 0);
+    parsed.meals = parsed.meals.filter((m) => m.title.trim().length > 0);
+
+    // Nessuna azione estratta: errore tipizzato, così il client non mostra un
+    // falso successo con un riepilogo vuoto.
+    const total = parsed.events.length + parsed.chores.length + parsed.shoppingItems.length
+      + parsed.bills.length + parsed.rewards.length + parsed.meals.length;
+    if (total === 0) {
+      throw new AiError('AI_BAD_RESPONSE', 'assistant-parse: nessuna azione estratta dal testo');
+    }
+
+    return parsed;
+  } catch (error) {
+    if (error instanceof AiError) throw error;
+    throw mapOpenAiError(error);
+  }
+}

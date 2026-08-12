@@ -17,7 +17,8 @@ export type AiFeature =
   | "event-parse"
   | "expense-parse"
   | "chore-parse"
-  | "budget-insights";
+  | "budget-insights"
+  | "assistant-parse";
 
 export type AiUsageStatus = "started" | "succeeded" | "failed";
 
@@ -53,6 +54,7 @@ export const PLAN_LIMITS: Record<Plan, Record<AiFeature, FeatureLimit>> = {
     "expense-parse": { max: 3, window: "day" },
     "chore-parse": { max: 3, window: "day" },
     "budget-insights": { max: 1, window: "week" },
+    "assistant-parse": { max: 3, window: "day" },
   },
   premium: {
     "shopping-suggestions": { max: 15, window: "day" },
@@ -67,6 +69,7 @@ export const PLAN_LIMITS: Record<Plan, Record<AiFeature, FeatureLimit>> = {
     "expense-parse": { max: 40, window: "day" },
     "chore-parse": { max: 40, window: "day" },
     "budget-insights": { max: 10, window: "day" },
+    "assistant-parse": { max: 40, window: "day" },
   },
 };
 
@@ -87,6 +90,7 @@ export const AI_DAILY_LIMITS: Record<AiFeature, number> = {
   "expense-parse": PLAN_LIMITS.premium["expense-parse"].max,
   "chore-parse": PLAN_LIMITS.premium["chore-parse"].max,
   "budget-insights": PLAN_LIMITS.premium["budget-insights"].max,
+  "assistant-parse": PLAN_LIMITS.premium["assistant-parse"].max,
 };
 
 function startOfToday(): Date {

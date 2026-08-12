@@ -12,11 +12,12 @@ import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
 import { WebPushBanner } from "@/components/WebPushBanner";
+import { AssistantChat } from "@/components/AssistantChat";
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { data, isLoading, families, createFamily, getUpcomingEvents, getPendingChores, getLeaderboard } = useFamily();
+  const { data, isLoading, families, currentFamily, createFamily, getUpcomingEvents, getPendingChores, getLeaderboard } = useFamily();
   const { user, logout } = useAuth();
   const [familyName, setFamilyName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -143,7 +144,12 @@ export default function HomeScreen() {
     );
   }
 
+  // Ruolo del membro corrente: serve all'assistente per avvisare sui premi
+  // (creabili solo da admin/adult).
+  const myRole = data.members.find((m) => m.userId === user?.id)?.role ?? null;
+
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingTop: topInset + 16, paddingBottom: 100 }}
@@ -345,6 +351,8 @@ export default function HomeScreen() {
         </View>
       </View>
     </ScrollView>
+    {currentFamily && <AssistantChat familyId={currentFamily.id} memberRole={myRole} />}
+    </View>
   );
 }
 
