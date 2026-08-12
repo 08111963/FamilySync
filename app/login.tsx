@@ -82,6 +82,21 @@ export default function LoginScreen() {
   const handleSocialLogin = async (provider: 'google' | 'apple') => {
     if (isSubmitting || socialSubmitting) return;
     setError('');
+    // Dentro un iframe (es. anteprima Replit) Google rifiuta di mostrare la
+    // sua schermata di accesso: apriamo l'app in una scheda separata dove il
+    // flusso OAuth funziona, e lo spieghiamo all'utente.
+    if (
+      provider === 'google' &&
+      Platform.OS === 'web' &&
+      typeof window !== 'undefined' &&
+      window.self !== window.top
+    ) {
+      window.open(window.location.origin + '/login', '_blank');
+      setError(
+        "L'accesso con Google non funziona nella finestra di anteprima: ti abbiamo aperto l'app in una nuova scheda, completa lì l'accesso.",
+      );
+      return;
+    }
     setSocialSubmitting(provider);
     try {
       const result = provider === 'google' ? await loginWithGoogle() : await loginWithApple();
