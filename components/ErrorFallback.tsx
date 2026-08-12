@@ -54,6 +54,9 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           body: JSON.stringify({
             message: String(error?.message || error || "unknown").slice(0, 1000),
             stack: error?.stack ? String(error.stack).slice(0, 8000) : undefined,
+            componentStack: (error as any)?.componentStack
+              ? String((error as any).componentStack).slice(0, 8000)
+              : undefined,
             url:
               Platform.OS === "web" && typeof window !== "undefined"
                 ? window.location.href.slice(0, 500)

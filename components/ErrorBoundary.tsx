@@ -30,6 +30,15 @@ export class ErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: { componentStack: string }): void {
+    // Allega la catena dei componenti all'errore: la usa ErrorFallback nel
+    // report al server per capire QUALE componente ha causato il crash
+    // (indispensabile per i loop di aggiornamento, dove lo stack JS mostra
+    // solo funzioni interne di React).
+    try {
+      (error as any).componentStack = info.componentStack;
+    } catch {
+      // errore non estensibile: ignora
+    }
     if (typeof this.props.onError === "function") {
       this.props.onError(error, info.componentStack);
     }

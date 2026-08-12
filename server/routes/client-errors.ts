@@ -16,6 +16,7 @@ export const clientErrorLimiter = rateLimit({
 const reportSchema = z.object({
   message: z.string().max(1000),
   stack: z.string().max(8000).optional(),
+  componentStack: z.string().max(8000).optional(),
   url: z.string().max(500).optional(),
   userAgent: z.string().max(500).optional(),
   platform: z.string().max(50).optional(),
@@ -28,7 +29,7 @@ router.post("/", (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: { code: "INVALID_REPORT" } });
   }
-  const { message, stack, url, userAgent, platform } = parsed.data;
+  const { message, stack, componentStack, url, userAgent, platform } = parsed.data;
   // Il logger di produzione redige già email/token; qui logghiamo solo
   // informazioni tecniche del crash per la diagnosi.
   logger.error("CLIENT_CRASH report", {
@@ -36,7 +37,8 @@ router.post("/", (req, res) => {
     url,
     userAgent,
     platform,
-    stack: stack ? stack.slice(0, 4000) : undefined,
+    stack: stack ? stack.slice(0, 2000) : undefined,
+    componentStack: componentStack ? componentStack.slice(0, 4000) : undefined,
   });
   res.status(204).end();
 });
