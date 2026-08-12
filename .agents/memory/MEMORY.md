@@ -34,6 +34,7 @@
 - [Budget familiare](family-budget.md) — bollette pagate sommate read-only nel summary (mai doppie); memberId mai dal client; tetto budget upsert atomico; quota AI budget-insights.
 - [Shopping items quantity numerica](shopping-items-quantity.md) — quantity è NUMERIC + unit VARCHAR(10): mai concatenare "200 g"; dedup con normalizeItemName ricalcolato, non col normalizedName storico.
 - [WebSocket invalidation storm](websocket-invalidation-storm.md) — broadcast batch = UN solo messaggio; invalidazioni client debounced, altrimenti il rate limiter /api svuota le liste (429).
+- [AuthGate redirect loops (React #185)](authgate-redirect-loops.md) — i rami di redirect devono essere mutuamente esclusivi (verify-email prima di onboarding); callback AuthContext stabili via userRef.
 - [Social login Google/Apple](social-login.md) — code monouso (jti), JWKS verify, allow-list returnUrl (exp:// solo dev), email verificata obbligatoria prima del linking.
 - [Trascrizione vocale](voice-transcription.md) — prompt di contesto migliora l'accuratezza ma può essere "ecoato" su audio vuoto: serve filtro anti-eco conservativo, niente frasi d'esempio nel context.
 - [Accesso dispositivo bambino](child-device-access.md) — login bambino via codice PIN = shadow user con email sintetica @child.familysync.invalid; aree vietate bloccate server-side (blockChildAccount); revoca = unlink+soft-delete+bump tokenVersion.
