@@ -21,3 +21,7 @@ Il dominio Replit dev SENZA porta (externalPort 80) punta a Metro/Expo web (8081
 **Come diagnosticare:** nei log backend si vede `google/start 302` ma MAI `google/callback` → il callback finisce altrove (Metro o prod).
 
 **AuthGate e rotte pubbliche (ago 2026):** la pagina di completamento registrazione social (`social-complete`) DEVE stare nel gruppo rotte pubbliche di AuthGate: il nuovo utente ci arriva NON autenticato (solo signupToken). Senza eccezione veniva rimbalzato su /welcome e il signup Google web falliva in prod. Regola generale: ogni nuova pagina raggiungibile prima del login va aggiunta a `inPublicGroup` in app/_layout.tsx.
+
+## Callback Google duplicato (browser mobile)
+Chrome Android / browser in-app possono chiamare /api/auth/google/callback DUE volte con lo stesso authorization code (~450ms di distanza): il secondo scambio fallisce con invalid_grant e l'utente vede "Errore durante l'accesso con Google".
+**Fix:** claim atomico su tabella oauth_callback_results (hash di code+state, TTL 2 min): solo il vincitore scambia il code con Google, le duplicate attendono e ricevono lo stesso redirect. Cache-Control: no-store sul callback. Mai rimuovere il dedup: il problema è del browser, non riproducibile da desktop.
