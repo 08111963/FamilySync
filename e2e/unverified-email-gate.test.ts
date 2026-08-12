@@ -161,11 +161,16 @@ describe("account con email non verificata: niente crash React #185", () => {
     await page.close();
   });
 
-  test("apertura di un link invito → schermata 'Verifica la tua email' senza crash", async () => {
+  test("apertura di un link invito → avviso dedicato 'Verifica prima la tua email' senza crash", async () => {
+    // Le pagine invito NON vengono più reindirizzate dall'AuthGate: mostrano
+    // un avviso dedicato con link alla verifica (vedi invite-unverified-warning.test.ts).
     me.emailVerified = false;
     me.needsOnboarding = true;
     const { page, crash } = await newAppPage("/join/E2ETESTTOKEN");
-    await assertVerifyScreen(page, crash);
+    await page
+      .getByText("Verifica prima la tua email", { exact: true })
+      .waitFor({ state: "visible", timeout: 30_000 });
+    await assertNoCrash(page, crash);
     await page.close();
   });
 

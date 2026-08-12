@@ -106,7 +106,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const onboardingAllowed = inOnboardingScreen || root === "legal" || root === "help" || root === "delete-account";
     // L'eliminazione account e un diritto fondamentale: deve restare accessibile
     // anche a utenti autenticati con email non ancora verificata.
-    const verificationAllowed = inVerifyScreen || root === "legal" || root === "help" || root === "delete-account";
+    // Le pagine invito restano accessibili anche con email non verificata:
+    // mostrano un avviso dedicato "Verifica prima la tua email" con link alla
+    // verifica, più chiaro del redirect immediato alla schermata generica.
+    const verificationAllowed = inVerifyScreen || root === "legal" || root === "help" || root === "delete-account" || root === "join" || root === "join-link";
 
     if (!isAuthenticated && !inPublicGroup && !inVerifyScreen) {
       router.replace("/welcome");

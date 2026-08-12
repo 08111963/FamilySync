@@ -16,6 +16,7 @@ type Screen =
   | "loading"
   | "create_account"
   | "confirm_accept"
+  | "verify_email"
   | "success"
   | "full"
   | "not_found"
@@ -68,7 +69,9 @@ export default function JoinLinkScreen() {
 
       // Utente già loggato: entra direttamente con l'account corrente.
       if (isAuthenticated) {
-        setScreen("confirm_accept");
+        // Le rotte famiglia richiedono email verificata: avvisiamo subito
+        // invece di far fallire l'accettazione con un errore generico.
+        setScreen(user?.emailVerified ? "confirm_accept" : "verify_email");
       } else {
         setScreen("create_account");
       }
@@ -76,7 +79,7 @@ export default function JoinLinkScreen() {
       setScreen("error");
       setErrorMessage("Impossibile caricare l'invito. Verifica la connessione.");
     }
-  }, [code, isAuthenticated]);
+  }, [code, isAuthenticated, user]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -176,7 +179,9 @@ export default function JoinLinkScreen() {
       setScreen("success");
     } catch (err: any) {
       const msg = typeof err?.message === "string" ? err.message : "";
-      if (msg.includes("ALREADY_MEMBER") || msg.includes("409")) {
+      if (msg.includes("EMAIL_NOT_VERIFIED")) {
+        setScreen("verify_email");
+      } else if (msg.includes("ALREADY_MEMBER") || msg.includes("409")) {
         setFormError("Fai già parte di questa famiglia.");
       } else if (msg.includes("MEMBER_LIMIT_REACHED")) {
         setScreen("full");
@@ -326,6 +331,16 @@ export default function JoinLinkScreen() {
             {formError && <Text style={[styles.errorText, { color: colors.error, marginTop: 12 }]}>{formError}</Text>}
           </>
         )}
+
+        {screen === "verify_email" &&
+          renderIconState(
+            "mail-unread",
+            colors.primary,
+            "Verifica prima la tua email",
+            `Per entrare nella famiglia devi prima verificare l'indirizzo ${user?.email}. Controlla la tua casella di posta o richiedi una nuova email di verifica.`,
+            { label: "Vai alla verifica email", onPress: () => router.push("/verify-email") },
+            { label: "Torna alla Home", onPress: goHome }
+          )}
 
         {screen === "success" &&
           renderIconState(

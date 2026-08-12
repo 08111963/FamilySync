@@ -18,6 +18,7 @@ type Screen =
   | "confirm_accept"
   | "login_required"
   | "email_mismatch"
+  | "verify_email"
   | "success"
   | "expired"
   | "used"
@@ -98,10 +99,14 @@ export default function JoinFamilyScreen() {
 
       // utente loggato
       const sameEmail = user?.email?.toLowerCase() === info.email.toLowerCase();
-      if (sameEmail) {
-        setScreen("confirm_accept");
-      } else {
+      if (!sameEmail) {
         setScreen("email_mismatch");
+      } else if (!user?.emailVerified) {
+        // Le rotte famiglia richiedono email verificata: avvisiamo subito
+        // invece di far fallire l'accettazione con un errore generico.
+        setScreen("verify_email");
+      } else {
+        setScreen("confirm_accept");
       }
     } catch {
       setScreen("error");
@@ -196,7 +201,9 @@ export default function JoinFamilyScreen() {
       setScreen("success");
     } catch (err: any) {
       const msg = typeof err?.message === "string" ? err.message : "";
-      if (msg.includes("EMAIL_MISMATCH") || msg.includes("403")) {
+      if (msg.includes("EMAIL_NOT_VERIFIED")) {
+        setScreen("verify_email");
+      } else if (msg.includes("EMAIL_MISMATCH") || msg.includes("403")) {
         setScreen("email_mismatch");
       } else if (msg.includes("INVITE_EXPIRED")) {
         setScreen("expired");
@@ -361,6 +368,16 @@ export default function JoinFamilyScreen() {
             "Accedi per continuare",
             `Esiste già un account per ${invite.email}. Accedi per accettare l'invito.`,
             { label: "Accedi", onPress: goLogin }
+          )}
+
+        {screen === "verify_email" &&
+          renderIconState(
+            "mail-unread",
+            colors.primary,
+            "Verifica prima la tua email",
+            `Per accettare l'invito devi prima verificare l'indirizzo ${user?.email}. Controlla la tua casella di posta o richiedi una nuova email di verifica.`,
+            { label: "Vai alla verifica email", onPress: () => router.push("/verify-email") },
+            { label: "Torna alla Home", onPress: goHome }
           )}
 
         {screen === "email_mismatch" && invite &&
