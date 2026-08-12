@@ -1,5 +1,7 @@
 /**
- * Test unitari per l'alert automatico sui CLIENT_CRASH ripetuti.
+ * Test per l'alert automatico sui CLIENT_CRASH ripetuti.
+ * Lo stato (finestra + cooldown) è persistito su DB: i test usano il DB di
+ * sviluppo e azzerano lo stato prima/dopo ogni caso.
  * Run: npx tsx server/__tests__/client-crash-alert.test.ts
  */
 import test from "node:test";
@@ -21,42 +23,48 @@ import {
 const MIN = 60 * 1000;
 const sample = { message: "routes.findLast is not a function", url: "/join" };
 
-test("non scatta sotto soglia", () => {
-  resetClientCrashAlertState();
-  const t0 = 1_000_000_000_000;
-  assert.equal(recordClientCrash(sample, t0), false);
-  assert.equal(recordClientCrash(sample, t0 + MIN), false);
+// Base temporale REALE recente: la finestra è confrontata su timestamp DB,
+// quindi usare un'epoca fissa antica farebbe potare subito le righe.
+const T0 = Date.now() - 5 * MIN;
+
+test("non scatta sotto soglia", async () => {
+  await resetClientCrashAlertState();
+  assert.equal(await recordClientCrash(sample, T0), false);
+  assert.equal(await recordClientCrash(sample, T0 + MIN), false);
 });
 
-test("scatta al raggiungimento della soglia nella finestra", () => {
-  resetClientCrashAlertState();
-  const t0 = 1_000_000_000_000;
-  recordClientCrash(sample, t0);
-  recordClientCrash(sample, t0 + MIN);
-  assert.equal(recordClientCrash(sample, t0 + 2 * MIN), true);
+test("scatta al raggiungimento della soglia nella finestra", async () => {
+  await resetClientCrashAlertState();
+  await recordClientCrash(sample, T0);
+  await recordClientCrash(sample, T0 + MIN);
+  assert.equal(await recordClientCrash(sample, T0 + 2 * MIN), true);
 });
 
-test("cooldown: nessun secondo alert subito dopo", () => {
-  resetClientCrashAlertState();
-  const t0 = 1_000_000_000_000;
-  recordClientCrash(sample, t0);
-  recordClientCrash(sample, t0 + MIN);
-  assert.equal(recordClientCrash(sample, t0 + 2 * MIN), true);
-  assert.equal(recordClientCrash(sample, t0 + 3 * MIN), false);
-  // Dopo il cooldown (60 min) e con abbastanza crash in finestra, riscatta.
-  const t1 = t0 + 70 * MIN;
-  recordClientCrash(sample, t1);
-  recordClientCrash(sample, t1 + MIN);
-  assert.equal(recordClientCrash(sample, t1 + 2 * MIN), true);
+test("cooldown: nessun secondo alert subito dopo (persistito su DB)", async () => {
+  await resetClientCrashAlertState();
+  await recordClientCrash(sample, T0);
+  await recordClientCrash(sample, T0 + MIN);
+  assert.equal(await recordClientCrash(sample, T0 + 2 * MIN), true);
+  assert.equal(await recordClientCrash(sample, T0 + 3 * MIN), false);
 });
 
-test("crash fuori finestra non contano", () => {
-  resetClientCrashAlertState();
-  const t0 = 1_000_000_000_000;
-  recordClientCrash(sample, t0);
-  recordClientCrash(sample, t0 + MIN);
-  // Il terzo arriva 20 minuti dopo: i primi due sono usciti dalla finestra.
-  assert.equal(recordClientCrash(sample, t0 + 22 * MIN), false);
+test("il conteggio sopravvive a un 'riavvio' (stato solo su DB)", async () => {
+  await resetClientCrashAlertState();
+  // Due report "prima del riavvio": nessuno stato in-memory da preservare,
+  // quindi il terzo report (istanza 'nuova') deve comunque far scattare
+  // l'alert leggendo la finestra dal DB.
+  await recordClientCrash(sample, T0);
+  await recordClientCrash(sample, T0 + MIN);
+  assert.equal(await recordClientCrash(sample, T0 + 2 * MIN), true);
+});
+
+test("crash fuori finestra non contano", async () => {
+  await resetClientCrashAlertState();
+  const t0 = Date.now() - 25 * MIN;
+  await recordClientCrash(sample, t0);
+  await recordClientCrash(sample, t0 + MIN);
+  // Il terzo arriva 22 minuti dopo: i primi due sono usciti dalla finestra.
+  assert.equal(await recordClientCrash(sample, t0 + 22 * MIN), false);
 });
 
 test("sanitizzazione: query/fragment con token spariscono dall'URL", () => {
@@ -106,12 +114,12 @@ test("sanitizzazione: token nel PATH delle route sensibili mascherati", () => {
   }
 });
 
-test("threshold 0 disattiva l'alert", () => {
-  resetClientCrashAlertState();
+test("threshold 0 disattiva l'alert", async () => {
+  await resetClientCrashAlertState();
   process.env.CLIENT_CRASH_ALERT_THRESHOLD = "0";
-  const t0 = 1_000_000_000_000;
   for (let i = 0; i < 10; i++) {
-    assert.equal(recordClientCrash(sample, t0 + i * 1000), false);
+    assert.equal(await recordClientCrash(sample, T0 + i * 1000), false);
   }
   process.env.CLIENT_CRASH_ALERT_THRESHOLD = "3";
+  await resetClientCrashAlertState();
 });

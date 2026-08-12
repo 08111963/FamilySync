@@ -8,25 +8,34 @@
  * avviso ce ne si accorge solo controllando manualmente i log.
  *
  * Come funziona:
- * - finestra scorrevole in-memory: ogni report registra timestamp + campioni
- *   (message, url, userAgent, platform);
- * - quando nella finestra arrivano >= CLIENT_CRASH_ALERT_THRESHOLD report,
+ * - finestra scorrevole PERSISTITA su DB (tabella client_crash_reports): ogni
+ *   report inserisce una riga già sanificata (message, url, userAgent,
+ *   platform) e pota le righe fuori finestra;
+ * - quando nella finestra ci sono >= CLIENT_CRASH_ALERT_THRESHOLD report,
  *   viene inviata UNA email al proprietario (APP_OWNER_EMAILS) con i campioni
  *   più recenti, così l'url e il messaggio d'errore identificano subito il
  *   metodo mancante;
- * - cooldown per non inondare la casella se i crash continuano.
+ * - cooldown per non inondare la casella se i crash continuano: il "quando è
+ *   partito l'ultimo alert" vive in scheduled_job_runs con claim atomico
+ *   (claimScheduledJobRun), quindi con più istanze concorrenti UNA sola vince
+ *   il diritto di inviare l'email; se l'invio fallisce del tutto il claim
+ *   viene rilasciato e il prossimo report ritenta.
  *
  * Config via env (tutte opzionali):
  * - CLIENT_CRASH_ALERT_THRESHOLD       (default 3, 0/negativo = disattivato)
  * - CLIENT_CRASH_ALERT_WINDOW_MINUTES  (default 15)
  * - CLIENT_CRASH_ALERT_COOLDOWN_MINUTES (default 60)
  *
- * Limiti noti: lo stato è in-memory, quindi un riavvio azzera la finestra e
- * più istanze contano separatamente. Accettabile: i crash da polyfill mancante
- * arrivano a raffica dallo stesso ErrorBoundary e superano comunque la soglia.
+ * Sicurezza: conteggio e cooldown sopravvivono a riavvii e a più istanze;
+ * se il DB non è raggiungibile si logga e basta (l'endpoint pubblico deve
+ * sempre rispondere 204, mai propagare errori al client).
  */
+import { desc, gte, lt, sql } from "drizzle-orm";
+import { db } from "../db";
+import { clientCrashReports } from "../../shared/schema";
 import { logger, redactForLog } from "./logger";
 import { sendClientCrashAlertEmail } from "./email";
+import { claimScheduledJobRun, releaseScheduledJobRun } from "./scheduled-jobs";
 
 /**
  * Sanitizza un campione di crash prima di metterlo in un'email: l'URL può
@@ -84,14 +93,13 @@ export interface CrashSample {
   platform?: string;
 }
 
-interface CrashEntry extends CrashSample {
-  at: number;
-}
-
 const MAX_SAMPLES_IN_EMAIL = 5;
 
-let recentCrashes: CrashEntry[] = [];
-let lastAlertAt = 0;
+/** Nome del "job" in scheduled_job_runs usato come cooldown durevole. */
+export const CLIENT_CRASH_ALERT_JOB_NAME = "client_crash_alert";
+
+/** Tetto di righe conservate nella finestra (limita la crescita del DB). */
+const MAX_STORED_REPORTS = 200;
 
 function intFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -109,53 +117,105 @@ export function getClientCrashAlertConfig() {
   };
 }
 
-/** Solo per i test: azzera lo stato in-memory. */
-export function resetClientCrashAlertState() {
-  recentCrashes = [];
-  lastAlertAt = 0;
+/** Solo per i test: azzera finestra persistita e cooldown su DB. */
+export async function resetClientCrashAlertState(): Promise<void> {
+  await db.delete(clientCrashReports);
+  await db.execute(
+    sql`DELETE FROM scheduled_job_runs WHERE job_name = ${CLIENT_CRASH_ALERT_JOB_NAME}`,
+  );
 }
 
 /**
- * Registra un report di crash e, se la soglia nella finestra è raggiunta e
- * il cooldown è scaduto, invia l'alert al proprietario. L'invio email è
- * best-effort: gli errori vengono solo loggati, mai propagati al chiamante
- * (l'endpoint pubblico deve sempre rispondere 204).
+ * Registra un report di crash su DB e, se la soglia nella finestra è
+ * raggiunta e il cooldown (persistito, claim atomico) è scaduto, invia
+ * l'alert al proprietario. Best-effort: qualunque errore (DB o email) viene
+ * solo loggato, mai propagato al chiamante (l'endpoint pubblico deve sempre
+ * rispondere 204). Conteggio e cooldown sopravvivono a riavvii e più istanze;
+ * il claim atomico garantisce che una sola istanza invii l'email.
  *
  * Ritorna true se questo report ha fatto scattare un alert (utile nei test).
  */
-export function recordClientCrash(sample: CrashSample, now = Date.now()): boolean {
+export async function recordClientCrash(
+  sample: CrashSample,
+  now = Date.now(),
+): Promise<boolean> {
   const { threshold, windowMs, cooldownMs } = getClientCrashAlertConfig();
   if (threshold <= 0) return false;
 
-  // Sanitizza SUBITO: in memoria (e poi nell'email) non devono mai finire
-  // query string con token/codici né messaggi con segreti in chiaro.
-  recentCrashes.push({ ...sanitizeCrashSample(sample), at: now });
-  // Pota la finestra (e limita la memoria in ogni caso).
-  const cutoff = now - windowMs;
-  recentCrashes = recentCrashes.filter((c) => c.at >= cutoff).slice(-200);
+  try {
+    // Sanitizza SUBITO: su DB (e poi nell'email) non devono mai finire
+    // query string con token/codici né messaggi con segreti in chiaro.
+    const clean = sanitizeCrashSample(sample);
+    const nowDate = new Date(now);
+    const cutoff = new Date(now - windowMs);
 
-  if (recentCrashes.length < threshold) return false;
-  if (now - lastAlertAt < cooldownMs) return false;
+    await db.insert(clientCrashReports).values({
+      message: clean.message.slice(0, 1000),
+      url: clean.url?.slice(0, 500),
+      userAgent: clean.userAgent?.slice(0, 500),
+      platform: clean.platform?.slice(0, 50),
+      at: nowDate,
+    });
+    // Pota la finestra e applica il tetto (tiene le righe più recenti).
+    await db.delete(clientCrashReports).where(lt(clientCrashReports.at, cutoff));
+    await db.execute(sql`
+      DELETE FROM client_crash_reports
+      WHERE id IN (
+        SELECT id FROM client_crash_reports
+        ORDER BY at DESC, id
+        OFFSET ${MAX_STORED_REPORTS}
+      )
+    `);
 
-  lastAlertAt = now;
-  const count = recentCrashes.length;
-  const samples = recentCrashes.slice(-MAX_SAMPLES_IN_EMAIL).map((c) => ({
-    message: c.message,
-    url: c.url,
-    userAgent: c.userAgent,
-    platform: c.platform,
-    at: new Date(c.at).toISOString(),
-  }));
+    const recent = await db
+      .select()
+      .from(clientCrashReports)
+      .where(gte(clientCrashReports.at, cutoff))
+      .orderBy(desc(clientCrashReports.at));
 
-  sendClientCrashAlertEmail({
-    count,
-    windowMinutes: Math.round(windowMs / 60000),
-    samples,
-  }).catch((err) => {
-    logger.error("CLIENT_CRASH alert email failed", {
+    if (recent.length < threshold) return false;
+
+    // Cooldown durevole con claim atomico: con più istanze concorrenti solo
+    // una vince il diritto di inviare l'email (le altre vedono false).
+    const claimed = await claimScheduledJobRun(
+      CLIENT_CRASH_ALERT_JOB_NAME,
+      cooldownMs,
+      nowDate,
+    );
+    if (!claimed) return false;
+
+    const samples = recent
+      .slice(0, MAX_SAMPLES_IN_EMAIL)
+      .reverse()
+      .map((c) => ({
+        message: c.message,
+        url: c.url ?? undefined,
+        userAgent: c.userAgent ?? undefined,
+        platform: c.platform ?? undefined,
+        at: c.at.toISOString(),
+      }));
+
+    try {
+      await sendClientCrashAlertEmail({
+        count: recent.length,
+        windowMinutes: Math.round(windowMs / 60000),
+        samples,
+      });
+    } catch (err) {
+      // Invio fallito: rilascia il claim così il PROSSIMO report ritenta
+      // (altrimenti l'alert andrebbe perso per l'intero cooldown).
+      logger.error("CLIENT_CRASH alert email failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      await releaseScheduledJobRun(CLIENT_CRASH_ALERT_JOB_NAME, cooldownMs);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    logger.error("CLIENT_CRASH alert persistence failed", {
       error: err instanceof Error ? err.message : String(err),
     });
-  });
-
-  return true;
+    return false;
+  }
 }

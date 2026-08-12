@@ -25,7 +25,7 @@ const reportSchema = z.object({
 
 const router = Router();
 
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   const parsed = reportSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: { code: "INVALID_REPORT" } });
@@ -42,8 +42,12 @@ router.post("/", (req, res) => {
     componentStack: componentStack ? componentStack.slice(0, 4000) : undefined,
   });
   // Alert automatico al proprietario se i crash superano la soglia nella
-  // finestra configurata (best-effort, non blocca mai la risposta).
-  recordClientCrash({ message, url, userAgent, platform });
+  // finestra configurata: stato persistito su DB (sopravvive a riavvii e
+  // più istanze). Si ATTENDE la persistenza prima del 204: se il server si
+  // riavvia proprio mentre arrivano i crash, il client (ErrorBoundary) non
+  // riceve conferma finché il report non è scritto. Resta fail-open:
+  // recordClientCrash intercetta e logga ogni errore, mai propagato.
+  await recordClientCrash({ message, url, userAgent, platform });
   res.status(204).end();
 });
 

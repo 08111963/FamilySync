@@ -49,5 +49,6 @@
 - [Google Calendar direct sync](google-calendar-sync.md) — OAuth per-utente (scope calendar.events, state con userId), refresh token cifrato, fail-visibile 'expired'; nei DELETE leggere i link Google PRIMA (cascade).
 - [Anteprima dev — porte](dev-preview-routing.md) — esterna 80 → backend 5000, mai Metro 8081; Metro orfano serve bundle stantii; login Google web = redirect pagina intera, mai popup.
 - [Assistente AI Home](home-assistant-chat.md) — parse su server, esecuzione via rotte esistenti dal client; conferma obbligatoria; FAB sopra la tab bar; policy bump a ogni nuova funzione AI.
+- [Client crash alert persistente](client-crash-alert.md) — finestra crash su DB + cooldown via claim atomico scheduled_job_runs (una sola email tra istanze); endpoint pubblico sempre fail-open 204.
 - [Alert email al proprietario](owner-alert-emails.md) — contenuto client nelle email owner sempre sanificato: redactForLog + URL senza query/fragment e token nel path mascherati.
 - [Privacy policy fonte unica](privacy-policy-single-source.md) — testo policy SOLO in shared/privacy-policy-content.ts (web+mobile+DOCX); mai duplicare testi legali; DOCX generato senza dipendenze via scripts/generate-privacy-docx.ts.

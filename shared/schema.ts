@@ -623,6 +623,23 @@ export const scheduledJobRuns = pgTable("scheduled_job_runs", {
   lastRunAt: timestamp("last_run_at").defaultNow().notNull(),
 });
 
+// CLIENT CRASH REPORTS — finestra scorrevole PERSISTITA dei report CLIENT_CRASH
+// (endpoint pubblico /api/client-errors). In-memory non basta: su autoscale un
+// riavvio azzererebbe il conteggio e più istanze conterebbero separatamente,
+// quindi la soglia dell'alert email potrebbe non scattare. I campi sono già
+// sanificati (sanitizeCrashSample) PRIMA dell'insert: mai token/segreti su DB.
+// Le righe fuori finestra vengono potate ad ogni report.
+export const clientCrashReports = pgTable("client_crash_reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  message: varchar("message", { length: 1000 }).notNull(),
+  url: varchar("url", { length: 500 }),
+  userAgent: varchar("user_agent", { length: 500 }),
+  platform: varchar("platform", { length: 50 }),
+  at: timestamp("at").defaultNow().notNull(),
+}, (table) => [
+  index("client_crash_reports_at_idx").on(table.at),
+]);
+
 // ENTITLEMENTS — Premium acquistato tramite store nativi (Google Play / Apple).
 // Premium è UNICO per famiglia: una sola riga per familyId (unique).
 // La verifica server-side aggiorna status/expiresAt; isPremium(familyId) legge qui.
