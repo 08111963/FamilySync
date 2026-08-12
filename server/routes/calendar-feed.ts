@@ -5,7 +5,7 @@ import { db } from '../db';
 import { calendarEvents, families } from '../../shared/schema';
 import { eq, and, gte } from 'drizzle-orm';
 import { logger } from '../lib/logger';
-import { isRealIsoDate } from '../../shared/chore-recurrence';
+import { isRealIsoDate, normalizeTimeOfDay } from '../../shared/chore-recurrence';
 
 /**
  * Feed ICS pubblico del calendario famiglia.
@@ -146,12 +146,16 @@ router.get('/:token', async (req: Request, res: Response) => {
         .replace(/\.\d{3}/, '');
       lines.push(`DTSTAMP:${stamp}`);
 
-      if (ev.allDay || !ev.time) {
+      // Difensivo: orari storici malformati (es. "15" senza minuti) vengono
+      // normalizzati al volo; se irrecuperabili l'evento diventa "tutto il
+      // giorno" invece di produrre un DTSTART invalido (come eventToGooglePayload).
+      const startTime = ev.allDay ? null : normalizeTimeOfDay(ev.time);
+      if (!startTime) {
         lines.push(`DTSTART;VALUE=DATE:${icsDate(ev.date)}`);
         lines.push(`DTEND;VALUE=DATE:${nextDay(ev.date)}`);
       } else {
-        lines.push(`DTSTART;TZID=Europe/Rome:${icsDateTime(ev.date, ev.time)}`);
-        const end = computeTimedEnd(ev.date, ev.time, ev.endTime);
+        lines.push(`DTSTART;TZID=Europe/Rome:${icsDateTime(ev.date, startTime)}`);
+        const end = computeTimedEnd(ev.date, startTime, normalizeTimeOfDay(ev.endTime));
         lines.push(`DTEND;TZID=Europe/Rome:${icsDateTime(end.endDate, end.endTime)}`);
       }
 

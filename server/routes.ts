@@ -34,6 +34,7 @@ import supportRoutes from "./routes/support";
 import profileRoutes from "./routes/profile";
 import { testAnalyticsEventsRouter, testAnalyticsAdminRouter, requireTestAnalyticsFlag } from "./routes/test-analytics";
 import { feedbackRouter, feedbackAdminRouter } from "./routes/feedback";
+import maintenanceRoutes from "./routes/maintenance";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(helmet({
@@ -134,6 +135,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // verificati, consultazione riservata al proprietario (APP_OWNER_EMAILS).
   app.use('/api/feedback', authenticate, requireEmailVerified, blockChildAccount, feedbackRouter);
   app.use('/api/admin/feedback', authenticate, feedbackAdminRouter);
+
+  // Manutenzione dati token-gated (MIGRATE_TOKEN): 404 se il token non è
+  // impostato nell'ambiente. Unico canale di scrittura consentito verso prod.
+  app.use('/api/_maintenance', maintenanceRoutes);
 
   // Feed ICS del calendario famiglia: PUBBLICO (nessun JWT), protetto da token
   // segreto nell'URL. Permette l'iscrizione da Google/Apple Calendar.
