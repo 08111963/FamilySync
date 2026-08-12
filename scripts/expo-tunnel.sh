@@ -30,6 +30,7 @@ for pid in $(fuser 8081/tcp 2>/dev/null); do
 done
 sleep 1
 fuser -k 8081/tcp 2>/dev/null || true
+fuser -k 8082/tcp 2>/dev/null || true
 
 export EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN:5000"
 
@@ -39,12 +40,18 @@ export EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN:5000"
 # A fixed, hyphen-only subdomain also keeps the QR URL stable across restarts.
 export EXPO_TUNNEL_SUBDOMAIN="familysync-marino-dev"
 
-echo "[tunnel] Starting Expo with its built-in tunnel (exp.direct)."
+# Ponte anteprima: la porta 8081 (esterna 80) deve servire il BACKEND (5000),
+# come in produzione — Metro qui serviva bundle dev stantii e rompeva l'OAuth.
+# Metro viene spostato sulla porta 8082 (solo per il tunnel Expo Go).
+node scripts/preview-proxy.cjs &
+PROXY_PID=$!
+
+echo "[tunnel] Starting Expo with its built-in tunnel (exp.direct) on port 8082."
 echo "[tunnel] Scan the Expo Go QR below on Android to connect."
 
 # Run Expo in the foreground and forward termination signals so a workflow
 # restart shuts down cleanly.
-npx expo start --tunnel &
+npx expo start --tunnel --port 8082 &
 EXPO_PID=$!
-trap 'kill -TERM "$EXPO_PID" 2>/dev/null || true' TERM INT
+trap 'kill -TERM "$EXPO_PID" "$PROXY_PID" 2>/dev/null || true' TERM INT
 wait "$EXPO_PID"
