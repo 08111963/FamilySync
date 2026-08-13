@@ -209,6 +209,31 @@ function getAppName(): string {
   }
 }
 
+// Inoltra la richiesta di manifest nativo al dev server Metro (solo sviluppo).
+// Se Metro non risponde, si torna al manifest statico (comportamento storico).
+async function proxyExpoDevManifest(platform: string, req: Request, res: Response) {
+  try {
+    const upstream = await fetch("http://127.0.0.1:8082/", {
+      headers: {
+        "expo-platform": platform,
+        accept: req.header("accept") ?? "application/expo+json,application/json",
+        "expo-protocol-version": req.header("expo-protocol-version") ?? "1",
+        "expo-api-version": req.header("expo-api-version") ?? "1",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!upstream.ok) throw new Error(`Metro manifest ${upstream.status}`);
+    const body = Buffer.from(await upstream.arrayBuffer());
+    for (const h of ["content-type", "expo-protocol-version", "expo-sfv-version"]) {
+      const v = upstream.headers.get(h);
+      if (v) res.setHeader(h, v);
+    }
+    return res.status(upstream.status).send(body);
+  } catch {
+    return serveExpoManifest(platform, res);
+  }
+}
+
 function serveExpoManifest(platform: string, res: Response) {
   const manifestPath = path.resolve(
     process.cwd(),
@@ -369,6 +394,14 @@ function configureExpoAndLanding(app: express.Application) {
     if (req.path === "/" || req.path === "/manifest") {
       const platform = req.header("expo-platform");
       if (platform === "ios" || platform === "android") {
+        // In sviluppo il QR "Try on device" di Replit punta a QUESTO server
+        // (porta esterna 80), non a Metro: senza inoltro Expo Go riceve 404
+        // e mostra "Failed to download remote update". Inoltriamo il manifest
+        // a Metro (porta 8082 dietro il tunnel), che risponde con gli URL del
+        // tunnel: il telefono scarica poi il bundle direttamente da lì.
+        if (process.env.NODE_ENV === "development") {
+          return proxyExpoDevManifest(platform, req, res);
+        }
         return serveExpoManifest(platform, res);
       }
     }
