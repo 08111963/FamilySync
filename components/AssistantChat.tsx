@@ -292,6 +292,45 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
       }
     }
 
+    // Pasti scelti come "Ricetta": cerchiamo la ricetta completa con l'AI
+    // (stessa ricerca della sezione Ricette) e la salviamo subito tra le
+    // ricette della famiglia, senza cambiare schermata.
+    for (const m of recipeMeals) {
+      await run(`Ricetta "${m.title}" (salvata nelle Ricette)`, async () => {
+        const data = await apiFetch<{ recipes?: any[] }>(
+          `/api/ai/${familyId}/recipe-search`,
+          { method: "POST", body: { query: m.title.trim().slice(0, 120) } },
+        );
+        const r = (data.recipes || [])[0];
+        if (!r) throw new Error("nessuna ricetta trovata dall'AI");
+        await apiFetch("/api/recipes/bulk", {
+          method: "POST",
+          body: {
+            familyId,
+            recipes: [{
+              title: r.title,
+              description: r.description,
+              servings: r.servings,
+              prepTimeMinutes: r.prepTimeMinutes,
+              cookTimeMinutes: r.cookTimeMinutes,
+              steps: r.steps,
+              tags: r.tags,
+              ingredients: (r.ingredients || []).map((ing: any) => ({
+                name: ing.name,
+                quantity: ing.quantity,
+                unit: ing.unit,
+                notes: ing.notes,
+                category: ing.category,
+              })),
+            }],
+          },
+        });
+      });
+    }
+    if (recipeMeals.length > 0) {
+      qc.invalidateQueries({ queryKey: ["/api/recipes", familyId, "recipes"] });
+    }
+
     // Aggiorna le sezioni interessate (stesse chiavi usate dalle schermate).
     qc.invalidateQueries({ queryKey: ["/api/calendar", familyId] });
     qc.invalidateQueries({ queryKey: ["/api/chores", familyId] });
@@ -303,22 +342,6 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
     let summary = "";
     if (ok.length > 0) summary += `Fatto! Ho aggiunto:\n• ${ok.join("\n• ")}`;
     if (failed.length > 0) summary += `${summary ? "\n\n" : ""}Non sono riuscito ad aggiungere:\n• ${failed.join("\n• ")}`;
-
-    // Pasti scelti come "Ricetta": apriamo la sezione Ricette con la ricerca AI
-    // già avviata sul primo titolo (una sola navigazione possibile).
-    if (recipeMeals.length > 0) {
-      const q = recipeMeals[0].title.trim().slice(0, 120);
-      summary += `${summary ? "\n\n" : ""}👨‍🍳 Ti porto alle Ricette: cerco subito "${recipeMeals[0].title}" con l'AI.`;
-      if (recipeMeals.length > 1) {
-        summary += `\nGli altri piatti (${recipeMeals.slice(1).map((m) => m.title).join(", ")}) cercali lì con la barra di ricerca.`;
-      }
-      pushMessage({ kind: "text", role: "assistant", text: summary });
-      executingRef.current = false;
-      setExecuting(false);
-      setOpen(false);
-      router.push(`/recipes?assistant=1&q=${encodeURIComponent(q)}` as any);
-      return;
-    }
 
     // Piano pasti settimanale: portiamo l'utente alla schermata Piano Pasti con
     // le preferenze precompilate; la generazione (che consuma la quota AI) parte
@@ -402,7 +425,7 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
             <View key={`meal-${i}`}>
               <Text style={[styles.proposalLine, { color: colors.text }]}>
                 {dest === "recipe"
-                  ? `👨‍🍳 Ricetta: ${m.title} — la cerco con l'AI nelle Ricette`
+                  ? `👨‍🍳 Ricetta: ${m.title} — la cerco con l'AI e la salvo nelle Ricette`
                   : `🍽️ Pasto: ${m.title} — ${m.date ? formatDateIt(m.date) : "oggi"}, ${MEAL_LABELS[m.mealType ?? "dinner"]}`}
               </Text>
               {showChoice && (
