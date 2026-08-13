@@ -1,4 +1,5 @@
 ---
+note-added: Il QR "Try on device" di Replit punta al dominio replit.dev (porta 80 -> backend 5000), NON al tunnel: in dev il backend DEVE inoltrare le richieste con header expo-platform a Metro (127.0.0.1:8082), altrimenti Expo Go riceve 404 e mostra "Failed to download remote update". Fallback al manifest statico se Metro è giù.
 name: Anteprima dev — instradamento porte
 description: La porta esterna 80 dell'anteprima deve puntare al backend 5000; Metro orfano su 8081 serve bundle vecchi e rompe l'OAuth
 ---
