@@ -368,17 +368,21 @@ export default function MealPlansScreen() {
   // precompilano le note, la generazione parte solo col pulsante "Genera Piano".
   const { notes: notesParam, assistant: assistantParam } = useLocalSearchParams<{ notes?: string; assistant?: string }>();
   const [voicePrefs, setVoicePrefs] = useState("");
-  // I parametri possono arrivare DOPO il primo render (soprattutto su web):
-  // applicali appena disponibili, senza sovrascrivere ciò che l'utente ha dettato.
-  // "assistant=1" apre la scheda "Genera con AI" anche senza note.
+  // Arrivo dall'assistente AI ("assistant=1"): l'utente HA GIÀ confermato in
+  // chat, quindi apriamo la scheda "Genera con AI" e avviamo subito la
+  // generazione (una sola volta), con le eventuali preferenze nelle note.
+  // I parametri possono arrivare DOPO il primo render (soprattutto su web).
+  const assistantAutoRunRef = useRef(false);
   useEffect(() => {
-    if (typeof notesParam === "string" && notesParam.trim()) {
-      setVoicePrefs((prev) => (prev ? prev : notesParam.slice(0, 300)));
+    const notes = typeof notesParam === "string" ? notesParam.trim().slice(0, 300) : "";
+    if (notes) setVoicePrefs((prev) => (prev ? prev : notes));
+    if (assistantParam === "1" || notes) setActiveTab("generate");
+    if (assistantParam === "1" && currentFamily && !assistantAutoRunRef.current) {
+      assistantAutoRunRef.current = true;
+      fetchMealPlanStream(notes ? { voiceNotes: notes } : undefined);
     }
-    if (assistantParam === "1" || (typeof notesParam === "string" && notesParam.trim())) {
-      setActiveTab("generate");
-    }
-  }, [notesParam, assistantParam]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notesParam, assistantParam, currentFamily]);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   // Lock sincrono contro il doppio tocco su "Salva piano" (setSaving è asincrono).

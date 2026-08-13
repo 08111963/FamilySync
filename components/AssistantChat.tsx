@@ -293,7 +293,7 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
     // le preferenze precompilate; la generazione (che consuma la quota AI) parte
     // solo quando preme "Genera Piano" lì.
     if (actions.mealPlanRequest) {
-      summary += `${summary ? "\n\n" : ""}Ti porto al Piano Pasti: premi "Genera Piano" per creare il piano settimanale.`;
+      summary += `${summary ? "\n\n" : ""}Ti porto al Piano Pasti: la generazione del piano settimanale parte subito.`;
       pushMessage({ kind: "text", role: "assistant", text: summary });
       executingRef.current = false;
       setExecuting(false);
