@@ -979,9 +979,12 @@ export async function transcribeAudio(input: {
     const baseHint =
       'Dettatura vocale in italiano per un\'app di famiglia. Trascrivi fedelmente solo le parole pronunciate.';
     const extra = (input.context || '').trim().slice(0, 300);
-    // Audio molto brevi (1-2 parole): il contesto fa più danni che benefici,
-    // il modello tende ad allucinare parole del dominio ("incontro" al posto
-    // di "cena"). Sotto la soglia si trascrive senza alcun prompt.
+    // Audio molto brevi (1-2 parole): il CONTESTO di dominio fa più danni che
+    // benefici, il modello tende ad allucinare parole del dominio ("incontro"
+    // al posto di "cena"). Sotto la soglia si invia SOLO l'hint di base
+    // (lingua italiana, nessun sostantivo di dominio): senza alcun prompt il
+    // modello inventava parole inesistenti ("Mastakolezardem" per "pasta con
+    // le sarde").
     // La durata (se il client la fornisce) è il criterio più affidabile: la
     // soglia in byte varia troppo col bitrate del codec (webm/opus vs m4a) e
     // rischia di togliere il contesto anche a frasi normali di 5-10 secondi.
@@ -993,7 +996,7 @@ export async function transcribeAudio(input: {
     const isShortClip = hasDuration
       ? (input.durationMs as number) < SHORT_CLIP_MAX_DURATION_MS
       : input.buffer.length < SHORT_CLIP_MAX_BYTES; // fallback: ~2-3s di voce compressa
-    const sentPrompt = isShortClip ? '' : (extra ? `${baseHint} ${extra}` : baseHint);
+    const sentPrompt = isShortClip ? baseHint : (extra ? `${baseHint} ${extra}` : baseHint);
     const response = await getOpenAiClient().audio.transcriptions.create({
       file,
       model: 'gpt-4o-mini-transcribe',

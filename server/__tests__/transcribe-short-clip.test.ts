@@ -15,9 +15,14 @@ import {
   PLAUSIBLE_MAX_BYTES_PER_SEC,
 } from '../lib/openai';
 
-// Soglia in byte sotto la quale l'audio viene trascritto SENZA prompt di
-// contesto quando il client non fornisce la durata.
+// Soglia in byte sotto la quale l'audio viene trascritto con il SOLO hint di
+// base (niente contesto di dominio) quando il client non fornisce la durata.
 const SHORT_CLIP_THRESHOLD = SHORT_CLIP_MAX_BYTES;
+
+// Hint di base che il server invia sempre (anche per i clip brevi): lingua
+// italiana, nessun sostantivo di dominio. Deve restare allineato a openai.ts.
+const BASE_HINT =
+  'Dettatura vocale in italiano per un\'app di famiglia. Trascrivi fedelmente solo le parole pronunciate.';
 
 type CreateArgs = { prompt?: string; [k: string]: unknown };
 
@@ -40,20 +45,22 @@ function buffersOf(size: number): Buffer {
   return Buffer.alloc(size, 1);
 }
 
-test('audio corto sotto soglia: la chiamata a OpenAI NON include prompt', async (t) => {
+test('audio corto sotto soglia: prompt = solo hint di base, SENZA contesto di dominio', async (t) => {
   const { client, calls } = makeFakeClient(() => 'cena');
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
+  const context = 'Evento del calendario familiare: titolo, luogo, data e orario.';
   const result = await transcribeAudio({
     buffer: buffersOf(SHORT_CLIP_THRESHOLD - 1),
     filename: 'clip.webm',
     mimeType: 'audio/webm',
-    context: 'Evento del calendario familiare: titolo, luogo, data e orario.',
+    context,
   });
 
   assert.equal(calls.length, 1);
-  assert.equal('prompt' in calls[0], false, 'il prompt NON deve essere inviato per clip brevi');
+  assert.equal(calls[0].prompt, BASE_HINT, 'per i clip brevi va inviato il solo hint di base');
+  assert.ok(!(calls[0].prompt as string).includes(context), 'niente contesto di dominio sui clip brevi');
   assert.equal(result.text, 'cena');
 });
 
@@ -141,27 +148,27 @@ test('durata fornita dal client: clip lungo ma "leggero" in byte riceve comunque
   assert.equal(result.text, 'Venerdì andare a cena da Michele alle 20:30');
 });
 
-test('durata fornita dal client: clip sotto soglia di durata NON riceve prompt anche se pesante in byte', async (t) => {
+test('durata fornita dal client: clip sotto soglia di durata riceve solo hint di base anche se pesante in byte', async (t) => {
   const { client, calls } = makeFakeClient(() => 'cena');
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
+  const context = 'Evento del calendario familiare.';
   await transcribeAudio({
     buffer: buffersOf(SHORT_CLIP_THRESHOLD + 20_000),
     filename: 'clip.webm',
     mimeType: 'audio/webm',
-    context: 'Evento del calendario familiare.',
+    context,
     durationMs: SHORT_CLIP_MAX_DURATION_MS - 1,
   });
 
   assert.equal(calls.length, 1);
-  assert.equal('prompt' in calls[0], false, 'sotto soglia di durata niente prompt (anti-allucinazione)');
+  assert.equal(calls[0].prompt, BASE_HINT, 'sotto soglia di durata solo hint di base (anti-allucinazione)');
+  assert.ok(!(calls[0].prompt as string).includes(context));
 });
 
-test('audio corto: anche se il modello risponde con testo lungo, nessun filtro anti-eco scatta (nessun prompt inviato)', async (t) => {
-  const echoLike =
-    'Dettatura vocale in italiano per un\'app di famiglia. Trascrivi fedelmente solo le parole pronunciate.';
-  const { client } = makeFakeClient(() => echoLike);
+test('audio corto: se il modello echeggia l\'hint di base, il filtro anti-eco scarta il testo', async (t) => {
+  const { client } = makeFakeClient(() => BASE_HINT);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
@@ -171,8 +178,9 @@ test('audio corto: anche se il modello risponde con testo lungo, nessun filtro a
     mimeType: 'audio/webm',
   });
 
-  // Senza prompt inviato non esiste eco da filtrare: il testo passa com'è.
-  assert.equal(result.text, echoLike);
+  // Anche per i clip brevi ora viene inviato l'hint di base: un audio vuoto
+  // che ne provoca l'eco deve produrre testo vuoto, non l'hint stesso.
+  assert.equal(result.text, '');
 });
 
 // ===== Plausibilità durata dichiarata vs dimensione file =====
@@ -217,23 +225,25 @@ test('durata palesemente falsa (corta) viene ignorata: fallback in byte -> promp
   assert.equal(result.text, 'Cena venerdì alle 20', 'nessun errore per l\'utente');
 });
 
-test('durata palesemente falsa (lunga) viene ignorata: fallback in byte -> nessun prompt', async (t) => {
+test('durata palesemente falsa (lunga) viene ignorata: fallback in byte -> solo hint di base', async (t) => {
   // Client dichiara 5 minuti ma invia 5KB: la durata "lunga" forzerebbe il
-  // contesto su un clip in realtà brevissimo. Fallback byte: niente prompt.
+  // contesto su un clip in realtà brevissimo. Fallback byte: solo hint di base.
   const { client, calls } = makeFakeClient(() => 'cena');
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
+  const context = 'Lista della spesa della famiglia.';
   const result = await transcribeAudio({
     buffer: buffersOf(5_000),
     filename: 'clip.webm',
     mimeType: 'audio/webm',
-    context: 'Lista della spesa della famiglia.',
+    context,
     durationMs: 5 * 60_000,
   });
 
   assert.equal(calls.length, 1);
-  assert.equal('prompt' in calls[0], false, 'durata implausibile -> fallback byte -> niente prompt');
+  assert.equal(calls[0].prompt, BASE_HINT, 'durata implausibile -> fallback byte -> solo hint di base');
+  assert.ok(!(calls[0].prompt as string).includes(context));
   assert.equal(result.text, 'cena');
 });
 
