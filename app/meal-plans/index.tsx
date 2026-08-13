@@ -366,16 +366,19 @@ export default function MealPlansScreen() {
   const [allergies, setAllergies] = useState("");
   // Preferenze passate dall'assistente AI della Home (es. "mediterraneo"):
   // precompilano le note, la generazione parte solo col pulsante "Genera Piano".
-  const { notes: notesParam } = useLocalSearchParams<{ notes?: string }>();
+  const { notes: notesParam, assistant: assistantParam } = useLocalSearchParams<{ notes?: string; assistant?: string }>();
   const [voicePrefs, setVoicePrefs] = useState("");
-  // Il parametro può arrivare DOPO il primo render (soprattutto su web):
-  // applicalo appena disponibile, senza sovrascrivere ciò che l'utente ha dettato.
+  // I parametri possono arrivare DOPO il primo render (soprattutto su web):
+  // applicali appena disponibili, senza sovrascrivere ciò che l'utente ha dettato.
+  // "assistant=1" apre la scheda "Genera con AI" anche senza note.
   useEffect(() => {
     if (typeof notesParam === "string" && notesParam.trim()) {
-      setVoicePrefs((prev) => (prev ? prev : notesParam.slice(0, 500)));
+      setVoicePrefs((prev) => (prev ? prev : notesParam.slice(0, 300)));
+    }
+    if (assistantParam === "1" || (typeof notesParam === "string" && notesParam.trim())) {
       setActiveTab("generate");
     }
-  }, [notesParam]);
+  }, [notesParam, assistantParam]);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   // Lock sincrono contro il doppio tocco su "Salva piano" (setSaving è asincrono).

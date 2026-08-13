@@ -1291,7 +1291,7 @@ const assistantActionsSchema = z.object({
   meals: z.array(assistantMealSchema).max(15).catch([]),
   // Richiesta generica di GENERARE un piano pasti settimanale (es. "piano
   // pasti mediterraneo"): non è un pasto singolo, va gestita a parte.
-  mealPlanRequest: z.object({ notes: z.string().catch('') }).nullable().catch(null),
+  mealPlanRequest: z.object({ notes: z.string().max(300).catch('') }).nullable().catch(null),
 });
 
 export type AssistantActions = z.infer<typeof assistantActionsSchema>;

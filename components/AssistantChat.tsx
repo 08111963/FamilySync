@@ -298,8 +298,10 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
       executingRef.current = false;
       setExecuting(false);
       setOpen(false);
-      const notes = actions.mealPlanRequest.notes.trim();
-      router.push((notes ? `/meal-plans?notes=${encodeURIComponent(notes)}` : "/meal-plans") as any);
+      // "assistant=1" apre direttamente la scheda "Genera con AI" anche senza
+      // preferenze; le note sono comunque limitate in lunghezza.
+      const notes = actions.mealPlanRequest.notes.trim().slice(0, 300);
+      router.push(`/meal-plans?assistant=1${notes ? `&notes=${encodeURIComponent(notes)}` : ""}` as any);
       return;
     }
 
