@@ -959,6 +959,10 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       title: plan.title || "Piano Settimanale",
       weekStartDate,
       itemsCount: plan.items.length,
+      // Lista FINALE dopo la ripassata anti-doppioni: i piatti erano già stati
+      // inviati in streaming PRIMA delle sostituzioni, quindi il client deve
+      // rimpiazzare ciò che ha accumulato con questa versione corretta.
+      items: plan.items,
     }) + '\n');
     res.end();
 

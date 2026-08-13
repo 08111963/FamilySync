@@ -503,11 +503,23 @@ export default function MealPlansScreen() {
             }
           } else if (obj?.type === "done") {
             if (obj.title) doneTitle = obj.title;
+            // Il server invia con "done" la lista FINALE (dopo la correzione
+            // dei piatti doppi): sostituisce quella accumulata in streaming.
+            const finalItems = Array.isArray(obj.items) && obj.items.length > 0 ? (obj.items as MealPlanItem[]) : null;
+            if (finalItems) {
+              collectedItems.length = 0;
+              collectedItems.push(...finalItems);
+            }
             setAiPlans((prev) => {
               if (prev.length === 0) return prev;
               const first = prev[0]!;
               return [
-                { ...first, title: obj.title || first.title, weekStartDate: obj.weekStartDate || weekStart },
+                {
+                  ...first,
+                  title: obj.title || first.title,
+                  weekStartDate: obj.weekStartDate || weekStart,
+                  items: finalItems ?? first.items,
+                },
                 ...prev.slice(1),
               ];
             });
