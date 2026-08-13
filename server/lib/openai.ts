@@ -1289,6 +1289,9 @@ const assistantActionsSchema = z.object({
   bills: z.array(assistantBillSchema).max(10).catch([]),
   rewards: z.array(assistantRewardSchema).max(10).catch([]),
   meals: z.array(assistantMealSchema).max(15).catch([]),
+  // Richiesta generica di GENERARE un piano pasti settimanale (es. "piano
+  // pasti mediterraneo"): non è un pasto singolo, va gestita a parte.
+  mealPlanRequest: z.object({ notes: z.string().catch('') }).nullable().catch(null),
 });
 
 export type AssistantActions = z.infer<typeof assistantActionsSchema>;
@@ -1332,10 +1335,13 @@ REGOLE GENERALI:
 "rewards" (premi/badge riscattabili con i punti, es. "premio gelato da 50 punti"):
 - oggetti {"title","description","pointsCost"}.
 
-"meals" (piano pasti, es. "sabato a cena lasagne"):
+"meals" (pasti SINGOLI e specifici, es. "sabato a cena lasagne"):
 - oggetti {"date","mealType","title"}; "mealType" tra "breakfast","lunch","dinner","snack".
+
+"mealPlanRequest" (l'utente chiede di CREARE/GENERARE un piano pasti settimanale intero, senza indicare i singoli piatti, es. "piano pasti mediterraneo", "creami il piano pasti della settimana"):
+- oggetto {"notes"} dove "notes" riassume le preferenze espresse (es. "mediterraneo", "vegetariano senza glutine") o "" se nessuna; null se non richiesto. In questo caso NON riempire "meals".
 ${memberList.length > 0 ? `\n- "assigneeName" (eventi e faccende): se il testo dice a chi è assegnato (es. "per Marco", "tocca a Anna"), scegli il nome ESATTO più vicino da questa lista: ${JSON.stringify(memberList)}. null se non indicato o nessun nome corrisponde.` : '\n- "assigneeName": sempre null.'}
-- Rispondi SOLO con JSON: {"events":[...],"chores":[...],"shoppingItems":[...],"bills":[...],"rewards":[...],"meals":[...]}`,
+- Rispondi SOLO con JSON: {"events":[...],"chores":[...],"shoppingItems":[...],"bills":[...],"rewards":[...],"meals":[...],"mealPlanRequest":{...}|null}`,
       }, {
         role: 'user',
         content: input.text,
@@ -1357,7 +1363,8 @@ ${memberList.length > 0 ? `\n- "assigneeName" (eventi e faccende): se il testo d
     // Nessuna azione estratta: errore tipizzato, così il client non mostra un
     // falso successo con un riepilogo vuoto.
     const total = parsed.events.length + parsed.chores.length + parsed.shoppingItems.length
-      + parsed.bills.length + parsed.rewards.length + parsed.meals.length;
+      + parsed.bills.length + parsed.rewards.length + parsed.meals.length
+      + (parsed.mealPlanRequest ? 1 : 0);
     if (total === 0) {
       throw new AiError('AI_BAD_RESPONSE', 'assistant-parse: nessuna azione estratta dal testo');
     }

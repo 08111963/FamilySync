@@ -3,6 +3,7 @@ import {
   StyleSheet, Text, View, Modal, Pressable, TextInput, ScrollView,
   KeyboardAvoidingView, Platform, ActivityIndicator,
 } from "react-native";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
@@ -39,6 +40,9 @@ type AssistantActions = {
   bills: ParsedBillAction[];
   rewards: ParsedRewardAction[];
   meals: ParsedMealAction[];
+  // Richiesta di generare un piano pasti settimanale intero: alla conferma
+  // portiamo l'utente alla schermata Piano Pasti con le preferenze precompilate.
+  mealPlanRequest: { notes: string } | null;
 };
 
 type ChatMessage =
@@ -79,7 +83,8 @@ function mondayOfWeek(iso: string): string {
 
 function totalActions(a: AssistantActions): number {
   return a.events.length + a.chores.length + a.shoppingItems.length
-    + a.bills.length + a.rewards.length + a.meals.length;
+    + a.bills.length + a.rewards.length + a.meals.length
+    + (a.mealPlanRequest ? 1 : 0);
 }
 
 interface AssistantChatProps {
@@ -283,6 +288,21 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
     let summary = "";
     if (ok.length > 0) summary += `Fatto! Ho aggiunto:\n• ${ok.join("\n• ")}`;
     if (failed.length > 0) summary += `${summary ? "\n\n" : ""}Non sono riuscito ad aggiungere:\n• ${failed.join("\n• ")}`;
+
+    // Piano pasti settimanale: portiamo l'utente alla schermata Piano Pasti con
+    // le preferenze precompilate; la generazione (che consuma la quota AI) parte
+    // solo quando preme "Genera Piano" lì.
+    if (actions.mealPlanRequest) {
+      summary += `${summary ? "\n\n" : ""}Ti porto al Piano Pasti: premi "Genera Piano" per creare il piano settimanale.`;
+      pushMessage({ kind: "text", role: "assistant", text: summary });
+      executingRef.current = false;
+      setExecuting(false);
+      setOpen(false);
+      const notes = actions.mealPlanRequest.notes.trim();
+      router.push((notes ? `/meal-plans?notes=${encodeURIComponent(notes)}` : "/meal-plans") as any);
+      return;
+    }
+
     pushMessage({ kind: "text", role: "assistant", text: summary || "Nessuna azione eseguita." });
     executingRef.current = false;
     setExecuting(false);
@@ -329,6 +349,10 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
     }
     for (const m of actions.meals) {
       lines.push(`🍽️ Pasto: ${m.title} — ${m.date ? formatDateIt(m.date) : "oggi"}, ${MEAL_LABELS[m.mealType ?? "dinner"]}`);
+    }
+    if (actions.mealPlanRequest) {
+      const notes = actions.mealPlanRequest.notes.trim();
+      lines.push(`🍽️ Piano pasti settimanale${notes ? ` (preferenze: ${notes})` : ""} — apro la schermata Piano Pasti`);
     }
 
     return (

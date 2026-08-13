@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -364,7 +364,10 @@ export default function MealPlansScreen() {
   };
   const [diet, setDiet] = useState("");
   const [allergies, setAllergies] = useState("");
-  const [voicePrefs, setVoicePrefs] = useState("");
+  // Preferenze passate dall'assistente AI della Home (es. "mediterraneo"):
+  // precompilano le note, la generazione parte solo col pulsante "Genera Piano".
+  const { notes: notesParam } = useLocalSearchParams<{ notes?: string }>();
+  const [voicePrefs, setVoicePrefs] = useState(typeof notesParam === "string" ? notesParam.slice(0, 500) : "");
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   // Lock sincrono contro il doppio tocco su "Salva piano" (setSaving è asincrono).
