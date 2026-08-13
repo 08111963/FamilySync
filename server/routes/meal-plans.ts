@@ -469,9 +469,17 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
       .filter((id): id is string => !!id);
 
     if (recipeIds.length > 0) {
-      const recipeIngs = await db.select()
+      // Difesa in profondità: solo ricette della stessa famiglia, così un
+      // recipeId estraneo non può copiare ingredienti di un'altra famiglia.
+      const recipeIngs = await db.select({
+        name: recipeIngredients.name,
+        quantity: recipeIngredients.quantity,
+        unit: recipeIngredients.unit,
+        category: recipeIngredients.category,
+      })
         .from(recipeIngredients)
-        .where(inArray(recipeIngredients.recipeId, recipeIds));
+        .innerJoin(recipes, eq(recipeIngredients.recipeId, recipes.id))
+        .where(and(inArray(recipeIngredients.recipeId, recipeIds), eq(recipes.familyId, familyId)));
 
       for (const ing of recipeIngs) {
         rawEntries.push({

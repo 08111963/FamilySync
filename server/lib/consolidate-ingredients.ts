@@ -28,7 +28,9 @@ export function canonicalIngredientKey(name: string): string {
   let s = name.toLowerCase();
   s = s.replace(/\([^)]*\)/g, ' ');       // note tra parentesi
   s = s.split(',')[0]!;                    // dopo la virgola = nota d'uso
-  s = s.replace(/\s+(per|da)\s+.*$/, ' '); // finalità: "per condire", "da servire"
+  // Solo note di servizio esplicite: "farina per dolci" resta un prodotto
+  // diverso da "farina", ma "olio ... per condire" viene accorpato.
+  s = s.replace(/\s+(per\s+(condire|servire|decorare|guarnire|friggere|spennellare|completare)|da\s+(servire|tavola|bere))\b.*$/, ' ');
 
   const base = normalizeItemName(s);       // punteggiatura, stopword, sort
   const toks = base
@@ -80,9 +82,9 @@ export interface IngredientEntry {
 /**
  * Accorpa gli ingredienti con la stessa chiave canonica.
  * - Nome: viene tenuto il più corto (il più generico).
- * - Quantità: sommate quando le unità sono uguali o convertibili
- *   (kg->g, l->ml); le voci con unità non compatibili vengono ignorate
- *   nella somma (meglio una quantità parziale che un doppione in lista).
+ * - Quantità: sommate per famiglia di unità (con conversione kg->g, l->ml).
+ *   Le unità NON compatibili producono voci separate (stesso nome, unità
+ *   diversa): non si perde mai quantità, solo i doppioni identici spariscono.
  */
 export function consolidateIngredients(entries: IngredientEntry[]): IngredientEntry[] {
   const groups = new Map<string, IngredientEntry[]>();
@@ -106,28 +108,43 @@ export function consolidateIngredients(entries: IngredientEntry[]): IngredientEn
     for (const e of group) {
       if (e.name.trim().length < best.name.trim().length) best = e;
     }
+    const category = best.category ?? group.find((e) => e.category)?.category ?? null;
 
-    // Somma delle quantità nella famiglia di unità della prima voce numerica.
-    let sum: number | null = null;
-    let sumUnit: string | null = null;
+    // Somma per famiglia di unità: ogni unità non convertibile ha il suo bucket.
+    const buckets = new Map<string, { sum: number; unit: string | null }>();
+    const bucketOrder: string[] = [];
+    let nonNumeric: IngredientEntry | null = null;
     for (const e of group) {
       const qty = e.quantity != null ? Number(e.quantity) : NaN;
-      if (!Number.isFinite(qty)) continue;
+      if (!Number.isFinite(qty)) {
+        // Voce senza quantità numerica ("q.b."): la teniamo solo se non c'è
+        // nessuna voce numerica per lo stesso prodotto.
+        if (!nonNumeric) nonNumeric = e;
+        continue;
+      }
       let u = canonicalUnit(e.unit);
       let v = qty;
       const conv = u ? UNIT_CONVERSIONS[u] : undefined;
       if (conv) { u = conv.to; v = qty * conv.factor; }
-      if (sum === null) { sum = v; sumUnit = u; }
-      else if (u === sumUnit) { sum += v; }
-      // Unità diversa e non convertibile: ignorata nella somma.
+      const bkey = u ?? '';
+      const b = buckets.get(bkey);
+      if (b) b.sum += v;
+      else { buckets.set(bkey, { sum: v, unit: u }); bucketOrder.push(bkey); }
     }
 
-    out.push({
-      name: best.name,
-      quantity: sum !== null ? String(Math.round(sum * 100) / 100) : best.quantity,
-      unit: sum !== null ? sumUnit : best.unit,
-      category: best.category ?? group.find((e) => e.category)?.category ?? null,
-    });
+    if (buckets.size === 0) {
+      out.push({ name: best.name, quantity: null, unit: nonNumeric?.unit ?? best.unit, category });
+      continue;
+    }
+    for (const bkey of bucketOrder) {
+      const b = buckets.get(bkey)!;
+      out.push({
+        name: best.name,
+        quantity: String(Math.round(b.sum * 100) / 100),
+        unit: b.unit,
+        category,
+      });
+    }
   }
   return out;
 }

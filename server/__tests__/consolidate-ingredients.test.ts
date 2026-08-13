@@ -40,7 +40,7 @@ test('quantità sommate con unità uguali o convertibili', () => {
   assert.equal(brodo.unit, 'ml');
 });
 
-test('unità non compatibili: si tiene la somma parziale, nome più corto', () => {
+test('unità sinonime sommate insieme, nome più corto', () => {
   const out = consolidateIngredients([
     { name: 'limone (succo e scorza)', quantity: '1', unit: 'pezzi', category: 'food' },
     { name: 'limone (per condire)', quantity: '1', unit: 'pezzo', category: 'food' },
@@ -49,4 +49,30 @@ test('unità non compatibili: si tiene la somma parziale, nome più corto', () =
   assert.equal(out.length, 1);
   assert.equal(out[0]!.name, 'Limone');
   assert.equal(out[0]!.quantity, '3');
+});
+
+test('unità NON compatibili: voci separate, nessuna quantità persa', () => {
+  const out = consolidateIngredients([
+    { name: 'pomodori', quantity: '1', unit: 'kg', category: 'food' },
+    { name: 'pomodoro', quantity: '2', unit: 'pezzi', category: 'food' },
+  ]);
+  assert.equal(out.length, 2);
+  const g = out.find((e) => e.unit === 'g')!;
+  assert.equal(g.quantity, '1000');
+  const pcs = out.find((e) => e.unit === 'pcs')!;
+  assert.equal(pcs.quantity, '2');
+});
+
+test('voce "q.b." assorbita solo se esiste una voce numerica', () => {
+  const out = consolidateIngredients([
+    { name: 'Sale', quantity: null, unit: 'q.b.', category: 'food' },
+    { name: 'sale per condire', quantity: '1', unit: 'cucchiaino', category: 'food' },
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.quantity, '1');
+});
+
+test('qualificatori di prodotto NON vengono accorpati', () => {
+  assert.notEqual(canonicalIngredientKey('farina per dolci'), canonicalIngredientKey('farina'));
+  assert.equal(canonicalIngredientKey('olio per condire'), canonicalIngredientKey('olio'));
 });
