@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -367,7 +367,15 @@ export default function MealPlansScreen() {
   // Preferenze passate dall'assistente AI della Home (es. "mediterraneo"):
   // precompilano le note, la generazione parte solo col pulsante "Genera Piano".
   const { notes: notesParam } = useLocalSearchParams<{ notes?: string }>();
-  const [voicePrefs, setVoicePrefs] = useState(typeof notesParam === "string" ? notesParam.slice(0, 500) : "");
+  const [voicePrefs, setVoicePrefs] = useState("");
+  // Il parametro può arrivare DOPO il primo render (soprattutto su web):
+  // applicalo appena disponibile, senza sovrascrivere ciò che l'utente ha dettato.
+  useEffect(() => {
+    if (typeof notesParam === "string" && notesParam.trim()) {
+      setVoicePrefs((prev) => (prev ? prev : notesParam.slice(0, 500)));
+      setActiveTab("generate");
+    }
+  }, [notesParam]);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   // Lock sincrono contro il doppio tocco su "Salva piano" (setSaving è asincrono).
