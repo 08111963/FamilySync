@@ -3,7 +3,7 @@ import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { mealPlans, mealPlanItems, recipes, recipeIngredients, shoppingLists, shoppingItems } from '../../shared/schema';
+import { mealPlans, mealPlanItems, recipes, recipeIngredients, shoppingLists, shoppingItems, pantryItems } from '../../shared/schema';
 import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
@@ -13,6 +13,7 @@ import { normalizeItemName } from '../lib/normalize';
 import { isUniqueViolation } from '../lib/db-errors';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 import { toShoppingQuantity } from '../lib/shopping-quantity';
+import { consolidateIngredients, canonicalIngredientKey, type IngredientEntry } from '../lib/consolidate-ingredients';
 
 const router = Router();
 
@@ -427,26 +428,38 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Piano pasti non trovato" } });
     }
 
-    const items = await db.select()
+    // Opzionale: lista solo per un giorno del piano (body { date: "YYYY-MM-DD" }).
+    const bodySchema = z.object({
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    });
+    const parsedBody = bodySchema.safeParse(req.body ?? {});
+    if (!parsedBody.success) {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Data non valida" } });
+    }
+    const onlyDate = parsedBody.data.date ?? null;
+
+    let items = await db.select()
       .from(mealPlanItems)
       .where(eq(mealPlanItems.mealPlanId, planId));
+    if (onlyDate) {
+      items = items.filter((it) => it.date === onlyDate);
+      if (items.length === 0) {
+        return res.status(400).json({ error: { code: "NO_INGREDIENTS", message: "Nessun pasto in quel giorno del piano" } });
+      }
+    }
 
-    const uniqueIngredients = new Map<string, { name: string; quantity: string | null; unit: string | null; category: string | null }>();
+    const rawEntries: IngredientEntry[] = [];
 
     for (const item of items) {
       const inlineIngredients = item.ingredients as Array<{ name: string; quantity?: string; unit?: string }> | null;
       if (inlineIngredients && Array.isArray(inlineIngredients)) {
         for (const ing of inlineIngredients) {
-          if (!ing.name) continue;
-          const norm = normalizeItemName(ing.name);
-          if (!norm) continue;
-          if (!uniqueIngredients.has(norm)) {
-            uniqueIngredients.set(norm, {
-              name: ing.name,
-              ...toShoppingQuantity(ing.quantity ?? null, ing.unit ?? null),
-              category: 'food',
-            });
-          }
+          if (!ing.name || !normalizeItemName(ing.name)) continue;
+          rawEntries.push({
+            name: ing.name,
+            ...toShoppingQuantity(ing.quantity ?? null, ing.unit ?? null),
+            category: 'food',
+          });
         }
       }
     }
@@ -461,18 +474,39 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
         .where(inArray(recipeIngredients.recipeId, recipeIds));
 
       for (const ing of recipeIngs) {
-        if (!uniqueIngredients.has(ing.normalizedName)) {
-          uniqueIngredients.set(ing.normalizedName, {
-            name: ing.name,
-            ...toShoppingQuantity(ing.quantity, ing.unit),
-            category: ing.category,
-          });
-        }
+        rawEntries.push({
+          name: ing.name,
+          ...toShoppingQuantity(ing.quantity, ing.unit),
+          category: ing.category,
+        });
       }
     }
 
-    if (uniqueIngredients.size === 0) {
+    if (rawEntries.length === 0) {
       return res.status(400).json({ error: { code: "NO_INGREDIENTS", message: "Nessun ingrediente trovato nel piano pasti" } });
+    }
+
+    // Accorpa le varianti dello stesso ingrediente (olio, arance/arancia, ...)
+    // sommando le quantità quando le unità sono compatibili.
+    const consolidated = consolidateIngredients(rawEntries);
+
+    // Salta gli ingredienti già presenti in Dispensa e segnalali all'utente.
+    const pantry = await db.select({ name: pantryItems.name })
+      .from(pantryItems)
+      .where(eq(pantryItems.familyId, familyId));
+    const pantryKeys = new Set(pantry.map((p) => canonicalIngredientKey(p.name)).filter(Boolean));
+    const skippedFromPantry: string[] = [];
+    const toBuy = consolidated.filter((ing) => {
+      if (pantryKeys.has(canonicalIngredientKey(ing.name))) {
+        skippedFromPantry.push(ing.name);
+        return false;
+      }
+      return true;
+    });
+
+    if (toBuy.length === 0) {
+      // Tutto già in dispensa: nessuna lista da creare, ma lo diciamo al client.
+      return res.status(200).json({ shoppingListId: null, ingredientCount: 0, skippedFromPantry });
     }
 
     const slot = await reserveBaseSlot(req.user!.userId, familyId, "shopping-item");
@@ -480,7 +514,10 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
       return res.status(429).json(baseLimitBody(slot));
     }
 
-    const listName = `Spesa per ${plan.title || 'Piano ' + plan.weekStartDate}`;
+    const dayLabel = onlyDate
+      ? new Date(`${onlyDate}T00:00:00Z`).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+      : null;
+    const listName = `Spesa per ${plan.title || 'Piano ' + plan.weekStartDate}${dayLabel ? ` — ${dayLabel}` : ''}`;
 
     const [shoppingList] = await db.insert(shoppingLists).values({
       familyId,
@@ -489,7 +526,7 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
       createdBy: req.user!.userId,
     }).returning();
 
-    const shoppingItemValues = Array.from(uniqueIngredients.values()).map((ing) => ({
+    const shoppingItemValues = toBuy.map((ing) => ({
       listId: shoppingList.id,
       name: ing.name,
       quantity: ing.quantity,
@@ -502,8 +539,8 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
 
     broadcastToFamily(familyId, 'shopping:updated', {});
 
-    logger.info('Meal plan converted to shopping list', { planId, ingredientCount: uniqueIngredients.size });
-    res.status(201).json({ shoppingListId: shoppingList.id, ingredientCount: uniqueIngredients.size });
+    logger.info('Meal plan converted to shopping list', { planId, ingredientCount: toBuy.length, skippedFromPantry: skippedFromPantry.length, onlyDate });
+    res.status(201).json({ shoppingListId: shoppingList.id, ingredientCount: toBuy.length, skippedFromPantry });
   } catch (error) {
     logger.error('Convert meal plan to shopping list error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella conversione in lista della spesa" } });

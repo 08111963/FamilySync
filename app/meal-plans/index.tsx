@@ -400,15 +400,34 @@ export default function MealPlansScreen() {
 
   const plans = plansQuery.data || [];
 
-  const handleToShoppingList = async (planId: string) => {
+  // Piano scelto per la conversione in lista spesa: apre il modal
+  // "settimana intera o un giorno?".
+  const [shopChoicePlan, setShopChoicePlan] = useState<MealPlan | null>(null);
+
+  const handleToShoppingList = async (planId: string, date?: string) => {
     if (!currentFamily) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      await apiRequest("POST", `/api/meal-plans/${currentFamily.id}/meal-plans/${planId}/to-shopping-list`);
-      if (Platform.OS === "web") {
-        window.alert("La lista della spesa e stata creata dal piano pasti.");
+      const res = await apiRequest(
+        "POST",
+        `/api/meal-plans/${currentFamily.id}/meal-plans/${planId}/to-shopping-list`,
+        date ? { date } : {},
+      );
+      const data = await res.json().catch(() => ({}));
+      const skipped: string[] = Array.isArray(data?.skippedFromPantry) ? data.skippedFromPantry : [];
+      let msg: string;
+      if (!data?.shoppingListId) {
+        msg = "Nessuna lista creata: hai già tutti gli ingredienti in dispensa.";
       } else {
-        Alert.alert("Lista creata", "La lista della spesa e stata creata dal piano pasti.");
+        msg = `Lista creata con ${data.ingredientCount} prodotti.`;
+      }
+      if (skipped.length > 0) {
+        msg += `\n\nGià in dispensa (non aggiunti): ${skipped.join(", ")}.`;
+      }
+      if (Platform.OS === "web") {
+        window.alert(msg);
+      } else {
+        Alert.alert(data?.shoppingListId ? "Lista creata" : "Tutto in dispensa", msg);
       }
       qc.invalidateQueries({ queryKey: ["/api/shopping", currentFamily.id, "lists"] });
     } catch (e) {
@@ -811,7 +830,10 @@ export default function MealPlansScreen() {
           renderItem={({ item }) => (
             <PlanCard
               plan={item}
-              onToShoppingList={handleToShoppingList}
+              onToShoppingList={(id) => {
+                const p = plans.find((pl) => pl.id === id);
+                if (p) setShopChoicePlan(p);
+              }}
               onDelete={handleDeletePlan}
               onEdit={(id) => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1160,6 +1182,57 @@ export default function MealPlansScreen() {
         </ScrollView>
       )}
 
+      {shopChoicePlan && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setShopChoicePlan(null)}>
+          <Pressable style={styles.shopChoiceBackdrop} onPress={() => setShopChoicePlan(null)}>
+            <Pressable style={[styles.shopChoiceCard, { backgroundColor: colors.surface }]} onPress={() => {}}>
+              <Text style={[styles.shopChoiceTitle, { color: colors.text }]}>Lista della spesa</Text>
+              <Text style={[styles.shopChoiceSubtitle, { color: colors.textSecondary }]}>
+                Per quali giorni vuoi la spesa? Gli ingredienti uguali vengono accorpati e quelli già in dispensa non vengono aggiunti.
+              </Text>
+              <ScrollView style={styles.shopChoiceList}>
+                <Pressable
+                  style={[styles.shopChoiceOption, { borderColor: colors.border }]}
+                  onPress={() => {
+                    const id = shopChoicePlan.id;
+                    setShopChoicePlan(null);
+                    handleToShoppingList(id);
+                  }}
+                  testID="button-shop-week"
+                >
+                  <Ionicons name="calendar" size={18} color={colors.primary} />
+                  <Text style={[styles.shopChoiceOptionText, { color: colors.text }]}>Settimana intera</Text>
+                </Pressable>
+                {Array.from({ length: 7 }, (_, i) => {
+                  const d = new Date(`${shopChoicePlan.weekStartDate}T00:00:00Z`);
+                  d.setUTCDate(d.getUTCDate() + i);
+                  const iso = d.toISOString().slice(0, 10);
+                  const label = d.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+                  return (
+                    <Pressable
+                      key={iso}
+                      style={[styles.shopChoiceOption, { borderColor: colors.border }]}
+                      onPress={() => {
+                        const id = shopChoicePlan.id;
+                        setShopChoicePlan(null);
+                        handleToShoppingList(id, iso);
+                      }}
+                      testID={`button-shop-day-${iso}`}
+                    >
+                      <Ionicons name="cart-outline" size={18} color={colors.secondary} />
+                      <Text style={[styles.shopChoiceOptionText, { color: colors.text }]}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <Pressable style={styles.shopChoiceCancel} onPress={() => setShopChoicePlan(null)}>
+                <Text style={[styles.shopChoiceCancelText, { color: colors.textSecondary }]}>Annulla</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
+
       {showCalendar && (
         <CalendarModal
           value={weekStart}
@@ -1175,6 +1248,56 @@ export default function MealPlansScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  shopChoiceBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  shopChoiceCard: {
+    width: "100%",
+    maxWidth: 420,
+    maxHeight: "80%",
+    borderRadius: 16,
+    padding: 20,
+  },
+  shopChoiceTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  shopChoiceSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  shopChoiceList: {
+    flexGrow: 0,
+  },
+  shopChoiceOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  shopChoiceOptionText: {
+    fontSize: 15,
+    textTransform: "capitalize",
+  },
+  shopChoiceCancel: {
+    alignSelf: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  shopChoiceCancelText: {
+    fontSize: 14,
+    fontWeight: "600",
   },
   header: {
     flexDirection: "row",
