@@ -109,6 +109,10 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [parsing, setParsing] = useState(false);
+  // Destinazione scelta per ogni pasto proposto: "plan" = Piano pasti (default),
+  // "recipe" = cerca la ricetta con l'AI nella sezione Ricette.
+  // Chiave: `${msgIndex}:${mealIndex}`.
+  const [mealDests, setMealDests] = useState<Record<string, "plan" | "recipe">>({});
   const [executing, setExecuting] = useState(false);
   // Guardia SINCRONA contro il doppio tap su "Conferma": lo stato React si
   // propaga solo al render successivo, quindi due tap ravvicinati potrebbero
@@ -245,7 +249,18 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
       }));
     }
 
-    if (actions.meals.length > 0) {
+    // Pasti: l'utente sceglie nel riepilogo se salvarli nel Piano pasti o
+    // cercarli come Ricetta (la ricerca AI parte nella sezione Ricette).
+    // Con una richiesta di piano settimanale la scelta non è disponibile
+    // (una sola navigazione possibile): tutti i pasti vanno nel piano.
+    const planMeals = actions.mealPlanRequest
+      ? actions.meals
+      : actions.meals.filter((_, i) => (mealDests[`${msgIndex}:${i}`] ?? "plan") === "plan");
+    const recipeMeals = actions.mealPlanRequest
+      ? []
+      : actions.meals.filter((_, i) => mealDests[`${msgIndex}:${i}`] === "recipe");
+
+    if (planMeals.length > 0) {
       // Raggruppa i pasti per settimana: un piano per settimana (creato se manca).
       type Plan = { id: string; weekStartDate: string };
       let plans: Plan[] = [];
@@ -254,7 +269,7 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
       } catch {
         // se la lista non si carica, i singoli pasti falliranno con messaggio chiaro
       }
-      for (const m of actions.meals) {
+      for (const m of planMeals) {
         const date = m.date ?? todayIso();
         const week = mondayOfWeek(date);
         const label = `Pasto "${m.title}" (${MEAL_LABELS[m.mealType ?? "dinner"]})`;
@@ -288,6 +303,22 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
     let summary = "";
     if (ok.length > 0) summary += `Fatto! Ho aggiunto:\n• ${ok.join("\n• ")}`;
     if (failed.length > 0) summary += `${summary ? "\n\n" : ""}Non sono riuscito ad aggiungere:\n• ${failed.join("\n• ")}`;
+
+    // Pasti scelti come "Ricetta": apriamo la sezione Ricette con la ricerca AI
+    // già avviata sul primo titolo (una sola navigazione possibile).
+    if (recipeMeals.length > 0) {
+      const q = recipeMeals[0].title.trim().slice(0, 120);
+      summary += `${summary ? "\n\n" : ""}👨‍🍳 Ti porto alle Ricette: cerco subito "${recipeMeals[0].title}" con l'AI.`;
+      if (recipeMeals.length > 1) {
+        summary += `\nGli altri piatti (${recipeMeals.slice(1).map((m) => m.title).join(", ")}) cercali lì con la barra di ricerca.`;
+      }
+      pushMessage({ kind: "text", role: "assistant", text: summary });
+      executingRef.current = false;
+      setExecuting(false);
+      setOpen(false);
+      router.push(`/recipes?assistant=1&q=${encodeURIComponent(q)}` as any);
+      return;
+    }
 
     // Piano pasti settimanale: portiamo l'utente alla schermata Piano Pasti con
     // le preferenze precompilate; la generazione (che consuma la quota AI) parte
@@ -349,9 +380,8 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
     for (const r of actions.rewards) {
       lines.push(`🏆 Premio: ${r.title} — ${r.pointsCost ?? 10} punti${canManageRewards ? "" : " (servono permessi admin/adulto)"}`);
     }
-    for (const m of actions.meals) {
-      lines.push(`🍽️ Pasto: ${m.title} — ${m.date ? formatDateIt(m.date) : "oggi"}, ${MEAL_LABELS[m.mealType ?? "dinner"]}`);
-    }
+    // I pasti sono renderizzati a parte (sotto) perché hanno il selettore
+    // "Piano pasti / Ricetta"; qui teniamo solo le righe semplici.
     if (actions.mealPlanRequest) {
       const notes = actions.mealPlanRequest.notes.trim();
       lines.push(`🍽️ Piano pasti settimanale${notes ? ` (preferenze: ${notes})` : ""} — apro la schermata Piano Pasti`);
@@ -365,6 +395,40 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
         {lines.map((l, i) => (
           <Text key={i} style={[styles.proposalLine, { color: colors.text }]}>{l}</Text>
         ))}
+        {actions.meals.map((m, i) => {
+          const dest = mealDests[`${msgIndex}:${i}`] ?? "plan";
+          const showChoice = !decided && !actions.mealPlanRequest;
+          return (
+            <View key={`meal-${i}`}>
+              <Text style={[styles.proposalLine, { color: colors.text }]}>
+                {dest === "recipe"
+                  ? `👨‍🍳 Ricetta: ${m.title} — la cerco con l'AI nelle Ricette`
+                  : `🍽️ Pasto: ${m.title} — ${m.date ? formatDateIt(m.date) : "oggi"}, ${MEAL_LABELS[m.mealType ?? "dinner"]}`}
+              </Text>
+              {showChoice && (
+                <View style={styles.destRow}>
+                  <Text style={[styles.destLabel, { color: colors.textSecondary }]}>Salva in:</Text>
+                  {(["plan", "recipe"] as const).map((d) => (
+                    <Pressable
+                      key={d}
+                      onPress={() => setMealDests((prev) => ({ ...prev, [`${msgIndex}:${i}`]: d }))}
+                      style={[
+                        styles.destBtn,
+                        { borderColor: dest === d ? colors.primary : colors.border },
+                        dest === d && { backgroundColor: colors.primary },
+                      ]}
+                      testID={`assistant-meal-dest-${d}-${i}`}
+                    >
+                      <Text style={{ color: dest === d ? "#fff" : colors.textSecondary, fontWeight: "600", fontSize: 13 }}>
+                        {d === "plan" ? "Piano pasti" : "Ricetta"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          );
+        })}
         {!decided && (
           <View style={styles.proposalButtons}>
             <Pressable
@@ -544,6 +608,21 @@ const styles = StyleSheet.create({
   assistantBubble: { alignSelf: "flex-start", borderWidth: StyleSheet.hairlineWidth, borderBottomLeftRadius: 4 },
   proposalTitle: { fontWeight: "700", marginBottom: 6 },
   proposalLine: { lineHeight: 21 },
+  destRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 6,
+    marginLeft: 4,
+  },
+  destLabel: { fontSize: 13 },
+  destBtn: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
   proposalButtons: { flexDirection: "row", gap: 10, marginTop: 12 },
   proposalBtn: {
     flex: 1,

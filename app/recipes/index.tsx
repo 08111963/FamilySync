@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -106,6 +106,20 @@ export default function RecipesScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [savedQuery, setSavedQuery] = useState("");
   const [searching, setSearching] = useState(false);
+
+  // Arrivo dall'assistente AI ("Salva in: Ricetta"): avvia subito la ricerca
+  // AI con il piatto richiesto. Il ref evita ripartenze a ogni re-render.
+  const params = useLocalSearchParams<{ assistant?: string; q?: string }>();
+  const assistantSearchDone = useRef(false);
+  useEffect(() => {
+    const q = (typeof params.q === "string" ? params.q : "").trim();
+    if (params.assistant === "1" && q.length >= 2 && currentFamily && !assistantSearchDone.current) {
+      assistantSearchDone.current = true;
+      setSearchQuery(q);
+      void runAiSearch(q);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.assistant, params.q, currentFamily?.id]);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
