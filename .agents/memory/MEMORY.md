@@ -32,6 +32,7 @@
 - [Premi riscattabili](rewards-redemptions.md) — riscatto punti con UPDATE atomico (WHERE points>=cost) in transazione; delete premio soft; gestione solo admin/adult.
 - [Dispensa (pantry)](pantry-inventory.md) — dedup atomico ON CONFLICT su (family,normalized_name,COALESCE(unit,'')); 23505→409; AI spesa/ricette usano la dispensa; migrazioni 0009+0010 da portare in prod.
 - [Budget familiare](family-budget.md) — bollette pagate sommate read-only nel summary (mai doppie); memberId mai dal client; tetto budget upsert atomico; quota AI budget-insights.
+- [Consolidamento lista spesa](shopping-list-consolidation.md) — dedup su nome esatto non basta per ingredienti AI: chiave canonica conservativa, somma per unità compatibili, mai scartare quantità; skip dispensa con avviso.
 - [Shopping items quantity numerica](shopping-items-quantity.md) — quantity è NUMERIC + unit VARCHAR(10): mai concatenare "200 g"; dedup con normalizeItemName ricalcolato, non col normalizedName storico.
 - [WebSocket invalidation storm](websocket-invalidation-storm.md) — broadcast batch = UN solo messaggio; invalidazioni client debounced, altrimenti il rate limiter /api svuota le liste (429).
 - [AuthGate redirect loops (React #185)](authgate-redirect-loops.md) — i rami di redirect devono essere mutuamente esclusivi (verify-email prima di onboarding); callback AuthContext stabili via userRef.
