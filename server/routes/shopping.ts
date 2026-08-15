@@ -113,9 +113,13 @@ function queueShoppingItemPush(familyId: string, authorId: string, itemName: str
   if (existing.names.length < PUSH_BATCH_MAX_NAMES) existing.names.push(itemName);
   else existing.extraCount += 1;
   clearTimeout(existing.timer);
-  const elapsed = Date.now() - existing.firstAt;
-  const wait = Math.max(1_000, Math.min(PUSH_BATCH_QUIET_MS, PUSH_BATCH_MAX_WAIT_MS - elapsed));
-  existing.timer = setTimeout(flush, wait);
+  const remaining = PUSH_BATCH_MAX_WAIT_MS - (Date.now() - existing.firstAt);
+  if (remaining <= 0) {
+    // Tetto massimo raggiunto: la notifica parte subito, senza rimandare oltre.
+    flush();
+    return;
+  }
+  existing.timer = setTimeout(flush, Math.min(PUSH_BATCH_QUIET_MS, remaining));
 
 }
 
