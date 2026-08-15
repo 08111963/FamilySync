@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, TextInput, Platform } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, TextInput, Platform, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -31,7 +31,21 @@ export default function ShoppingScreen() {
 
   const handleDeleteList = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    deleteShoppingList(id);
+    // Conferma obbligatoria: un tocco sul cestino cancellava l'intera lista
+    // con tutti i prodotti, senza possibilità di recupero (successo davvero
+    // in famiglia: prodotti "spariti" dopo un tocco accidentale).
+    const list = data.shoppingLists.find((l) => l.id === id);
+    const total = list?.items.length ?? 0;
+    const msg = `Eliminare la lista "${list?.name ?? "senza nome"}"${total > 0 ? ` con ${total} prodott${total !== 1 ? "i" : "o"}` : ""}? Non si può annullare.`;
+    // Su web Alert.alert non mostra nulla: usiamo window.confirm.
+    if (Platform.OS === "web") {
+      if (window.confirm(msg)) deleteShoppingList(id);
+      return;
+    }
+    Alert.alert("Elimina lista", msg, [
+      { text: "Annulla", style: "cancel" },
+      { text: "Elimina", style: "destructive", onPress: () => deleteShoppingList(id) },
+    ]);
   };
 
   const getCompletedCount = (listId: string) => {
