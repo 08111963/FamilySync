@@ -131,6 +131,23 @@ describe("eventToGooglePayload", () => {
     const p = eventToGooglePayload(makeEvent({ time: "18:30", endTime: "x" })) as any;
     assert.deepEqual(p.end, { dateTime: "2026-08-10T19:30:00", timeZone: "Europe/Rome" });
   });
+
+  // Promemoria: mai i default di Google (per gli all-day suonavano la sera
+  // prima, es. 23:30). Con orario: popup 1 ora prima; all-day: nessuno.
+  test("timed event gets a 1-hour popup reminder (no Google defaults)", () => {
+    const p = eventToGooglePayload(makeEvent({ time: "15:00" })) as any;
+    assert.deepEqual(p.reminders, { useDefault: false, overrides: [{ method: "popup", minutes: 60 }] });
+  });
+
+  test("all-day event gets no Google reminder (no 23:30 evening-before)", () => {
+    const p = eventToGooglePayload(makeEvent({ time: null, allDay: true })) as any;
+    assert.deepEqual(p.reminders, { useDefault: false, overrides: [] });
+  });
+
+  test("unrecoverable time (all-day fallback) also disables Google reminders", () => {
+    const p = eventToGooglePayload(makeEvent({ time: "boh", endTime: null })) as any;
+    assert.deepEqual(p.reminders, { useDefault: false, overrides: [] });
+  });
 });
 
 // ---------------------------------------------------------------------------

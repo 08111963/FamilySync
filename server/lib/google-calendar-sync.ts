@@ -380,6 +380,14 @@ export function eventToGooglePayload(ev: CalendarEvent): Record<string, unknown>
     // Riferimento all'evento FamilySync: utile per riconoscere gli eventi
     // creati dall'app anche a mano dentro Google Calendar.
     extendedProperties: { private: { familySyncEventId: ev.id } },
+    // Promemoria controllati da noi, non dai default del calendario Google:
+    // senza questo, gli eventi "tutto il giorno" ereditavano il promemoria
+    // automatico di Google che suona la sera prima (es. 23:30). Eventi con
+    // orario: avviso 1 ora prima. Eventi tutto il giorno: nessun promemoria
+    // Google (ci pensano già le notifiche FamilySync).
+    reminders: ev.allDay || !normalizeTimeOfDay(ev.time)
+      ? { useDefault: false, overrides: [] }
+      : { useDefault: false, overrides: [{ method: 'popup', minutes: 60 }] },
   };
   // Normalizzazione difensiva: in DB esistono orari malformati ("15" senza
   // minuti) salvati prima della validazione — un dateTime tipo "…T15:00"
