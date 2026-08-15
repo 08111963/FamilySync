@@ -58,6 +58,30 @@ async function computeRunningVersion(): Promise<string | null> {
   }
 }
 
+const AUTO_RELOAD_KEY = "familysync:web-auto-reloaded-for";
+
+/**
+ * Ricarica automaticamente la pagina per la versione `serverVersion`, ma al
+ * massimo UNA volta per versione: se l'abbiamo già fatto e la versione è
+ * ancora diversa, restituisce false e si torna al banner manuale.
+ */
+function tryAutoReload(serverVersion: string): boolean {
+  try {
+    if (typeof window === "undefined" || typeof sessionStorage === "undefined") return false;
+    if (sessionStorage.getItem(AUTO_RELOAD_KEY) === serverVersion) return false;
+    sessionStorage.setItem(AUTO_RELOAD_KEY, serverVersion);
+    try {
+      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistration().then((reg) => reg?.update()).catch(() => {});
+      }
+    } catch {}
+    window.location.reload();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Banner (solo web/PWA) che avvisa quando il server ha pubblicato una build
  * più recente di quella in esecuzione. Alla prima apertura memorizza la
@@ -113,6 +137,12 @@ export function WebUpdateBanner() {
       }
       if (cancelled || !info.version) return;
       if (info.version !== runningVersion.current) {
+        // Aggiornamento AUTOMATICO: la pagina si ricarica da sola una volta
+        // sola per ogni versione del server (memoria in sessionStorage).
+        // Se dopo il ricaricamento la versione risulta ancora diversa
+        // (es. cache ostinata), niente loop infinito: compare il banner
+        // con il pulsante "Aggiorna" come prima.
+        if (tryAutoReload(info.version)) return;
         setUpdateAvailable(true);
       }
     };
