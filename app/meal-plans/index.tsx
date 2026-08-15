@@ -251,11 +251,13 @@ function getMealTypeColor(mealType: string, primary: string, secondary: string):
 
 function PlanCard({
   plan,
+  onOpen,
   onToShoppingList,
   onDelete,
   onEdit,
 }: {
   plan: MealPlan;
+  onOpen: (id: string) => void;
   onToShoppingList: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
@@ -264,15 +266,19 @@ function PlanCard({
   return (
     <View style={[styles.planCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.planHeader}>
-        <View style={styles.planInfo}>
+        <Pressable
+          onPress={() => onOpen(plan.id)}
+          style={({ pressed }) => [styles.planInfo, { opacity: pressed ? 0.6 : 1 }]}
+          testID={`button-view-plan-${plan.id}`}
+        >
           <Text style={[styles.planTitle, { color: colors.text }]}>{plan.title}</Text>
           <Text style={[styles.planDate, { color: colors.textSecondary }]}>
             {formatWeekDate(plan.weekStartDate)}
           </Text>
           <Text style={[styles.planCount, { color: colors.textSecondary }]}>
-            {plan.itemCount ?? plan.items?.length ?? 0} pasti
+            {(plan.itemCount ?? plan.items?.length ?? 0) + " pasti · tocca per vedere"}
           </Text>
-        </View>
+        </Pressable>
         <View style={styles.planActions}>
           <Pressable
             onPress={() => onEdit(plan.id)}
@@ -830,6 +836,10 @@ export default function MealPlansScreen() {
           renderItem={({ item }) => (
             <PlanCard
               plan={item}
+              onOpen={(id) => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push({ pathname: "/meal-plans/view" as any, params: { planId: id } });
+              }}
               onToShoppingList={(id) => {
                 const p = plans.find((pl) => pl.id === id);
                 if (p) setShopChoicePlan(p);
