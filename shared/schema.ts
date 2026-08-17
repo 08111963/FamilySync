@@ -268,6 +268,10 @@ export const chores = pgTable("chores", {
   estimatedMinutes: integer("estimated_minutes"),
   assignedTo: uuid("assigned_to").references(() => familyMembers.id, { onDelete: "set null" }),
   dueDate: timestamp("due_date"),
+  // Orario facoltativo della scadenza ("HH:MM"): se presente, l'evento
+  // calendario collegato ha quell'orario (e quindi anche il promemoria
+  // Google Calendar 1 ora prima). Ha senso solo insieme a dueDate.
+  dueTime: varchar("due_time", { length: 5 }),
   isCompleted: boolean("is_completed").default(false),
   completedAt: timestamp("completed_at"),
   completedBy: uuid("completed_by").references(() => users.id, { onDelete: "set null" }),
@@ -278,7 +282,9 @@ export const chores = pgTable("chores", {
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  check("chores_due_time_format_check", sql`${table.dueTime} IS NULL OR ${table.dueTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+]);
 
 export type Chore = typeof chores.$inferSelect;
 

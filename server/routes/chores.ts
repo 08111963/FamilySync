@@ -13,6 +13,9 @@ import { getBlockedUserIds, getBlockRelatedUserIds, applyBlockedFilter } from '.
 import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 import { nextDueDate, parseRecurrenceRule } from '../../shared/chore-recurrence';
+import { syncCreatedEvents, syncUpdatedEvent, syncDeletedEvents, getLinksForEvents } from '../lib/google-calendar-sync';
+
+const TIME_HHMM_REGEX = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 const router = Router();
 
@@ -24,6 +27,7 @@ const createChoreSchema = z.object({
   estimatedMinutes: z.number().int().min(0).optional(),
   assignedTo: z.string().optional(),
   dueDate: z.string().optional(),
+  dueTime: z.string().regex(TIME_HHMM_REGEX, "Orario non valido (usa HH:MM)").optional(),
   recurrenceRule: z.string()
     .refine((v) => parseRecurrenceRule(v) !== null, "Regola di ricorrenza non valida")
     .optional(),
@@ -37,6 +41,7 @@ const updateChoreSchema = z.object({
   estimatedMinutes: z.number().int().min(0).nullable().optional(),
   assignedTo: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
+  dueTime: z.string().regex(TIME_HHMM_REGEX, "Orario non valido (usa HH:MM)").nullable().optional(),
   recurrenceRule: z.string()
     .refine((v) => parseRecurrenceRule(v) !== null, "Regola di ricorrenza non valida")
     .nullable().optional(),
@@ -73,9 +78,9 @@ function choreEventFields(chore: typeof chores.$inferSelect) {
     title: `Faccenda: ${chore.title}`,
     description: parts.join('\n'),
     date: chore.dueDate!.toISOString().split('T')[0]!,
-    time: null as string | null,
+    time: (chore.dueTime ?? null) as string | null,
     endTime: null as string | null,
-    allDay: true,
+    allDay: !chore.dueTime,
     category: 'other' as const,
     color: CHORE_EVENT_COLOR,
     memberId: chore.assignedTo,
@@ -116,6 +121,9 @@ async function createChoreCalendarEvent(
       return current ?? chore;
     }
     broadcastToFamily(chore.familyId, 'event_created', event);
+    // Sync diretta Google Calendar (best-effort, in background): così le
+    // faccende con orario ricevono anche il promemoria Google 1 ora prima.
+    void syncCreatedEvents(chore.familyId, [event], userId);
     return updated;
   } catch (error) {
     logger.warn('Chore calendar sync (create) failed', { choreId: chore.id, error: String(error) });
@@ -132,7 +140,10 @@ async function updateChoreCalendarEvent(chore: typeof chores.$inferSelect): Prom
       .set({ ...choreEventFields(chore), updatedAt: new Date() })
       .where(and(eq(calendarEvents.id, chore.calendarEventId), eq(calendarEvents.familyId, chore.familyId)))
       .returning();
-    if (event) broadcastToFamily(chore.familyId, 'event_updated', event);
+    if (event) {
+      broadcastToFamily(chore.familyId, 'event_updated', event);
+      void syncUpdatedEvent(event);
+    }
   } catch (error) {
     logger.warn('Chore calendar sync (update) failed', { choreId: chore.id, error: String(error) });
   }
@@ -146,11 +157,14 @@ async function deleteChoreCalendarEvent(
 ): Promise<void> {
   if (!calendarEventId) return;
   try {
+    // I link Google vanno letti PRIMA della delete (cascade sul DB).
+    const gcalLinks = await getLinksForEvents([calendarEventId]);
     await db
       .delete(calendarEvents)
       .where(and(eq(calendarEvents.id, calendarEventId), eq(calendarEvents.familyId, familyId)));
     await db.update(chores).set({ calendarEventId: null }).where(eq(chores.id, choreId));
     broadcastToFamily(familyId, 'event_deleted', { eventId: calendarEventId });
+    void syncDeletedEvents(gcalLinks);
   } catch (error) {
     logger.warn('Chore calendar sync (delete) failed', { choreId, error: String(error) });
   }
@@ -187,7 +201,9 @@ async function notifyFamilyChoreAction(
       .where(eq(users.id, actorUserId))
       .limit(1);
     const who = author?.name ?? 'Un familiare';
-    const due = chore.dueDate ? ` (scadenza ${chore.dueDate.toISOString().slice(0, 10)})` : '';
+    const due = chore.dueDate
+      ? ` (scadenza ${chore.dueDate.toISOString().slice(0, 10)}${chore.dueTime ? ` alle ${chore.dueTime}` : ''})`
+      : '';
 
     await sendPushToFamily(
       familyId,
@@ -234,7 +250,9 @@ async function notifyChoreAssignee(
     const blockRelated = await getBlockRelatedUserIds(actorUserId, familyId);
     if (blockRelated.includes(member.userId)) return;
 
-    const due = chore.dueDate ? ` · scadenza ${chore.dueDate.toISOString().slice(0, 10)}` : '';
+    const due = chore.dueDate
+      ? ` · scadenza ${chore.dueDate.toISOString().slice(0, 10)}${chore.dueTime ? ` alle ${chore.dueTime}` : ''}`
+      : '';
     await sendPushToUser(member.userId, {
       title: 'Nuova faccenda assegnata',
       body: `${chore.title}${due}`,
@@ -307,6 +325,8 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       estimatedMinutes: parsed.data.estimatedMinutes ?? null,
       assignedTo: parsed.data.assignedTo,
       dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
+      // L'orario ha senso solo insieme alla scadenza.
+      dueTime: parsed.data.dueDate ? (parsed.data.dueTime ?? null) : null,
       recurrenceRule: parsed.data.recurrenceRule,
       createdBy: req.user!.userId,
     }).returning();
@@ -345,6 +365,10 @@ router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (re
     const updateData: Record<string, any> = { ...parsed.data, updatedAt: new Date() };
     if (updateData.dueDate) {
       updateData.dueDate = new Date(updateData.dueDate);
+    }
+    // Scadenza rimossa → anche l'orario perde significato.
+    if (parsed.data.dueDate === null) {
+      updateData.dueTime = null;
     }
 
     let [chore] = await db.update(chores)
@@ -450,6 +474,7 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
             estimatedMinutes: chore.estimatedMinutes,
             assignedTo: chore.assignedTo,
             dueDate: new Date(nextIso),
+            dueTime: chore.dueTime,
             recurrenceRule: chore.recurrenceRule,
             createdBy: chore.createdBy,
           }).returning();

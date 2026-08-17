@@ -285,6 +285,7 @@ export default function ChoresScreen() {
                               ]}
                             >
                               {dueDate}
+                              {chore.dueTime ? ` · ${chore.dueTime}` : ""}
                             </Text>
                           </View>
                         )}

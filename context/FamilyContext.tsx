@@ -91,6 +91,7 @@ interface Chore {
   estimatedMinutes?: number;
   assignedTo?: string;
   dueDate?: string;
+  dueTime?: string | null;
   isCompleted: boolean;
   completedAt?: string;
   completedBy?: string;

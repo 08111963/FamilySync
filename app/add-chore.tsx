@@ -52,6 +52,7 @@ export default function AddChoreScreen() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
   const [points, setPoints] = useState(10);
   const [difficulty, setDifficulty] = useState<number>(3);
   const [estimatedMinutes, setEstimatedMinutes] = useState("");
@@ -87,6 +88,7 @@ export default function AddChoreScreen() {
     setTitle(editingChore.title || "");
     setDescription(editingChore.description || "");
     setDueDate(editingChore.dueDate || "");
+    setDueTime(editingChore.dueTime || "");
     if (typeof editingChore.points === "number") setPoints(editingChore.points);
     if (typeof editingChore.difficulty === "number") setDifficulty(editingChore.difficulty);
     setEstimatedMinutes(
@@ -115,6 +117,18 @@ export default function AddChoreScreen() {
   const showError = (msg: string) => {
     if (Platform.OS === "web") alert(msg);
     else Alert.alert("Errore", msg);
+  };
+
+  // Accetta "16:30", "16.30", "16" → "HH:MM"; stringa vuota → "" ; invalido → null.
+  const normalizeTimeInput = (raw: string): string | null => {
+    const t = raw.trim();
+    if (!t) return "";
+    const m = /^(\d{1,2})(?:[:.](\d{1,2}))?$/.exec(t);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const min = m[2] != null ? Number(m[2]) : 0;
+    if (h > 23 || min > 59) return null;
+    return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
   };
 
   const isRealIso = (iso: string) => {
@@ -192,6 +206,15 @@ export default function AddChoreScreen() {
       showError("La scadenza non è una data valida: usa il formato AAAA-MM-GG.");
       return;
     }
+    const normalizedTime = normalizeTimeInput(dueTime);
+    if (dueTime.trim() && normalizedTime === null) {
+      showError("L'orario non è valido: usa il formato HH:MM (es. 16:30).");
+      return;
+    }
+    if (normalizedTime && !dueDate.trim()) {
+      showError("Per impostare un orario serve anche la data di scadenza.");
+      return;
+    }
 
     try {
       const builtRule = isRecurring
@@ -212,6 +235,7 @@ export default function AddChoreScreen() {
           description: description.trim(),
           assignedTo: selectedMember || null,
           dueDate: dueDate.trim() || null,
+          dueTime: normalizedTime,
           points,
           difficulty,
           estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : null,
@@ -223,6 +247,7 @@ export default function AddChoreScreen() {
           description: description.trim() || undefined,
           assignedTo: selectedMember || undefined,
           dueDate: dueDate.trim() || undefined,
+          dueTime: normalizedTime || undefined,
           points,
           difficulty,
           estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : undefined,
@@ -419,6 +444,15 @@ export default function AddChoreScreen() {
             placeholder="AAAA-MM-GG"
             value={dueDate}
             onChangeText={setDueDate}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Input
+            label="Orario scadenza (opzionale)"
+            placeholder="HH:MM (es. 16:30)"
+            value={dueTime}
+            onChangeText={setDueTime}
           />
         </View>
 

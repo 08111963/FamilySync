@@ -40,6 +40,7 @@ export interface Chore {
   description?: string;
   assignedTo: string;
   dueDate?: string;
+  dueTime?: string | null;
   points: number;
   difficulty?: string;
   estimatedMinutes?: number;
