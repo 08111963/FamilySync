@@ -77,23 +77,46 @@ type PendingShoppingPush = {
   extraCount: number;
   firstAt: number;
   timer: ReturnType<typeof setTimeout>;
+  /** Nome della lista se è stata appena creata dallo stesso autore: la
+   *  notifica dirà "ha creato la nuova lista della spesa …". */
+  newListName: string | null;
 };
 const pendingShoppingPushes = new Map<string, PendingShoppingPush>();
+
+// Liste appena create: (autore+lista) → nome, ricordate per pochi minuti così
+// il primo giro di prodotti produce la notifica "nuova lista" invece di
+// "ha aggiunto prodotti". Nessuna notifica per una lista creata vuota.
+const NEW_LIST_TTL_MS = 10 * 60 * 1000;
+const recentNewLists = new Map<string, { name: string; at: number }>();
+
+function markNewShoppingList(authorId: string, listId: string, name: string): void {
+  // Pulizia voci scadute (la mappa resta minuscola).
+  const now = Date.now();
+  for (const [k, v] of recentNewLists) {
+    if (now - v.at > NEW_LIST_TTL_MS) recentNewLists.delete(k);
+  }
+  recentNewLists.set(`${authorId}:${listId}`, { name, at: now });
+}
 
 async function flushShoppingItemPush(key: string): Promise<void> {
   const pending = pendingShoppingPushes.get(key);
   if (!pending) return;
   pendingShoppingPushes.delete(key);
   clearTimeout(pending.timer);
-  const { familyId, authorId, names, extraCount } = pending;
+  const { familyId, authorId, names, extraCount, newListName } = pending;
   const excluded = new Set(await getBlockRelatedUserIds(authorId, familyId));
   excluded.add(authorId);
   const [author] = await db.select({ name: users.name }).from(users).where(eq(users.id, authorId)).limit(1);
   const who = author?.name ?? 'Un familiare';
   const total = names.length + extraCount;
-  const body = total === 1
-    ? `${who} ha aggiunto "${names[0]}" alla spesa`
-    : `${who} ha aggiunto ${total} prodotti alla spesa: ${names.join(', ')}${extraCount > 0 ? '…' : ''}`;
+  let body: string;
+  if (newListName) {
+    body = `${who} ha creato la nuova lista della spesa "${newListName}" con ${total} prodott${total === 1 ? 'o' : 'i'}: ${names.join(', ')}${extraCount > 0 ? '…' : ''}`;
+  } else if (total === 1) {
+    body = `${who} ha aggiunto "${names[0]}" alla spesa`;
+  } else {
+    body = `${who} ha aggiunto ${total} prodotti alla spesa: ${names.join(', ')}${extraCount > 0 ? '…' : ''}`;
+  }
   await sendPushToFamily(familyId, {
     title: 'Lista della spesa',
     body,
@@ -101,13 +124,23 @@ async function flushShoppingItemPush(key: string): Promise<void> {
   }, { excludeUserIds: excluded });
 }
 
-function queueShoppingItemPush(familyId: string, authorId: string, itemName: string): void {
-  const key = `${familyId}:${authorId}`;
+function queueShoppingItemPush(familyId: string, authorId: string, listId: string, itemName: string): void {
+  const key = `${familyId}:${authorId}:${listId}`;
   const existing = pendingShoppingPushes.get(key);
   const flush = () => { flushShoppingItemPush(key).catch((error) => logger.error('Shopping push flush error', { error: String(error) })); };
   if (!existing) {
+    const newList = recentNewLists.get(`${authorId}:${listId}`);
+    const isFreshNewList = !!newList && Date.now() - newList.at <= NEW_LIST_TTL_MS;
     const timer = setTimeout(flush, PUSH_BATCH_QUIET_MS);
-    pendingShoppingPushes.set(key, { familyId, authorId, names: [itemName], extraCount: 0, firstAt: Date.now(), timer });
+    pendingShoppingPushes.set(key, {
+      familyId,
+      authorId,
+      names: [itemName],
+      extraCount: 0,
+      firstAt: Date.now(),
+      timer,
+      newListName: isFreshNewList ? newList!.name : null,
+    });
     return;
   }
   if (existing.names.length < PUSH_BATCH_MAX_NAMES) existing.names.push(itemName);
@@ -186,6 +219,9 @@ router.post('/:familyId/lists', authenticate, requireFamilyMember(), async (req:
       createdBy: req.user!.userId,
     }).returning();
 
+    // La lista appena creata viene ricordata: la prima "raffica" di prodotti
+    // produrrà UNA notifica "ha creato la nuova lista della spesa …".
+    markNewShoppingList(req.user!.userId, list.id, list.name);
     broadcastToFamily(familyId, 'shopping_list_created', { ...list, items: [] });
     res.status(201).json({ ...list, items: [] });
   } catch (error) {
@@ -261,7 +297,7 @@ router.post('/:familyId/lists/:listId/items', authenticate, requireFamilyMember(
     // Push agli altri membri (esclusi autore e utenti in blocco reciproco),
     // raggruppato: chi aggiunge più prodotti di fila genera UNA sola notifica
     // con l'elenco, non una notifica per prodotto.
-    queueShoppingItemPush(familyId, req.user!.userId, item.name);
+    queueShoppingItemPush(familyId, req.user!.userId, listId, item.name);
 
     res.status(201).json(item);
   } catch (error) {
