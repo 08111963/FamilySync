@@ -157,19 +157,22 @@ async function deleteChoreCalendarEvent(
 }
 
 /**
- * Push a tutta la famiglia quando viene creata una nuova faccenda.
- * Esclusi: l'autore, gli utenti in blocco reciproco con l'autore e
- * l'assegnatario (che riceve già la push dedicata "assegnata a te").
+ * Push a tutta la famiglia per un'azione su una faccenda (creata, modificata,
+ * completata). Esclusi: l'autore dell'azione, gli utenti in blocco reciproco
+ * con l'autore e (opzionale) l'assegnatario quando riceve già la push
+ * dedicata "assegnata a te".
  */
-async function notifyFamilyChoreCreated(
+async function notifyFamilyChoreAction(
   familyId: string,
   chore: typeof chores.$inferSelect,
-  actorUserId: string
+  actorUserId: string,
+  action: 'created' | 'updated' | 'completed',
+  opts?: { excludeAssignee?: boolean }
 ) {
   try {
     const excluded = new Set(await getBlockRelatedUserIds(actorUserId, familyId));
     excluded.add(actorUserId);
-    if (chore.assignedTo) {
+    if (opts?.excludeAssignee && chore.assignedTo) {
       const [assignee] = await db
         .select({ userId: familyMembers.userId })
         .from(familyMembers)
@@ -189,14 +192,20 @@ async function notifyFamilyChoreCreated(
     await sendPushToFamily(
       familyId,
       {
-        title: 'Nuova faccenda',
-        body: `${who} ha creato la faccenda "${chore.title}"${due}`,
+        title:
+          action === 'created' ? 'Nuova faccenda'
+          : action === 'updated' ? 'Faccenda modificata'
+          : 'Faccenda completata',
+        body:
+          action === 'created' ? `${who} ha creato la faccenda "${chore.title}"${due}`
+          : action === 'updated' ? `${who} ha modificato la faccenda "${chore.title}"${due}`
+          : `${who} ha completato la faccenda "${chore.title}" (+${chore.points} punti)`,
         data: { route: '/(tabs)/chores' },
       },
       { excludeUserIds: excluded }
     );
   } catch (error) {
-    logger.error('notifyFamilyChoreCreated error', { error: String(error) });
+    logger.error('notifyFamilyChoreAction error', { error: String(error), action });
   }
 }
 
@@ -307,7 +316,7 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
 
     broadcastToFamily(familyId, 'chore_created', chore);
     void notifyChoreAssignee(familyId, chore, req.user!.userId);
-    void notifyFamilyChoreCreated(familyId, chore, req.user!.userId);
+    void notifyFamilyChoreAction(familyId, chore, req.user!.userId, 'created', { excludeAssignee: true });
     res.status(201).json(chore);
   } catch (error) {
     logger.error('Create chore error', { error: String(error) });
@@ -358,9 +367,11 @@ router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (re
     }
 
     broadcastToFamily(familyId, 'chore_updated', chore);
-    if (parsed.data.assignedTo && !chore.isCompleted) {
+    const assigneeNotified = !!parsed.data.assignedTo && !chore.isCompleted;
+    if (assigneeNotified) {
       void notifyChoreAssignee(familyId, chore, req.user!.userId);
     }
+    void notifyFamilyChoreAction(familyId, chore, req.user!.userId, 'updated', { excludeAssignee: assigneeNotified });
     res.json(chore);
   } catch (error) {
     logger.error('Update chore error', { error: String(error) });
@@ -451,6 +462,7 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
     }
 
     broadcastToFamily(familyId, 'chore_completed', chore);
+    void notifyFamilyChoreAction(familyId, chore, req.user!.userId, 'completed');
     res.json({ ...chore, nextChore });
   } catch (error) {
     logger.error('Complete chore error', { error: String(error) });
