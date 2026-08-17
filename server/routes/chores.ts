@@ -3,12 +3,12 @@ import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
-import { chores, familyMembers, calendarEvents } from '../../shared/schema';
+import { chores, familyMembers, calendarEvents, users } from '../../shared/schema';
 import { eq, and, sql, isNull, lt } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
-import { sendPushToUser } from '../lib/push';
+import { sendPushToUser, sendPushToFamily } from '../lib/push';
 import { getBlockedUserIds, getBlockRelatedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
 import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
@@ -157,6 +157,50 @@ async function deleteChoreCalendarEvent(
 }
 
 /**
+ * Push a tutta la famiglia quando viene creata una nuova faccenda.
+ * Esclusi: l'autore, gli utenti in blocco reciproco con l'autore e
+ * l'assegnatario (che riceve già la push dedicata "assegnata a te").
+ */
+async function notifyFamilyChoreCreated(
+  familyId: string,
+  chore: typeof chores.$inferSelect,
+  actorUserId: string
+) {
+  try {
+    const excluded = new Set(await getBlockRelatedUserIds(actorUserId, familyId));
+    excluded.add(actorUserId);
+    if (chore.assignedTo) {
+      const [assignee] = await db
+        .select({ userId: familyMembers.userId })
+        .from(familyMembers)
+        .where(and(eq(familyMembers.id, chore.assignedTo), eq(familyMembers.familyId, familyId)))
+        .limit(1);
+      if (assignee?.userId) excluded.add(assignee.userId);
+    }
+
+    const [author] = await db
+      .select({ name: users.name })
+      .from(users)
+      .where(eq(users.id, actorUserId))
+      .limit(1);
+    const who = author?.name ?? 'Un familiare';
+    const due = chore.dueDate ? ` (scadenza ${chore.dueDate.toISOString().slice(0, 10)})` : '';
+
+    await sendPushToFamily(
+      familyId,
+      {
+        title: 'Nuova faccenda',
+        body: `${who} ha creato la faccenda "${chore.title}"${due}`,
+        data: { route: '/(tabs)/chores' },
+      },
+      { excludeUserIds: excluded }
+    );
+  } catch (error) {
+    logger.error('notifyFamilyChoreCreated error', { error: String(error) });
+  }
+}
+
+/**
  * Push all'assegnatario di una faccenda (se diverso da chi ha fatto l'azione).
  * assignedTo è l'id di familyMembers: viene mappato allo userId.
  */
@@ -263,6 +307,7 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
 
     broadcastToFamily(familyId, 'chore_created', chore);
     void notifyChoreAssignee(familyId, chore, req.user!.userId);
+    void notifyFamilyChoreCreated(familyId, chore, req.user!.userId);
     res.status(201).json(chore);
   } catch (error) {
     logger.error('Create chore error', { error: String(error) });

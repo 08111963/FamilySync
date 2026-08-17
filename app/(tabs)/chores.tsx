@@ -42,6 +42,32 @@ export default function ChoresScreen() {
     return true;
   });
 
+  // Suddivisione per giornate: In ritardo / Oggi / Domani / date future /
+  // Senza scadenza. Così la pagina non diventa un'unica lunga lista.
+  const todayIso = new Date().toISOString().split("T")[0];
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowIso = tomorrow.toISOString().split("T")[0];
+
+  const sectionLabelFor = (chore: (typeof filteredChores)[number]): { key: string; label: string; order: number } => {
+    const d = chore.dueDate;
+    if (!d) return { key: "none", label: "Senza scadenza", order: 4 };
+    if (d < todayIso && !chore.isCompleted) return { key: "overdue", label: "In ritardo", order: 0 };
+    if (d === todayIso) return { key: d, label: "Oggi", order: 1 };
+    if (d === tomorrowIso) return { key: d, label: "Domani", order: 2 };
+    const label = new Date(d).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+    return { key: d, label: label.charAt(0).toUpperCase() + label.slice(1), order: 3 };
+  };
+
+  const sections: { key: string; label: string; order: number; chores: typeof filteredChores }[] = [];
+  for (const chore of filteredChores) {
+    const s = sectionLabelFor(chore);
+    const existing = sections.find((x) => x.key === s.key && x.label === s.label);
+    if (existing) existing.chores.push(chore);
+    else sections.push({ ...s, chores: [chore] });
+  }
+  sections.sort((a, b) => (a.order !== b.order ? a.order - b.order : a.key.localeCompare(b.key)));
+
   const getMember = (memberId: string | null | undefined) => {
     return data.members.find((m) => m.id === memberId);
   };
@@ -167,7 +193,22 @@ export default function ChoresScreen() {
           />
         ) : (
           <View style={styles.chores}>
-            {filteredChores.map((chore) => {
+            {sections.map((section) => (
+              <View key={`${section.key}-${section.label}`}>
+                <View style={styles.sectionHeader}>
+                  <Text
+                    style={[
+                      styles.sectionTitle,
+                      { color: section.key === "overdue" ? colors.error : colors.textSecondary },
+                    ]}
+                  >
+                    {section.label}
+                  </Text>
+                  <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>
+                    {section.chores.length}
+                  </Text>
+                </View>
+                {section.chores.map((chore) => {
               const member = getMember(chore.assignedTo);
               const dueDate = formatDueDate(chore.dueDate);
               const overdue = isOverdue(chore.dueDate) && !chore.isCompleted;
@@ -278,7 +319,9 @@ export default function ChoresScreen() {
                   </View>
                 </Card>
               );
-            })}
+                })}
+              </View>
+            ))}
           </View>
         )}
       </ScrollView>
@@ -289,6 +332,24 @@ export default function ChoresScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  sectionCount: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
   },
   header: {
     flexDirection: "row",
