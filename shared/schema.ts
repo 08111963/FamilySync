@@ -284,6 +284,7 @@ export const chores = pgTable("chores", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   check("chores_due_time_format_check", sql`${table.dueTime} IS NULL OR ${table.dueTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  check("chores_due_time_requires_date_check", sql`${table.dueTime} IS NULL OR ${table.dueDate} IS NOT NULL`),
 ]);
 
 export type Chore = typeof chores.$inferSelect;

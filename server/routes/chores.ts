@@ -369,6 +369,21 @@ router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (re
     // Scadenza rimossa → anche l'orario perde significato.
     if (parsed.data.dueDate === null) {
       updateData.dueTime = null;
+    } else if (parsed.data.dueTime && parsed.data.dueDate === undefined) {
+      // Orario senza data nel body: valido solo se la faccenda ha già una scadenza.
+      const [existing] = await db
+        .select({ dueDate: chores.dueDate })
+        .from(chores)
+        .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
+        .limit(1);
+      if (!existing) {
+        return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata" } });
+      }
+      if (!existing.dueDate) {
+        return res.status(400).json({
+          error: { code: "VALIDATION_ERROR", message: "Per impostare un orario serve anche la data di scadenza" },
+        });
+      }
     }
 
     let [chore] = await db.update(chores)
