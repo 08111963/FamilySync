@@ -71,12 +71,19 @@ export default function AddChoreScreen() {
 
   const familyId = currentFamily?.id;
 
+  // Se l'utente non tocca le impostazioni di ricorrenza, in modifica la regola
+  // originale viene rimandata TALE E QUALE: le regole storiche senza giorni
+  // ("weekly"/"monthly") hanno un significato speciale lato server e non
+  // devono essere riscritte con il giorno di oggi.
+  const [recurrenceTouched, setRecurrenceTouched] = useState(false);
+
   // Precompila i campi con i dati della faccenda da modificare, una sola
-  // volta (quando la faccenda è disponibile nel context).
-  const prefilledRef = useRef(false);
+  // volta per faccenda (quando è disponibile nel context).
+  const prefilledForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!isEditing || !editingChore || prefilledRef.current) return;
-    prefilledRef.current = true;
+    if (!isEditing || !editingChore || prefilledForRef.current === editingChore.id) return;
+    prefilledForRef.current = editingChore.id;
+    setRecurrenceTouched(false);
     setTitle(editingChore.title || "");
     setDescription(editingChore.description || "");
     setDueDate(editingChore.dueDate || "");
@@ -147,6 +154,7 @@ export default function AddChoreScreen() {
       }
       if (parsed.dueDate && isRealIso(parsed.dueDate)) { setDueDate(parsed.dueDate); filled = true; }
       if (parsed.repeat === "daily" || parsed.repeat === "weekly" || parsed.repeat === "monthly") {
+        setRecurrenceTouched(true);
         setIsRecurring(true);
         setFrequency(parsed.repeat);
         const wd = Array.isArray(parsed.weekdays)
@@ -186,7 +194,7 @@ export default function AddChoreScreen() {
     }
 
     try {
-      const recurrenceRule = isRecurring
+      const builtRule = isRecurring
         ? buildRecurrenceRule(frequency, {
             weekdays: frequency === "weekly" ? weeklyDays : dailyWeekdays,
             monthDays,
@@ -195,6 +203,10 @@ export default function AddChoreScreen() {
       if (isEditing && editingChoreId) {
         // In modifica inviamo anche i null espliciti: così un campo svuotato
         // (scadenza, assegnatario, ricorrenza…) viene davvero rimosso.
+        // La ricorrenza viene riscritta solo se l'utente l'ha toccata.
+        const recurrenceForUpdate = recurrenceTouched
+          ? (builtRule ?? null)
+          : (editingChore?.recurrenceRule ?? null);
         await apiRequest("PUT", `/api/chores/${familyId}/${editingChoreId}`, {
           title: title.trim(),
           description: description.trim(),
@@ -203,7 +215,7 @@ export default function AddChoreScreen() {
           points,
           difficulty,
           estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : null,
-          recurrenceRule: recurrenceRule ?? null,
+          recurrenceRule: recurrenceForUpdate,
         });
       } else {
         await apiRequest("POST", `/api/chores/${familyId}`, {
@@ -214,7 +226,7 @@ export default function AddChoreScreen() {
           points,
           difficulty,
           estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : undefined,
-          recurrenceRule,
+          recurrenceRule: builtRule,
         });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/chores", familyId] });
@@ -232,6 +244,38 @@ export default function AddChoreScreen() {
   };
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
+
+  // In modifica, finché la faccenda non è disponibile nel context non
+  // mostriamo il form (evita di editare campi vuoti che poi vengono
+  // sovrascritti dal prefill). Se la lista è carica ma la faccenda non
+  // esiste più, lo diciamo chiaramente.
+  if (isEditing && !editingChore) {
+    const notFound = data.chores.length > 0;
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: topInset + 16 }]}>
+          <Pressable onPress={() => router.back()} style={styles.closeButton}>
+            <Ionicons name="close" size={24} color={colors.text} />
+          </Pressable>
+          <Text style={[styles.title, { color: colors.text }]}>Modifica Faccenda</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 16 }}>
+          {notFound ? (
+            <>
+              <Ionicons name="alert-circle-outline" size={40} color={colors.textSecondary} />
+              <Text style={{ color: colors.textSecondary, fontFamily: "Inter_500Medium", textAlign: "center" }}>
+                Questa faccenda non esiste più (forse è stata eliminata).
+              </Text>
+              <Button title="Torna alle faccende" onPress={() => router.back()} />
+            </>
+          ) : (
+            <ActivityIndicator size="large" color={colors.primary} />
+          )}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -383,6 +427,24 @@ export default function AddChoreScreen() {
             <Text style={[styles.label, { color: colors.text }]}>Assegna a</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScroll}>
               <View style={styles.memberOptions}>
+                <Pressable
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setSelectedMember("");
+                  }}
+                  style={[
+                    styles.memberOption,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: selectedMember === "" ? colors.primary : colors.border,
+                      borderWidth: selectedMember === "" ? 2 : 1,
+                    },
+                  ]}
+                  testID="assignee-none"
+                >
+                  <Ionicons name="person-remove-outline" size={20} color={colors.textSecondary} />
+                  <Text style={[styles.memberName, { color: colors.text }]}>Nessuno</Text>
+                </Pressable>
                 {data.members.map((member) => (
                   <Pressable
                     key={member.id}
@@ -453,6 +515,7 @@ export default function AddChoreScreen() {
             value={isRecurring}
             onValueChange={(value) => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setRecurrenceTouched(true);
               setIsRecurring(value);
             }}
             trackColor={{ false: colors.border, true: colors.primary }}
@@ -468,6 +531,7 @@ export default function AddChoreScreen() {
                   key={f.value}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setRecurrenceTouched(true);
                     setFrequency(f.value as "daily" | "weekly" | "monthly");
                   }}
                   style={[
@@ -503,6 +567,7 @@ export default function AddChoreScreen() {
                         key={w.value}
                         onPress={() => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setRecurrenceTouched(true);
                           setDailyWeekdays((prev) =>
                             prev.includes(w.value)
                               ? prev.filter((d) => d !== w.value)
@@ -545,6 +610,7 @@ export default function AddChoreScreen() {
                         key={w.value}
                         onPress={() => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setRecurrenceTouched(true);
                           setWeeklyDays((prev) =>
                             prev.includes(w.value)
                               ? prev.length > 1
@@ -589,6 +655,7 @@ export default function AddChoreScreen() {
                         key={d}
                         onPress={() => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setRecurrenceTouched(true);
                           setMonthDays((prev) =>
                             prev.includes(d)
                               ? prev.length > 1
