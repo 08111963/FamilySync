@@ -258,6 +258,16 @@ export default function ChoresScreen() {
                       <View style={[styles.chorePoints, { backgroundColor: colors.accent }]}>
                         <Text style={styles.chorePointsText}>{chore.points}</Text>
                       </View>
+                      <Pressable
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          router.push({ pathname: "/add-chore", params: { choreId: chore.id } });
+                        }}
+                        style={styles.moreButton}
+                        testID={`edit-chore-${chore.id}`}
+                      >
+                        <Ionicons name="pencil-outline" size={17} color={colors.primary} />
+                      </Pressable>
                       <Pressable onPress={() => handleChoreActions(chore.id)} style={styles.moreButton}>
                         <Ionicons name="flag-outline" size={16} color={colors.textSecondary} />
                       </Pressable>

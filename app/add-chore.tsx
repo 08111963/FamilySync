@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Switch, TextInput, Alert, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/hooks/useTheme";
@@ -15,7 +15,7 @@ import { Avatar } from "@/components/Avatar";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { freeLimitMessage } from "@/lib/plan-limit";
 import { showAiErrorAlert } from "@/lib/ai-error-message";
-import { buildRecurrenceRule, WEEKDAY_LABELS } from "@/shared/chore-recurrence";
+import { buildRecurrenceRule, parseRecurrenceRule, WEEKDAY_LABELS } from "@/shared/chore-recurrence";
 
 const POINTS_OPTIONS = [5, 10, 15, 20, 25, 50];
 const MONTH_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -38,6 +38,14 @@ export default function AddChoreScreen() {
   const { colors } = useTheme();
   const { data, currentFamily } = useFamily();
   const { user } = useAuth();
+  // Modalità modifica: la stessa schermata viene aperta con ?choreId=… dalla
+  // matita nella lista faccende. I campi vengono precompilati una sola volta.
+  const params = useLocalSearchParams<{ choreId?: string }>();
+  const editingChoreId = typeof params.choreId === "string" ? params.choreId : undefined;
+  const editingChore = editingChoreId
+    ? data.chores.find((c) => c.id === editingChoreId)
+    : undefined;
+  const isEditing = !!editingChoreId;
 
   const [aiText, setAiText] = useState("");
   const [isCompiling, setIsCompiling] = useState(false);
@@ -62,6 +70,40 @@ export default function AddChoreScreen() {
   );
 
   const familyId = currentFamily?.id;
+
+  // Precompila i campi con i dati della faccenda da modificare, una sola
+  // volta (quando la faccenda è disponibile nel context).
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (!isEditing || !editingChore || prefilledRef.current) return;
+    prefilledRef.current = true;
+    setTitle(editingChore.title || "");
+    setDescription(editingChore.description || "");
+    setDueDate(editingChore.dueDate || "");
+    if (typeof editingChore.points === "number") setPoints(editingChore.points);
+    if (typeof editingChore.difficulty === "number") setDifficulty(editingChore.difficulty);
+    setEstimatedMinutes(
+      editingChore.estimatedMinutes != null ? String(editingChore.estimatedMinutes) : ""
+    );
+    setSelectedMember(editingChore.assignedTo || "");
+    const rec = parseRecurrenceRule(editingChore.recurrenceRule);
+    if (rec) {
+      setIsRecurring(true);
+      setFrequency(rec.frequency);
+      if (rec.frequency === "daily") setDailyWeekdays(rec.weekdays);
+      if (rec.frequency === "weekly" && rec.weekdays.length > 0) setWeeklyDays(rec.weekdays);
+      if (rec.frequency === "monthly" && rec.monthDays.length > 0) setMonthDays(rec.monthDays);
+    } else {
+      setIsRecurring(false);
+    }
+  }, [isEditing, editingChore]);
+
+  // Se la faccenda ha un punteggio fuori dalle opzioni standard (es. creato
+  // dall'AI), lo mostriamo comunque come opzione selezionabile.
+  const pointsOptions = useMemo(
+    () => (POINTS_OPTIONS.includes(points) ? POINTS_OPTIONS : [...POINTS_OPTIONS, points].sort((a, b) => a - b)),
+    [points]
+  );
 
   const showError = (msg: string) => {
     if (Platform.OS === "web") alert(msg);
@@ -138,28 +180,49 @@ export default function AddChoreScreen() {
     if (!title.trim() || !familyId) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
+    if (dueDate.trim() && !isRealIso(dueDate.trim())) {
+      showError("La scadenza non è una data valida: usa il formato AAAA-MM-GG.");
+      return;
+    }
+
     try {
-      await apiRequest("POST", `/api/chores/${familyId}`, {
-        title: title.trim(),
-        description: description.trim() || undefined,
-        assignedTo: selectedMember || undefined,
-        dueDate: dueDate || undefined,
-        points,
-        difficulty,
-        estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : undefined,
-        recurrenceRule: isRecurring
-          ? buildRecurrenceRule(frequency, {
-              weekdays: frequency === "weekly" ? weeklyDays : dailyWeekdays,
-              monthDays,
-            })
-          : undefined,
-      });
+      const recurrenceRule = isRecurring
+        ? buildRecurrenceRule(frequency, {
+            weekdays: frequency === "weekly" ? weeklyDays : dailyWeekdays,
+            monthDays,
+          })
+        : undefined;
+      if (isEditing && editingChoreId) {
+        // In modifica inviamo anche i null espliciti: così un campo svuotato
+        // (scadenza, assegnatario, ricorrenza…) viene davvero rimosso.
+        await apiRequest("PUT", `/api/chores/${familyId}/${editingChoreId}`, {
+          title: title.trim(),
+          description: description.trim(),
+          assignedTo: selectedMember || null,
+          dueDate: dueDate.trim() || null,
+          points,
+          difficulty,
+          estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : null,
+          recurrenceRule: recurrenceRule ?? null,
+        });
+      } else {
+        await apiRequest("POST", `/api/chores/${familyId}`, {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          assignedTo: selectedMember || undefined,
+          dueDate: dueDate.trim() || undefined,
+          points,
+          difficulty,
+          estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : undefined,
+          recurrenceRule,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/chores", familyId] });
       router.back();
     } catch (e) {
       const limitMsg = freeLimitMessage(e);
       const title = limitMsg ? "Limite raggiunto" : "Errore";
-      const body = limitMsg ?? "Errore nella creazione della faccenda";
+      const body = limitMsg ?? (isEditing ? "Errore nella modifica della faccenda" : "Errore nella creazione della faccenda");
       if (Platform.OS === "web") {
         alert(body);
       } else {
@@ -176,7 +239,7 @@ export default function AddChoreScreen() {
         <Pressable onPress={() => router.back()} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Aggiungi Faccenda</Text>
+        <Text style={[styles.title, { color: colors.text }]}>{isEditing ? "Modifica Faccenda" : "Aggiungi Faccenda"}</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -351,7 +414,7 @@ export default function AddChoreScreen() {
         <View style={styles.field}>
           <Text style={[styles.label, { color: colors.text }]}>Punti</Text>
           <View style={styles.pointsOptions}>
-            {POINTS_OPTIONS.map((p) => (
+            {pointsOptions.map((p) => (
               <Pressable
                 key={p}
                 onPress={() => {
@@ -563,7 +626,7 @@ export default function AddChoreScreen() {
         )}
 
         <Button
-          title="Aggiungi Faccenda"
+          title={isEditing ? "Salva Modifiche" : "Aggiungi Faccenda"}
           onPress={handleSave}
           disabled={!title.trim()}
           style={{ marginTop: 24 }}
