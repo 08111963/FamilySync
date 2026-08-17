@@ -44,10 +44,18 @@ export default function ChoresScreen() {
 
   // Suddivisione per giornate: In ritardo / Oggi / Domani / date future /
   // Senza scadenza. Così la pagina non diventa un'unica lunga lista.
-  const todayIso = new Date().toISOString().split("T")[0];
+  // Le date sono confrontate in ORARIO LOCALE del dispositivo (mai UTC:
+  // dopo mezzanotte "oggi" sbaglierebbe giorno).
+  const toLocalIso = (dt: Date) =>
+    `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  const localDateFromIso = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+  const todayIso = toLocalIso(new Date());
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowIso = tomorrow.toISOString().split("T")[0];
+  const tomorrowIso = toLocalIso(tomorrow);
 
   const sectionLabelFor = (chore: (typeof filteredChores)[number]): { key: string; label: string; order: number } => {
     const d = chore.dueDate;
@@ -55,7 +63,7 @@ export default function ChoresScreen() {
     if (d < todayIso && !chore.isCompleted) return { key: "overdue", label: "In ritardo", order: 0 };
     if (d === todayIso) return { key: d, label: "Oggi", order: 1 };
     if (d === tomorrowIso) return { key: d, label: "Domani", order: 2 };
-    const label = new Date(d).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+    const label = localDateFromIso(d).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
     return { key: d, label: label.charAt(0).toUpperCase() + label.slice(1), order: 3 };
   };
 
@@ -105,19 +113,14 @@ export default function ChoresScreen() {
 
   const formatDueDate = (dateStr?: string) => {
     if (!dateStr) return null;
-    const date = new Date(dateStr);
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    if (dateStr === today.toISOString().split("T")[0]) return "Oggi";
-    if (dateStr === tomorrow.toISOString().split("T")[0]) return "Domani";
-    return date.toLocaleDateString("it-IT", { month: "short", day: "numeric" });
+    if (dateStr === todayIso) return "Oggi";
+    if (dateStr === tomorrowIso) return "Domani";
+    return localDateFromIso(dateStr).toLocaleDateString("it-IT", { month: "short", day: "numeric" });
   };
 
   const isOverdue = (dateStr?: string) => {
     if (!dateStr) return false;
-    return dateStr < new Date().toISOString().split("T")[0];
+    return dateStr < todayIso;
   };
 
   const getFrequencyLabel = (frequency?: string) => recurrenceLabel(frequency);
