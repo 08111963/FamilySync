@@ -23,6 +23,7 @@ export const REVENUECAT_ENTITLEMENT_IDENTIFIER = "premium";
  */
 
 import { selectRevenueCatApiKey } from "./revenuecat-key";
+import { runWithRevenueCatIdentity, type RevenueCatIdentityDeps } from "./revenuecat-identity";
 
 /** True quando siamo in modalità test RevenueCat (no acquisto reale store). */
 export function isRevenueCatTestMode(): boolean {
@@ -57,6 +58,9 @@ export function initializeRevenueCat(): void {
 /**
  * Associa l'utente RevenueCat (AppUserID) alla famiglia corrente. AppUserID =
  * familyId: gli acquisti sono per-famiglia. Va chiamato al cambio famiglia.
+ * Best-effort: usato SOLO per il login anticipato al cambio famiglia; il
+ * flusso di acquisto/ripristino NON si affida a questo, ma ri-esegue e
+ * ATTENDE il login sulla famiglia corrente (vedi identityDeps sotto).
  */
 export async function loginRevenueCat(familyId: string): Promise<void> {
   if (!configured) {
@@ -68,6 +72,17 @@ export async function loginRevenueCat(familyId: string): Promise<void> {
   }
   await Purchases.logIn(familyId);
 }
+
+/**
+ * Dipendenze reali per la guardia d'identità pre-acquisto: qui gli errori di
+ * inizializzazione/login NON vengono mai nascosti — propagano al chiamante e
+ * bloccano purchase/restore.
+ */
+const identityDeps: RevenueCatIdentityDeps = {
+  initialize: initializeRevenueCat,
+  logIn: (appUserId: string) => Purchases.logIn(appUserId),
+  getAppUserID: () => Purchases.getAppUserID(),
+};
 
 function useSubscriptionContext() {
   const qc = useQueryClient();
@@ -86,16 +101,22 @@ function useSubscriptionContext() {
     staleTime: 300 * 1000,
   });
 
+  // SICUREZZA ATTRIBUZIONE: purchase e restore avvengono SOLO dopo aver
+  // atteso Purchases.logIn sulla famiglia attualmente selezionata. Se
+  // familyId manca o il login fallisce, l'operazione viene bloccata e
+  // l'errore propaga alla UI (nessun entitlement toccato).
   const purchaseMutation = useMutation({
-    mutationFn: async (packageToPurchase: PurchasesPackage) => {
-      const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
-      return customerInfo;
-    },
+    mutationFn: async (packageToPurchase: PurchasesPackage) =>
+      runWithRevenueCatIdentity(identityDeps, familyId, async () => {
+        const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
+        return customerInfo;
+      }),
     onSuccess: () => customerInfoQuery.refetch(),
   });
 
   const restoreMutation = useMutation({
-    mutationFn: async () => Purchases.restorePurchases(),
+    mutationFn: async () =>
+      runWithRevenueCatIdentity(identityDeps, familyId, () => Purchases.restorePurchases()),
     onSuccess: () => customerInfoQuery.refetch(),
   });
 
