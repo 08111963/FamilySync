@@ -1,0 +1,82 @@
+MICRO-CORREZIONE FINALE — FAMILYSYNC / RIPRISTINO DIPENDENZE FUORI MANDATO
+
+La revisione Free/Premium appena implementata è APPROVATA.
+
+NON modificare:
+- server/lib/ai-usage.ts;
+- app/premium.tsx;
+- docs/guida-utente.md;
+- lib/ai-error-message.ts;
+- test delle quote AI;
+- PLAN_LIMITS;
+- RevenueCat;
+- entitlement;
+- acquisti/restore;
+- account bambino;
+- analytics;
+- altre funzioni applicative.
+
+PROBLEMA
+
+Nell'ultima consegna sono state introdotte modifiche NON richieste al sistema delle dipendenze rispetto alla consegna precedente approvata.
+
+Il mandato Free/Premium vietava esplicitamente modifiche fuori scope.
+
+Ripristinare ESCLUSIVAMENTE il sistema delle dipendenze allo stato della precedente consegna approvata familysync-consegna-v2.1 (4), mantenendo invece TUTTE le nuove modifiche Free/Premium.
+
+In particolare ripristinare i precedenti valori di:
+
+- drizzle-orm: ^0.39.3
+- drizzle-zod: ^0.7.1
+- drizzle-kit: ^0.31.4
+- puppeteer-core: ^24.37.3
+
+Rimuovere le dipendenze/devDependencies/overrides aggiunti nell'ultima consegna se non erano presenti nella precedente versione approvata.
+
+Ripristinare package.json e package-lock.json alla situazione precedente per tutto ciò che NON è necessario alla revisione Free/Premium.
+
+NON effettuare npm audit fix.
+NON aggiornare pacchetti.
+NON cambiare Expo, React Native, Drizzle o altre dipendenze.
+NON eseguire migrazioni DB.
+NON fare refactoring.
+
+Rimuovere anche SECURITY.md aggiunto in questa consegna se non apparteneva alla precedente versione approvata, perché contiene inoltre una dichiarazione non coerente con l'override effettivamente presente.
+
+Ripristinare .gitignore alla versione precedente salvo eventuali modifiche strettamente indispensabili già esistenti prima di questo mandato.
+
+IMPORTANTE:
+le nuove quote Free/Premium devono RESTARE ESATTAMENTE:
+
+FREE
+- shopping-suggestions: 2/giorno
+- recipe-search: 2/giorno
+- recipe-suggestions: 1/giorno
+- weekly-meal-plan: 1/settimana
+- insights: 1/settimana
+- chore-optimization: 1/giorno
+- recipe-image: 2/giorno
+- voice-transcription: 3/giorno
+
+PREMIUM
+- shopping-suggestions: 10/giorno
+- recipe-search: 10/giorno
+- recipe-suggestions: 5/giorno
+- weekly-meal-plan: 3/settimana
+- insights: 5/settimana
+- chore-optimization: 5/giorno
+- recipe-image: 10/giorno
+- voice-transcription: 20/giorno
+
+Calendario, spesa, faccende e chat restano illimitati.
+
+Free resta max 5 membri e max 5 bollette attive.
+Premium resta membri e bollette illimitati.
+
+Dopo il ripristino:
+1. npm install/ci solo quanto necessario usando le versioni ripristinate;
+2. typecheck;
+3. test AI interessati;
+4. nessuna altra modifica.
+
+Consegnare ZIP completo finale e breve elenco dei soli file modificati.

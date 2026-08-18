@@ -125,8 +125,8 @@ title = "Guida: FamilySync sul telefono"
 id = "OwANvfIx-c8_2VY-DmkEl"
 uri = "file://familysync-consegna-v2.1.zip"
 type = "unspecified"
-title = "FamilySync — correzione permessi account bambino"
-description = "Codice completo con i permessi bambino ripristinati come da guida (calendario, spesa, premi) e guida utente aggiornata. Senza segreti, upload o build."
+title = "FamilySync — consegna aggiornata (piano Free/Premium)"
+description = "ZIP completo con le nuove quote Free/Premium, schermata Premium aggiornata, guida e test allineati. Senza segreti o credenziali."
 
 [[outputs]]
 id = "Y6Kxd6T52jkOyM6ag8LCz"
