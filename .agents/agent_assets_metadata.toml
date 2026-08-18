@@ -125,8 +125,8 @@ title = "Guida: FamilySync sul telefono"
 id = "OwANvfIx-c8_2VY-DmkEl"
 uri = "file://familysync-consegna-v2.1.zip"
 type = "unspecified"
-title = "FamilySync — consegna micro-mandato sicurezza acquisti"
-description = "Codice completo aggiornato con la guardia d'identità RevenueCat prima di acquisti e ripristini (senza segreti, upload o build)."
+title = "FamilySync — correzione permessi account bambino"
+description = "Codice completo con i permessi bambino ripristinati come da guida (calendario, spesa, premi) e guida utente aggiornata. Senza segreti, upload o build."
 
 [[outputs]]
 id = "Y6Kxd6T52jkOyM6ag8LCz"
