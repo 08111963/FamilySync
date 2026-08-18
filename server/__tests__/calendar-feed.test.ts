@@ -70,3 +70,17 @@ test('icsEscape neutralizza \\r nudo e caratteri di controllo (ICS injection)', 
   assert.equal(icsEscape('a\r\nb\rc\nd'), 'a\\nb\\nc\\nd');
   assert.equal(icsEscape('x\u0000y\u0007z\u007Fw'), 'xyzw');
 });
+
+test('hardening: il feed ICS non espone description e location', async () => {
+  const fs = await import('node:fs/promises');
+  const src = await fs.readFile('server/routes/calendar-feed.ts', 'utf8');
+  // La select deve essere esplicita (nessun .select() "tutte le colonne")
+  assert.doesNotMatch(src, /\.select\(\)/);
+  assert.doesNotMatch(src, /calendarEvents\.description/);
+  assert.doesNotMatch(src, /calendarEvents\.location/);
+  // E il rendering non deve emettere le righe ICS sensibili
+  assert.doesNotMatch(src, /`DESCRIPTION:/);
+  assert.doesNotMatch(src, /`LOCATION:/);
+  // Anti-indicizzazione sul feed
+  assert.match(src, /X-Robots-Tag',\s*'noindex, nofollow'/);
+});

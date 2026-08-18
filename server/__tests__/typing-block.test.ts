@@ -108,3 +108,11 @@ describe("Caso 5 — la cache di 30s non lascia passare typing dopo un blocco ap
     assert.equal(shouldReceiveTyping(A, B, related), false);
   });
 });
+
+test('anti-spoofing: chat:typing usa il nome autenticato dal DB, mai quello del client', async () => {
+  const fs = await import('node:fs/promises');
+  const src = await fs.readFile('server/lib/websocket.ts', 'utf8');
+  assert.match(src, /socket\.data\.userName = record\.name/);
+  assert.match(src, /userName:\s*socket\.data\.userName/);
+  assert.doesNotMatch(src, /userName:\s*data\.userName/);
+});

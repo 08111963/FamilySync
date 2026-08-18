@@ -117,8 +117,21 @@ router.get('/:token', async (req: Request, res: Response) => {
     fromDate.setDate(fromDate.getDate() - 90);
     const fromStr = fromDate.toISOString().slice(0, 10);
 
+    // Hardening: il feed è raggiungibile da chiunque abbia il link, quindi
+    // espone SOLO i campi necessari a mostrare l'evento in un calendario
+    // esterno (titolo, data/orari). description e location possono contenere
+    // informazioni sensibili (indirizzi, note mediche) e NON vengono esposti.
     const events = await db
-      .select()
+      .select({
+        id: calendarEvents.id,
+        title: calendarEvents.title,
+        date: calendarEvents.date,
+        time: calendarEvents.time,
+        endTime: calendarEvents.endTime,
+        allDay: calendarEvents.allDay,
+        createdAt: calendarEvents.createdAt,
+        updatedAt: calendarEvents.updatedAt,
+      })
       .from(calendarEvents)
       .where(and(eq(calendarEvents.familyId, family.id), gte(calendarEvents.date, fromStr)));
 
@@ -160,8 +173,7 @@ router.get('/:token', async (req: Request, res: Response) => {
       }
 
       lines.push(foldLine(`SUMMARY:${icsEscape(ev.title)}`));
-      if (ev.description) lines.push(foldLine(`DESCRIPTION:${icsEscape(ev.description)}`));
-      if (ev.location) lines.push(foldLine(`LOCATION:${icsEscape(ev.location)}`));
+      // DESCRIPTION e LOCATION esclusi di proposito: vedi commento sulla select.
       lines.push('END:VEVENT');
     }
 
@@ -170,6 +182,7 @@ router.get('/:token', async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', 'inline; filename="familysync.ics"');
     res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     res.send(lines.join('\r\n') + '\r\n');
   } catch (error) {
     logger.error('Calendar feed error', { error: String(error) });

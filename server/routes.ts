@@ -175,7 +175,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // In modalità STORAGE_MODE=object-storage i file /uploads vengono serviti dal
   // bucket Replit Object Storage (persistente su autoscale); express.static resta
   // come fallback per eventuali file legacy ancora su disco locale.
-  app.use('/uploads/avatars', allowCrossOriginImages, createUploadsObjectHandler('/uploads/avatars'), express.static('uploads/avatars', { maxAge: '7d' }));
+  // Hardening: niente indicizzazione da parte dei motori di ricerca e cache
+  // solo privata (browser), mai in cache condivise/proxy: se un URL avatar
+  // dovesse trapelare, non deve finire indicizzato né restare in cache intermedie.
+  const avatarPrivacyHeaders = (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Cache-Control', 'private, max-age=604800');
+    next();
+  };
+  app.use(
+    '/uploads/avatars',
+    allowCrossOriginImages,
+    avatarPrivacyHeaders,
+    createUploadsObjectHandler('/uploads/avatars', { cacheControl: 'private, max-age=604800' }),
+    express.static('uploads/avatars', {
+      maxAge: '7d',
+      setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'private, max-age=604800');
+      },
+    })
+  );
 
   app.use('/uploads', authenticateMedia, requireEmailVerified, createUploadsObjectHandler('/uploads'), express.static('uploads'));
 

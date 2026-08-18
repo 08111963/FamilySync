@@ -51,7 +51,7 @@ export function setupWebSocket(httpServer: HTTPServer) {
       const user = verifyAccessToken(token);
 
       const [record] = await db
-        .select({ emailVerified: users.emailVerified })
+        .select({ emailVerified: users.emailVerified, name: users.name })
         .from(users)
         .where(eq(users.id, user.userId))
         .limit(1);
@@ -65,6 +65,9 @@ export function setupWebSocket(httpServer: HTTPServer) {
       }
 
       socket.data.userId = user.userId;
+      // Nome "canonico" dal DB: usato nei broadcast (es. typing) al posto di
+      // qualsiasi nome fornito dal client, che potrebbe essere spoofato.
+      socket.data.userName = record.name;
       next();
     } catch {
       next(new Error('Invalid token'));
@@ -122,14 +125,16 @@ export function setupWebSocket(httpServer: HTTPServer) {
       socket.leave(`family:${familyId}`);
     });
 
-    socket.on('chat:typing', async (data: { familyId: string; userName: string }) => {
-      if (!data.familyId || !data.userName) return;
+    socket.on('chat:typing', async (data: { familyId: string; userName?: string }) => {
+      if (!data.familyId) return;
       const roomName = `family:${data.familyId}`;
       if (!socket.rooms.has(roomName)) return;
       try {
+        // Anti-spoofing: il nome mostrato agli altri membri è SEMPRE quello
+        // autenticato dal DB, mai quello fornito dal client.
         await broadcastTypingToFamily(data.familyId, socket.data.userId, 'chat:typing', {
           userId: socket.data.userId,
-          userName: data.userName,
+          userName: socket.data.userName,
         });
       } catch (err) {
         logger.error('WebSocket chat:typing error', { error: String(err) });

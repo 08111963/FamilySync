@@ -270,7 +270,21 @@ describe("guardia anti-regressione — le rotte upload usano lo storage persiste
 
   test("routes.ts monta createUploadsObjectHandler su /uploads e /uploads/avatars", async () => {
     const src = await fs.readFile(path.resolve("server/routes.ts"), "utf8");
-    assert.match(src, /app\.use\('\/uploads\/avatars',\s*createUploadsObjectHandler\('\/uploads\/avatars'\)/);
+    // Il mount avatar può avere middleware intermedi (CORP + header privacy),
+    // ma DEVE includere il bucket handler con il prefisso corretto.
+    assert.match(src, /app\.use\(\s*'\/uploads\/avatars',[\s\S]*?createUploadsObjectHandler\('\/uploads\/avatars'/);
     assert.match(src, /app\.use\('\/uploads',[\s\S]*?createUploadsObjectHandler\('\/uploads'\)/);
+  });
+
+  test("routes.ts: gli avatar pubblici hanno noindex e cache solo privata", async () => {
+    const src = await fs.readFile(path.resolve("server/routes.ts"), "utf8");
+    const avatarMount = src.slice(src.indexOf("avatarPrivacyHeaders"));
+    assert.match(src, /X-Robots-Tag',\s*'noindex, nofollow'/);
+    // Cache-Control privato sia per il bucket handler sia per express.static
+    assert.match(
+      avatarMount,
+      /createUploadsObjectHandler\('\/uploads\/avatars',\s*\{\s*cacheControl:\s*'private, max-age=604800'/
+    );
+    assert.match(avatarMount, /setHeaders[\s\S]*?'Cache-Control',\s*'private, max-age=604800'/);
   });
 });
