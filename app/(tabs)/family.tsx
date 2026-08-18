@@ -722,20 +722,6 @@ export default function FamilyScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
           </Card>
-          <Card onPress={() => router.push("/ai-insights")}>
-            <View style={styles.featureLinkRow}>
-              <View style={[styles.featureLinkIcon, { backgroundColor: colors.primary + "20" }]}>
-                <Ionicons name="sparkles" size={24} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Consigli AI famiglia</Text>
-                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
-                  Consigli intelligenti per la famiglia
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-            </View>
-          </Card>
           <Card onPress={() => router.push("/calendar-sync")}>
             <View style={styles.featureLinkRow}>
               <View style={[styles.featureLinkIcon, { backgroundColor: "#34C75920" }]}>

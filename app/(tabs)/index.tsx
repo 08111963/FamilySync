@@ -348,6 +348,28 @@ export default function HomeScreen() {
             </View>
             <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
           </Pressable>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/ai-insights");
+            }}
+            style={({ pressed }) => [
+              styles.quickAction,
+              { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.8 : 1 },
+            ]}
+            testID="home-ai-insights"
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: colors.primary + "20" }]}>
+              <Ionicons name="sparkles" size={22} color={colors.primary} />
+            </View>
+            <View style={styles.quickActionInfo}>
+              <Text style={[styles.quickActionTitle, { color: colors.text }]}>Suggerimenti AI</Text>
+              <Text style={[styles.quickActionSubtitle, { color: colors.textSecondary }]}>
+                Consigli intelligenti per la famiglia
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+          </Pressable>
         </View>
       </View>
     </ScrollView>
