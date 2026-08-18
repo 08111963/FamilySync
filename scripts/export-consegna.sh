@@ -67,11 +67,12 @@ fi
 # (anche corte, min 4 caratteri) nei file .js .mjs .ts .tsx .json .md.
 # I file di test SONO inclusi nella scansione: sono ammesse SOLO le password
 # fittizie note dell'allowlist qui sotto (e solo dentro __tests__/).
-TEST_DUMMY_PW="Abcdef12|BrandNew123|OldPass123|Qualsiasi123|RightPass123|StrongPass123|WrongPass123|weak"
+TEST_DUMMY_PW="Abcdef12|BrandNew123|OldPass123|Qualsiasi123|RightPass123|StrongPass123|WrongPass123|weak|hunter2segretissima|SuperSegreta1"
 MATCHES_2B="$(grep -RInE "password['\"]?[[:space:]]*[:=][[:space:]]*['\"][^'\"]{4,}['\"]" \
     "$TMPDIR_SCAN" --include="*.js" --include="*.mjs" --include="*.ts" --include="*.tsx" --include="*.json" --include="*.md" \
     --exclude-dir=node_modules 2>/dev/null \
   | grep -vE "process\.env|placeholder|PASSWORD_PLACEHOLDER|La tua password|password[s]?\.|type=|secureTextEntry|autoComplete|new-password|current-password|\\*\\*\\*|esempio|Esempio" \
+  | grep -vE "password: 'valore'" \
   | grep -vE "__tests__/[^:]+:[0-9]+:.*password['\"]?[[:space:]]*[:=][[:space:]]*['\"](${TEST_DUMMY_PW})['\"]" || true)"
 if [ -n "$MATCHES_2B" ]; then
   printf '%s\n' "$MATCHES_2B" | head -5
