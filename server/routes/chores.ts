@@ -17,6 +17,12 @@ import { syncCreatedEvents, syncUpdatedEvent, syncDeletedEvents, getLinksForEven
 
 const TIME_HHMM_REGEX = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
+/** Data in formato italiano GG/MM/AAAA per i testi delle notifiche. */
+function formatDateIt(d: Date): string {
+  const iso = d.toISOString().slice(0, 10);
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+}
+
 const router = Router();
 
 const createChoreSchema = z.object({
@@ -202,7 +208,7 @@ async function notifyFamilyChoreAction(
       .limit(1);
     const who = author?.name ?? 'Un familiare';
     const due = chore.dueDate
-      ? ` (scadenza ${chore.dueDate.toISOString().slice(0, 10)}${chore.dueTime ? ` alle ${chore.dueTime}` : ''})`
+      ? ` (scadenza ${formatDateIt(chore.dueDate)}${chore.dueTime ? ` alle ${chore.dueTime}` : ''})`
       : '';
 
     await sendPushToFamily(
@@ -251,7 +257,7 @@ async function notifyChoreAssignee(
     if (blockRelated.includes(member.userId)) return;
 
     const due = chore.dueDate
-      ? ` · scadenza ${chore.dueDate.toISOString().slice(0, 10)}${chore.dueTime ? ` alle ${chore.dueTime}` : ''}`
+      ? ` · scadenza ${formatDateIt(chore.dueDate)}${chore.dueTime ? ` alle ${chore.dueTime}` : ''}`
       : '';
     await sendPushToUser(member.userId, {
       title: 'Nuova faccenda assegnata',

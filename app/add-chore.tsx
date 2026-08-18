@@ -87,7 +87,7 @@ export default function AddChoreScreen() {
     setRecurrenceTouched(false);
     setTitle(editingChore.title || "");
     setDescription(editingChore.description || "");
-    setDueDate(editingChore.dueDate || "");
+    setDueDate(isoToItalian(editingChore.dueDate));
     setDueTime(editingChore.dueTime || "");
     if (typeof editingChore.points === "number") setPoints(editingChore.points);
     if (typeof editingChore.difficulty === "number") setDifficulty(editingChore.difficulty);
@@ -117,6 +117,28 @@ export default function AddChoreScreen() {
   const showError = (msg: string) => {
     if (Platform.OS === "web") alert(msg);
     else Alert.alert("Errore", msg);
+  };
+
+  // Converte l'input utente GG/MM/AAAA (o GG/MM, anche con - o .) in AAAA-MM-GG
+  // per l'API; null se non valido.
+  const parseItalianDate = (input: string): string | null => {
+    const m = /^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/.exec(input.trim());
+    if (!m) return null;
+    const day = parseInt(m[1]!, 10);
+    const month = parseInt(m[2]!, 10);
+    let year = m[3] ? parseInt(m[3]!, 10) : new Date().getFullYear();
+    if (year < 100) year += 2000;
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+    const d = new Date(year, month - 1, day);
+    if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  };
+
+  // AAAA-MM-GG (dal server/AI) → GG/MM/AAAA per mostrarla nel campo.
+  const isoToItalian = (iso?: string | null): string => {
+    if (!iso) return "";
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
   };
 
   // Accetta "16:30", "16.30", "16" → "HH:MM"; stringa vuota → "" ; invalido → null.
@@ -166,7 +188,7 @@ export default function AddChoreScreen() {
         setEstimatedMinutes(String(parsed.estimatedMinutes));
         filled = true;
       }
-      if (parsed.dueDate && isRealIso(parsed.dueDate)) { setDueDate(parsed.dueDate); filled = true; }
+      if (parsed.dueDate && isRealIso(parsed.dueDate)) { setDueDate(isoToItalian(parsed.dueDate)); filled = true; }
       if (parsed.repeat === "daily" || parsed.repeat === "weekly" || parsed.repeat === "monthly") {
         setRecurrenceTouched(true);
         setIsRecurring(true);
@@ -202,8 +224,9 @@ export default function AddChoreScreen() {
     if (!title.trim() || !familyId) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    if (dueDate.trim() && !isRealIso(dueDate.trim())) {
-      showError("La scadenza non è una data valida: usa il formato AAAA-MM-GG.");
+    const isoDueDate = dueDate.trim() ? parseItalianDate(dueDate) : "";
+    if (dueDate.trim() && !isoDueDate) {
+      showError("La scadenza non è una data valida: usa il formato GG/MM/AAAA.");
       return;
     }
     const normalizedTime = normalizeTimeInput(dueTime);
@@ -234,7 +257,7 @@ export default function AddChoreScreen() {
           title: title.trim(),
           description: description.trim(),
           assignedTo: selectedMember || null,
-          dueDate: dueDate.trim() || null,
+          dueDate: isoDueDate || null,
           dueTime: normalizedTime,
           points,
           difficulty,
@@ -246,7 +269,7 @@ export default function AddChoreScreen() {
           title: title.trim(),
           description: description.trim() || undefined,
           assignedTo: selectedMember || undefined,
-          dueDate: dueDate.trim() || undefined,
+          dueDate: isoDueDate || undefined,
           dueTime: normalizedTime || undefined,
           points,
           difficulty,
@@ -441,7 +464,7 @@ export default function AddChoreScreen() {
         <View style={styles.field}>
           <Input
             label="Scadenza (opzionale)"
-            placeholder="AAAA-MM-GG"
+            placeholder="GG/MM/AAAA"
             value={dueDate}
             onChangeText={setDueDate}
           />
