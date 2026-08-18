@@ -245,6 +245,35 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
   }
 });
 
+/**
+ * Verifica che la spesa esista nella famiglia e che il chiamante possa
+ * modificarla/eliminarla: solo il membro che l'ha registrata, oppure un admin.
+ * Risponde 404/403 e ritorna true se l'accesso è negato.
+ */
+async function checkExpenseOwnership(
+  expenseId: string,
+  familyId: string,
+  membership: { id: string; role: string },
+  res: Response,
+): Promise<boolean> {
+  const [existing] = await db
+    .select({ memberId: expenses.memberId })
+    .from(expenses)
+    .where(and(eq(expenses.id, expenseId), eq(expenses.familyId, familyId)))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Spesa non trovata' } });
+    return true;
+  }
+  if (existing.memberId !== membership.id && membership.role !== 'admin') {
+    res.status(403).json({
+      error: { code: 'FORBIDDEN', message: 'Puoi modificare solo le spese registrate da te' },
+    });
+    return true;
+  }
+  return false;
+}
+
 router.put('/:familyId/:expenseId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
@@ -255,6 +284,10 @@ router.put('/:familyId/:expenseId', authenticate, requireFamilyMember(), async (
         error: { code: 'VALIDATION_ERROR', message: 'Dati non validi', details: parsed.error.flatten().fieldErrors },
       });
     }
+    const membership = (req as any).membership as { id: string; role: string };
+    const denied = await checkExpenseOwnership(expenseId, familyId, membership, res);
+    if (denied) return;
+
     const updateData: Record<string, any> = { updatedAt: new Date() };
     if (parsed.data.amount !== undefined) updateData.amount = String(parsed.data.amount);
     if (parsed.data.category !== undefined) updateData.category = parsed.data.category;
@@ -280,6 +313,10 @@ router.delete('/:familyId/:expenseId', authenticate, requireFamilyMember(), asyn
   try {
     const familyId = getParam(req, 'familyId');
     const expenseId = getParam(req, 'expenseId');
+    const membership = (req as any).membership as { id: string; role: string };
+    const denied = await checkExpenseOwnership(expenseId, familyId, membership, res);
+    if (denied) return;
+
     const [deleted] = await db.delete(expenses)
       .where(and(eq(expenses.id, expenseId), eq(expenses.familyId, familyId)))
       .returning();
