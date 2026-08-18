@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,53 +28,113 @@ const DIFFICULTY_COLORS: Record<number, string> = {
   5: "#F44336",
 };
 
+// Fasce orarie della giornata (in base a dueTime HH:MM)
+type DayPart = "morning" | "afternoon" | "evening" | "noTime";
+const DAY_PART_META: Record<DayPart, { label: string; icon: keyof typeof Ionicons.glyphMap; order: number }> = {
+  morning: { label: "Mattina", icon: "sunny-outline", order: 0 },
+  afternoon: { label: "Pomeriggio", icon: "partly-sunny-outline", order: 1 },
+  evening: { label: "Sera", icon: "moon-outline", order: 2 },
+  noTime: { label: "Senza orario", icon: "list-outline", order: 3 },
+};
+
+const dayPartFor = (dueTime?: string | null): DayPart => {
+  if (!dueTime) return "noTime";
+  const hour = Number(dueTime.split(":")[0]);
+  if (!Number.isFinite(hour)) return "noTime";
+  if (hour < 12) return "morning";
+  if (hour < 18) return "afternoon";
+  return "evening";
+};
+
+// Le date sono confrontate in ORARIO LOCALE del dispositivo (mai UTC:
+// dopo mezzanotte "oggi" sbaglierebbe giorno).
+const toLocalIso = (dt: Date) =>
+  `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+const localDateFromIso = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
+const shiftIso = (iso: string, days: number) => {
+  const d = localDateFromIso(iso);
+  d.setDate(d.getDate() + days);
+  return toLocalIso(d);
+};
+
 export default function ChoresScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { data, currentFamily, completeChore, deleteChore } = useFamily();
-  const [filter, setFilter] = useState<FilterType>("pending");
+  const [filter, setFilter] = useState<FilterType>("all");
+  const [memberFilter, setMemberFilter] = useState<string | null>(null);
+
+  const todayIso = toLocalIso(new Date());
+  const [selectedDate, setSelectedDate] = useState<string>(todayIso);
 
   const familyId = currentFamily?.id || "";
 
-  const filteredChores = data.chores.filter((chore) => {
-    if (filter === "pending") return !chore.isCompleted;
-    if (filter === "completed") return chore.isCompleted;
+  // Il filtro membro è legato alla famiglia attiva: se si cambia famiglia
+  // va azzerato, altrimenti un ID "stantio" nasconderebbe tutte le faccende.
+  useEffect(() => {
+    setMemberFilter(null);
+  }, [familyId]);
+
+  // Difesa extra: se l'ID selezionato non esiste tra i membri correnti,
+  // comportati come "Tutti".
+  const effectiveMemberFilter =
+    memberFilter && data.members.some((m) => m.id === memberFilter) ? memberFilter : null;
+
+  // Filtro per membro (i cerchi in alto). Le faccende non assegnate
+  // restano visibili solo con "Tutti".
+  const memberChores = effectiveMemberFilter
+    ? data.chores.filter((c) => c.assignedTo === effectiveMemberFilter)
+    : data.chores;
+
+  const statusMatches = (c: (typeof data.chores)[number]) => {
+    if (filter === "pending") return !c.isCompleted;
+    if (filter === "completed") return c.isCompleted;
     return true;
-  });
-
-  // Suddivisione per giornate: In ritardo / Oggi / Domani / date future /
-  // Senza scadenza. Così la pagina non diventa un'unica lunga lista.
-  // Le date sono confrontate in ORARIO LOCALE del dispositivo (mai UTC:
-  // dopo mezzanotte "oggi" sbaglierebbe giorno).
-  const toLocalIso = (dt: Date) =>
-    `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-  const localDateFromIso = (iso: string) => {
-    const [y, m, d] = iso.split("-").map(Number);
-    return new Date(y, m - 1, d);
-  };
-  const todayIso = toLocalIso(new Date());
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowIso = toLocalIso(tomorrow);
-
-  const sectionLabelFor = (chore: (typeof filteredChores)[number]): { key: string; label: string; order: number } => {
-    const d = chore.dueDate;
-    if (!d) return { key: "none", label: "Senza scadenza", order: 4 };
-    if (d < todayIso && !chore.isCompleted) return { key: "overdue", label: "In ritardo", order: 0 };
-    if (d === todayIso) return { key: d, label: "Oggi", order: 1 };
-    if (d === tomorrowIso) return { key: d, label: "Domani", order: 2 };
-    const label = localDateFromIso(d).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
-    return { key: d, label: label.charAt(0).toUpperCase() + label.slice(1), order: 3 };
   };
 
-  const sections: { key: string; label: string; order: number; chores: typeof filteredChores }[] = [];
-  for (const chore of filteredChores) {
-    const s = sectionLabelFor(chore);
-    const existing = sections.find((x) => x.key === s.key && x.label === s.label);
-    if (existing) existing.chores.push(chore);
-    else sections.push({ ...s, chores: [chore] });
-  }
-  sections.sort((a, b) => (a.order !== b.order ? a.order - b.order : a.key.localeCompare(b.key)));
+  // Faccende del giorno selezionato + senza scadenza (sempre visibili)
+  const dayChoresAll = memberChores.filter((c) => c.dueDate === selectedDate);
+  const undatedAll = memberChores.filter((c) => !c.dueDate);
+  const overdueAll = memberChores.filter(
+    (c) => c.dueDate && c.dueDate < todayIso && !c.isCompleted
+  );
+
+  const dayChores = dayChoresAll.filter(statusMatches);
+  const undated = undatedAll.filter(statusMatches);
+  const overdue = selectedDate === todayIso ? overdueAll.filter(statusMatches) : [];
+
+  // Barra di avanzamento: faccende del giorno + senza scadenza (a prescindere
+  // dal filtro Da fare/Fatte, così 2/6 ha sempre senso)
+  const progressChores = [...dayChoresAll, ...undatedAll];
+  const progressDone = progressChores.filter((c) => c.isCompleted).length;
+  const progressTotal = progressChores.length;
+  const progressPoints = progressChores.reduce((sum, c) => sum + (c.points || 0), 0);
+  const progressRatio = progressTotal > 0 ? progressDone / progressTotal : 0;
+
+  // Sezioni per fascia oraria del giorno selezionato
+  const partSections = (Object.keys(DAY_PART_META) as DayPart[])
+    .map((part) => ({
+      part,
+      ...DAY_PART_META[part],
+      chores: dayChores.filter((c) => dayPartFor(c.dueTime) === part),
+    }))
+    .filter((s) => s.chores.length > 0)
+    .sort((a, b) => a.order - b.order);
+
+  const dayLabel = (() => {
+    if (selectedDate === todayIso) return "Oggi";
+    if (selectedDate === shiftIso(todayIso, 1)) return "Domani";
+    if (selectedDate === shiftIso(todayIso, -1)) return "Ieri";
+    const label = localDateFromIso(selectedDate).toLocaleDateString("it-IT", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  })();
 
   const getMember = (memberId: string | null | undefined) => {
     return data.members.find((m) => m.id === memberId);
@@ -114,8 +174,8 @@ export default function ChoresScreen() {
   const formatDueDate = (dateStr?: string) => {
     if (!dateStr) return null;
     if (dateStr === todayIso) return "Oggi";
-    if (dateStr === tomorrowIso) return "Domani";
-    return localDateFromIso(dateStr).toLocaleDateString("it-IT", { month: "short", day: "numeric" });
+    if (dateStr === shiftIso(todayIso, 1)) return "Domani";
+    return localDateFromIso(dateStr).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
   };
 
   const isOverdue = (dateStr?: string) => {
@@ -126,6 +186,150 @@ export default function ChoresScreen() {
   const getFrequencyLabel = (frequency?: string) => recurrenceLabel(frequency);
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
+
+  const changeDay = (delta: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedDate((d) => shiftIso(d, delta));
+  };
+
+  const renderChore = (chore: (typeof data.chores)[number]) => {
+    const member = getMember(chore.assignedTo);
+    const dueDate = formatDueDate(chore.dueDate);
+    const overdueFlag = isOverdue(chore.dueDate) && !chore.isCompleted;
+    const diffLevel = chore.difficulty ?? null;
+    const diffColor = diffLevel ? (DIFFICULTY_COLORS[diffLevel] || "#FF9800") : null;
+
+    return (
+      <Card key={chore.id}>
+        <View style={styles.choreRow}>
+          <Pressable
+            onPress={() => !chore.isCompleted && handleCompleteChore(chore.id)}
+            style={[
+              styles.checkbox,
+              {
+                backgroundColor: chore.isCompleted ? colors.success : "transparent",
+                borderColor: chore.isCompleted ? colors.success : colors.border,
+              },
+            ]}
+          >
+            {chore.isCompleted && (
+              <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+            )}
+          </Pressable>
+          <View style={styles.choreInfo}>
+            <Text
+              style={[
+                styles.choreTitle,
+                {
+                  color: chore.isCompleted ? colors.textSecondary : colors.text,
+                  textDecorationLine: chore.isCompleted ? "line-through" : "none",
+                },
+              ]}
+            >
+              {chore.title}
+            </Text>
+            <View style={styles.choreMeta}>
+              {diffLevel && diffColor && (
+                <View style={[styles.difficultyBadge, { backgroundColor: diffColor + "20" }]}>
+                  <Text style={[styles.difficultyBadgeText, { color: diffColor }]}>
+                    {diffLevel}/5
+                  </Text>
+                </View>
+              )}
+              {chore.estimatedMinutes ? (
+                <View style={styles.timeBadge}>
+                  <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
+                  <Text style={[styles.timeText, { color: colors.textSecondary }]}>
+                    {chore.estimatedMinutes} min
+                  </Text>
+                </View>
+              ) : null}
+              {member && (
+                <View style={styles.choreAssignee}>
+                  <Avatar name={member.name} color={member.color} size={20} />
+                  <Text style={[styles.choreAssigneeName, { color: colors.textSecondary }]}>
+                    {member.name}
+                  </Text>
+                </View>
+              )}
+              {dueDate && (
+                <View style={styles.choreDue}>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={14}
+                    color={overdueFlag ? colors.error : colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.choreDueText,
+                      { color: overdueFlag ? colors.error : colors.textSecondary },
+                    ]}
+                  >
+                    {dueDate}
+                    {chore.dueTime ? ` · ${chore.dueTime}` : ""}
+                  </Text>
+                </View>
+              )}
+              {chore.recurrenceRule && (
+                <View style={styles.choreRecurring}>
+                  <Ionicons name="repeat" size={14} color={colors.secondary} />
+                  <Text style={[styles.choreRecurringText, { color: colors.secondary }]}>
+                    {getFrequencyLabel(chore.recurrenceRule)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+          <View style={styles.choreRight}>
+            <View style={[styles.chorePoints, { backgroundColor: colors.accent }]}>
+              <Text style={styles.chorePointsText}>{chore.points}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push({ pathname: "/add-chore", params: { choreId: chore.id } });
+              }}
+              style={styles.moreButton}
+              testID={`edit-chore-${chore.id}`}
+            >
+              <Ionicons name="pencil-outline" size={17} color={colors.primary} />
+            </Pressable>
+            <Pressable onPress={() => handleChoreActions(chore.id)} style={styles.moreButton}>
+              <Ionicons name="flag-outline" size={16} color={colors.textSecondary} />
+            </Pressable>
+            <Pressable onPress={() => handleDeleteChore(chore.id)} style={styles.deleteButton}>
+              <Ionicons name="trash-outline" size={18} color={colors.error} />
+            </Pressable>
+          </View>
+        </View>
+      </Card>
+    );
+  };
+
+  const renderSectionHeader = (label: string, count: number, opts?: { icon?: keyof typeof Ionicons.glyphMap; danger?: boolean }) => (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionTitleRow}>
+        {opts?.icon && (
+          <Ionicons
+            name={opts.icon}
+            size={15}
+            color={opts?.danger ? colors.error : colors.textSecondary}
+          />
+        )}
+        <Text
+          style={[
+            styles.sectionTitle,
+            { color: opts?.danger ? colors.error : colors.textSecondary },
+          ]}
+        >
+          {label}
+        </Text>
+      </View>
+      <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{count}</Text>
+    </View>
+  );
+
+  const nothingToShow = overdue.length === 0 && dayChores.length === 0 && undated.length === 0;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -154,6 +358,105 @@ export default function ChoresScreen() {
         </Pressable>
         </View>
       </View>
+
+      {/* Navigazione per giorno */}
+      <View style={styles.dayNav}>
+        <Pressable
+          onPress={() => changeDay(-1)}
+          style={[styles.dayArrow, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          testID="chores-day-prev"
+        >
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
+        </Pressable>
+        <View style={styles.dayLabelBox}>
+          <Text style={[styles.dayLabel, { color: colors.text }]}>{dayLabel}</Text>
+          {selectedDate !== todayIso && (
+            <Pressable onPress={() => setSelectedDate(todayIso)} testID="chores-day-today">
+              <Text style={[styles.backToToday, { color: colors.primary }]}>Torna a oggi</Text>
+            </Pressable>
+          )}
+        </View>
+        <Pressable
+          onPress={() => changeDay(1)}
+          style={[styles.dayArrow, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          testID="chores-day-next"
+        >
+          <Ionicons name="chevron-forward" size={20} color={colors.text} />
+        </Pressable>
+      </View>
+
+      {/* Filtro membri famiglia */}
+      {data.members.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.membersRow}
+          contentContainerStyle={styles.membersRowContent}
+        >
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setMemberFilter(null);
+            }}
+            style={styles.memberChip}
+            testID="chores-member-all"
+          >
+            <View
+              style={[
+                styles.memberAvatarWrap,
+                {
+                  borderColor: memberFilter === null ? colors.primary : "transparent",
+                },
+              ]}
+            >
+              <View style={[styles.allAvatar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="people-outline" size={20} color={colors.text} />
+              </View>
+            </View>
+            <Text
+              style={[
+                styles.memberName,
+                { color: memberFilter === null ? colors.text : colors.textSecondary },
+              ]}
+              numberOfLines={1}
+            >
+              Tutti
+            </Text>
+          </Pressable>
+          {data.members.map((m) => {
+            const active = memberFilter === m.id;
+            return (
+              <Pressable
+                key={m.id}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setMemberFilter(active ? null : m.id);
+                }}
+                style={[styles.memberChip, { opacity: memberFilter && !active ? 0.45 : 1 }]}
+                testID={`chores-member-${m.id}`}
+              >
+                <View
+                  style={[
+                    styles.memberAvatarWrap,
+                    { borderColor: active ? colors.primary : "transparent" },
+                  ]}
+                >
+                  <Avatar name={m.name} color={m.color} size={44} />
+                </View>
+                <Text
+                  style={[
+                    styles.memberName,
+                    { color: active ? colors.text : colors.textSecondary },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {m.name.split(" ")[0]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      )}
 
       <View style={styles.filterRow}>
         {(["pending", "completed", "all"] as FilterType[]).map((f) => (
@@ -188,144 +491,61 @@ export default function ChoresScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        {filteredChores.length === 0 ? (
+        {/* Barra di avanzamento del giorno */}
+        {progressTotal > 0 && (
+          <View style={[styles.progressCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.progressLabel, { color: colors.text }]}>
+              {progressDone}/{progressTotal}
+            </Text>
+            <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { backgroundColor: colors.primary, width: `${Math.round(progressRatio * 100)}%` },
+                ]}
+              />
+            </View>
+            <View style={[styles.progressPoints, { backgroundColor: colors.accent }]}>
+              <Ionicons name="star" size={13} color="#000" />
+              <Text style={styles.progressPointsText}>{progressPoints}</Text>
+            </View>
+          </View>
+        )}
+
+        {nothingToShow ? (
           <EmptyState
             icon="checkmark-circle-outline"
-            title={filter === "completed" ? "Nessuna faccenda completata" : "Nessuna faccenda da fare"}
-            subtitle={filter === "pending" ? "Aggiungi una faccenda per iniziare" : "Completa alcune faccende per vederle qui"}
+            title={
+              filter === "completed"
+                ? "Nessuna faccenda completata"
+                : `Nessuna faccenda per ${dayLabel === "Oggi" ? "oggi" : dayLabel.toLowerCase()}`
+            }
+            subtitle={
+              filter === "pending" || filter === "all"
+                ? "Aggiungi una faccenda o cambia giorno con le frecce"
+                : "Completa alcune faccende per vederle qui"
+            }
           />
         ) : (
           <View style={styles.chores}>
-            {sections.map((section) => (
-              <View key={`${section.key}-${section.label}`}>
-                <View style={styles.sectionHeader}>
-                  <Text
-                    style={[
-                      styles.sectionTitle,
-                      { color: section.key === "overdue" ? colors.error : colors.textSecondary },
-                    ]}
-                  >
-                    {section.label}
-                  </Text>
-                  <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>
-                    {section.chores.length}
-                  </Text>
-                </View>
-                {section.chores.map((chore) => {
-              const member = getMember(chore.assignedTo);
-              const dueDate = formatDueDate(chore.dueDate);
-              const overdue = isOverdue(chore.dueDate) && !chore.isCompleted;
-              const diffLevel = chore.difficulty ?? null;
-              const diffColor = diffLevel ? (DIFFICULTY_COLORS[diffLevel] || "#FF9800") : null;
-
-              return (
-                <Card key={chore.id}>
-                  <View style={styles.choreRow}>
-                    <Pressable
-                      onPress={() => !chore.isCompleted && handleCompleteChore(chore.id)}
-                      style={[
-                        styles.checkbox,
-                        {
-                          backgroundColor: chore.isCompleted ? colors.success : "transparent",
-                          borderColor: chore.isCompleted ? colors.success : colors.border,
-                        },
-                      ]}
-                    >
-                      {chore.isCompleted && (
-                        <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-                      )}
-                    </Pressable>
-                    <View style={styles.choreInfo}>
-                      <Text
-                        style={[
-                          styles.choreTitle,
-                          {
-                            color: chore.isCompleted ? colors.textSecondary : colors.text,
-                            textDecorationLine: chore.isCompleted ? "line-through" : "none",
-                          },
-                        ]}
-                      >
-                        {chore.title}
-                      </Text>
-                      <View style={styles.choreMeta}>
-                        {diffLevel && diffColor && (
-                          <View style={[styles.difficultyBadge, { backgroundColor: diffColor + "20" }]}>
-                            <Text style={[styles.difficultyBadgeText, { color: diffColor }]}>
-                              {diffLevel}/5
-                            </Text>
-                          </View>
-                        )}
-                        {chore.estimatedMinutes ? (
-                          <View style={styles.timeBadge}>
-                            <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
-                            <Text style={[styles.timeText, { color: colors.textSecondary }]}>
-                              {chore.estimatedMinutes} min
-                            </Text>
-                          </View>
-                        ) : null}
-                        {member && (
-                          <View style={styles.choreAssignee}>
-                            <Avatar name={member.name} color={member.color} size={20} />
-                            <Text style={[styles.choreAssigneeName, { color: colors.textSecondary }]}>
-                              {member.name}
-                            </Text>
-                          </View>
-                        )}
-                        {dueDate && (
-                          <View style={styles.choreDue}>
-                            <Ionicons
-                              name="calendar-outline"
-                              size={14}
-                              color={overdue ? colors.error : colors.textSecondary}
-                            />
-                            <Text
-                              style={[
-                                styles.choreDueText,
-                                { color: overdue ? colors.error : colors.textSecondary },
-                              ]}
-                            >
-                              {dueDate}
-                              {chore.dueTime ? ` · ${chore.dueTime}` : ""}
-                            </Text>
-                          </View>
-                        )}
-                        {chore.recurrenceRule && (
-                          <View style={styles.choreRecurring}>
-                            <Ionicons name="repeat" size={14} color={colors.secondary} />
-                            <Text style={[styles.choreRecurringText, { color: colors.secondary }]}>
-                              {getFrequencyLabel(chore.recurrenceRule)}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                    <View style={styles.choreRight}>
-                      <View style={[styles.chorePoints, { backgroundColor: colors.accent }]}>
-                        <Text style={styles.chorePointsText}>{chore.points}</Text>
-                      </View>
-                      <Pressable
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          router.push({ pathname: "/add-chore", params: { choreId: chore.id } });
-                        }}
-                        style={styles.moreButton}
-                        testID={`edit-chore-${chore.id}`}
-                      >
-                        <Ionicons name="pencil-outline" size={17} color={colors.primary} />
-                      </Pressable>
-                      <Pressable onPress={() => handleChoreActions(chore.id)} style={styles.moreButton}>
-                        <Ionicons name="flag-outline" size={16} color={colors.textSecondary} />
-                      </Pressable>
-                      <Pressable onPress={() => handleDeleteChore(chore.id)} style={styles.deleteButton}>
-                        <Ionicons name="trash-outline" size={18} color={colors.error} />
-                      </Pressable>
-                    </View>
-                  </View>
-                </Card>
-              );
-                })}
+            {overdue.length > 0 && (
+              <View>
+                {renderSectionHeader("In ritardo", overdue.length, { icon: "alert-circle-outline", danger: true })}
+                {overdue.map(renderChore)}
+              </View>
+            )}
+            {partSections.map((section) => (
+              <View key={section.part}>
+                {renderSectionHeader(section.label, section.chores.length, { icon: section.icon })}
+                {section.chores.map(renderChore)}
               </View>
             ))}
+            {undated.length > 0 && (
+              <View>
+                {renderSectionHeader("Senza scadenza", undated.length, { icon: "infinite-outline" })}
+                {undated.map(renderChore)}
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -345,6 +565,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 4,
   },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   sectionTitle: {
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
@@ -360,7 +585,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   title: {
     fontSize: 32,
@@ -391,11 +616,70 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
   },
+  dayNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+  dayArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dayLabelBox: {
+    alignItems: "center",
+  },
+  dayLabel: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+  },
+  backToToday: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    marginTop: 2,
+  },
+  membersRow: {
+    flexGrow: 0,
+    marginBottom: 10,
+  },
+  membersRowContent: {
+    paddingHorizontal: 20,
+    gap: 14,
+  },
+  memberChip: {
+    alignItems: "center",
+    width: 56,
+  },
+  memberAvatarWrap: {
+    borderWidth: 2,
+    borderRadius: 26,
+    padding: 2,
+  },
+  allAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  memberName: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    marginTop: 4,
+    maxWidth: 56,
+    textAlign: "center",
+  },
   filterRow: {
     flexDirection: "row",
     paddingHorizontal: 20,
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   filterButton: {
     paddingHorizontal: 16,
@@ -413,6 +697,43 @@ const styles = StyleSheet.create({
   },
   chores: {
     gap: 12,
+  },
+  progressCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  progressLabel: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  progressTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: 8,
+    borderRadius: 4,
+  },
+  progressPoints: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  progressPointsText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    color: "#000",
   },
   choreRow: {
     flexDirection: "row",
