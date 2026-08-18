@@ -1,0 +1,456 @@
+# MANDATO FINALE — FAMILYSYNC
+
+## Revisione Piano Free / Premium e quote AI
+
+### OBIETTIVO
+
+Aggiornare il modello commerciale **Free / Premium** di FamilySync prima dell'attivazione degli abbonamenti reali.
+
+Questo mandato deve intervenire **ESCLUSIVAMENTE** su:
+
+1. quote Free/Premium;
+2. presentazione dei vantaggi Premium;
+3. schermata Premium;
+4. documentazione/guida relativa ai piani;
+5. test strettamente collegati alle quote.
+
+**NON aggiungere nuove funzioni.**
+
+**NON modificare l'architettura di monetizzazione già approvata.**
+
+---
+
+# 1. NON TOCCARE LE PARTI GIÀ APPROVATE
+
+NON modificare, salvo riferimenti strettamente necessari alla lettura delle nuove quote:
+
+* RevenueCat;
+* `revenuecat.tsx`;
+* `revenuecat-identity.ts`;
+* `revenuecat-key.ts`;
+* purchase flow;
+* restore purchase;
+* webhook RevenueCat;
+* entitlement Premium;
+* associazione RevenueCat a `familyId`;
+* pricing reale proveniente dagli store;
+* analytics del funnel commerciale;
+* autenticazione;
+* sicurezza;
+* account bambino;
+* calendario;
+* lista della spesa;
+* faccende;
+* chat;
+* bollette, salvo i testi della comparazione Free/Premium;
+* Google Calendar;
+* WebSocket;
+* Stripe.
+
+NON riattivare Stripe.
+
+NON effettuare audit generici.
+
+NON eseguire refactoring non necessario.
+
+---
+
+# 2. PREZZI — NON MODIFICARE
+
+Mantenere:
+
+* **Premium mensile: €3,99/mese**
+* **Premium annuale: €39,99/anno**
+
+La fonte primaria del prezzo visualizzato deve continuare a essere il prezzo reale ricevuto dagli store tramite RevenueCat.
+
+Mantenere €3,99 / €39,99 soltanto come fallback già previsto.
+
+---
+
+# 3. NUOVO PIANO FREE
+
+Il piano Free deve essere realmente utilizzabile da una famiglia e permettere di comprendere il valore del prodotto.
+
+Impostare:
+
+### Membri della famiglia
+
+* **Free: massimo 5 membri**
+
+### Calendario
+
+* **Free: illimitato**
+
+### Lista della spesa
+
+* **Free: illimitata**
+
+### Faccende
+
+* **Free: illimitate**
+
+### Chat familiare
+
+* **Free: illimitata**
+
+### Bollette
+
+* **Free: massimo 5 bollette attive**
+
+Mantenere gli attuali limiti/protezioni delle funzioni avanzate delle bollette riservate a Premium.
+
+### AI — Free
+
+Impostare esattamente:
+
+* **Suggerimenti spesa AI: 2 al giorno**
+* **Ricerca ricette AI: 2 al giorno**
+* **Idee / generazione ricette AI: 1 al giorno**
+* **Piano pasti AI: 1 alla settimana**
+* **Consigli AI famiglia: 1 alla settimana**
+* **Ottimizzazione faccende AI: 1 al giorno**
+* **Foto ricette AI: 2 al giorno**
+* **Dettatura vocale / microfono: 3 al giorno**
+
+Le quote devono essere applicate lato server secondo l'architettura già esistente.
+
+Il ruolo `admin` della famiglia NON deve bypassare le quote.
+
+---
+
+# 4. NUOVO PIANO PREMIUM
+
+Il Premium deve essere generoso nell'uso normale ma non deve offrire quote artificialmente enormi che aumentano inutilmente i costi AI.
+
+Impostare:
+
+### Membri della famiglia
+
+* **Premium: illimitati**
+
+### Calendario
+
+* **Premium: illimitato**
+
+### Lista della spesa
+
+* **Premium: illimitata**
+
+### Faccende
+
+* **Premium: illimitate**
+
+### Chat familiare
+
+* **Premium: illimitata**
+
+### Bollette
+
+* **Premium: bollette attive illimitate**
+* mantenere le funzioni avanzate Premium già esistenti:
+
+  * allegati;
+  * ripartizione;
+  * storico;
+  * eventuali altre funzioni già realmente implementate.
+
+NON inventare nuove funzionalità Premium.
+
+### AI — Premium
+
+Sostituire le attuali quote molto elevate con:
+
+* **Suggerimenti spesa AI: 10 al giorno**
+* **Ricerca ricette AI: 10 al giorno**
+* **Idee / generazione ricette AI: 5 al giorno**
+* **Piano pasti AI: 3 alla settimana**
+* **Consigli AI famiglia: 5 alla settimana**
+* **Ottimizzazione faccende AI: 5 al giorno**
+* **Foto ricette AI: 10 al giorno**
+* **Dettatura vocale / microfono: 20 al giorno**
+
+Eliminare quindi i vecchi valori Premium come, ad esempio:
+
+* 15/giorno;
+* 25/giorno;
+* 55 foto/giorno;
+* 35 dettature/giorno;
+* 8 piani pasti/giorno;
+
+quando riferiti alle funzioni sopra.
+
+---
+
+# 5. GESTIONE DELLE QUOTE SETTIMANALI
+
+Per:
+
+* Piano pasti AI;
+* Consigli AI famiglia;
+
+le quote devono essere effettivamente **settimanali**, non simulate moltiplicando un limite giornaliero.
+
+Configurare quindi:
+
+### Free
+
+* Piano pasti AI: 1/settimana
+* Consigli AI famiglia: 1/settimana
+
+### Premium
+
+* Piano pasti AI: 3/settimana
+* Consigli AI famiglia: 5/settimana
+
+Riutilizzare l'infrastruttura quota esistente se già supporta finestre settimanali.
+
+Se è necessario un piccolo adeguamento tecnico per distinguere quote giornaliere e settimanali, limitarlo esclusivamente al sistema delle quote.
+
+NON creare un nuovo sistema parallelo.
+
+---
+
+# 6. PRINCIPIO DI CONTEGGIO
+
+Mantenere l'attuale principio secondo cui le quote AI vengono contabilizzate/protette lato server prima della chiamata AI.
+
+Non affidare il limite al solo frontend.
+
+Non permettere bypass modificando richieste client.
+
+Mantenere isolamento per famiglia e controlli esistenti.
+
+---
+
+# 7. SCHERMATA PREMIUM — RIDURRE L'EFFETTO "TABELLA DI QUOTE"
+
+La schermata Premium attuale mette troppo in evidenza numeri come:
+
+* 55/giorno;
+* 35/giorno;
+* 15/giorno.
+
+Questo fa apparire Premium come un semplice aumento di contatori.
+
+Modificare la presentazione senza fare un redesign generale.
+
+## Parte principale della schermata
+
+Mettere in evidenza prima i benefici:
+
+### FamilySync Premium
+
+* **Più AI per tutta la famiglia**
+* **Membri della famiglia illimitati**
+* **Gestione avanzata delle bollette**
+* **Allegati, ripartizione e storico**, dove già implementati
+* **Maggiore utilizzo della dettatura vocale**
+* **Supporto prioritario**
+
+Non promettere funzioni inesistenti.
+
+---
+
+# 8. TABELLA FREE / PREMIUM
+
+Mantenere una comparazione leggibile, aggiornata con i valori reali.
+
+Deve indicare:
+
+| Funzione                          | Gratis      | Premium     |
+| --------------------------------- | ----------- | ----------- |
+| Membri famiglia                   | Fino a 5    | Illimitati  |
+| Suggerimenti spesa AI             | 2/giorno    | 10/giorno   |
+| Ricerca ricette AI                | 2/giorno    | 10/giorno   |
+| Idee ricette AI                   | 1/giorno    | 5/giorno    |
+| Piano pasti AI                    | 1/settimana | 3/settimana |
+| Consigli AI famiglia              | 1/settimana | 5/settimana |
+| Ottimizzazione faccende AI        | 1/giorno    | 5/giorno    |
+| Foto ricette AI                   | 2/giorno    | 10/giorno   |
+| Dettatura vocale                  | 3/giorno    | 20/giorno   |
+| Calendario, spesa, faccende, chat | Illimitati  | Illimitati  |
+| Bollette attive                   | Fino a 5    | Illimitate  |
+| Funzioni avanzate bollette        | Limitate    | Incluse     |
+| Supporto prioritario              | —           | Incluso     |
+
+Usare testi brevi e leggibili anche su smartphone.
+
+Se la tabella è troppo lunga su mobile, è consentito renderla comprimibile tramite un semplice comando tipo:
+
+**"Vedi tutti i limiti"**
+
+ma SOLO se può essere fatto senza introdurre una nuova dipendenza o un redesign generale.
+
+La parte superiore con i vantaggi Premium deve rimanere visibile immediatamente.
+
+---
+
+# 9. TERMINOLOGIA
+
+Uniformare i testi.
+
+Usare sempre:
+
+* **Gratis** oppure **Free**, scegliendo la terminologia già prevalente nella UI italiana;
+* **Premium**;
+* **al giorno** / **giorno** in maniera coerente;
+* **alla settimana** / **settimana** in maniera coerente.
+
+Evitare combinazioni incoerenti come:
+
+`1 / settimana`
+
+su due righe se può essere visualizzato più chiaramente come:
+
+`1/settimana`.
+
+---
+
+# 10. GUIDA UTENTE
+
+Aggiornare `docs/guida-utente.md` affinché riporti esattamente il nuovo modello.
+
+Deve risultare chiaramente che:
+
+### Free
+
+* max 5 membri;
+* calendario illimitato;
+* spesa illimitata;
+* faccende illimitate;
+* chat illimitata;
+* max 5 bollette attive;
+* quote AI ridotte secondo i nuovi valori.
+
+### Premium
+
+* membri illimitati;
+* calendario/spesa/faccende/chat illimitati;
+* bollette illimitate;
+* funzioni bollette avanzate già esistenti;
+* quote AI Premium secondo i nuovi valori;
+* supporto prioritario.
+
+Rimuovere ogni vecchio valore non più valido.
+
+---
+
+# 11. VERIFICA COERENZA
+
+Alla fine deve esserci **una sola fonte logica delle quote**, utilizzata coerentemente dal backend.
+
+Eseguire una ricerca nel progetto per individuare eventuali vecchi valori hardcoded presenti in:
+
+* server;
+* frontend;
+* schermata Premium;
+* guida;
+* test;
+* messaggi di errore.
+
+Rimuovere o aggiornare esclusivamente i valori legacy relativi al modello Free/Premium.
+
+NON effettuare altre pulizie del codice.
+
+---
+
+# 12. TEST OBBLIGATORI
+
+Aggiornare o aggiungere test mirati per verificare almeno:
+
+### FREE
+
+A. Suggerimenti spesa: limite 2/giorno.
+
+B. Ricerca ricette: limite 2/giorno.
+
+C. Idee ricette: limite 1/giorno.
+
+D. Piano pasti: limite 1/settimana.
+
+E. Consigli famiglia: limite 1/settimana.
+
+F. Ottimizzazione faccende: limite 1/giorno.
+
+G. Foto ricette: limite 2/giorno.
+
+H. Dettatura vocale: limite 3/giorno.
+
+I. Calendario/spesa/faccende/chat non vengono bloccati da quote giornaliere.
+
+J. Max 5 membri rimane attivo.
+
+K. Max 5 bollette attive rimane attivo.
+
+### PREMIUM
+
+L. Suggerimenti spesa: 10/giorno.
+
+M. Ricerca ricette: 10/giorno.
+
+N. Idee ricette: 5/giorno.
+
+O. Piano pasti: 3/settimana.
+
+P. Consigli famiglia: 5/settimana.
+
+Q. Ottimizzazione faccende: 5/giorno.
+
+R. Foto ricette: 10/giorno.
+
+S. Dettatura: 20/giorno.
+
+T. Premium mantiene membri illimitati.
+
+U. Admin Free non bypassa i limiti.
+
+V. Admin Premium usa le quote Premium previste e non quote infinite.
+
+---
+
+# 13. CONTROLLO REGRESSIONI
+
+Eseguire:
+
+* typecheck;
+* test quote AI;
+* test entitlement/Premium interessati;
+* test schermata Premium se presenti;
+* test base usage interessati.
+
+NON è richiesto un nuovo audit generale dell'app.
+
+---
+
+# 14. CONSEGNA
+
+Alla fine fornire solamente:
+
+1. breve elenco dei file modificati;
+2. tabella finale delle quote Free/Premium effettivamente implementate;
+3. test eseguiti e risultato;
+4. eventuale limite tecnico realmente incontrato;
+5. ZIP completo aggiornato.
+
+NON creare altra documentazione.
+
+NON proporre ulteriori miglioramenti.
+
+NON modificare parti fuori mandato.
+
+---
+
+# CRITERIO DI CHIUSURA
+
+Il mandato è completato quando:
+
+* backend;
+* frontend;
+* schermata Premium;
+* guida;
+* test
+
+mostrano e applicano **gli stessi identici limiti**.
+
+Dopo questa consegna il modello Free/Premium deve essere considerato chiuso e pronto per la configurazione commerciale RevenueCat / Google Play / App Store.
