@@ -14,3 +14,5 @@ La trascrizione vocale passa un prompt di contesto italiano (baseHint + campo mu
 - Clip vocali molto brevi: qualsiasi prompt di contesto fa allucinare parole del dominio al modello di trascrizione. Regola: sotto una soglia di durata/dimensione trascrivere SENZA prompt.
 - La soglia "clip breve senza prompt" in soli byte è inaffidabile (il bitrate webm/opus varia): frasi di 5-10s perdevano il contesto e parole ("venerdì", "da Michele"). Il client invia durationMs e il server decide sulla durata (<2,5s = niente prompt), byte solo come fallback.
 - Su web l avvio del recorder (permessi+prepare) è lento: se l utente parla subito la prima parola si perde. Mostrare uno stato "avvio in corso" e icona rossa solo quando registra davvero.
+
+- Ago 2026: modello di trascrizione passato a `gpt-4o-transcribe` (più accurato del mini, stessi parametri API); registrazione in VoiceInput con preset voce 16 kHz mono 64 kbps (file ~metà, upload più rapido). L'assistente Home usa reasoning_effort 'low' (non 'minimal') per ridurre errori di smistamento.
