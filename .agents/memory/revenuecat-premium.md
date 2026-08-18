@@ -30,3 +30,5 @@ la fonte operativa. `isPremium(familyId)` è letto SEMPRE dal DB.
 **How to apply:** per modifiche al Premium mobile, non reintrodurre verifier IAP custom né
 endpoint /verify o /restore; passare sempre da RevenueCat + /sync. react-native-purchases
 funziona in Expo Go (Preview API Mode) e su web.
+
+**Guardia identità acquisti (lock globale):** ogni purchase/restore passa da `runWithRevenueCatIdentity` (lib/revenuecat-identity.ts): init + logIn(familyId) + verifica getAppUserID + azione, tutto dentro un lock FIFO globale condiviso con `loginRevenueCat` del cambio famiglia. Invariante: il lock NON è rientrante — mai chiamare `loginRevenueCat`/altre operazioni lockate dentro un'azione lockata (self-deadlock). Nuovi call-site di `Purchases.logIn` devono passare dal lock.
