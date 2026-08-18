@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { getParam } from '../lib/http-params';
+import { isRealIsoDate } from '../../shared/chore-recurrence';
 import type { Request, Response } from 'express';
 import { db } from '../db';
 import { familyMembers, shoppingHistory, shoppingLists, shoppingItems, calendarEvents, chores, aiInsights, pantryItems, users, recipeGenSessions } from '../../shared/schema';
@@ -1187,7 +1188,7 @@ router.post('/:familyId/parse-event', authenticate, requireAiEnabled, requireFam
     const extraDates = parsed.repeat
       ? []
       : Array.from(new Set(parsed.extraDates))
-          .filter(d => d !== parsed.date && d >= todayIso)
+          .filter(d => isRealIsoDate(d) && d !== parsed.date && d >= todayIso)
           .sort()
           .slice(0, 10);
 
