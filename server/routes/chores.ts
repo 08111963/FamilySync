@@ -400,6 +400,12 @@ router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (re
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata" } });
     }
 
+    // Funnel: prima faccenda assegnata — copre anche il flusso "crea senza
+    // assegnatario, poi assegna" via PUT (dedup oncePerFamily nel tracker).
+    if (parsed.data.assignedTo && chore.assignedTo) {
+      trackServerEvent('first_chore_assigned', { userId: req.user!.userId, familyId, oncePerFamily: true }).catch(() => {});
+    }
+
     // Sync calendario: evento presente solo se c'e' scadenza e non completata.
     if (chore.isCompleted || !chore.dueDate) {
       await deleteChoreCalendarEvent(familyId, chore.id, chore.calendarEventId);

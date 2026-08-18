@@ -9,6 +9,7 @@ process.env.ENABLE_TEST_ANALYTICS = process.env.ENABLE_TEST_ANALYTICS || "true";
 process.env.APP_OWNER_EMAILS = "owner@test.dev, Secondo@Test.dev";
 
 import {
+  trackServerEvent,
   isAppOwner,
   isTestAnalyticsEnabled,
   sanitizeMetadata,
@@ -112,4 +113,33 @@ describe("retention/pulizia su DB", () => {
 after(async () => {
   await db.delete(testAnalyticsEvents).where(eq(testAnalyticsEvents.screen, MARKER_SCREEN));
   process.exit(0);
+});
+
+describe("trackServerEvent (funnel lato server)", () => {
+  const FAM = "00000000-0000-4000-8000-00000000f0f0";
+  after(async () => {
+    await db.delete(testAnalyticsEvents).where(eq(testAnalyticsEvents.familyId, FAM));
+  });
+
+  test("flag spento -> nessun evento salvato", async () => {
+    process.env.ENABLE_TEST_ANALYTICS = "false";
+    await trackServerEvent("first_chore_assigned", { familyId: FAM, oncePerFamily: true });
+    process.env.ENABLE_TEST_ANALYTICS = "true";
+    const rows = await db.select().from(testAnalyticsEvents).where(eq(testAnalyticsEvents.familyId, FAM));
+    assert.equal(rows.length, 0);
+  });
+
+  test("evento non in whitelist -> rifiutato in silenzio", async () => {
+    await trackServerEvent("evento_inventato", { familyId: FAM });
+    const rows = await db.select().from(testAnalyticsEvents).where(eq(testAnalyticsEvents.familyId, FAM));
+    assert.equal(rows.length, 0);
+  });
+
+  test("oncePerFamily -> nessun duplicato first_*", async () => {
+    await trackServerEvent("first_chore_assigned", { familyId: FAM, oncePerFamily: true });
+    await trackServerEvent("first_chore_assigned", { familyId: FAM, oncePerFamily: true });
+    const rows = await db.select().from(testAnalyticsEvents).where(eq(testAnalyticsEvents.familyId, FAM));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].eventName, "first_chore_assigned");
+  });
 });
