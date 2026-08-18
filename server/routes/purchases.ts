@@ -101,7 +101,7 @@ export async function handleRevenueCatWebhook(req: Request, res: Response) {
   if (!expected) {
     // Fail-closed in produzione: senza header configurato non processiamo
     // webhook non autenticati (in sviluppo è tollerato per i test locali).
-    if (process.env.NODE_ENV === 'production') {
+    if (config.isProduction) {
       logger.error('RevenueCat webhook rifiutato: REVENUECAT_WEBHOOK_AUTH_HEADER non configurato in produzione');
       return res.status(503).json({ error: { code: 'WEBHOOK_NOT_CONFIGURED', message: 'Webhook non configurato' } });
     }
