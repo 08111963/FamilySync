@@ -210,15 +210,20 @@ export default function FamilyScreen() {
   };
 
   const handleSaveManagedMember = async (memberId: string) => {
+    const target = data.members.find((m) => m.id === memberId);
+    const isManagedTarget = target ? !target.userId : true;
     const name = editedMemberName.trim();
-    if (name.length < 2) return;
+    if (isManagedTarget && name.length < 2) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      await updateMember(memberId, {
-        name,
-        color: editedMemberColor,
-        role: editedMemberRole as any,
-      });
+      // Per i membri CON account il server permette (all'admin) solo il colore:
+      // nome e ruolo li gestisce il diretto interessato dal proprio profilo.
+      await updateMember(
+        memberId,
+        isManagedTarget
+          ? { name, color: editedMemberColor, role: editedMemberRole as any }
+          : { color: editedMemberColor }
+      );
       setEditingMemberId(null);
     } catch (err) {
       const msg = getApiErrorMessage(err, "Impossibile aggiornare il profilo. Riprova.");
@@ -230,11 +235,17 @@ export default function FamilyScreen() {
     }
   };
 
-  const handleSaveName = () => {
-    if (editedName.trim().length >= 2) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setFamilyName(editedName.trim());
+  const handleSaveName = async () => {
+    const name = editedName.trim();
+    if (name.length < 2) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await setFamilyName(name);
       setIsEditingName(false);
+    } catch (err) {
+      const msg = getApiErrorMessage(err, "Impossibile salvare il nome della famiglia. Riprova.");
+      if (Platform.OS === "web") alert(msg);
+      else Alert.alert("Errore", msg);
     }
   };
 
@@ -305,6 +316,8 @@ export default function FamilyScreen() {
               onChangeText={setEditedName}
               autoFocus
               keyboardAppearance={isDark ? "dark" : "light"}
+              returnKeyType="done"
+              onSubmitEditing={handleSaveName}
             />
             <View style={styles.editButtons}>
               <Pressable onPress={() => setIsEditingName(false)}>
@@ -389,17 +402,23 @@ export default function FamilyScreen() {
                       {isEditingMember ? (
                         <>
                         <View style={styles.memberEditRow}>
-                          <TextInput
-                            style={[
-                              styles.memberNameInput,
-                              { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text },
-                            ]}
-                            value={editedMemberName}
-                            onChangeText={setEditedMemberName}
-                            autoFocus
-                            keyboardAppearance={isDark ? "dark" : "light"}
-                            testID={`member-name-input-${member.id}`}
-                          />
+                          {isManaged ? (
+                            <TextInput
+                              style={[
+                                styles.memberNameInput,
+                                { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text },
+                              ]}
+                              value={editedMemberName}
+                              onChangeText={setEditedMemberName}
+                              autoFocus
+                              keyboardAppearance={isDark ? "dark" : "light"}
+                              testID={`member-name-input-${member.id}`}
+                            />
+                          ) : (
+                            <Text style={[styles.memberName, { color: colors.text, flex: 1 }]} numberOfLines={1}>
+                              {member.name}
+                            </Text>
+                          )}
                           <Pressable onPress={() => setEditingMemberId(null)} style={styles.actionButton}>
                             <Ionicons name="close" size={22} color={colors.textSecondary} />
                           </Pressable>
@@ -425,6 +444,7 @@ export default function FamilyScreen() {
                             />
                           ))}
                         </View>
+                        {isManaged && (
                         <View style={styles.roleRow}>
                           {MANAGED_ROLES.map((r) => {
                             const active = editedMemberRole === r.value;
@@ -448,6 +468,7 @@ export default function FamilyScreen() {
                             );
                           })}
                         </View>
+                        )}
                         </>
                       ) : (
                         <Text style={[styles.memberName, { color: colors.text }]}>
@@ -499,15 +520,30 @@ export default function FamilyScreen() {
                       >
                         <Ionicons name="pencil" size={20} color={colors.primary} />
                       </Pressable>
-                    ) : member.userId && !isChildUser ? (
-                      <Pressable
-                        onPress={() => handleMemberAction(member)}
-                        style={styles.actionButton}
-                      >
-                        <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
-                      </Pressable>
+                    ) : member.userId && !isChildUser && !isEditingMember ? (
+                      <>
+                        {isAdmin && (
+                          <Pressable
+                            onPress={() => {
+                              setEditedMemberName(member.name);
+                              setEditedMemberColor(member.color || AVATAR_COLORS[0]);
+                              setEditingMemberId(member.id);
+                            }}
+                            style={styles.actionButton}
+                            testID={`edit-member-color-${member.id}`}
+                          >
+                            <Ionicons name="color-palette-outline" size={20} color={colors.primary} />
+                          </Pressable>
+                        )}
+                        <Pressable
+                          onPress={() => handleMemberAction(member)}
+                          style={styles.actionButton}
+                        >
+                          <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
+                        </Pressable>
+                      </>
                     ) : null}
-                    {!isSelf && !isChildUser && !showActionsRow && (
+                    {!isSelf && !isChildUser && !showActionsRow && !isEditingMember && (
                       <Pressable
                         onPress={() => handleDeleteMember(member.id, member.name)}
                         style={styles.deleteButton}

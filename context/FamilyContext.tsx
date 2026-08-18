@@ -122,7 +122,7 @@ interface FamilyContextType {
   isLoading: boolean;
   currentFamily: FamilyInfo | null;
   families: FamilyInfo[];
-  setFamilyName: (name: string) => void;
+  setFamilyName: (name: string) => Promise<void>;
   createFamily: (name: string) => Promise<void>;
   switchFamily: (familyId: string) => void;
   addMember: (member: { name: string; role: string; avatar: string; color: string }) => void;
@@ -288,14 +288,13 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     qc.invalidateQueries({ queryKey: ["/api/chores", familyId] });
   }, [qc]);
 
-  const setFamilyName = useCallback((name: string) => {
+  const setFamilyName = useCallback(async (name: string) => {
     if (!currentFamilyId) return;
-    apiRequest("PUT", `/api/families/${currentFamilyId}`, { name })
-      .then(() => {
-        qc.invalidateQueries({ queryKey: ["/api/families"] });
-        qc.invalidateQueries({ queryKey: ["/api/families", currentFamilyId] });
-      })
-      .catch(console.error);
+    // Attende la risposta e propaga l'errore: un fallimento silenzioso faceva
+    // sembrare il nome "cambiato" per poi tornare quello vecchio al refresh.
+    await apiRequest("PUT", `/api/families/${currentFamilyId}`, { name });
+    qc.invalidateQueries({ queryKey: ["/api/families"] });
+    qc.invalidateQueries({ queryKey: ["/api/families", currentFamilyId] });
   }, [currentFamilyId, qc]);
 
   const addMember = useCallback((_member: { name: string; role: string; avatar: string; color: string }) => {
