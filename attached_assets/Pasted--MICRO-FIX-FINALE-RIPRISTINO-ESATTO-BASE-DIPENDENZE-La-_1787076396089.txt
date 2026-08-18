@@ -1,0 +1,132 @@
+# MICRO-FIX FINALE — RIPRISTINO ESATTO BASE DIPENDENZE
+
+La monetizzazione Free/Premium appena implementata è APPROVATA.
+
+RevenueCat è APPROVATO.
+
+NON modificare alcun file applicativo.
+
+NON modificare:
+
+* quote Free/Premium;
+* `server/lib/ai-usage.ts`;
+* `app/premium.tsx`;
+* `docs/guida-utente.md`;
+* `lib/ai-error-message.ts`;
+* test AI;
+* RevenueCat;
+* purchases;
+* entitlement;
+* analytics;
+* account bambino;
+* backend applicativo.
+
+## UNICO OBIETTIVO
+
+Ripristinare ESATTAMENTE i tre file infrastrutturali alla situazione della precedente consegna approvata `familysync-consegna-v2.1 (4)`, senza introdurre alcun nuovo aggiornamento di sicurezza o dipendenza.
+
+### 1. package.json
+
+Le versioni già ripristinate devono restare:
+
+* `drizzle-orm`: `^0.39.3`
+* `drizzle-zod`: `^0.7.1`
+* `drizzle-kit`: `^0.31.4`
+* `puppeteer-core`: `^24.37.3`
+
+RIMUOVERE COMPLETAMENTE la sezione `overrides` aggiunta nell'ultima consegna:
+
+* `basic-ftp`
+* `tar`
+* `shell-quote`
+
+La precedente base approvata NON aveva alcuna sezione `overrides`.
+
+NON aggiungere altri overrides.
+
+NON eseguire `npm audit fix`.
+
+NON aggiornare alcuna dipendenza.
+
+### 2. package-lock.json
+
+Ripristinare `package-lock.json` coerentemente con il `package.json` della precedente base approvata.
+
+L'obiettivo è che il sistema delle dipendenze torni allo stesso stato di `familysync-consegna-v2.1 (4)`.
+
+NON aggiornare pacchetti transitivi autonomamente.
+
+NON aggiungere risoluzioni di sicurezza.
+
+NON cambiare versioni fuori da quanto già presente nella base approvata.
+
+### 3. .gitignore
+
+Ripristinare `.gitignore` alla precedente versione approvata.
+
+Rimuovere la riga aggiunta:
+
+`server_dist/`
+
+Non modificare altro.
+
+### 4. SECURITY.md
+
+Deve rimanere assente.
+
+### 5. VERIFICA FINALE
+
+Dopo il ripristino verificare che siano rimaste INVARIATE tutte le modifiche Free/Premium dell'attuale consegna.
+
+Le quote devono restare esattamente:
+
+FREE:
+
+* Suggerimenti spesa AI: 2/giorno
+* Ricerca ricette AI: 2/giorno
+* Idee ricette AI: 1/giorno
+* Piano pasti AI: 1/settimana
+* Consigli AI famiglia: 1/settimana
+* Ottimizzazione faccende AI: 1/giorno
+* Foto ricette AI: 2/giorno
+* Dettatura: 3/giorno
+
+PREMIUM:
+
+* Suggerimenti spesa AI: 10/giorno
+* Ricerca ricette AI: 10/giorno
+* Idee ricette AI: 5/giorno
+* Piano pasti AI: 3/settimana
+* Consigli AI famiglia: 5/settimana
+* Ottimizzazione faccende AI: 5/giorno
+* Foto ricette AI: 10/giorno
+* Dettatura: 20/giorno
+
+Calendario, spesa, faccende e chat restano illimitati.
+
+Free:
+
+* massimo 5 membri;
+* massimo 5 bollette attive.
+
+Premium:
+
+* membri illimitati;
+* bollette illimitate.
+
+### 6. CONSEGNA
+
+NON fare altre modifiche.
+
+NON proporre miglioramenti.
+
+NON eseguire audit.
+
+Consegnare ZIP completo finale.
+
+Nel report indicare soltanto:
+
+* `package.json` ripristinato;
+* `package-lock.json` ripristinato;
+* `.gitignore` ripristinato;
+* conferma che nessun altro file è stato modificato.
