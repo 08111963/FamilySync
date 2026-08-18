@@ -125,8 +125,8 @@ title = "Guida: FamilySync sul telefono"
 id = "OwANvfIx-c8_2VY-DmkEl"
 uri = "file://familysync-consegna-v2.1.zip"
 type = "unspecified"
-title = "FamilySync — consegna finale (dipendenze ripristinate)"
-description = "ZIP completo: modifiche Free/Premium mantenute, sistema dipendenze ripristinato alla precedente consegna approvata (con 3 sole eccezioni forzate dal firewall pacchetti di Replit)."
+title = "FamilySync — consegna finale (base dipendenze esatta)"
+description = "ZIP completo: modifiche Free/Premium invariate; package.json, package-lock.json e .gitignore identici alla precedente consegna approvata, senza overrides né SECURITY.md."
 
 [[outputs]]
 id = "Y6Kxd6T52jkOyM6ag8LCz"
