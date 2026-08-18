@@ -98,12 +98,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Gli account bambino possono LEGGERE famiglia/membri ma non modificare nulla
   // (gestione membri, inviti, impostazioni, generazione codici = solo genitori).
   app.use('/api/families', authenticate, requireEmailVerified, blockChildWrites, familiesRoutes);
-  app.use('/api/calendar', authenticate, requireEmailVerified, calendarRoutes);
+  // Account bambino: calendario in sola lettura (create/update/delete solo adulti).
+  app.use('/api/calendar', authenticate, requireEmailVerified, blockChildWrites, calendarRoutes);
   // Google Calendar sync: auth applicata per-rotta (il callback OAuth è pubblico).
   app.use('/api/calendar-sync', googleCalendarSyncRoutes);
-  app.use('/api/shopping', authenticate, requireEmailVerified, shoppingRoutes);
+  // Account bambino: liste spesa in sola lettura (scritture riservate agli adulti).
+  app.use('/api/shopping', authenticate, requireEmailVerified, blockChildWrites, shoppingRoutes);
+  // Faccende: guardie child per-rotta dentro choresRoutes (il bambino può SOLO
+  // completare le faccende assegnate al proprio membro, mai creare/modificare/eliminare).
   app.use('/api/chores', authenticate, requireEmailVerified, choresRoutes);
-  app.use('/api/rewards', authenticate, requireEmailVerified, rewardsRoutes);
+  // Premi: il bambino può solo consultare il catalogo; riscatto e gestione
+  // catalogo restano riservati agli adulti.
+  app.use('/api/rewards', authenticate, requireEmailVerified, blockChildWrites, rewardsRoutes);
   app.use('/api/pantry', authenticate, requireEmailVerified, blockChildAccount, pantryRoutes);
   app.use('/api/expenses', authenticate, requireEmailVerified, blockChildAccount, expensesRoutes);
   app.use('/api/ai', authenticate, requireEmailVerified, blockChildAccount, aiRoutes);

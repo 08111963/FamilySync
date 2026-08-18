@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from '../db';
 import { chores, familyMembers, calendarEvents, users } from '../../shared/schema';
 import { eq, and, sql, isNull, lt } from 'drizzle-orm';
-import { authenticate } from '../middleware/auth';
+import { authenticate, blockChildAccount } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
 import { sendPushToUser, sendPushToFamily } from '../lib/push';
@@ -300,7 +300,9 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
   }
 });
 
-router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+// Creazione riservata agli adulti: un account bambino potrebbe altrimenti
+// auto-assegnarsi faccende con punti arbitrari (escalation punti/premi).
+router.post('/:familyId', authenticate, blockChildAccount, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const parsed = createChoreSchema.safeParse(req.body);
@@ -349,7 +351,9 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
   }
 });
 
-router.put('/:familyId/:choreId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+// Modifica riservata agli adulti (punti, scadenze e assegnazioni non sono
+// alterabili da un account bambino).
+router.put('/:familyId/:choreId', authenticate, blockChildAccount, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const choreId = getParam(req, 'choreId');
@@ -433,6 +437,22 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
   try {
     const familyId = getParam(req, 'familyId');
     const choreId = getParam(req, 'choreId');
+
+    // Account bambino: può completare SOLO le faccende assegnate al proprio
+    // membro (i punti restano quelli decisi dal genitore alla creazione).
+    // Fail-closed: senza assegnazione o su faccende altrui → 403.
+    if (req.user!.isChildAccount === true) {
+      const membership = (req as any).membership as { id: string } | undefined;
+      const [target] = await db.select({ assignedTo: chores.assignedTo }).from(chores)
+        .where(and(eq(chores.id, choreId), eq(chores.familyId, familyId)))
+        .limit(1);
+      if (!target) {
+        return res.status(404).json({ error: { code: "NOT_FOUND", message: "Faccenda non trovata" } });
+      }
+      if (!membership?.id || !target.assignedTo || target.assignedTo !== membership.id) {
+        return res.status(403).json({ error: { code: "CHILD_FORBIDDEN", message: "Questa funzione non è disponibile per gli accessi bambino" } });
+      }
+    }
 
     // Aggiornamento atomico: la guardia isCompleted=false nella WHERE evita
     // che due richieste concorrenti assegnino i punti (o ricreino la
@@ -521,7 +541,8 @@ router.patch('/:familyId/:choreId/complete', authenticate, requireFamilyMember()
   }
 });
 
-router.delete('/:familyId/:choreId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+// Eliminazione riservata agli adulti.
+router.delete('/:familyId/:choreId', authenticate, blockChildAccount, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const choreId = getParam(req, 'choreId');

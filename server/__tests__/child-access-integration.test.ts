@@ -4,7 +4,7 @@ import express from "express";
 import type { Server } from "node:http";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { users, families, familyMembers, childAccessCodes, bills, billAttachments, chatMessages, entitlements } from "../../shared/schema";
+import { users, families, familyMembers, childAccessCodes, bills, billAttachments, chatMessages, entitlements, chores, calendarEvents, rewards, shoppingLists } from "../../shared/schema";
 import { registerRoutes } from "../routes";
 import { generateAccessToken } from "../lib/jwt";
 
@@ -143,6 +143,80 @@ describe("accesso dispositivo bambino (DB + HTTP)", { skip: hasDb ? false : "DAT
       const res = await request(method, path, body, childToken);
       assert.equal(res.status, 403, `${method} ${path} -> ${res.status}`);
     }
+  });
+
+  test("scritture vietate al bambino: calendario, spesa, premi, faccende (task 125)", async () => {
+    // Dati di famiglia creati dal genitore
+    const [event] = await db.insert(calendarEvents).values({
+      familyId, title: "Visita medica", date: "2030-05-01", color: "#6366F1", createdBy: adminId,
+    }).returning();
+    const [reward] = await db.insert(rewards).values({
+      familyId, title: "Gelato", pointsCost: 1, createdBy: adminId,
+    }).returning();
+    const [list] = await db.insert(shoppingLists).values({
+      familyId, name: "Spesa", createdBy: adminId,
+    }).returning();
+
+    const denied: Array<[string, string, unknown?]> = [
+      // Calendario: sola lettura per il bambino
+      ["POST", `/api/calendar/${familyId}`, { title: "Fake", date: "2030-06-01", color: "#000000" }],
+      ["PUT", `/api/calendar/${familyId}/${event.id}`, { title: "Hack" }],
+      ["DELETE", `/api/calendar/${familyId}/${event.id}`],
+      // Feed ICS: espone/rigenera il token di famiglia (GET, guardia dedicata)
+      ["GET", `/api/calendar/${familyId}/feed-url?regenerate=1`],
+      ["GET", `/api/calendar/${familyId}/feed-url`],
+      // Spesa: scritture riservate agli adulti
+      ["POST", `/api/shopping/${familyId}/lists`, { name: "x" }],
+      ["DELETE", `/api/shopping/${familyId}/lists/${list.id}`],
+      ["POST", `/api/shopping/${familyId}/lists/${list.id}/items`, { name: "latte" }],
+      // Premi: niente riscatto né gestione catalogo
+      ["POST", `/api/rewards/${familyId}`, { title: "x", pointsCost: 1 }],
+      ["POST", `/api/rewards/${familyId}/${reward.id}/redeem`],
+      ["DELETE", `/api/rewards/${familyId}/${reward.id}`],
+      // Faccende: niente creazione/modifica/eliminazione
+      ["POST", `/api/chores/${familyId}`, { title: "x", points: 99999, assignedTo: memberId }],
+    ];
+    for (const [method, path, body] of denied) {
+      const res = await request(method, path, body, childToken);
+      assert.equal(res.status, 403, `${method} ${path} -> ${res.status}`);
+      const payload = await res.json();
+      assert.equal(payload.error.code, "CHILD_FORBIDDEN", `${method} ${path}`);
+    }
+
+    // La lettura del calendario resta consentita
+    const read = await request("GET", `/api/calendar/${familyId}?startDate=2030-04-01&endDate=2030-06-30`, undefined, childToken);
+    assert.equal(read.status, 200);
+  });
+
+  test("faccende: il bambino completa SOLO quelle assegnate a sé", async () => {
+    // Faccenda assegnata al genitore → il bambino non può completarla
+    const [adminMember] = await db.select().from(familyMembers)
+      .where(eq(familyMembers.userId, adminId));
+    const [otherChore] = await db.insert(chores).values({
+      familyId, title: "Faccenda genitore", points: 50, assignedTo: adminMember.id, createdBy: adminId,
+    }).returning();
+    const resOther = await request("PATCH", `/api/chores/${familyId}/${otherChore.id}/complete`, undefined, childToken);
+    assert.equal(resOther.status, 403);
+    assert.equal((await resOther.json()).error.code, "CHILD_FORBIDDEN");
+
+    // Modifica/eliminazione vietate anche sulla propria faccenda
+    const [ownChore] = await db.insert(chores).values({
+      familyId, title: "Riordina la stanza", points: 10, assignedTo: memberId, createdBy: adminId,
+    }).returning();
+    const put = await request("PUT", `/api/chores/${familyId}/${ownChore.id}`, { points: 99999 }, childToken);
+    assert.equal(put.status, 403);
+    const del = await request("DELETE", `/api/chores/${familyId}/${ownChore.id}`, undefined, childToken);
+    assert.equal(del.status, 403);
+
+    // Completare la PROPRIA faccenda resta consentito (punti decisi dal genitore)
+    const ok = await request("PATCH", `/api/chores/${familyId}/${ownChore.id}/complete`, undefined, childToken);
+    assert.equal(ok.status, 200);
+    const [m] = await db.select().from(familyMembers).where(eq(familyMembers.id, memberId));
+    assert.equal(m.points, 15); // 5 iniziali + 10
+
+    // Ripristina i punti iniziali: i test successivi (revoca/riattivazione)
+    // verificano che i punti restino invariati a 5.
+    await db.update(familyMembers).set({ points: 5 }).where(eq(familyMembers.id, memberId));
   });
 
   test("media token: il bambino NON può ottenere/usare token per allegati bollette", async () => {

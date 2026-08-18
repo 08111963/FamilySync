@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db';
 import { calendarEvents, familyMembers, families, users } from '../../shared/schema';
 import { eq, and, gte, lte, isNull, inArray } from 'drizzle-orm';
-import { authenticate } from '../middleware/auth';
+import { authenticate, blockChildAccount } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily, notifyUserInFamily } from '../lib/websocket';
 import { sendPushToUser, sendPushToFamily } from '../lib/push';
@@ -151,7 +151,10 @@ function feedBaseUrl(req: Request): string {
  * Restituisce l'URL del feed ICS della famiglia (lo genera al primo accesso).
  * Con ?regenerate=1 crea un nuovo token invalidando il link precedente.
  */
-router.get('/:familyId/feed-url', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+// Riservato agli adulti: la rotta espone il token del feed ICS e con
+// ?regenerate=1 lo invalida per tutta la famiglia (è una GET, quindi la
+// guardia blockChildWrites a livello di mount non basta).
+router.get('/:familyId/feed-url', authenticate, blockChildAccount, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const regenerate = getQuery(req, 'regenerate') === '1';
