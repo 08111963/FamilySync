@@ -56,3 +56,4 @@ tmp/
 *.private.*
 *vapid*key*
 web-build-old/
+server_dist/
