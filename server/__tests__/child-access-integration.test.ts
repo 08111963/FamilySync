@@ -145,47 +145,128 @@ describe("accesso dispositivo bambino (DB + HTTP)", { skip: hasDb ? false : "DAT
     }
   });
 
-  test("scritture vietate al bambino: calendario, spesa, premi, faccende (task 125)", async () => {
-    // Dati di famiglia creati dal genitore
-    const [event] = await db.insert(calendarEvents).values({
+  test("calendario: il bambino crea i propri eventi e modifica/elimina SOLO i propri (test A, B, C)", async () => {
+    // Evento del genitore
+    const [parentEvent] = await db.insert(calendarEvents).values({
       familyId, title: "Visita medica", date: "2030-05-01", color: "#6366F1", createdBy: adminId,
     }).returning();
-    const [reward] = await db.insert(rewards).values({
-      familyId, title: "Gelato", pointsCost: 1, createdBy: adminId,
+
+    // La lettura resta consentita
+    const read = await request("GET", `/api/calendar/${familyId}?startDate=2030-04-01&endDate=2030-06-30`, undefined, childToken);
+    assert.equal(read.status, 200);
+
+    // A: il bambino può creare un proprio evento
+    const create = await request("POST", `/api/calendar/${familyId}`, { title: "Allenamento", date: "2030-05-02", color: "#F59E0B" }, childToken);
+    assert.equal(create.status, 201);
+    const ownEvent = await create.json();
+
+    // B: può modificare ed eliminare SOLO il proprio evento
+    const putOwn = await request("PUT", `/api/calendar/${familyId}/${ownEvent.id}`, { title: "Allenamento calcio" }, childToken);
+    assert.equal(putOwn.status, 200);
+
+    // C: modifica/eliminazione di eventi altrui = 403 CHILD_FORBIDDEN
+    for (const [method, path, body] of [
+      ["PUT", `/api/calendar/${familyId}/${parentEvent.id}`, { title: "Hack" }],
+      ["DELETE", `/api/calendar/${familyId}/${parentEvent.id}`, undefined],
+    ] as Array<[string, string, unknown?]>) {
+      const res = await request(method, path, body, childToken);
+      assert.equal(res.status, 403, `${method} ${path} -> ${res.status}`);
+      assert.equal((await res.json()).error.code, "CHILD_FORBIDDEN", `${method} ${path}`);
+    }
+    // l'evento del genitore è ancora lì
+    const [still] = await db.select().from(calendarEvents).where(eq(calendarEvents.id, parentEvent.id));
+    assert.ok(still);
+    assert.equal(still.title, "Visita medica");
+
+    // B (delete): eliminazione del proprio evento consentita
+    const delOwn = await request("DELETE", `/api/calendar/${familyId}/${ownEvent.id}`, undefined, childToken);
+    assert.equal(delOwn.status, 200);
+
+    // Serie ricorrente del genitore: anche con scope=series il bambino non
+    // può eliminare nulla che non sia suo
+    const [seriesEvent] = await db.insert(calendarEvents).values({
+      familyId, title: "Piscina", date: "2030-05-03", color: "#10B981",
+      recurrenceRule: "weekly:1", seriesId: crypto.randomUUID(), createdBy: adminId,
     }).returning();
+    const delSeries = await request("DELETE", `/api/calendar/${familyId}/${seriesEvent.id}?scope=series`, undefined, childToken);
+    assert.equal(delSeries.status, 403);
+    assert.equal((await delSeries.json()).error.code, "CHILD_FORBIDDEN");
+    const [seriesStill] = await db.select().from(calendarEvents).where(eq(calendarEvents.id, seriesEvent.id));
+    assert.ok(seriesStill);
+
+    // Feed ICS: espone/rigenera il token di famiglia → sempre vietato al bambino
+    for (const path of [`/api/calendar/${familyId}/feed-url?regenerate=1`, `/api/calendar/${familyId}/feed-url`]) {
+      const res = await request("GET", path, undefined, childToken);
+      assert.equal(res.status, 403, path);
+      assert.equal((await res.json()).error.code, "CHILD_FORBIDDEN", path);
+    }
+  });
+
+  test("spesa: il bambino aggiunge e spunta articoli, ma non gestisce liste/dettagli (test D, E, F)", async () => {
     const [list] = await db.insert(shoppingLists).values({
       familyId, name: "Spesa", createdBy: adminId,
     }).returning();
 
+    // D: può aggiungere un articolo a una lista esistente
+    const add = await request("POST", `/api/shopping/${familyId}/lists/${list.id}/items`, { name: "latte" }, childToken);
+    assert.equal(add.status, 201);
+    const item = await add.json();
+
+    // E: può spuntare l'articolo (e togliere la spunta)
+    const toggle = await request("PATCH", `/api/shopping/${familyId}/lists/${list.id}/items/${item.id}/toggle`, undefined, childToken);
+    assert.equal(toggle.status, 200);
+    assert.equal((await toggle.json()).isChecked, true);
+
+    // F + operazioni strutturali: vietate al bambino
     const denied: Array<[string, string, unknown?]> = [
-      // Calendario: sola lettura per il bambino
-      ["POST", `/api/calendar/${familyId}`, { title: "Fake", date: "2030-06-01", color: "#000000" }],
-      ["PUT", `/api/calendar/${familyId}/${event.id}`, { title: "Hack" }],
-      ["DELETE", `/api/calendar/${familyId}/${event.id}`],
-      // Feed ICS: espone/rigenera il token di famiglia (GET, guardia dedicata)
-      ["GET", `/api/calendar/${familyId}/feed-url?regenerate=1`],
-      ["GET", `/api/calendar/${familyId}/feed-url`],
-      // Spesa: scritture riservate agli adulti
       ["POST", `/api/shopping/${familyId}/lists`, { name: "x" }],
       ["DELETE", `/api/shopping/${familyId}/lists/${list.id}`],
-      ["POST", `/api/shopping/${familyId}/lists/${list.id}/items`, { name: "latte" }],
-      // Premi: niente riscatto né gestione catalogo
+      ["PATCH", `/api/shopping/${familyId}/lists/${list.id}/items/${item.id}`, { name: "caramelle" }],
+      ["DELETE", `/api/shopping/${familyId}/lists/${list.id}/items/${item.id}`],
+    ];
+    for (const [method, path, body] of denied) {
+      const res = await request(method, path, body, childToken);
+      assert.equal(res.status, 403, `${method} ${path} -> ${res.status}`);
+      assert.equal((await res.json()).error.code, "CHILD_FORBIDDEN", `${method} ${path}`);
+    }
+  });
+
+  test("premi: il bambino riscatta con i propri punti ma non gestisce il catalogo (test G, H)", async () => {
+    const [reward] = await db.insert(rewards).values({
+      familyId, title: "Gelato", pointsCost: 1, createdBy: adminId,
+    }).returning();
+
+    // H: gestione catalogo vietata (403 dal controllo di ruolo admin/adulto)
+    const denied: Array<[string, string, unknown?]> = [
       ["POST", `/api/rewards/${familyId}`, { title: "x", pointsCost: 1 }],
-      ["POST", `/api/rewards/${familyId}/${reward.id}/redeem`],
+      ["PUT", `/api/rewards/${familyId}/${reward.id}`, { pointsCost: 0 }],
       ["DELETE", `/api/rewards/${familyId}/${reward.id}`],
-      // Faccende: niente creazione/modifica/eliminazione
+    ];
+    for (const [method, path, body] of denied) {
+      const res = await request(method, path, body, childToken);
+      assert.equal(res.status, 403, `${method} ${path} -> ${res.status}`);
+    }
+
+    // G: riscatto consentito con punti sufficienti (5 iniziali, costo 1)
+    const redeem = await request("POST", `/api/rewards/${familyId}/${reward.id}/redeem`, undefined, childToken);
+    assert.equal(redeem.status, 201, JSON.stringify(await redeem.clone().json().catch(() => ({}))));
+    const [m] = await db.select().from(familyMembers).where(eq(familyMembers.id, memberId));
+    assert.equal(m.points, 4); // 5 - 1
+
+    // Ripristina i punti iniziali per i test successivi
+    await db.update(familyMembers).set({ points: 5 }).where(eq(familyMembers.id, memberId));
+  });
+
+  test("scritture vietate residue: famiglia e faccende", async () => {
+    const denied: Array<[string, string, unknown?]> = [
+      // Faccende: niente creazione/modifica/eliminazione (test I/J più sotto)
       ["POST", `/api/chores/${familyId}`, { title: "x", points: 99999, assignedTo: memberId }],
     ];
     for (const [method, path, body] of denied) {
       const res = await request(method, path, body, childToken);
       assert.equal(res.status, 403, `${method} ${path} -> ${res.status}`);
-      const payload = await res.json();
-      assert.equal(payload.error.code, "CHILD_FORBIDDEN", `${method} ${path}`);
+      assert.equal((await res.json()).error.code, "CHILD_FORBIDDEN", `${method} ${path}`);
     }
-
-    // La lettura del calendario resta consentita
-    const read = await request("GET", `/api/calendar/${familyId}?startDate=2030-04-01&endDate=2030-06-30`, undefined, childToken);
-    assert.equal(read.status, 200);
   });
 
   test("faccende: il bambino completa SOLO quelle assegnate a sé", async () => {

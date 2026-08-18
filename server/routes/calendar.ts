@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db';
 import { calendarEvents, familyMembers, families, users } from '../../shared/schema';
 import { eq, and, gte, lte, isNull, inArray } from 'drizzle-orm';
-import { authenticate, blockChildAccount } from '../middleware/auth';
+import { authenticate, blockChildAccount, CHILD_FORBIDDEN } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily, notifyUserInFamily } from '../lib/websocket';
 import { sendPushToUser, sendPushToFamily } from '../lib/push';
@@ -356,6 +356,18 @@ router.put('/:familyId/:eventId', authenticate, requireFamilyMember(), async (re
       });
     }
 
+    // Account bambino: può modificare SOLO gli eventi creati da sé.
+    if (req.user!.isChildAccount) {
+      const [existing] = await db
+        .select({ createdBy: calendarEvents.createdBy })
+        .from(calendarEvents)
+        .where(and(eq(calendarEvents.id, eventId), eq(calendarEvents.familyId, familyId)))
+        .limit(1);
+      if (existing && existing.createdBy !== req.user!.userId) {
+        return res.status(403).json(CHILD_FORBIDDEN);
+      }
+    }
+
     const [event] = await db.update(calendarEvents)
       .set({ ...parsed.data, updatedAt: new Date() })
       .where(and(eq(calendarEvents.id, eventId), eq(calendarEvents.familyId, familyId)))
@@ -393,6 +405,11 @@ router.delete('/:familyId/:eventId', authenticate, requireFamilyMember(), async 
     if (!target) {
       broadcastToFamily(familyId, 'event_deleted', { eventId, scope: 'single' });
       return res.json({ message: 'Evento eliminato' });
+    }
+
+    // Account bambino: può eliminare SOLO gli eventi creati da sé.
+    if (req.user!.isChildAccount && target.createdBy !== req.user!.userId) {
+      return res.status(403).json(CHILD_FORBIDDEN);
     }
 
     const idsToDelete: string[] = [target.id];

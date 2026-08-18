@@ -98,18 +98,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Gli account bambino possono LEGGERE famiglia/membri ma non modificare nulla
   // (gestione membri, inviti, impostazioni, generazione codici = solo genitori).
   app.use('/api/families', authenticate, requireEmailVerified, blockChildWrites, familiesRoutes);
-  // Account bambino: calendario in sola lettura (create/update/delete solo adulti).
-  app.use('/api/calendar', authenticate, requireEmailVerified, blockChildWrites, calendarRoutes);
+  // Account bambino: può leggere il calendario e creare i PROPRI eventi;
+  // modifica/eliminazione solo sui propri (guardie per-rotta dentro calendarRoutes).
+  app.use('/api/calendar', authenticate, requireEmailVerified, calendarRoutes);
   // Google Calendar sync: auth applicata per-rotta (il callback OAuth è pubblico).
   app.use('/api/calendar-sync', googleCalendarSyncRoutes);
-  // Account bambino: liste spesa in sola lettura (scritture riservate agli adulti).
-  app.use('/api/shopping', authenticate, requireEmailVerified, blockChildWrites, shoppingRoutes);
+  // Account bambino: può leggere le liste, aggiungere articoli e spuntarli;
+  // creazione/eliminazione liste e modifiche strutturali restano riservate agli
+  // adulti (guardie per-rotta dentro shoppingRoutes).
+  app.use('/api/shopping', authenticate, requireEmailVerified, shoppingRoutes);
   // Faccende: guardie child per-rotta dentro choresRoutes (il bambino può SOLO
   // completare le faccende assegnate al proprio membro, mai creare/modificare/eliminare).
   app.use('/api/chores', authenticate, requireEmailVerified, choresRoutes);
-  // Premi: il bambino può solo consultare il catalogo; riscatto e gestione
-  // catalogo restano riservati agli adulti.
-  app.use('/api/rewards', authenticate, requireEmailVerified, blockChildWrites, rewardsRoutes);
+  // Premi: il bambino può consultare il catalogo e RISCATTARE premi con i
+  // propri punti; la gestione del catalogo (crea/modifica/elimina) è riservata
+  // ad admin/adulti dai controlli di ruolo interni alle rotte.
+  app.use('/api/rewards', authenticate, requireEmailVerified, rewardsRoutes);
   app.use('/api/pantry', authenticate, requireEmailVerified, blockChildAccount, pantryRoutes);
   app.use('/api/expenses', authenticate, requireEmailVerified, blockChildAccount, expensesRoutes);
   app.use('/api/ai', authenticate, requireEmailVerified, blockChildAccount, aiRoutes);

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from '../db';
 import { shoppingLists, shoppingItems, shoppingHistory, users } from '../../shared/schema';
 import { eq, and } from 'drizzle-orm';
-import { authenticate } from '../middleware/auth';
+import { authenticate, blockChildAccount } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily } from '../lib/websocket';
 import { sendPushToFamily } from '../lib/push';
@@ -201,7 +201,9 @@ router.get('/:familyId/lists', authenticate, requireFamilyMember(), async (req: 
   }
 });
 
-router.post('/:familyId/lists', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+// Creazione liste: riservata agli adulti (il bambino può solo aggiungere
+// articoli a liste esistenti e spuntarli).
+router.post('/:familyId/lists', authenticate, blockChildAccount, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const parsed = createListSchema.safeParse(req.body);
@@ -230,7 +232,8 @@ router.post('/:familyId/lists', authenticate, requireFamilyMember(), async (req:
   }
 });
 
-router.delete('/:familyId/lists/:listId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+// Eliminazione liste: riservata agli adulti.
+router.delete('/:familyId/lists/:listId', authenticate, blockChildAccount, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const listId = getParam(req, 'listId');
@@ -367,7 +370,9 @@ router.patch('/:familyId/lists/:listId/items/:itemId/toggle', authenticate, requ
   }
 });
 
-router.patch('/:familyId/lists/:listId/items/:itemId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+// Modifica strutturale di un articolo (nome/quantità/categoria/nota):
+// riservata agli adulti (il bambino può solo aggiungere e spuntare).
+router.patch('/:familyId/lists/:listId/items/:itemId', authenticate, blockChildAccount, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const listId = getParam(req, 'listId');
@@ -408,7 +413,8 @@ router.patch('/:familyId/lists/:listId/items/:itemId', authenticate, requireFami
   }
 });
 
-router.delete('/:familyId/lists/:listId/items/:itemId', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+// Eliminazione articoli: riservata agli adulti.
+router.delete('/:familyId/lists/:listId/items/:itemId', authenticate, blockChildAccount, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
     const listId = getParam(req, 'listId');

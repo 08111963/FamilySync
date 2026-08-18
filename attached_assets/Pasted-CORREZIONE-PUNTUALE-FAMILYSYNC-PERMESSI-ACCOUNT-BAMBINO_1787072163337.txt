@@ -1,0 +1,132 @@
+CORREZIONE PUNTUALE — FAMILYSYNC / PERMESSI ACCOUNT BAMBINO + GUIDA
+
+IMPORTANTE:
+Il micro-mandato RevenueCat appena implementato è APPROVATO.
+NON modificare:
+- revenuecat.tsx
+- revenuecat-identity.ts
+- RevenueCat
+- acquisti
+- restore
+- entitlement
+- pricing
+- quote AI
+- paywall
+- analytics monetizzazione.
+
+NON annullare gli hardening di sicurezza aggiunti su ICS, WebSocket, avatar, expenses o altre aree.
+
+PROBLEMA
+
+Nella consegna sono state introdotte modifiche fuori dal micro-mandato che rendono gli account bambino più restrittivi rispetto al comportamento previsto e documentato nella guida utente.
+
+La guida attuale prevede che un account bambino possa:
+- vedere il calendario e aggiungere i propri eventi;
+- vedere le liste della spesa, aggiungere articoli e spuntarli;
+- vedere punti/premi/classifica e riscattare premi;
+- vedere le faccende assegnate e completare SOLO le proprie.
+
+Ripristinare ESATTAMENTE questo comportamento, mantenendo i controlli server-side.
+
+
+1. CALENDARIO
+
+Non applicare blockChildWrites globalmente a tutto /api/calendar.
+
+Account bambino:
+- GET calendario: consentito;
+- POST nuovo evento: consentito;
+- PUT/DELETE: consentito SOLO sugli eventi creati dallo stesso account bambino;
+- modifica/eliminazione di eventi creati da altri: 403.
+
+Adulti: comportamento invariato.
+
+Mantenere blockChildAccount sulla gestione del feed ICS/feed-url se già presente.
+
+
+2. LISTA DELLA SPESA
+
+Non applicare blockChildWrites globalmente a tutto /api/shopping.
+
+Account bambino deve poter:
+- leggere liste e articoli;
+- aggiungere un articolo a una lista esistente;
+- spuntare/togliere la spunta a un articolo.
+
+Account bambino NON deve poter:
+- creare/eliminare liste;
+- modificare i dettagli strutturali di articoli;
+- eliminare articoli;
+- effettuare altre operazioni amministrative.
+
+Adulti: comportamento invariato.
+
+
+3. PREMI
+
+Rimuovere il blocco globale che impedisce tutte le scritture bambino su /api/rewards.
+
+Mantenere le autorizzazioni già interne:
+- creare/modificare/eliminare premi = solo admin/adulto;
+- vedere premi/classifica = consentito;
+- riscattare un premio = consentito anche all'account bambino, usando i propri punti.
+
+Non indebolire i controlli su punti, famiglia e appartenenza.
+
+
+4. FACCENDE
+
+NON modificare la nuova logica.
+
+È corretta:
+- bambino vede le faccende;
+- può completare SOLO quella assegnata al proprio membro;
+- non può creare/modificare/eliminare faccende;
+- non può assegnarsi punti arbitrariamente.
+
+
+5. GUIDA UTENTE — FREE/PREMIUM
+
+Aggiornare docs/guida-utente.md.
+
+Rimuovere ogni riferimento al vecchio limite Free di:
+- 5 eventi/giorno;
+- 5 articoli spesa/giorno;
+- 5 faccende/giorno;
+- 5 messaggi chat/giorno.
+
+Specificare che:
+- calendario, spesa, faccende e chat sono illimitati sia Free sia Premium;
+- Free mantiene max 5 membri;
+- Free mantiene max 5 bollette attive;
+- AI mantiene le quote Free/Premium già esistenti;
+- Premium mantiene membri illimitati, bollette avanzate e quote AI superiori.
+
+
+6. GUIDA ACCOUNT BAMBINO
+
+Verificare che la sezione "A cosa ha accesso il bambino" corrisponda ESATTAMENTE al comportamento server finale.
+
+Non promettere funzioni che il backend blocca.
+
+
+7. TEST
+
+Aggiungere/eseguire test mirati:
+
+A. bambino può creare un proprio evento;
+B. bambino può modificare/eliminare solo un proprio evento;
+C. bambino non può modificare/eliminare evento di un altro membro;
+D. bambino può aggiungere articolo a lista esistente;
+E. bambino può spuntare articolo;
+F. bambino non può creare/eliminare lista;
+G. bambino può riscattare un premio con punti sufficienti;
+H. bambino non può creare/modificare/eliminare premi;
+I. bambino può completare propria faccenda assegnata;
+J. bambino non può completare faccenda assegnata ad altro membro.
+
+Eseguire typecheck e test interessati.
+
+NON effettuare altre modifiche fuori da questo mandato.
+
+Consegnare ZIP completo finale.

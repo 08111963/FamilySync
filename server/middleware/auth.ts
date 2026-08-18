@@ -129,7 +129,7 @@ export async function requireEmailVerified(req: Request, res: Response, next: Ne
   }
 }
 
-const CHILD_FORBIDDEN = {
+export const CHILD_FORBIDDEN = {
   error: { code: "CHILD_FORBIDDEN", message: "Questa funzione non è disponibile per gli accessi bambino" },
 } as const;
 

@@ -691,7 +691,7 @@ Se vuoi che il bambino usi l'app **dal suo telefono o tablet**, non serve crearg
 - Il genitore può **revocare l'accesso in qualsiasi momento** dalla scheda Famiglia: il bambino non entrerà più dal suo dispositivo, ma **punti e storico restano**
 
 **A cosa ha accesso il bambino**
-- **Calendario**: vede gli eventi della famiglia e può aggiungere i suoi
+- **Calendario**: vede gli eventi della famiglia e può aggiungere i suoi; può modificare o eliminare **solo gli eventi creati da lui** (quelli degli altri restano intoccabili)
 - **Faccende**: vede le faccende assegnate e le segna come completate, guadagnando punti
 - **Punti, premi e classifica**: controlla i suoi punti, riscatta i premi e vede la classifica della famiglia
 - **Liste della spesa**: vede le liste e può aggiungere o spuntare articoli
@@ -769,7 +769,7 @@ Le funzionalità AI sono disponibili gratuitamente con un **limite di utilizzo**
 
 > La **dettatura vocale (microfono)** presente in Ricette, Piano Pasti, Eventi, Faccende e Chat usa un'unica quota condivisa: con il piano Free sono **3 dettature al giorno** in totale tra tutte queste funzioni (e tra tutti i membri della famiglia).
 
-> i limiti esatti possono essere aggiornati nel tempo. Le funzioni di base (calendario, spesa, faccende e chat) con il piano Free hanno un limite di **5 creazioni al giorno per funzione** (contatori separati: 5 eventi, 5 articoli spesa, 5 faccende, 5 messaggi chat), **condivisi da tutta la famiglia**; con Premium sono illimitate. Le bollette invece hanno un limite con il piano Free (max 5 attive) e sono illimitate con Premium. Anche il numero di **membri della famiglia** è limitato con il piano Free (max 5) e illimitato con Premium.
+> i limiti esatti possono essere aggiornati nel tempo. Le funzioni di base (**calendario, spesa, faccende e chat**) sono **illimitate sia con Free sia con Premium**. Le bollette invece hanno un limite con il piano Free (max 5 attive) e con Premium sono illimitate, con allegati e ripartizioni avanzate. Anche il numero di **membri della famiglia** è limitato con il piano Free (max 5) e illimitato con Premium. Le funzioni **AI** mantengono le quote Free/Premium indicate sopra; con Premium le quote AI sono molto più alte.
 
 ### Privacy e Dati AI
 - Quando l'AI è attiva, vengono inviati al servizio AI solo i dati strettamente necessari per generare i suggerimenti: titoli degli eventi, nomi degli articoli della spesa, titoli delle faccende e dati aggregati (es. numero di membri)
