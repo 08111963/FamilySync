@@ -44,7 +44,7 @@ const ORIGINAL_AI_KEY = process.env[AI_KEY_ENV];
 before(() => {
   if (!process.env[AI_KEY_ENV]) process.env[AI_KEY_ENV] = "test-openai-key";
   // Default: famiglia PREMIUM (quote alte) per i test storici che assumono
-  // weekly-meal-plan max 8, shopping max 15, ecc.
+  // weekly-meal-plan max 3/settimana, shopping max 10/giorno, ecc.
   __setEntitlementStoreForTest(premiumEntitlementStore());
 });
 after(() => {
@@ -102,12 +102,14 @@ function makeMemoryStore() {
 
 describe("AI_DAILY_LIMITS", () => {
   test("valori attesi per ogni feature", () => {
-    assert.equal(AI_DAILY_LIMITS["shopping-suggestions"], 15);
-    assert.equal(AI_DAILY_LIMITS["recipe-search"], 25);
-    assert.equal(AI_DAILY_LIMITS["recipe-suggestions"], 15);
-    assert.equal(AI_DAILY_LIMITS["weekly-meal-plan"], 8);
-    assert.equal(AI_DAILY_LIMITS.insights, 10);
-    assert.equal(AI_DAILY_LIMITS["chore-optimization"], 15);
+    assert.equal(AI_DAILY_LIMITS["shopping-suggestions"], 10);
+    assert.equal(AI_DAILY_LIMITS["recipe-search"], 10);
+    assert.equal(AI_DAILY_LIMITS["recipe-suggestions"], 5);
+    assert.equal(AI_DAILY_LIMITS["weekly-meal-plan"], 3);
+    assert.equal(AI_DAILY_LIMITS.insights, 5);
+    assert.equal(AI_DAILY_LIMITS["chore-optimization"], 5);
+    assert.equal(AI_DAILY_LIMITS["voice-transcription"], 20);
+    assert.equal(AI_DAILY_LIMITS["recipe-image"], 10);
   });
 });
 
@@ -119,15 +121,19 @@ describe("PLAN_LIMITS (quote per piano)", () => {
     assert.deepEqual(PLAN_LIMITS.free["weekly-meal-plan"], { max: 1, window: "week" });
     assert.deepEqual(PLAN_LIMITS.free.insights, { max: 1, window: "week" });
     assert.deepEqual(PLAN_LIMITS.free["chore-optimization"], { max: 1, window: "day" });
+    assert.deepEqual(PLAN_LIMITS.free["voice-transcription"], { max: 3, window: "day" });
+    assert.deepEqual(PLAN_LIMITS.free["recipe-image"], { max: 2, window: "day" });
   });
 
-  test("premium: quote alte tutte giornaliere", () => {
-    assert.deepEqual(PLAN_LIMITS.premium["shopping-suggestions"], { max: 15, window: "day" });
-    assert.deepEqual(PLAN_LIMITS.premium["recipe-search"], { max: 25, window: "day" });
-    assert.deepEqual(PLAN_LIMITS.premium["recipe-suggestions"], { max: 15, window: "day" });
-    assert.deepEqual(PLAN_LIMITS.premium["weekly-meal-plan"], { max: 8, window: "day" });
-    assert.deepEqual(PLAN_LIMITS.premium.insights, { max: 10, window: "day" });
-    assert.deepEqual(PLAN_LIMITS.premium["chore-optimization"], { max: 15, window: "day" });
+  test("premium: quote generose, piano pasti e consigli settimanali", () => {
+    assert.deepEqual(PLAN_LIMITS.premium["shopping-suggestions"], { max: 10, window: "day" });
+    assert.deepEqual(PLAN_LIMITS.premium["recipe-search"], { max: 10, window: "day" });
+    assert.deepEqual(PLAN_LIMITS.premium["recipe-suggestions"], { max: 5, window: "day" });
+    assert.deepEqual(PLAN_LIMITS.premium["weekly-meal-plan"], { max: 3, window: "week" });
+    assert.deepEqual(PLAN_LIMITS.premium.insights, { max: 5, window: "week" });
+    assert.deepEqual(PLAN_LIMITS.premium["chore-optimization"], { max: 5, window: "day" });
+    assert.deepEqual(PLAN_LIMITS.premium["voice-transcription"], { max: 20, window: "day" });
+    assert.deepEqual(PLAN_LIMITS.premium["recipe-image"], { max: 10, window: "day" });
   });
 
   test("famiglia FREE: reserveAiSlot usa la quota free (weekly-meal-plan 1/settimana)", async () => {
@@ -160,19 +166,19 @@ describe("PLAN_LIMITS (quote per piano)", () => {
     }
   });
 
-  test("famiglia PREMIUM: weekly-meal-plan premium = 8/giorno", async () => {
+  test("famiglia PREMIUM: weekly-meal-plan premium = 3/settimana", async () => {
     __setEntitlementStoreForTest(premiumEntitlementStore());
     const { store } = makeMemoryStore();
     __setAiUsageStoreForTest(store);
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 3; i++) {
       const r = await reserveAiSlot("u1", "fam-prem", "weekly-meal-plan");
       assert.equal(r.status, "ok");
     }
     const blocked = await reserveAiSlot("u1", "fam-prem", "weekly-meal-plan");
     assert.equal(blocked.status, "limited");
     if (blocked.status === "limited") {
-      assert.equal(blocked.max, 8);
-      assert.equal(blocked.window, "day");
+      assert.equal(blocked.max, 3);
+      assert.equal(blocked.window, "week");
     }
   });
 });
@@ -205,20 +211,20 @@ describe("reserveAiSlot / finalizeAiUsage", () => {
   test("quota raggiunta -> 'limited' (OpenAI non va chiamato)", async () => {
     const { store } = makeMemoryStore();
     __setAiUsageStoreForTest(store);
-    // weekly-meal-plan max = 8
-    for (let i = 0; i < 8; i++) {
+    // weekly-meal-plan premium max = 3/settimana
+    for (let i = 0; i < 3; i++) {
       const r = await reserveAiSlot("u1", "fam-1", "weekly-meal-plan");
       assert.equal(r.status, "ok");
     }
     const blocked = await reserveAiSlot("u1", "fam-1", "weekly-meal-plan");
     assert.equal(blocked.status, "limited");
-    if (blocked.status === "limited") assert.equal(blocked.max, 8);
+    if (blocked.status === "limited") assert.equal(blocked.max, 3);
   });
 
   test("famiglie diverse hanno quote indipendenti", async () => {
     const { store } = makeMemoryStore();
     __setAiUsageStoreForTest(store);
-    for (let i = 0; i < 8; i++) await reserveAiSlot("u1", "fam-A", "weekly-meal-plan");
+    for (let i = 0; i < 3; i++) await reserveAiSlot("u1", "fam-A", "weekly-meal-plan");
     const otherFamily = await reserveAiSlot("u2", "fam-B", "weekly-meal-plan");
     assert.equal(otherFamily.status, "ok");
   });
@@ -356,29 +362,29 @@ describe("withAiUsage", () => {
 });
 
 describe("concorrenza: quota vicina al limite non viene superata", () => {
-  test("12 richieste concorrenti, max 8 -> esattamente 8 'ok', nessun overshoot", async () => {
+  test("8 richieste concorrenti, max 3 -> esattamente 3 'ok', nessun overshoot", async () => {
     const { store, rows } = makeMemoryStore();
     __setAiUsageStoreForTest(store);
-    const N = 12;
+    const N = 8;
     const results = await Promise.all(
       Array.from({ length: N }, () => reserveAiSlot("u1", "fam-1", "weekly-meal-plan")),
     );
     const ok = results.filter((r) => r.status === "ok").length;
     const limited = results.filter((r) => r.status === "limited").length;
-    assert.equal(ok, 8, "solo 8 slot concessi anche con richieste concorrenti");
-    assert.equal(limited, N - 8);
-    assert.equal(rows.length, 8, "solo 8 record creati nel DB simulato");
+    assert.equal(ok, 3, "solo 3 slot concessi anche con richieste concorrenti");
+    assert.equal(limited, N - 3);
+    assert.equal(rows.length, 3, "solo 3 record creati nel DB simulato");
   });
 
-  test("shopping concorrente: max 15 non viene superato", async () => {
+  test("shopping concorrente: max 10 non viene superato", async () => {
     const { store } = makeMemoryStore();
     __setAiUsageStoreForTest(store);
-    const N = 25;
+    const N = 20;
     const results = await Promise.all(
       Array.from({ length: N }, () => reserveAiSlot("u1", "fam-1", "shopping-suggestions")),
     );
     const ok = results.filter((r) => r.status === "ok").length;
-    assert.equal(ok, 15);
+    assert.equal(ok, 10);
   });
 });
 

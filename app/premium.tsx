@@ -17,15 +17,17 @@ type PlanFeature = { label: string; free: string; premium: string };
 
 const PLAN_FEATURES: PlanFeature[] = [
   { label: "Membri della famiglia", free: "Fino a 5", premium: "Illimitati" },
-  { label: "Suggerimenti spesa AI", free: "2 / giorno", premium: "15 / giorno" },
-  { label: "Ricerca ricette AI", free: "2 / giorno", premium: "25 / giorno" },
-  { label: "Idee ricette AI", free: "1 / giorno", premium: "15 / giorno" },
-  { label: "Piano pasti AI", free: "1 / settimana", premium: "8 / giorno" },
-  { label: "Consigli AI famiglia", free: "1 / settimana", premium: "10 / giorno" },
-  { label: "Ottimizzazione faccende AI", free: "1 / giorno", premium: "15 / giorno" },
-  { label: "Foto ricette AI", free: "10 / giorno", premium: "55 / giorno" },
-  { label: "Dettatura vocale (microfono)", free: "3 / giorno", premium: "35 / giorno" },
+  { label: "Suggerimenti spesa AI", free: "2/giorno", premium: "10/giorno" },
+  { label: "Ricerca ricette AI", free: "2/giorno", premium: "10/giorno" },
+  { label: "Idee ricette AI", free: "1/giorno", premium: "5/giorno" },
+  { label: "Piano pasti AI", free: "1/settimana", premium: "3/settimana" },
+  { label: "Consigli AI famiglia", free: "1/settimana", premium: "5/settimana" },
+  { label: "Ottimizzazione faccende AI", free: "1/giorno", premium: "5/giorno" },
+  { label: "Foto ricette AI", free: "2/giorno", premium: "10/giorno" },
+  { label: "Dettatura vocale", free: "3/giorno", premium: "20/giorno" },
   { label: "Calendario, spesa, faccende, chat", free: "Illimitati", premium: "Illimitati" },
+  { label: "Bollette attive", free: "Fino a 5", premium: "Illimitate" },
+  { label: "Funzioni avanzate bollette", free: "Limitate", premium: "Incluse" },
   { label: "Supporto prioritario", free: "—", premium: "Incluso" },
 ];
 
@@ -181,9 +183,10 @@ export default function PremiumScreen() {
         {!isPremium && (
           <View style={styles.valueList}>
             {[
-              { icon: "sparkles" as const, text: "Molta più AI per tutta la famiglia: ricette, piano pasti, spesa e consigli" },
+              { icon: "sparkles" as const, text: "Più AI per tutta la famiglia: ricette, piano pasti, spesa e consigli" },
               { icon: "people" as const, text: "Membri della famiglia illimitati" },
-              { icon: "receipt" as const, text: "Bollette avanzate: allegati, ripartizione e storico completo" },
+              { icon: "receipt" as const, text: "Gestione avanzata delle bollette: allegati, ripartizione e storico" },
+              { icon: "mic" as const, text: "Maggiore utilizzo della dettatura vocale" },
               { icon: "headset" as const, text: "Supporto prioritario" },
             ].map((v) => (
               <View key={v.icon} style={styles.valueRow}>

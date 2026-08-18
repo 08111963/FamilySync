@@ -752,24 +752,24 @@ L'intelligenza artificiale in FamilySync offre queste funzionalità principali:
 | Foto delle Ricette | Ricette proposte dall'AI | Genera la foto del piatto |
 
 ### Quante Volte Puoi Usare l'AI
-Le funzionalità AI sono disponibili gratuitamente con un **limite di utilizzo**; con **Premium** i limiti sono molto più alti. Limiti indicativi:
+Le funzionalità AI sono disponibili gratuitamente con un **limite di utilizzo**; con **Premium** i limiti sono più alti. Limiti indicativi:
 
 > ⚠️ **Importante:** tutti i limiti indicati (giornalieri e settimanali) sono **condivisi da tutta la famiglia**, non per singola persona. Esempio: con il piano Free "2 suggerimenti spesa al giorno" significa 2 in totale tra tutti i membri, non 2 a testa.
 
 | Funzionalità AI | Free (per famiglia) | Premium (per famiglia) |
 |-----------------|------|---------|
-| Suggerimenti spesa | 2 al giorno | 15 al giorno |
-| Ricerca ricette | 2 al giorno | 25 al giorno |
-| Generazione ricette (8 ricette) | 1 al giorno | 15 al giorno |
-| Piano pasti settimanale | 1 a settimana | 8 al giorno |
-| Consigli AI famiglia | 1 a settimana | 10 al giorno |
-| Ottimizzazione faccende | 1 al giorno | 15 al giorno |
-| Dettatura vocale | 3 al giorno | 35 al giorno |
-| Foto delle ricette | 10 al giorno | 55 al giorno |
+| Suggerimenti spesa | 2 al giorno | 10 al giorno |
+| Ricerca ricette | 2 al giorno | 10 al giorno |
+| Generazione ricette (8 ricette) | 1 al giorno | 5 al giorno |
+| Piano pasti settimanale | 1 alla settimana | 3 alla settimana |
+| Consigli AI famiglia | 1 alla settimana | 5 alla settimana |
+| Ottimizzazione faccende | 1 al giorno | 5 al giorno |
+| Dettatura vocale | 3 al giorno | 20 al giorno |
+| Foto delle ricette | 2 al giorno | 10 al giorno |
 
 > La **dettatura vocale (microfono)** presente in Ricette, Piano Pasti, Eventi, Faccende e Chat usa un'unica quota condivisa: con il piano Free sono **3 dettature al giorno** in totale tra tutte queste funzioni (e tra tutti i membri della famiglia).
 
-> i limiti esatti possono essere aggiornati nel tempo. Le funzioni di base (**calendario, spesa, faccende e chat**) sono **illimitate sia con Free sia con Premium**. Le bollette invece hanno un limite con il piano Free (max 5 attive) e con Premium sono illimitate, con allegati e ripartizioni avanzate. Anche il numero di **membri della famiglia** è limitato con il piano Free (max 5) e illimitato con Premium. Le funzioni **AI** mantengono le quote Free/Premium indicate sopra; con Premium le quote AI sono molto più alte.
+> i limiti esatti possono essere aggiornati nel tempo. Le funzioni di base (**calendario, spesa, faccende e chat**) sono **illimitate sia con Free sia con Premium**. Le bollette invece hanno un limite con il piano Free (max 5 attive) e con Premium sono illimitate, con allegati e ripartizioni avanzate. Anche il numero di **membri della famiglia** è limitato con il piano Free (max 5) e illimitato con Premium. Le funzioni **AI** mantengono le quote Free/Premium indicate sopra; con Premium le quote AI sono più alte.
 
 ### Privacy e Dati AI
 - Quando l'AI è attiva, vengono inviati al servizio AI solo i dati strettamente necessari per generare i suggerimenti: titoli degli eventi, nomi degli articoli della spesa, titoli delle faccende e dati aggregati (es. numero di membri)
@@ -782,7 +782,7 @@ Le funzionalità AI sono disponibili gratuitamente con un **limite di utilizzo**
 
 ## 13. Abbonamento Premium
 
-FamilySync è gratuita per le funzioni principali. Con **Premium** sblocchi funzioni avanzate e limiti molto più alti per tutta la famiglia.
+FamilySync è gratuita per le funzioni principali. Con **Premium** sblocchi funzioni avanzate e limiti più alti per tutta la famiglia.
 
 ### Come Attivare Premium
 - Vai alla scheda **Famiglia** e tocca **Premium** nella sezione Funzionalità
@@ -796,7 +796,7 @@ FamilySync è gratuita per le funzioni principali. Con **Premium** sblocchi funz
 - **Allegati alle bollette**: foto e documenti PDF
 - **Ripartizione delle bollette** tra i membri (equa o personalizzata)
 - **Promemoria bollette aggiuntivi** a 7 e 3 giorni dalla scadenza
-- **Limiti AI molto più alti** per ricette, piano pasti, suggerimenti spesa, faccende e consigli famiglia
+- **Limiti AI più alti** per ricette, piano pasti, suggerimenti spesa, faccende, consigli famiglia, dettatura vocale e foto ricette
 - **Supporto prioritario**
 
 ### Prezzi
@@ -962,7 +962,7 @@ No. Le funzionalità AI sono completamente opzionali. Puoi attivarle o disattiva
 Solo porzioni di contenuto della famiglia: titoli degli eventi, nomi degli articoli, titoli delle faccende, numero di membri. Mai email, password o indirizzi personali.
 
 **Cosa cambia con Premium?**
-Bollette illimitate con allegati e ripartizioni, promemoria bollette aggiuntivi, limiti AI molto più alti e supporto prioritario. L'abbonamento vale per tutta la famiglia.
+Bollette illimitate con allegati e ripartizioni, promemoria bollette aggiuntivi, limiti AI più alti e supporto prioritario. L'abbonamento vale per tutta la famiglia.
 
 **Chi può acquistare Premium?**
 Solo l'amministratore (proprietario del gruppo). Il vantaggio si applica a tutti i membri.
