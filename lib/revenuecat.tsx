@@ -23,7 +23,11 @@ export const REVENUECAT_ENTITLEMENT_IDENTIFIER = "premium";
  */
 
 import { selectRevenueCatApiKey } from "./revenuecat-key";
-import { runWithRevenueCatIdentity, type RevenueCatIdentityDeps } from "./revenuecat-identity";
+import {
+  runWithRevenueCatIdentity,
+  withRevenueCatIdentityLock,
+  type RevenueCatIdentityDeps,
+} from "./revenuecat-identity";
 
 /** True quando siamo in modalità test RevenueCat (no acquisto reale store). */
 export function isRevenueCatTestMode(): boolean {
@@ -70,7 +74,9 @@ export async function loginRevenueCat(familyId: string): Promise<void> {
       return;
     }
   }
-  await Purchases.logIn(familyId);
+  // Anche il login "anticipato" passa dal lock: non può mai inserirsi tra la
+  // verifica d'identità e il purchase/restore di una transazione in corso.
+  await withRevenueCatIdentityLock(() => Purchases.logIn(familyId));
 }
 
 /**

@@ -19,6 +19,23 @@ export interface RevenueCatIdentityDeps {
 }
 
 /**
+ * LOCK GLOBALE per le operazioni che toccano l'identità RevenueCat.
+ * L'SDK Purchases è un singleton di processo: un logIn lanciato dal cambio
+ * famiglia (best-effort, non atteso) potrebbe altrimenti completarsi TRA la
+ * verifica d'identità e purchasePackage/restorePurchases, attribuendo il
+ * pagamento alla famiglia sbagliata. Tutte le operazioni identità+acquisto
+ * passano da questa coda FIFO: mai interleaving.
+ */
+let identityChain: Promise<unknown> = Promise.resolve();
+
+export function withRevenueCatIdentityLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = identityChain.then(fn, fn);
+  // La catena non deve mai rompersi per l'errore di un'operazione precedente.
+  identityChain = run.catch(() => {});
+  return run;
+}
+
+/**
  * Garantisce che l'SDK sia inizializzato e loggato su `familyId`.
  * Lancia (bloccando il pagamento) se: familyId manca, l'inizializzazione
  * fallisce, il logIn fallisce, o l'identità risultante non corrisponde.
@@ -44,13 +61,16 @@ export async function ensureRevenueCatIdentity(
 /**
  * Esegue `action` (purchase o restore) SOLO dopo che l'identità RevenueCat è
  * confermata sulla famiglia corrente. Se l'identificazione fallisce, `action`
- * NON viene mai invocata.
+ * NON viene mai invocata. Verifica + azione girano DENTRO il lock globale:
+ * nessun logIn concorrente (es. cambio famiglia) può inserirsi in mezzo.
  */
 export async function runWithRevenueCatIdentity<T>(
   deps: RevenueCatIdentityDeps,
   familyId: string | null | undefined,
   action: () => Promise<T>,
 ): Promise<T> {
-  await ensureRevenueCatIdentity(deps, familyId);
-  return action();
+  return withRevenueCatIdentityLock(async () => {
+    await ensureRevenueCatIdentity(deps, familyId);
+    return action();
+  });
 }

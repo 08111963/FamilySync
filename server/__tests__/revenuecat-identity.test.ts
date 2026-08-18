@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   ensureRevenueCatIdentity,
   runWithRevenueCatIdentity,
+  withRevenueCatIdentityLock,
   type RevenueCatIdentityDeps,
 } from "../../lib/revenuecat-identity";
 
@@ -93,5 +94,57 @@ describe("attribuzione acquisti RevenueCat alla famiglia corrente", () => {
       ensureRevenueCatIdentity(deps, "family-B"),
       /non corrispondente/,
     );
+  });
+});
+
+describe("race con login concorrente da cambio famiglia", () => {
+  test("un logIn concorrente non può inserirsi tra verifica e purchase", async () => {
+    const calls: string[] = [];
+    let current = "family-A";
+    const deps: RevenueCatIdentityDeps = {
+      initialize: () => {},
+      logIn: async (id: string) => {
+        await new Promise((r) => setTimeout(r, 5));
+        calls.push(`logIn:${id}`);
+        current = id;
+      },
+      getAppUserID: async () => current,
+    };
+
+    // Transazione d'acquisto su B; DURANTE la transazione parte il login
+    // "anticipato" del cambio famiglia verso C (come farebbe FamilyContext).
+    const purchase = runWithRevenueCatIdentity(deps, "family-B", async () => {
+      calls.push(`purchase:${current}`);
+      await new Promise((r) => setTimeout(r, 15));
+      calls.push(`purchase-end:${current}`);
+    });
+    const concurrentSwitch = withRevenueCatIdentityLock(() => deps.logIn("family-C"));
+
+    await Promise.all([purchase, concurrentSwitch]);
+
+    // Il purchase deve INIZIARE e FINIRE con identità family-B: il login su C
+    // è stato accodato DOPO l'intera transazione.
+    assert.deepEqual(calls, [
+      "logIn:family-B",
+      "purchase:family-B",
+      "purchase-end:family-B",
+      "logIn:family-C",
+    ]);
+  });
+
+  test("una transazione fallita non blocca la coda successiva", async () => {
+    const calls: string[] = [];
+    let current = "x";
+    const deps: RevenueCatIdentityDeps = {
+      initialize: () => {},
+      logIn: async (id: string) => { calls.push(`logIn:${id}`); current = id; },
+      getAppUserID: async () => current,
+    };
+    await assert.rejects(
+      runWithRevenueCatIdentity(deps, "fam-1", async () => { throw new Error("purchase KO"); }),
+      /purchase KO/,
+    );
+    await runWithRevenueCatIdentity(deps, "fam-2", async () => { calls.push("ok"); });
+    assert.deepEqual(calls, ["logIn:fam-1", "logIn:fam-2", "ok"]);
   });
 });
