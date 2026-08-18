@@ -65,7 +65,7 @@ async function resetAudioMode() {
 }
 
 // Registrazione ottimizzata per la VOCE (non musica): 16 kHz mono a bitrate
-// ridotto = file ~4x più piccoli del preset HIGH_QUALITY (44.1 kHz stereo
+// ridotto = file circa la metà del preset HIGH_QUALITY (44.1 kHz stereo
 // 128 kbps) → upload e trascrizione molto più rapidi, senza perdita di
 // accuratezza per il parlato (i modelli di trascrizione lavorano a 16 kHz).
 const SPEECH_RECORDING_OPTIONS = {
