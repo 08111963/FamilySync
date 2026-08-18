@@ -125,8 +125,8 @@ title = "Guida: FamilySync sul telefono"
 id = "OwANvfIx-c8_2VY-DmkEl"
 uri = "file://familysync-consegna-v2.1.zip"
 type = "unspecified"
-title = "FamilySync — consegna aggiornata (piano Free/Premium)"
-description = "ZIP completo con le nuove quote Free/Premium, schermata Premium aggiornata, guida e test allineati. Senza segreti o credenziali."
+title = "FamilySync — consegna finale (dipendenze ripristinate)"
+description = "ZIP completo: modifiche Free/Premium mantenute, sistema dipendenze ripristinato alla precedente consegna approvata (con 3 sole eccezioni forzate dal firewall pacchetti di Replit)."
 
 [[outputs]]
 id = "Y6Kxd6T52jkOyM6ag8LCz"
