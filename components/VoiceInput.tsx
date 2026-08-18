@@ -64,6 +64,21 @@ async function resetAudioMode() {
   }
 }
 
+// Registrazione ottimizzata per la VOCE (non musica): 16 kHz mono a bitrate
+// ridotto = file ~4x più piccoli del preset HIGH_QUALITY (44.1 kHz stereo
+// 128 kbps) → upload e trascrizione molto più rapidi, senza perdita di
+// accuratezza per il parlato (i modelli di trascrizione lavorano a 16 kHz).
+const SPEECH_RECORDING_OPTIONS = {
+  ...RecordingPresets.HIGH_QUALITY,
+  sampleRate: 16000,
+  numberOfChannels: 1,
+  bitRate: 64000,
+  web: {
+    ...RecordingPresets.HIGH_QUALITY.web,
+    bitsPerSecond: 64000,
+  },
+};
+
 interface VoiceInputProps {
   familyId: string;
   onTranscribed: (text: string) => void;
@@ -80,7 +95,7 @@ interface VoiceInputProps {
  */
 export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, context }: VoiceInputProps) {
   const { colors } = useTheme();
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder(SPEECH_RECORDING_OPTIONS);
   const [recording, setRecording] = useState(false);
   const [starting, setStarting] = useState(false);
   const [transcribing, setTranscribing] = useState(false);

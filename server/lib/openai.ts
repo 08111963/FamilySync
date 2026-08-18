@@ -999,7 +999,7 @@ export async function transcribeAudio(input: {
     const sentPrompt = isShortClip ? baseHint : (extra ? `${baseHint} ${extra}` : baseHint);
     const response = await getOpenAiClient().audio.transcriptions.create({
       file,
-      model: 'gpt-4o-mini-transcribe',
+      model: 'gpt-4o-transcribe',
       language: 'it',
       ...(sentPrompt ? { prompt: sentPrompt } : {}),
     });
@@ -1315,7 +1315,10 @@ export async function parseAssistantActionsFromText(input: {
   try {
     const response = await getOpenAiClient().chat.completions.create({
       model: 'gpt-5-mini',
-      reasoning_effort: 'minimal',
+      // 'low' (non 'minimal'): l'assistente smista frasi complesse in più
+      // azioni; un minimo di ragionamento riduce molto gli errori di
+      // interpretazione (date, assegnatari, sezione giusta) con ~1-2s in più.
+      reasoning_effort: 'low',
       messages: [{
         role: 'system',
         content: `Sei l'assistente di un'app di organizzazione familiare. Da una frase in italiano estrai TUTTE le cose da creare, smistandole nelle liste giuste. Una frase può contenere più cose insieme.
