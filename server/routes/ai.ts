@@ -1182,7 +1182,16 @@ router.post('/:familyId/parse-event', authenticate, requireAiEnabled, requireFam
       if (match) assigneeMemberId = match.id;
     }
 
-    res.json({ ...parsed, assigneeMemberId });
+    // Date extra (giorni multipli non ricorrenti): valide, future/odierne,
+    // uniche, diverse dalla data principale, max 10. Ignorate se c'è "repeat".
+    const extraDates = parsed.repeat
+      ? []
+      : Array.from(new Set(parsed.extraDates))
+          .filter(d => d !== parsed.date && d >= todayIso)
+          .sort()
+          .slice(0, 10);
+
+    res.json({ ...parsed, extraDates, assigneeMemberId });
   } catch (error) {
     logger.error('Event parse error', { error: String(error) });
     sendAiError(res, error, 'Errore nella compilazione automatica');

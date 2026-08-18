@@ -83,6 +83,9 @@ export default function AddEventScreen() {
   );
   const [selectedColor, setSelectedColor] = useState(editingEvent?.color || EVENT_COLORS[0]);
   const [repeat, setRepeat] = useState<RepeatValue>("none");
+  // Date aggiuntive proposte dall'AI (es. "giovedì e venerdì prossimo" = 2
+  // eventi singoli): al salvataggio viene creato un evento anche per ognuna.
+  const [extraDates, setExtraDates] = useState<string[]>([]);
   const [dailyWeekdays, setDailyWeekdays] = useState<number[]>([]);
   const [weeklyDays, setWeeklyDays] = useState<number[]>([]);
   const [monthDays, setMonthDays] = useState<number[]>([]);
@@ -144,14 +147,25 @@ export default function AddEventScreen() {
       if (parsed.location) { setLocation(parsed.location); filled = true; }
       if (parsed.description) { setDescription(parsed.description); filled = true; }
       if (parsed.date && isRealIso(parsed.date)) { setDate(parsed.date); filled = true; }
+      // Giorni multipli non ricorrenti: eventi extra da creare al salvataggio.
+      setExtraDates(
+        !editingEvent && Array.isArray(parsed.extraDates)
+          ? parsed.extraDates.filter((d: string) => typeof d === "string" && isRealIso(d)).slice(0, 10)
+          : []
+      );
       if (parsed.time) {
         setTime(parsed.time);
         setIsAllDay(false);
         filled = true;
       }
       if (parsed.endTime) { setEndTime(parsed.endTime); filled = true; }
+      if (parsed.repeat !== "daily" && parsed.repeat !== "weekly" && parsed.repeat !== "monthly") {
+        // L'AI dice che NON è ricorrente: azzera un'eventuale ripetizione residua.
+        setRepeat("none");
+      }
       if (parsed.repeat === "daily" || parsed.repeat === "weekly" || parsed.repeat === "monthly") {
         setRepeat(parsed.repeat);
+        setExtraDates([]);
         const wd = Array.isArray(parsed.weekdays)
           ? parsed.weekdays.filter((n: number) => Number.isInteger(n) && n >= 1 && n <= 7)
           : [];
@@ -203,6 +217,24 @@ export default function AddEventScreen() {
         } as unknown as Parameters<typeof updateEvent>[1]);
         router.back();
         return;
+      }
+      // Eventi aggiuntivi per le date extra rilevate dall'AI (giorni multipli
+      // non ricorrenti, es. "giovedì e venerdì prossimo").
+      const extras = repeat === "none"
+        ? extraDates.filter((d) => isRealIso(d) && d !== date)
+        : [];
+      for (const extraDate of extras) {
+        addEvent({
+          title: title.trim(),
+          description: description.trim() || undefined,
+          location: location.trim() || undefined,
+          date: extraDate,
+          time: isAllDay ? undefined : time || undefined,
+          endTime: isAllDay ? undefined : endTime || undefined,
+          memberId: selectedMember || undefined,
+          color: selectedColor,
+          allDay: isAllDay,
+        });
       }
       addEvent({
         title: title.trim(),
@@ -362,6 +394,38 @@ export default function AddEventScreen() {
 
         <View style={styles.field}>
           <CalendarPicker label="Data" value={date} onChange={setDate} testID="event-date" />
+
+        {repeat === "none" && extraDates.length > 0 && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 8,
+              padding: 10,
+              borderRadius: 10,
+              backgroundColor: colors.primary + "15",
+            }}
+            testID="extra-dates-note"
+          >
+            <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+            <Text style={{ flex: 1, fontSize: 13, color: colors.text }}>
+              Verrà creato un evento anche il{" "}
+              {extraDates
+                .map((d) =>
+                  new Date(`${d}T12:00:00`).toLocaleDateString("it-IT", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                  })
+                )
+                .join(", ")}
+            </Text>
+            <Pressable onPress={() => setExtraDates([])} hitSlop={8} testID="extra-dates-remove">
+              <Ionicons name="close-circle" size={20} color={colors.textSecondary ?? colors.text} />
+            </Pressable>
+          </View>
+        )}
         </View>
 
         <View style={[styles.row, { borderColor: colors.border }]}>

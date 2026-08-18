@@ -1057,6 +1057,9 @@ const parsedEventSchema = z.object({
   location: z.string().nullable().catch(null),
   description: z.string().nullable().catch(null),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+  // Ulteriori date puntuali (oltre a "date") quando il testo cita più giorni
+  // SENZA ricorrenza (es. "giovedì e venerdì prossimo" = 2 eventi singoli).
+  extraDates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).catch([]),
   time: z.string().regex(/^\d{2}:\d{2}$/).nullable().catch(null),
   endTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().catch(null),
   repeat: z.enum(['daily', 'weekly', 'monthly']).nullable().catch(null),
@@ -1095,9 +1098,11 @@ REGOLE:
 - "weekdays": con repeat "daily" o "weekly", i giorni della settimana come numeri ISO (1=lunedì, 2=martedì, 3=mercoledì, 4=giovedì, 5=venerdì, 6=sabato, 7=domenica), es. "ogni martedì e giovedì" → [2,4]. Altrimenti [].
 - "monthDays": con repeat "monthly", i giorni del mese (1-31), es. "il 1° e il 15" → [1,15]. Altrimenti [].
 - Se l'utente dice "ogni <giorno>" (es. "ogni martedì e giovedì") usa repeat "weekly" con i weekdays indicati.
+- ATTENZIONE: l'evento è ricorrente SOLO se il testo lo dice chiaramente ("ogni", "tutti i", "ogni settimana/mese"). Se il testo cita più giorni SENZA parole di ricorrenza (es. "giovedì e venerdì prossimo", "lunedì e mercoledì della prossima settimana"), NON è ricorrente: "repeat" DEVE essere null, "date" è la prima delle date citate e "extraDates" contiene le altre date (YYYY-MM-DD). Se c'è una sola data o c'è "repeat", "extraDates" è [].
+- "<giorno> prossimo" o "<giorno> della prossima settimana" = quel giorno della SETTIMANA PROSSIMA (non il primo futuro se cade in questa settimana).
 - Con "repeat", "date" è la PRIMA occorrenza futura coerente con la regola (es. il prossimo martedì).
-${memberList.length > 0 ? `- "assigneeName": se il testo dice a chi è assegnato/di chi è l'evento (es. "per Marco", "assegnalo a Anna", "porta Luca a calcio"), scegli il nome ESATTO più vicino da questa lista: ${JSON.stringify(memberList)}. null se non indicato o nessun nome corrisponde. Un nome citato solo come compagnia (es. "cena CON Marco") non è un assegnatario a meno che non sia nella lista e il contesto lo suggerisca.` : '- "assigneeName": sempre null.'}
-- Rispondi SOLO con JSON: {"title": "...", "location": ..., "description": ..., "date": ..., "time": ..., "endTime": ..., "repeat": ..., "weekdays": [...], "monthDays": [...], "assigneeName": ...}`,
+${memberList.length > 0 ? `- "assigneeName": se il testo dice a chi è assegnato/di chi è l'evento (es. "per Marco", "assegnalo a Anna", "porta Luca a calcio"), oppure se un membro è il PROTAGONISTA dell'evento (es. "Francesco ha lezione di matematica", "visita dal dentista di Anna" → l'evento è SUO), scegli il nome ESATTO più vicino da questa lista: ${JSON.stringify(memberList)}. null se non indicato o nessun nome corrisponde. Un nome citato solo come compagnia (es. "cena CON Marco") non è un assegnatario a meno che non sia nella lista e il contesto lo suggerisca.` : '- "assigneeName": sempre null.'}
+- Rispondi SOLO con JSON: {"title": "...", "location": ..., "description": ..., "date": ..., "extraDates": [...], "time": ..., "endTime": ..., "repeat": ..., "weekdays": [...], "monthDays": [...], "assigneeName": ...}`,
       }, {
         role: 'user',
         content: input.text,
