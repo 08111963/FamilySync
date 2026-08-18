@@ -22,6 +22,8 @@ export const REVENUECAT_ENTITLEMENT_IDENTIFIER = "premium";
  * sincronizzato dal backend (POST /api/purchases/sync) e letto da /status.
  */
 
+import { selectRevenueCatApiKey } from "./revenuecat-key";
+
 /** True quando siamo in modalità test RevenueCat (no acquisto reale store). */
 export function isRevenueCatTestMode(): boolean {
   return (
@@ -32,20 +34,13 @@ export function isRevenueCatTestMode(): boolean {
 }
 
 function getRevenueCatApiKey(): string {
-  if (!REVENUECAT_TEST_API_KEY || !REVENUECAT_IOS_API_KEY || !REVENUECAT_ANDROID_API_KEY) {
-    throw new Error("RevenueCat Public API Keys non trovate");
-  }
-
-  if (isRevenueCatTestMode()) {
-    return REVENUECAT_TEST_API_KEY;
-  }
-  if (Platform.OS === "ios") {
-    return REVENUECAT_IOS_API_KEY;
-  }
-  if (Platform.OS === "android") {
-    return REVENUECAT_ANDROID_API_KEY;
-  }
-  return REVENUECAT_TEST_API_KEY;
+  return selectRevenueCatApiKey({
+    testMode: isRevenueCatTestMode(),
+    platform: Platform.OS,
+    testKey: REVENUECAT_TEST_API_KEY,
+    iosKey: REVENUECAT_IOS_API_KEY,
+    androidKey: REVENUECAT_ANDROID_API_KEY,
+  });
 }
 
 let configured = false;

@@ -13,6 +13,7 @@ import { sendFamilyInviteEmail, isEmailConfigured } from '../lib/email';
 import { broadcastToFamily } from '../lib/websocket';
 import { config } from '../lib/config';
 import { logger } from '../lib/logger';
+import { trackServerEvent, trackSecondMemberActiveIfEligible } from '../lib/test-analytics';
 import { generateInviteToken, hashInviteToken, generateJoinCode } from '../lib/invite-token';
 import { isFamilyMemberLimitReached, isFamilyMemberLimitReachedTx, FREE_MAX_FAMILY_MEMBERS } from '../lib/entitlements';
 
@@ -68,6 +69,8 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       color: '#6366F1',
       points: 0,
     });
+
+    trackServerEvent('family_created', { userId: req.user!.userId, familyId: family.id }).catch(() => {});
 
     res.status(201).json(family);
   } catch (error) {
@@ -265,6 +268,7 @@ router.post('/:familyId/invite', createInviteLimiter, authenticate, requireFamil
 
     // Non logghiamo mai token o link completi.
     logger.info('Family invite created', { familyId, role });
+    trackServerEvent('invite_sent', { userId: req.user!.userId, familyId }).catch(() => {});
 
     // Restituiamo il link all'admin autenticato che ha creato l'invito, così può
     // condividerlo anche via WhatsApp o QR code oltre all'email già inviata.
@@ -440,6 +444,7 @@ router.post('/:familyId/members/:memberId/promote', createInviteLimiter, authent
 
     // Non logghiamo mai token o link completi.
     logger.info('Member promotion invite created', { familyId, memberId });
+    trackServerEvent('invite_sent', { userId: req.user!.userId, familyId, metadata: { source: 'promotion' } }).catch(() => {});
 
     res.json({ ok: true, email, expiresAt, inviteLink });
   } catch (error) {
@@ -823,6 +828,9 @@ router.post('/join/:token', authenticate, async (req: Request, res: Response) =>
 
     // Per la promozione il membro esisteva già: agli altri client basta un update.
     broadcastToFamily(invite.familyId, isPromotion ? 'member_updated' : 'member_joined', newMember);
+
+    trackServerEvent('invite_accepted', { userId: req.user!.userId, familyId: invite.familyId }).catch(() => {});
+    trackSecondMemberActiveIfEligible(invite.familyId).catch(() => {});
 
     res.json({ message: 'Invito accettato!', family });
   } catch (error) {

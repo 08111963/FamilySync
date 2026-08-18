@@ -11,7 +11,6 @@ import { logger } from '../lib/logger';
 import { broadcastToFamily } from '../lib/websocket';
 import { normalizeItemName } from '../lib/normalize';
 import { isUniqueViolation } from '../lib/db-errors';
-import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 import { toShoppingQuantity } from '../lib/shopping-quantity';
 import { consolidateIngredients, canonicalIngredientKey, type IngredientEntry } from '../lib/consolidate-ingredients';
 
@@ -515,11 +514,6 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
     if (toBuy.length === 0) {
       // Tutto già in dispensa: nessuna lista da creare, ma lo diciamo al client.
       return res.status(200).json({ shoppingListId: null, ingredientCount: 0, skippedFromPantry });
-    }
-
-    const slot = await reserveBaseSlot(req.user!.userId, familyId, "shopping-item");
-    if (slot.status === "limited") {
-      return res.status(429).json(baseLimitBody(slot));
     }
 
     const dayLabel = onlyDate

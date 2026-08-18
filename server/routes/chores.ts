@@ -11,7 +11,7 @@ import { broadcastToFamily } from '../lib/websocket';
 import { sendPushToUser, sendPushToFamily } from '../lib/push';
 import { getBlockedUserIds, getBlockRelatedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { logger } from '../lib/logger';
-import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
+import { trackServerEvent } from '../lib/test-analytics';
 import { nextDueDate, parseRecurrenceRule } from '../../shared/chore-recurrence';
 import { syncCreatedEvents, syncUpdatedEvent, syncDeletedEvents, getLinksForEvents } from '../lib/google-calendar-sync';
 
@@ -317,11 +317,6 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
       });
     }
 
-    const gate = await reserveBaseSlot(req.user!.userId, familyId, "chore");
-    if (gate.status === "limited") {
-      return res.status(429).json(baseLimitBody(gate));
-    }
-
     let [chore] = await db.insert(chores).values({
       familyId,
       title: parsed.data.title,
@@ -343,6 +338,10 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
     broadcastToFamily(familyId, 'chore_created', chore);
     void notifyChoreAssignee(familyId, chore, req.user!.userId);
     void notifyFamilyChoreAction(familyId, chore, req.user!.userId, 'created', { excludeAssignee: true });
+    if (chore.assignedTo) {
+      trackServerEvent('first_chore_assigned', { userId: req.user!.userId, familyId, oncePerFamily: true }).catch(() => {});
+    }
+
     res.status(201).json(chore);
   } catch (error) {
     logger.error('Create chore error', { error: String(error) });

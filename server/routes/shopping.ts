@@ -12,7 +12,7 @@ import { sendPushToFamily } from '../lib/push';
 import { getBlockedUserIds, getBlockRelatedUserIds, applyBlockedFilter } from '../lib/block-filter';
 import { parseQuantityString } from '../lib/normalize';
 import { logger } from '../lib/logger';
-import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
+import { trackServerEvent } from '../lib/test-analytics';
 import { addToPantry } from './pantry';
 
 const router = Router();
@@ -277,11 +277,6 @@ router.post('/:familyId/lists/:listId/items', authenticate, requireFamilyMember(
       }
     }
 
-    const gate = await reserveBaseSlot(req.user!.userId, familyId, "shopping-item");
-    if (gate.status === "limited") {
-      return res.status(429).json(baseLimitBody(gate));
-    }
-
     const [item] = await db.insert(shoppingItems).values({
       listId,
       name: parsed.data.name,
@@ -298,6 +293,8 @@ router.post('/:familyId/lists/:listId/items', authenticate, requireFamilyMember(
     // raggruppato: chi aggiunge più prodotti di fila genera UNA sola notifica
     // con l'elenco, non una notifica per prodotto.
     queueShoppingItemPush(familyId, req.user!.userId, listId, item.name);
+
+    trackServerEvent('first_shared_shopping_item', { userId: req.user!.userId, familyId, oncePerFamily: true }).catch(() => {});
 
     res.status(201).json(item);
   } catch (error) {

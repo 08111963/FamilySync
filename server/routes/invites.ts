@@ -12,6 +12,7 @@ import { hashInviteToken } from '../lib/invite-token';
 import { isFamilyMemberLimitReached, isFamilyMemberLimitReachedTx, FREE_MAX_FAMILY_MEMBERS } from '../lib/entitlements';
 import { broadcastToFamily } from '../lib/websocket';
 import { logger } from '../lib/logger';
+import { trackServerEvent, trackSecondMemberActiveIfEligible } from '../lib/test-analytics';
 import { recordConsent } from '../lib/consents';
 
 const router = Router();
@@ -246,6 +247,9 @@ router.post('/:token/accept', async (req: Request, res: Response) => {
 
     const accessToken = generateAccessToken(createdUser);
     const refreshToken = generateRefreshToken(createdUser);
+
+    trackServerEvent('invite_accepted', { userId: createdUser.id, familyId: invite.familyId }).catch(() => {});
+    trackSecondMemberActiveIfEligible(invite.familyId).catch(() => {});
 
     res.status(201).json({
       user: { id: createdUser.id, email: createdUser.email, name: createdUser.name, emailVerified: true },

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator, Alert, Modal } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,7 +25,7 @@ const PLAN_FEATURES: PlanFeature[] = [
   { label: "Ottimizzazione faccende AI", free: "1 / giorno", premium: "15 / giorno" },
   { label: "Foto ricette AI", free: "10 / giorno", premium: "55 / giorno" },
   { label: "Dettatura vocale (microfono)", free: "3 / giorno", premium: "35 / giorno" },
-  { label: "Calendario, spesa, faccende, chat", free: "5 / giorno", premium: "Illimitato" },
+  { label: "Calendario, spesa, faccende, chat", free: "Illimitati", premium: "Illimitati" },
   { label: "Supporto prioritario", free: "—", premium: "Incluso" },
 ];
 
@@ -63,6 +63,15 @@ export default function PremiumScreen() {
       trackEvent("premium_status_checked", { familyId, metadata: { status: isPremium ? "premium" : "free" } });
     }
   }, [statusQuery.isSuccess, isPremium, familyId]);
+
+  // Funnel: paywall visto (una sola volta per apertura schermata, solo utenti Free).
+  const paywallTracked = useRef(false);
+  useEffect(() => {
+    if (statusQuery.isSuccess && !isPremium && !paywallTracked.current) {
+      paywallTracked.current = true;
+      trackEvent("paywall_viewed", { familyId, screen: "premium" });
+    }
+  }, [statusQuery.isSuccess, isPremium, familyId]);
   const expiresAt = statusQuery.data?.expiresAt as string | null | undefined;
 
   // Prezzi e package presi dall'offering RevenueCat (mai hardcoded).
@@ -90,13 +99,20 @@ export default function PremiumScreen() {
   };
 
   const runPurchase = async (pkg: PurchasesPackage) => {
+    const planMeta = { feature: pkg.packageType === "ANNUAL" ? "yearly" : "monthly" };
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      trackEvent("purchase_started", { familyId, metadata: planMeta });
       await purchase(pkg);
       const premium = await syncWithServer();
+      trackEvent("purchase_completed", { familyId, metadata: { ...planMeta, status: premium ? "premium" : "pending" } });
       Alert.alert(premium ? "Premium attivato!" : "Acquisto registrato", premium ? "Grazie! Ora hai accesso a tutte le funzionalità Premium." : "Lo stato sarà aggiornato a breve.");
     } catch (error: any) {
-      if (error?.userCancelled) return;
+      if (error?.userCancelled) {
+        trackEvent("purchase_cancelled", { familyId, metadata: planMeta });
+        return;
+      }
+      trackEvent("purchase_failed", { familyId, metadata: planMeta });
       Alert.alert("Acquisto non riuscito", error?.message ?? "Non è stato possibile completare l'acquisto. Riprova più tardi.");
     }
   };
@@ -124,6 +140,7 @@ export default function PremiumScreen() {
     try {
       await restore();
       const premium = await syncWithServer();
+      trackEvent("purchase_restored", { familyId, metadata: { status: premium ? "premium" : "none" } });
       Alert.alert(premium ? "Premium ripristinato!" : "Nessun abbonamento attivo", premium ? "Il tuo abbonamento è di nuovo attivo." : "Non abbiamo trovato acquisti da ripristinare.");
     } catch (error: any) {
       Alert.alert("Ripristino non riuscito", error?.message ?? "Non è stato possibile ripristinare gli acquisti. Riprova più tardi.");
@@ -159,6 +176,23 @@ export default function PremiumScreen() {
               : "Più AI per la tua famiglia. Acquisto sicuro tramite lo store."}
           </Text>
         </View>
+
+        {/* Valore PRIMA delle quote: cosa ottiene la famiglia con Premium. */}
+        {!isPremium && (
+          <View style={styles.valueList}>
+            {[
+              { icon: "sparkles" as const, text: "Molta più AI per tutta la famiglia: ricette, piano pasti, spesa e consigli" },
+              { icon: "people" as const, text: "Membri della famiglia illimitati" },
+              { icon: "receipt" as const, text: "Bollette avanzate: allegati, ripartizione e storico completo" },
+              { icon: "headset" as const, text: "Supporto prioritario" },
+            ].map((v) => (
+              <View key={v.icon} style={styles.valueRow}>
+                <Ionicons name={v.icon} size={18} color={colors.primary} />
+                <Text style={[styles.valueText, { color: colors.text }]}>{v.text}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         <View style={styles.comparison_wrap}>
           <View style={[styles.familyNote, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -212,7 +246,7 @@ export default function PremiumScreen() {
           <>
             <View style={styles.plansRow}>
               <Pressable
-                onPress={() => setSelectedPlan("monthly")}
+                onPress={() => { setSelectedPlan("monthly"); trackEvent("plan_selected", { familyId, metadata: { feature: "monthly" } }); }}
                 style={[
                   styles.planColumn,
                   {
@@ -228,7 +262,7 @@ export default function PremiumScreen() {
               </Pressable>
 
               <Pressable
-                onPress={() => setSelectedPlan("yearly")}
+                onPress={() => { setSelectedPlan("yearly"); trackEvent("plan_selected", { familyId, metadata: { feature: "yearly" } }); }}
                 style={[
                   styles.planColumn,
                   {
@@ -352,6 +386,9 @@ const styles = StyleSheet.create({
   planColTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
   planColPrice: { fontSize: 20, fontFamily: "Inter_700Bold", marginTop: 4 },
   planColPeriod: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  valueList: { paddingHorizontal: 20, marginBottom: 20, gap: 10 },
+  valueRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  valueText: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium", lineHeight: 20 },
   familyNote: {
     flexDirection: "row",
     alignItems: "center",

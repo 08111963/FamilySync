@@ -10,7 +10,6 @@ import { getBlockRelatedUserIds, applyBlockedFilter } from "../lib/block-filter"
 import { broadcastChatMessageToFamily } from "../lib/websocket";
 import { sendPushToFamily } from "../lib/push";
 import { logger } from "../lib/logger";
-import { reserveBaseSlot, baseLimitBody } from "../lib/base-usage";
 import { persistUploadedFile, deleteStoredUploads, logUploadStorageStatus } from "../lib/upload-storage";
 
 const router = Router();
@@ -336,11 +335,6 @@ router.post("/:familyId/messages", async (req: Request, res: Response) => {
       return res.status(403).json({ error: "Non fai parte di questa famiglia" });
     }
 
-    const gate = await reserveBaseSlot(userId, familyId, "chat-message");
-    if (gate.status === "limited") {
-      return res.status(429).json(baseLimitBody(gate));
-    }
-
     const [user] = await db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);
 
     const [message] = await db
@@ -408,12 +402,6 @@ router.post("/:familyId/upload", requireFamilyMembership, upload.single("file"),
         }
       });
       return res.status(415).json({ error: "Il contenuto del file non corrisponde al tipo dichiarato" });
-    }
-
-    const gate = await reserveBaseSlot(userId, familyId, "chat-message");
-    if (gate.status === "limited") {
-      if (req.file) fs.unlink(req.file.path, () => {});
-      return res.status(429).json(baseLimitBody(gate));
     }
 
     const [user] = await db.select({ name: users.name, avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, userId)).limit(1);

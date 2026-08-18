@@ -1,0 +1,248 @@
+MANDATO — FAMILYSYNC: CHIUSURA TECNICA MONETIZZAZIONE / FREE-PREMIUM
+
+OBIETTIVO
+Portare l'attuale versione di FamilySync alla fase immediatamente precedente al pilot commerciale reale, intervenendo ESCLUSIVAMENTE sulla monetizzazione già esistente.
+
+NON aggiungere nuove funzioni dell'app.
+NON rifare architettura, autenticazione, chat, sicurezza, upload, database o funzioni già operative.
+NON sostituire RevenueCat.
+NON reintrodurre Stripe per gli acquisti mobile.
+NON eseguire rework generici o audit non richiesti.
+
+La base corrente contiene già:
+- react-native-purchases / RevenueCat;
+- entitlement Premium per famiglia;
+- AppUserID RevenueCat = familyId;
+- acquisto e restore;
+- sync backend;
+- webhook RevenueCat;
+- piano Free/Premium;
+- schermata Premium;
+- tester Premium;
+- analytics interne.
+
+Il compito è correggere e completare SOLO i punti seguenti.
+
+
+1. RIMUOVERE IL BYPASS AI DEGLI ADMIN
+
+Nel file server/lib/ai-usage.ts è presente una logica che rende di fatto illimitata la quota AI degli amministratori della famiglia tramite Number.MAX_SAFE_INTEGER.
+
+Rimuovere completamente questa eccezione.
+
+La quota AI deve dipendere ESCLUSIVAMENTE dal piano della famiglia:
+- Free -> PLAN_LIMITS.free
+- Premium -> PLAN_LIMITS.premium
+
+Il ruolo admin NON deve modificare le quote AI.
+
+Gli account proprietario/VIP/tester eventualmente Premium devono continuare a ottenere Premium tramite il sistema entitlement già esistente, non tramite il ruolo famiglia.
+
+Aggiornare i test interessati e aggiungere un test esplicito che dimostri:
+- admin di famiglia Free -> rispetta PLAN_LIMITS.free;
+- admin di famiglia Premium -> rispetta PLAN_LIMITS.premium.
+
+
+2. RENDERE ILLIMITATE NEL FREE LE FUNZIONI COLLABORATIVE DI BASE
+
+Attualmente server/lib/base-usage.ts applica BASE_FREE_DAILY_LIMIT = 5 a:
+- calendario;
+- articoli spesa;
+- faccende;
+- messaggi chat.
+
+Questo limite deve essere eliminato.
+
+Calendario, spesa, faccende e chat devono essere illimitati sia nel piano Free sia nel Premium.
+
+Non introdurre un limite alternativo (10, 20, 50 ecc.).
+
+Rimuovere/disattivare in modo pulito:
+- reserveBaseSlot come meccanismo di blocco delle operazioni;
+- risposte FREE_DAILY_LIMIT_REACHED;
+- contatori base:* utilizzati esclusivamente per applicare tale limite.
+
+Non modificare le normali autorizzazioni, validazioni o controlli di sicurezza di tali endpoint.
+
+Se alcune strutture devono essere mantenute temporaneamente per compatibilità, non devono più impedire alcuna operazione.
+
+Aggiornare i relativi test.
+
+
+3. MANTENERE LE ATTUALI QUOTE AI FREE/PREMIUM
+
+NON modificare in questo mandato i valori di PLAN_LIMITS Free/Premium già presenti, salvo ciò che è strettamente necessario per eliminare il bypass admin.
+
+Le quote AI continuano a essere condivise secondo la logica attuale e devono continuare a essere contabilizzate prima della chiamata OpenAI.
+
+
+4. MANTENERE GLI ALTRI LIMITI FREE/PREMIUM ESISTENTI
+
+Mantenere:
+- Free: massimo 5 membri per famiglia;
+- Premium: membri illimitati;
+- Free: massimo 5 bollette attive;
+- funzioni Premium delle bollette già protette;
+- allegati/ripartizione/storico e gli altri controlli Premium già implementati.
+
+Non inventare nuovi limiti.
+
+
+5. CORREGGERE L'INIZIALIZZAZIONE REVENUECAT
+
+Nel file lib/revenuecat.tsx la funzione che seleziona la API key verifica oggi contemporaneamente la presenza di:
+- test key;
+- iOS key;
+- Android key.
+
+Correggere la logica affinché richieda SOLO la chiave necessaria al contesto corrente:
+
+- modalità test / Expo Go / web -> EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
+- build iOS reale -> EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
+- build Android reale -> EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY.
+
+Una build Android non deve fallire perché manca la chiave iOS e viceversa.
+
+Mantenere un errore chiaro e fail-fast se manca proprio la chiave richiesta per la piattaforma corrente.
+
+Aggiungere test, se tecnicamente praticabile, o almeno separare la selezione della key in funzione pura testabile.
+
+
+6. AGGIORNARE LA SCHERMATA PREMIUM
+
+Aggiornare app/premium.tsx affinché il confronto Free/Premium non dica più:
+
+"Calendario, spesa, faccende, chat — Free 5/giorno"
+
+ma mostri chiaramente:
+
+Calendario, spesa, faccende, chat:
+- Free: Illimitati
+- Premium: Illimitati
+
+Mantenere:
+- prezzi letti dall'offering RevenueCat;
+- fallback attuale €3,99 / €39,99;
+- acquisto mensile;
+- acquisto annuale;
+- restore purchase;
+- fonte autorevole dello stato Premium sul backend.
+
+Non hardcodare il prezzo come fonte primaria.
+
+
+7. MIGLIORARE IL MESSAGGIO COMMERCIALE DEL PAYWALL SENZA RIDISEGNARLO
+
+Non fare un redesign generale.
+
+La schermata deve comunicare prima il valore Premium e poi le quote.
+
+Mettere in evidenza con il testo esistente/una modifica minima che Premium offre:
+- più capacità AI per tutta la famiglia;
+- membri illimitati;
+- gestione avanzata delle bollette;
+- allegati/ripartizione/storico dove già disponibili;
+- supporto prioritario.
+
+Non promettere funzioni che non esistono nel codice.
+
+Le semplici funzioni collaborative core non devono essere presentate come artificialmente bloccate nel Free.
+
+
+8. ANALYTICS DEL FUNNEL COMMERCIALE
+
+Riutilizzare l'infrastruttura analytics interna già presente.
+NON installare Firebase Analytics, Mixpanel, Amplitude o altri servizi esterni in questo mandato.
+
+Aggiungere, con metadata minimi e senza dati personali inutili, gli eventi:
+
+family_created
+invite_sent
+invite_accepted
+second_member_active
+first_shared_calendar_event
+first_shared_shopping_item
+first_chore_assigned
+paywall_viewed
+plan_selected
+purchase_started
+purchase_completed
+purchase_cancelled
+purchase_failed
+purchase_restored
+
+Regole:
+- gli eventi non devono contenere testo di chat, nomi, email, contenuto delle liste o altri dati personali non necessari;
+- evitare duplicazioni evidenti degli eventi "first_*";
+- second_member_active deve indicare realmente che nella famiglia almeno due account/membri utilizzatori sono entrati nel flusso previsto, non semplicemente che esistono due record nel DB.
+
+Se l'infrastruttura analytics corrente consente già metadata familyId/userId secondo la privacy policy, riutilizzare la convenzione esistente.
+
+
+9. REVENUECAT: NON SIMULARE LA CONFIGURAZIONE ESTERNA
+
+Controllare il wiring del codice verso:
+- entitlement "premium";
+- current Offering;
+- package MONTHLY;
+- package ANNUAL;
+- POST /api/purchases/sync;
+- /api/purchases/status;
+- webhook RevenueCat.
+
+NON dichiarare che Google Play / App Store / RevenueCat dashboard sono configurati correttamente se non è possibile verificarli realmente dal progetto.
+
+Produrre alla fine una checklist molto breve con SOLO le variabili/segreti e gli identificatori esterni che devono essere verificati manualmente prima del test store reale.
+
+Non creare documentazione lunga.
+
+
+10. PREZZI
+
+Non cambiare autonomamente il pricing.
+
+Il prodotto deve continuare a mostrare il prezzo reale restituito dagli store tramite RevenueCat.
+
+I fallback locali restano:
+- mensile €3,99
+- annuale €39,99
+
+Segnalare eventuali altri prezzi legacy presenti nel codice (es. vecchio Stripe) ma NON riattivare Stripe e NON effettuare migrazioni non necessarie.
+
+
+11. TEST OBBLIGATORI
+
+Eseguire almeno:
+- typecheck;
+- test relativi ad ai-usage;
+- entitlements;
+- premium;
+- purchases/RevenueCat se presenti;
+- invites;
+- analytics modificati;
+- test delle funzioni base coinvolte.
+
+Verificare specificamente:
+
+A. famiglia Free + admin -> quote AI Free;
+B. famiglia Premium + admin -> quote AI Premium;
+C. Free può creare oltre 5 articoli spesa nello stesso giorno;
+D. Free può creare oltre 5 eventi;
+E. Free può creare oltre 5 faccende;
+F. Free può inviare oltre 5 messaggi chat;
+G. limite 5 membri Free resta attivo;
+H. limite bollette Free resta attivo;
+I. acquisto/restore continuano a sincronizzare lo stato col backend;
+J. nessuna regressione delle autorizzazioni familyId.
+
+
+12. CONSEGNA
+
+Alla fine:
+- modificare solo i file necessari;
+- fornire breve elenco dei file modificati;
+- indicare test eseguiti e risultato;
+- indicare eventuali elementi esterni RevenueCat/Google/Apple che NON possono essere verificati dal codice;
+- creare ZIP completo finale del progetto.
+
+NON eseguire ulteriori rework, miglioramenti cosmetici o modifiche fuori mandato.

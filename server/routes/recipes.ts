@@ -10,7 +10,6 @@ import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { logger } from '../lib/logger';
 import { broadcastToFamily } from '../lib/websocket';
-import { reserveBaseSlot, baseLimitBody } from '../lib/base-usage';
 import { normalizeItemName } from '../lib/normalize';
 import { toShoppingQuantity } from '../lib/shopping-quantity';
 
@@ -330,11 +329,6 @@ router.post('/:familyId/recipes/:recipeId/to-shopping-list', authenticate, requi
 
     if (unique.size === 0) {
       return res.status(400).json({ error: { code: "NO_INGREDIENTS", message: "La ricetta non ha ingredienti" } });
-    }
-
-    const slot = await reserveBaseSlot(req.user!.userId, familyId, "shopping-item");
-    if (slot.status === "limited") {
-      return res.status(429).json(baseLimitBody(slot));
     }
 
     let listId = parsed.data.listId ?? null;

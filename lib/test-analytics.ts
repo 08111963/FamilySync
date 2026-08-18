@@ -26,7 +26,14 @@ export type TestAnalyticsEventName =
   | "ai_toggle_changed"
   | "delete_account_opened"
   | "legal_page_opened"
-  | "dictation_error";
+  | "dictation_error"
+  | "paywall_viewed"
+  | "plan_selected"
+  | "purchase_started"
+  | "purchase_completed"
+  | "purchase_cancelled"
+  | "purchase_failed"
+  | "purchase_restored";
 
 type Metadata = Record<string, string | number | boolean>;
 

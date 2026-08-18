@@ -381,3 +381,37 @@ describe("concorrenza: quota vicina al limite non viene superata", () => {
     assert.equal(ok, 15);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mandato monetizzazione — punto 1: NESSUN bypass admin. La quota dipende
+// SOLO dal piano famiglia; il ruolo (admin incluso) non alza mai il tetto.
+// ---------------------------------------------------------------------------
+describe("nessun bypass admin sulle quote AI", () => {
+  function capturingStore(captured: { max?: number }): AiUsageStore {
+    return {
+      async reserve(_u: string, _f: string, _feat: string, max: number): Promise<ReserveResult> {
+        captured.max = max;
+        return { status: "ok", usageId: "test-usage-id", used: 1 };
+      },
+      async finalize() {},
+    } as unknown as AiUsageStore;
+  }
+
+  test("famiglia Free: tetto = PLAN_LIMITS.free anche per l'admin", async () => {
+    __setEntitlementStoreForTest(freeEntitlementStore());
+    const captured: { max?: number } = {};
+    __setAiUsageStoreForTest(capturingStore(captured));
+    await reserveAiSlot("admin-user", "fam-free", "recipe-search");
+    assert.equal(captured.max, PLAN_LIMITS.free["recipe-search"].max);
+    assert.notEqual(captured.max, Number.MAX_SAFE_INTEGER);
+  });
+
+  test("famiglia Premium: tetto = PLAN_LIMITS.premium anche per l'admin", async () => {
+    __setEntitlementStoreForTest(premiumEntitlementStore());
+    const captured: { max?: number } = {};
+    __setAiUsageStoreForTest(capturingStore(captured));
+    await reserveAiSlot("admin-user", "fam-premium", "recipe-search");
+    assert.equal(captured.max, PLAN_LIMITS.premium["recipe-search"].max);
+    assert.notEqual(captured.max, Number.MAX_SAFE_INTEGER);
+  });
+});
