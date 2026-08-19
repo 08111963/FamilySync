@@ -24,8 +24,8 @@ description: How Premium status, AI quotas, and store purchases work in FamilySy
 - **Quotas are PER FAMILY (shared pool), not per member** — enforced by `store.reserve` counting `ai_usage` rows by `familyId`. This is a stated user requirement; the Premium card (`app/premium.tsx`) and guide surface it explicitly ("condivisi da tutta la famiglia"). Do NOT switch to per-user counting without an explicit request.
 - **Premium quotas were raised +5 across every limited feature** (shopping-suggestions 15, recipe-search 25, recipe-suggestions 15, weekly-meal-plan 8/day, insights 10/day, chore-optimization 15, voice-transcription 35, recipe-image 55).
 - **Why:** requirement was a real freemium model — AI stays demoable for free families but limited; premium unlocks higher quotas.
-- **Family admins bypass AI quotas entirely.** `reserveAiSlot` checks the requester's `family_members.role`; if `admin`, it sets `effectiveMax = Number.MAX_SAFE_INTEGER` so they are never rate-limited (usage is still tracked in `ai_usage`). The admin lookup fails closed to non-admin on DB error.
-- **Why:** explicit user requirement — the family admin/owner must never hit AI limits. Centralized in `reserveAiSlot` so every feature using `reserveAiSlot`/`withAiUsage` inherits it.
+- **Solo la famiglia che contiene l'account proprietario dell'app configurato lato server bypassa tutte le quote AI.** I normali admin familiari e le normali famiglie Premium restano soggetti alle rispettive quote. L'utilizzo della famiglia proprietaria continua a essere registrato.
+- **Why:** il proprietario usa la propria famiglia per collaudare tutte le funzioni e ha richiesto esplicitamente che solo quella famiglia non venga mai bloccata dalle quote.
 
 # Premium is store-native only (IAP), Stripe stays dormant
 - Purchases are verified server-side by an injectable verifier (`server/lib/iap-verifier.ts`, `__setIapVerifierForTest`): real Apple verifyReceipt + Google Play subscriptions API. Real verification runs ONLY when store credentials are configured (`config.isIapVerificationConfigured`), else 503 `PURCHASE_VERIFICATION_UNAVAILABLE`.
@@ -53,4 +53,5 @@ description: How Premium status, AI quotas, and store purchases work in FamilySy
 - **Meccanismo**: seed idempotente all'avvio crea/aggiorna l'entitlement per le famiglie con un membro owner; un guard nella sync RevenueCat forza active per l'owner così la sync senza acquisto reale (active=false) non lo declassa mai.
 - **Regola**: isPremium NON deve mai consultare la lista owner — un fallback email dentro isPremium rompe l'invariante (già bocciato in review). L'eleggibilità owner vale SOLO per seed+guard.
 - **Why**: il proprietario voleva accesso a tutte le funzioni per sempre senza rompere il modello. La env è `shared`, quindi il prod applica la seed al boot dopo un republish.
+- La famiglia che contiene l'account proprietario ha anche quote AI illimitate per il collaudo; l'eccezione non si estende ai normali admin o alle normali famiglie Premium.
 - **Limite noto**: la seed è additiva (non revoca `owner_grant` se un account smette di essere owner). Accettabile per single-owner; aggiungere revoca solo se servirà.

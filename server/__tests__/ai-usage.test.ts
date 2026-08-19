@@ -14,6 +14,7 @@ import {
 import {
   __setEntitlementStoreForTest,
   __resetEntitlementStoreForTest,
+  __setOwnerFamilyCheckerForTest,
   type EntitlementStore,
 } from "../lib/entitlements";
 import { AiError, mapOpenAiError } from "../lib/ai-errors";
@@ -50,10 +51,12 @@ after(() => {
   if (ORIGINAL_AI_KEY === undefined) delete process.env[AI_KEY_ENV];
   else process.env[AI_KEY_ENV] = ORIGINAL_AI_KEY;
   __resetEntitlementStoreForTest();
+  __setOwnerFamilyCheckerForTest(null);
 });
 
 afterEach(() => {
   __resetAiUsageStoreForTest();
+  __setOwnerFamilyCheckerForTest(null);
   // ripristina il piano premium di default dopo eventuali override "free".
   __setEntitlementStoreForTest(premiumEntitlementStore());
 });
@@ -181,6 +184,18 @@ describe("PLAN_LIMITS (quote per piano)", () => {
       assert.equal(blocked.window, "week");
       assert.equal(blocked.plan, "premium");
     }
+  });
+
+  test("famiglia proprietaria: quote AI illimitate ma utilizzo comunque registrato", async () => {
+    __setOwnerFamilyCheckerForTest(async (familyId) => familyId === "fam-owner");
+    const { store, rows } = makeMemoryStore();
+    __setAiUsageStoreForTest(store);
+
+    for (let i = 0; i < 5; i++) {
+      const result = await reserveAiSlot("owner-user", "fam-owner", "weekly-meal-plan");
+      assert.equal(result.status, "ok");
+    }
+    assert.equal(rows.length, 5);
   });
 });
 

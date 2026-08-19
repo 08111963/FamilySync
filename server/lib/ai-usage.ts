@@ -3,7 +3,7 @@ import { db } from "../db";
 import { aiUsage } from "../../shared/schema";
 import { logger } from "./logger";
 import { assertAiConfigured } from "./ai-errors";
-import { getPlanForFamily, type Plan } from "./entitlements";
+import { getPlanForFamily, isOwnerPremiumFamily, type Plan } from "./entitlements";
 
 export type AiFeature =
   | "shopping-suggestions"
@@ -208,9 +208,26 @@ export function __resetAiUsageStoreForTest(): void {
 }
 
 /** Limite (max + finestra) applicabile a una famiglia per una feature. */
-export async function resolveFeatureLimit(familyId: string, feature: AiFeature): Promise<FeatureLimit> {
+async function resolveFeatureQuota(
+  familyId: string,
+  feature: AiFeature,
+): Promise<FeatureLimit & { plan: Plan }> {
   const plan = await getPlanForFamily(familyId);
-  return PLAN_LIMITS[plan][feature];
+  const limit = PLAN_LIMITS[plan][feature];
+  // Eccezione tecnica per l'account proprietario dell'app: attualmente la
+  // sua famiglia principale. Non è un bypass del ruolo "admin" familiare:
+  // viene verificata solo la membership dell'account configurato lato server.
+  // Le richieste continuano a essere registrate in ai_usage, ma non bloccate.
+  if (await isOwnerPremiumFamily(familyId)) {
+    return { ...limit, max: Number.MAX_SAFE_INTEGER, plan };
+  }
+  return { ...limit, plan };
+}
+
+/** Limite (max + finestra) applicabile a una famiglia per una feature. */
+export async function resolveFeatureLimit(familyId: string, feature: AiFeature): Promise<FeatureLimit> {
+  const { max, window } = await resolveFeatureQuota(familyId, feature);
+  return { max, window };
 }
 
 /**
@@ -239,8 +256,7 @@ export async function reserveAiSlot(
   // La quota dipende SOLO dal piano della famiglia (free/premium): il ruolo
   // famiglia (admin incluso) NON modifica mai le quote AI. Eventuali account
   // VIP/tester ottengono quote premium tramite gli entitlements, non dal ruolo.
-  const plan = await getPlanForFamily(familyId);
-  const { max, window } = PLAN_LIMITS[plan][feature];
+  const { max, window, plan } = await resolveFeatureQuota(familyId, feature);
   const result = await store.reserve(userId, familyId, feature, max, windowStart(window), window);
   return result.status === "limited" ? { ...result, plan } : result;
 }

@@ -97,12 +97,20 @@ const dbEntitlementStore: EntitlementStore = {
 };
 
 let store: EntitlementStore = dbEntitlementStore;
+let ownerFamilyCheckerForTest: ((familyId: string) => Promise<boolean>) | null = null;
 
 export function __setEntitlementStoreForTest(s: EntitlementStore): void {
   store = s;
 }
 export function __resetEntitlementStoreForTest(): void {
   store = dbEntitlementStore;
+}
+
+/** Test-only: evita query al DB quando serve simulare una famiglia proprietaria. */
+export function __setOwnerFamilyCheckerForTest(
+  checker: ((familyId: string) => Promise<boolean>) | null,
+): void {
+  ownerFamilyCheckerForTest = checker;
 }
 
 /** Un entitlement è "attivo" se status=active e non scaduto. */
@@ -191,7 +199,8 @@ export async function syncEntitlementFromRevenueCat(params: {
  * NON è usato da isPremium: la fonte di verità resta la tabella entitlements.
  * Lista vuota -> nessuna query (nessun impatto su test/perf).
  */
-async function isOwnerPremiumFamily(familyId: string): Promise<boolean> {
+export async function isOwnerPremiumFamily(familyId: string): Promise<boolean> {
+  if (ownerFamilyCheckerForTest) return ownerFamilyCheckerForTest(familyId);
   const owners = config.premiumOwnerEmails;
   if (owners.length === 0) return false;
   try {
