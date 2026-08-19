@@ -40,7 +40,9 @@ for i in $(seq 1 20); do
   sleep 0.5
 done
 
-export EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN:5000"
+# Sul telefono si raggiunge il proxy pubblico (443 → backend 5000), non la
+# porta interna 5000 che non è esposta direttamente fuori da Replit.
+export EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN"
 
 # Lascia che Expo generi il proprio URL exp.direct. Forzare un sottodominio
 # ngrok.io riusa il vecchio backend tunnel e può fallire con "remote gone away".

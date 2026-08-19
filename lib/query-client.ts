@@ -1,6 +1,7 @@
 import { fetch } from "expo/fetch";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 
 const AUTH_STORAGE_KEY = "@family_sync_auth";
 
@@ -8,7 +9,9 @@ export function getApiUrl(): string {
   // Sul web frontend e backend sono serviti dalla stessa origine: usarla
   // direttamente rende la build portabile (dev, anteprima, produzione)
   // senza dover "cucire" il dominio dentro il bundle all'export.
-  if (typeof window !== "undefined" && window.location?.origin?.startsWith("http")) {
+  // Expo Go espone una window/location del dev server: non basta verificarne
+  // l'esistenza, altrimenti le API native finiscono sul tunnel Metro (HTML).
+  if (Platform.OS === "web" && typeof window !== "undefined" && window.location?.origin?.startsWith("http")) {
     return `${window.location.origin}/`;
   }
 
