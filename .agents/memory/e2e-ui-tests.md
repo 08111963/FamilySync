@@ -13,4 +13,6 @@ description: Convenzioni per i test UI in e2e/ e perché un run del tester subag
 - Dialoghi web `window.confirm/alert`: `page.once("dialog", ...)` PRIMA del tap; per asserire "nessuna chiamata" catturare i body nelle route stubbate.
 - Occhio alle race: un testo già visibile in anteprima non prova il salvataggio — attendere la scomparsa del bottone (`state: "detached"`) o pollare i body catturati.
 - Rate limiter in-memory (login per-email, /api globale): un riavvio del backend li azzera se il tester subagent incappa in 429.
+- Per catture reali multi-route, mantenere una sola sessione SPA: i reload completi rimontano tutte le query condivise, saturano `/api` e un 429 su auth può svuotare la schermata. Bloccare analytics dev e cambiare route senza reload.
+- Nascondere banner di sviluppo solo tramite il loro wrapper/testID esatto: risalire genericamente gli antenati può occultare l'intera root dell'app e produrre screenshot bianchi.
 - Per testare il rollback transazionale lato server: un `recipeId` UUID valido ma inesistente passa Zod e viola la FK DENTRO la transazione (dopo la delete) → rollback reale.

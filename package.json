@@ -81,6 +81,7 @@
     "pdfkit": "^0.19.1",
     "pg": "^8.16.3",
     "playwright": "^1.58.2",
+    "pngjs": "^7.0.0",
     "puppeteer-core": "^24.37.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",

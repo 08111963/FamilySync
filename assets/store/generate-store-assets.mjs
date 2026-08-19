@@ -2,311 +2,129 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 
+/*
+  FamilySync store campaign — "La casa in movimento"
+  Editorial family photography meets the actual, uncropped product interface.
+  Nothing inside a device is recreated: every device image is a supplied capture.
+*/
 const root = path.resolve("assets/store");
-const sourceDir = path.join(root, "source");
-const outDir = path.join(root, "png");
-fs.mkdirSync(sourceDir, { recursive: true });
-fs.mkdirSync(outDir, { recursive: true });
-const iconData = fs.readFileSync(path.resolve("assets/images/icon-512.png")).toString("base64");
-
-const C = {
-  ink: "#24343a",
-  muted: "#617277",
-  coral: "#f26f72",
-  coralDark: "#d85862",
-  mint: "#42b9a4",
-  sun: "#f6cf67",
-  cream: "#fff9f1",
-  paper: "#fffdf9",
-  line: "#e5dfd7",
-  lavender: "#dcd7f2",
-};
-
-const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const text = (x, y, value, size = 28, weight = 500, fill = C.ink, anchor = "start") =>
-  `<text x="${x}" y="${y}" font-family="DejaVu Sans, Arial, sans-serif" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${esc(value)}</text>`;
-const titleBlock = (x, y, value, W) => {
-  const words = value.split(" ");
-  const lines = [];
-  let current = "";
-  const maxChars = W < 1200 ? 27 : 33;
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (current && next.length > maxChars) {
-      lines.push(current);
-      current = word;
-    } else current = next;
+const out = path.join(root, "png");
+const captures = path.join(root, "captures");
+const images = path.resolve("assets/images");
+fs.mkdirSync(out, { recursive: true });
+for (const obsoleteDir of ["source", "tablet-7", "tablet-10"]) {
+  fs.rmSync(path.join(root, obsoleteDir), { recursive: true, force: true });
+}
+for (const obsoleteFile of fs.readdirSync(root)) {
+  if (/^screenshot-.*\.png$/i.test(obsoleteFile) || obsoleteFile === "feature-graphic.png") {
+    fs.rmSync(path.join(root, obsoleteFile), { force: true });
   }
-  if (current) lines.push(current);
-  const size = lines.length > 1 ? (W < 1200 ? 55 : 62) : (W < 1200 ? 60 : 64);
-  return lines.map((lineValue, i) => text(x, y + i * (size + 8), lineValue, size, 700, C.ink)).join("");
+}
+
+const C = { ink: "#1c3030", cream: "#f7f0e4", coral: "#fa695e", teal: "#1da99a", sun: "#f5c850", paper: "#fffaf2", sage: "#dce6d8", rose: "#f2c4b6" };
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const svg = (w, h, body) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${body}</svg>`);
+const txt = (x, y, value, size, weight = 700, fill = C.ink, anchor = "start", family = "DejaVu Sans") =>
+  `<text x="${x}" y="${y}" font-family="${family}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${esc(value)}</text>`;
+const wrapLines = (value, size, max) => {
+  const limit = Math.max(11, Math.floor(max / (size * .56)));
+  const words = value.split(" "); const lines = []; let current = "";
+  for (const word of words) { const next = current ? `${current} ${word}` : word; if (next.length > limit && current) { lines.push(current); current = word; } else current = next; }
+  lines.push(current);
+  return lines;
 };
-const rect = (x, y, w, h, fill, r = 22, stroke = "none", sw = 0) =>
-  `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
-const line = (x1, y1, x2, y2, stroke = C.line, sw = 2) =>
-  `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round"/>`;
-const dot = (x, y, r, fill) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}"/>`;
+const wrap = (x, y, value, size, max, line = 1.02, fill = C.ink) =>
+  wrapLines(value, size, max).map((v, i) => txt(x, y + i * size * line, v, size, 800, fill)).join("");
+const round = (x, y, w, h, r, fill, extra = "") => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}" ${extra}/>`;
+const crop = async (input, w, h, position = "centre") => sharp(input).resize(w, h, { fit: "cover", position }).jpeg({ quality: 92 }).toBuffer();
+const layer = async (input, left, top) => ({ input, left, top });
 
-function phone(content, W, H) {
-  const px = 66, py = 410, pw = W - 132, ph = H - 515;
-  return [
-    rect(0, 0, W, H, C.cream, 0),
-    text(66, 108, "FamilySync", 30, 700, C.coralDark),
-    titleBlock(66, 190, content.title, W),
-    text(66, content.title.length > 27 ? 316 : 248, content.subtitle, 28, 400, C.muted),
-    rect(px, py, pw, ph, "#26383d", 52),
-    rect(px + 14, py + 14, pw - 28, ph - 28, C.paper, 40),
-    rect(px + pw / 2 - 54, py + 23, 108, 16, "#26383d", 10),
-    content.body(px + 42, py + 82, pw - 84, ph - 115),
-    rect(px + pw / 2 - 38, py + ph - 42, 76, 7, "#c9d0cd", 4),
-    text(W - 66, H - 72, content.index, 22, 700, C.coralDark, "end"),
-  ].join("");
-}
-
-function nav(x, y, w, active) {
-  const items = ["Home", "Calendario", "Spesa", "Faccende", "Chat", "Famiglia"];
-  return items.map((item, i) => {
-    const xx = x + i * (w / (items.length - 1));
-    const on = item === active;
-    return `${dot(xx, y, 9, on ? C.coral : "#c8d1cd")}${text(xx, y + 30, item, 14, on ? 700 : 500, on ? C.coralDark : C.muted, "middle")}`;
-  }).join("");
-}
-function card(x, y, w, h, title, meta, accent = C.mint) {
-  return `${rect(x, y, w, h, C.paper, 18, C.line, 2)}${rect(x, y, 9, h, accent, 5)}${text(x + 28, y + 42, title, 25, 700)}${text(x + 28, y + 76, meta, 17, 500, C.muted)}`;
-}
-
-const screens = [
-  {
-    slug: "01-home",
-    title: "Tutto al posto giusto.",
-    subtitle: "La giornata della Famiglia Bianchi, senza rincorse.",
-    index: "01 / 08",
-    active: "Home",
-    body: (x, y, w, h) => [
-      text(x, y, "Bentornata famiglia", 17, 500, C.muted),
-      text(x, y + 42, "Famiglia Bianchi", 31, 700),
-      text(x, y + 82, "4 membri", 18, 500, C.muted),
-      text(x, y + 138, "In arrivo", 22, 700),
-      card(x, y + 160, w, 96, "Colloquio di Emma", "Oggi · 16:30 · Sara", C.sun),
-      card(x, y + 270, w, 96, "Allenamento di Tommaso", "Domani · 17:00 · Luca", C.coral),
-      text(x, y + 430, "Faccende da fare", 22, 700),
-      card(x, y + 452, w, 84, "Stendere il bucato", "Emma · 10 punti", C.mint),
-      nav(x + 24, y + h - 42, w - 48, "Home"),
-    ].join(""),
-  },
-  {
-    slug: "02-calendario",
-    title: "Una settimana chiara.",
-    subtitle: "Impegni, scuola e tempo insieme nello stesso posto.",
-    index: "02 / 08",
-    active: "Calendario",
-    body: (x, y, w, h) => {
-      const days = ["L", "M", "M", "G", "V", "S", "D"];
-      return [
-        text(x, y, "Calendario", 31, 700), text(x + w, y, "＋", 37, 400, C.coralDark, "end"),
-        rect(x, y + 28, w, 300, C.paper, 18, C.line, 2),
-          text(x + w / 2, y + 72, "Settembre 2026", 22, 700, C.ink, "middle"),
-        days.map((d, i) => text(x + 26 + i * ((w - 52) / 6), y + 120, d, 15, 700, C.muted, "middle")).join(""),
-        Array.from({ length: 35 }, (_, i) => {
-          const cx = x + 26 + (i % 7) * ((w - 52) / 6), cy = y + 163 + Math.floor(i / 7) * 38;
-          const selected = i === 14;
-          return `${selected ? dot(cx, cy - 5, 20, C.coral) : ""}${text(cx, cy, String(i + 1), 15, selected ? 700 : 500, selected ? "#fff" : C.ink, "middle")}${[7, 14, 20].includes(i) ? dot(cx, cy + 13, 3.5, C.mint) : ""}`;
-        }).join(""),
-        text(x, y + 372, "Eventi del 15 settembre", 22, 700),
-        card(x, y + 392, w, 86, "Colloquio di Emma", "16:30 · Scuola primaria", C.sun),
-        nav(x + 24, y + h - 42, w - 48, "Calendario"),
-      ].join("");
-    },
-  },
-  {
-    slug: "03-spesa",
-    title: "La spesa, già condivisa.",
-    subtitle: "Una lista viva: chi compra vede subito cosa manca.",
-    index: "03 / 08",
-    active: "Spesa",
-    body: (x, y, w, h) => [
-      text(x, y, "Spesa", 31, 700), text(x + w, y, "＋", 37, 400, C.coralDark, "end"),
-      rect(x, y + 30, w, 70, C.mint, 18),
-      text(x + 24, y + 74, "Spesa settimanale", 22, 700, "#fff"),
-      text(x + w - 24, y + 74, "5 / 8", 18, 700, "#fff", "end"),
-      line(x + 24, y + 120, x + w - 24, y + 120, C.line, 8),
-      line(x + 24, y + 120, x + w * 0.63, y + 120, C.sun, 8),
-      text(x, y + 178, "Da comprare", 22, 700),
-      ["Pane integrale · Luca", "Yogurt bianco · Sara", "Pomodori · Emma"].map((v, i) =>
-        `${rect(x, y + 202 + i * 64, w, 48, C.paper, 15, C.line, 2)}${rect(x + 16, y + 216 + i * 64, 20, 20, "none", 6, C.mint, 2)}${text(x + 54, y + 238 + i * 64, v, 18, 500)}`
-      ).join(""),
-      text(x, y + 430, "Già in carrello", 22, 700),
-      `${text(x, y + 470, "Latte · 2", 18, 500, C.muted)}${text(x + w, y + 470, "Completato", 16, 700, C.mint, "end")}`,
-      nav(x + 24, y + h - 42, w - 48, "Spesa"),
-    ].join(""),
-  },
-  {
-    slug: "04-faccende",
-    title: "Ognuno fa la sua parte.",
-    subtitle: "Piccoli compiti, punti visibili, più tempo per stare insieme.",
-    index: "04 / 08",
-    active: "Faccende",
-    body: (x, y, w, h) => [
-      text(x, y, "Faccende", 31, 700), text(x + w, y, "＋", 37, 400, C.coralDark, "end"),
-      rect(x, y + 32, 86, 40, C.coral, 20), text(x + 43, y + 58, "Da fare", 16, 700, "#fff", "middle"),
-      rect(x + 98, y + 32, 70, 40, C.paper, 20, C.line, 2), text(x + 133, y + 58, "Fatte", 16, 500, C.ink, "middle"),
-      card(x, y + 100, w, 104, "Apparecchiare la tavola", "Tommaso · Oggi · 15 punti", C.sun),
-      card(x, y + 220, w, 104, "Riordinare il salotto", "Emma · Oggi · 10 punti", C.mint),
-      text(x, y + 360, "Classifica della settimana", 22, 700),
-      `${text(x, y + 426, "1  Sara Bianchi", 18, 600)}${text(x + w, y + 426, "35 punti", 17, 700, C.coralDark, "end")}`,
-      `${text(x, y + 464, "2  Emma Bianchi", 18, 600)}${text(x + w, y + 464, "25 punti", 17, 700, C.coralDark, "end")}`,
-      rect(x, y + 500, w, 76, C.lavender, 16),
-      text(x + 20, y + 530, "Premi da riscattare", 17, 700),
-      text(x + 20, y + 558, "Serata film scelta dai bambini", 15, 500, C.muted),
-      text(x + w - 20, y + 546, "40 punti", 16, 700, C.coralDark, "end"),
-      nav(x + 24, y + h - 42, w - 48, "Faccende"),
-    ].join(""),
-  },
-  {
-    slug: "05-piano-pasti-ai",
-    title: "A tavola, senza pensarci troppo.",
-    subtitle: "L’AI propone il piano. La famiglia lo adatta.",
-    index: "05 / 08",
-    active: "Home",
-    body: (x, y, w, h) => [
-      text(x, y, "Piano pasti", 31, 700), rect(x + w - 122, y - 26, 122, 36, C.lavender, 18),
-      text(x + w - 61, y - 2, "AI", 16, 700, C.ink, "middle"),
-      text(x, y + 66, "Settimana del 21 settembre", 18, 600, C.muted),
-      card(x, y + 92, w, 94, "Lunedì · Pasta al forno", "Cena · 4 porzioni", C.coral),
-      card(x, y + 202, w, 94, "Martedì · Frittata e verdure", "Cena · 4 porzioni", C.sun),
-      card(x, y + 312, w, 94, "Mercoledì · Cous cous mediterraneo", "Cena · 4 porzioni", C.mint),
-      rect(x, y + 436, w, 52, C.coral, 18), text(x + w / 2, y + 469, "Genera un’alternativa", 17, 700, "#fff", "middle"),
-      nav(x + 24, y + h - 42, w - 48, "Home"),
-    ].join(""),
-  },
-  {
-    slug: "06-dispensa-ricette",
-    title: "Dal frigo alla tavola.",
-    subtitle: "Dispensa e ricette parlano tra loro, ogni giorno.",
-    index: "06 / 08",
-    active: "Spesa",
-    body: (x, y, w, h) => [
-      text(x, y, "Dispensa", 31, 700), text(x + w, y, "＋", 37, 400, C.coralDark, "end"),
-      rect(x, y + 32, w, 66, C.sun, 18), text(x + 22, y + 72, "2 prodotti in scadenza", 19, 700, C.ink),
-      text(x, y + 150, "In casa", 22, 700),
-      ["Passata di pomodoro", "Uova · 6", "Riso basmati · 500 g"].map((v, i) =>
-        `${rect(x, y + 174 + i * 57, w, 43, C.paper, 13, C.line, 2)}${text(x + 20, y + 202 + i * 57, v, 17, 500)}`
-      ).join(""),
-      text(x, y + 376, "Ricette della famiglia", 22, 700),
-      card(x, y + 398, w, 82, "Parmigiana veloce", "Passata, melanzane, mozzarella", C.coral),
-      nav(x + 24, y + h - 42, w - 48, "Spesa"),
-    ].join(""),
-  },
-  {
-    slug: "07-budget",
-    title: "Il budget, con serenità.",
-    subtitle: "Numeri leggibili per decidere insieme, senza sorprese.",
-    index: "07 / 08",
-    active: "Home",
-    body: (x, y, w, h) => [
-      text(x, y, "Budget familiare", 31, 700),
-      rect(x, y + 38, w, 150, C.ink, 20),
-      text(x + 24, y + 80, "Spese di settembre", 17, 500, "#b9c5c1"),
-      text(x + 24, y + 132, "€ 842,60", 37, 700, "#fff"),
-      text(x + w - 24, y + 132, "su € 1.200", 17, 500, "#b9c5c1", "end"),
-      line(x + 24, y + 162, x + w - 24, y + 162, "#53686b", 8),
-      line(x + 24, y + 162, x + w * 0.72, y + 162, C.sun, 8),
-      text(x, y + 240, "Per categoria", 22, 700),
-      [["Spesa", "€ 326,40", C.mint], ["Casa", "€ 188,20", C.coral], ["Trasporti", "€ 97,00", C.sun]].map((a, i) =>
-        `${text(x, y + 284 + i * 55, a[0], 18, 600)}${text(x + w, y + 284 + i * 55, a[1], 18, 700, C.ink, "end")}${line(x, y + 300 + i * 55, x + w * (0.6 - i * 0.12), y + 300 + i * 55, a[2], 7)}`
-      ).join(""),
-      rect(x, y + 430, w, 52, C.lavender, 18), text(x + w / 2, y + 463, "Analizza con AI", 17, 700, C.ink, "middle"),
-      rect(x, y + 500, w, 74, C.paper, 16, C.line, 2),
-      text(x + 20, y + 528, "Bolletta luce", 17, 700),
-      text(x + 20, y + 555, "Scadenza 30 settembre · € 68,40", 15, 500, C.muted),
-      nav(x + 24, y + h - 42, w - 48, "Home"),
-    ].join(""),
-  },
-  {
-    slug: "08-chat-famiglia",
-    title: "Sempre dalla stessa parte.",
-    subtitle: "Chat privata e profili della famiglia, insieme.",
-    index: "08 / 08",
-    active: "Chat",
-    body: (x, y, w, h) => [
-      // Due crop separati: bordi e header distinti evitano l'interpretazione
-      // di una singola pagina scrollabile.
-      rect(x, y, w, 228, "#f8faf8", 18, C.line, 2),
-      rect(x, y, w, 46, C.coral, 18),
-      text(x + 22, y + 30, "Chat", 20, 700, "#fff"),
-      text(x + w - 22, y + 30, "Famiglia Bianchi", 15, 600, "#fff", "end"),
-      rect(x + 22, y + 70, w - 22, 48, C.coral, 15),
-      text(x + 42, y + 100, "Stasera cena alle 19:30?", 16, 600, "#fff"),
-      rect(x, y + 132, w - 72, 48, "#e9efec", 15),
-      text(x + 20, y + 162, "Sì, preparo io la tavola.", 16, 600),
-      text(x + w - 22, y + 204, "Scrivi un messaggio...", 14, 500, C.muted, "end"),
-      rect(x, y + 254, w, 286, "#f3f7f4", 18, C.line, 2),
-      rect(x, y + 254, w, 46, C.mint, 18),
-      text(x + 22, y + 284, "Famiglia", 20, 700, "#fff"),
-      text(x + w - 22, y + 284, "Gestione profili", 15, 600, "#fff", "end"),
-      text(x + 22, y + 338, "Profili bambini", 17, 700),
-      rect(x + 22, y + 358, w - 44, 58, C.paper, 14, C.line, 2),
-      dot(x + 48, y + 387, 16, C.sun), text(x + 76, y + 393, "Emma Bianchi", 16, 700),
-      text(x + w - 22, y + 393, "Modifica", 14, 600, C.coralDark, "end"),
-      rect(x + 22, y + 428, w - 44, 58, C.paper, 14, C.line, 2),
-      dot(x + 48, y + 457, 16, C.mint), text(x + 76, y + 463, "Tommaso Bianchi", 16, 700),
-      text(x + w - 22, y + 463, "Codice", 14, 600, C.coralDark, "end"),
-      nav(x + 24, y + h - 42, w - 48, "Chat"),
-    ].join(""),
-  },
+const slides = [
+  { slug: "01-home", capture: "home", photo: "photo-family-planning.jpg", pos: "left", kicker: "LA REGIA DELLA GIORNATA", title: "Non tenere tutto in testa.", sub: "Impegni, cose da fare e messaggi. Tutti nello stesso posto.", color: C.coral, layout: "hero" },
+  { slug: "02-calendario", capture: "calendar", photo: "photo-family-planning.jpg", pos: "left", kicker: "CALENDARIO CONDIVISO", title: "Chi porta chi, e quando?", sub: "La risposta è già nel calendario di famiglia.", color: C.teal, layout: "split" },
+  { slug: "03-spesa", capture: "shopping", photo: "photo-family-cooking.jpg", pos: "left", kicker: "SPESA CONDIVISA", title: "La lista non resta sul frigo.", sub: "Aggiungi una cosa. Chi passa al supermercato la vede.", color: C.sun, layout: "photoTop" },
+  { slug: "04-faccende", capture: "chores", secondary: "rewards", photo: "photo-family-together.jpg", pos: "right", kicker: "FACCENDE E PREMI", title: "Meno solleciti. Più collaborazione.", sub: "Compiti chiari, punti e piccoli traguardi per tutti.", color: C.coral, layout: "side" },
+  { slug: "05-piano-pasti-ai", capture: "meal-plan", photo: "photo-family-cooking.jpg", pos: "left", kicker: "PIANO PASTI AI", title: "La domanda “cosa mangiamo?” finisce qui.", sub: "Il menu della settimana parte da ciò che piace davvero a casa.", color: C.teal, layout: "split" },
+  { slug: "06-dispensa-ricette", capture: "recipes", secondary: "pantry", photo: "photo-family-cooking.jpg", pos: "left", kicker: "RICETTE E DISPENSA", title: "Apri il frigo. Trova un'idea.", sub: "Ricette salvate e ingredienti sempre a portata di mano.", color: C.sun, layout: "photoTop" },
+  { slug: "07-budget", capture: "budget", secondary: "bills", photo: "photo-family-together.jpg", pos: "right", kicker: "BUDGET E BOLLETTE", title: "I conti di casa, senza caccia al foglio.", sub: "Spese e scadenze leggibili da chi condivide la vita.", color: C.coral, layout: "side" },
+  { slug: "08-chat-famiglia", capture: "chat", secondary: "family", photo: "photo-family-together.jpg", pos: "right", kicker: "CHAT E FAMIGLIA", title: "La chat che sa di casa.", sub: "Messaggi, ruoli e persone: il vostro spazio privato.", color: C.teal, layout: "hero" },
 ];
 
-function svgFor(screen, W, H) {
-  const content = phone(screen, W, H);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${content}</svg>`;
+async function phoneCard(file, w, h, accent) {
+  const src = path.join(captures, file);
+  const capture = await sharp(src).resize(w - 28, h - 28, { fit: "cover", position: "top" }).png().toBuffer();
+  const frame = svg(w, h, `<defs><filter id="s"><feDropShadow dx="0" dy="22" stdDeviation="20" flood-color="#18312e" flood-opacity=".24"/></filter><clipPath id="c"><rect x="14" y="14" width="${w - 28}" height="${h - 28}" rx="42"/></clipPath></defs><rect x="5" y="5" width="${w - 10}" height="${h - 10}" rx="51" fill="#18312e" filter="url(#s)"/><rect x="14" y="14" width="${w - 28}" height="${h - 28}" rx="42" fill="${C.paper}"/><rect x="${w / 2 - 54}" y="23" width="108" height="18" rx="9" fill="#18312e"/><circle cx="${w - 35}" cy="${h - 35}" r="11" fill="${accent}"/>`);
+  return sharp(frame).composite([{ input: capture, left: 14, top: 14, blend: "over" }, { input: svg(w, h, `<rect x="14" y="14" width="${w - 28}" height="${h - 28}" rx="42" fill="none" stroke="#18312e" stroke-width="9"/>`) }]).png().toBuffer();
 }
 
-function featureSvg() {
-  const W = 1024, H = 500;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-    ${rect(0, 0, W, H, C.cream, 0)}
-    ${dot(835, 100, 150, "#fce2d9")}${dot(908, 404, 110, "#dff2ed")}
-    ${rect(72, 72, 58, 58, C.paper, 16)}
-    <image x="78" y="78" width="46" height="46" href="data:image/png;base64,${iconData}" preserveAspectRatio="xMidYMid slice"/>
-    ${text(146, 113, "FamilySync", 34, 700, C.coralDark)}
-    ${text(72, 236, "Meno caos.", 68, 700, C.ink)}
-    ${text(72, 312, "Più famiglia.", 68, 700, C.ink)}
-    ${text(74, 370, "Calendario, spesa, faccende e conversazioni.", 23, 500, C.muted)}
-    ${rect(710, 54, 190, 392, C.ink, 38)}
-    ${rect(722, 66, 166, 368, C.paper, 28)}
-    ${rect(770, 76, 70, 10, C.ink, 5)}
-    ${text(740, 132, "Famiglia", 20, 700)}
-    ${rect(740, 154, 130, 54, C.mint, 14)}${text(754, 187, "Oggi insieme", 15, 700, "#fff")}
-    ${rect(740, 224, 130, 54, C.sun, 14)}${text(754, 257, "Lista spesa", 15, 700)}
-    ${rect(740, 294, 130, 54, C.coral, 14)}${text(754, 327, "Chat privata", 15, 700, "#fff")}
-    ${text(812, 474, "Famiglia Bianchi", 16, 600, C.coralDark, "middle")}
-  </svg>`;
-}
-
-for (const screen of screens) {
-  const svg = svgFor(screen, 1080, 1920);
-  fs.writeFileSync(path.join(sourceDir, `${screen.slug}.svg`), svg);
-  const appleSvg = svgFor(screen, 1290, 2796);
-  fs.writeFileSync(path.join(sourceDir, `${screen.slug}-apple.svg`), appleSvg);
-  await sharp(Buffer.from(svg)).flatten({ background: C.cream }).png().toFile(path.join(outDir, `google-${screen.slug}.png`));
-  await sharp(Buffer.from(appleSvg)).flatten({ background: C.cream }).png().toFile(path.join(outDir, `apple-${screen.slug}.png`));
-  // Keep root-level filenames usable by existing upload tooling without
-  // assigning a feature to a misleading filename.
-  const aliases = [
-    ["home"],
-    ["calendar"],
-    ["shopping"],
-    ["chores"],
-    ["ai"],
-    ["pantry"],
-    ["budget"],
-    ["chat", "family"],
-  ][screens.indexOf(screen)];
-  for (const alias of aliases) {
-    await sharp(Buffer.from(svg)).flatten({ background: C.cream }).png().toFile(path.join(root, `screenshot-${alias}.png`));
-    await sharp(Buffer.from(appleSvg)).flatten({ background: C.cream }).png().toFile(path.join(root, `screenshot-${alias}-apple.png`));
+async function campaignSlide(item, W, H, platform) {
+  const isApple = platform === "apple";
+  const primaryHero = item.slug === "01-home";
+  const photoH = primaryHero ? Math.round(H * .52) : Math.round(H * .25);
+  const p = await crop(path.join(root, item.photo), W, photoH, item.pos);
+  const phoneW = Math.round(W * (primaryHero ? .70 : item.layout === "side" ? .74 : .77));
+  const phoneH = Math.round(H * (item.layout === "photoTop" ? .45 : .54));
+  const phone = await phoneCard(`${platform}/${item.capture}.png`, phoneW, phoneH, item.color);
+  const brandIcon = await sharp(path.join(images, "icon.png")).resize(64, 64).png().toBuffer();
+  const topPhoto = item.layout === "photoTop";
+  const side = item.layout === "side";
+  const hero = item.layout === "hero";
+  const phoneX = primaryHero ? Math.round(W * .24) : side ? W - phoneW - Math.round(W * .06) : Math.round((W - phoneW) / 2);
+  const phoneY = primaryHero ? Math.round(H * .42) : topPhoto ? Math.round(H * .53) : side ? Math.round(H * .39) : Math.round(H * .43);
+  const photoY = primaryHero ? Math.round(H * .48) : topPhoto ? 0 : hero ? Math.round(H * .66) : side ? Math.round(H * .67) : Math.round(H * .69);
+  const photoX = side ? 0 : 0;
+  const photoW = primaryHero ? W : side ? Math.round(W * .58) : W;
+  const photoForSlide = (side || primaryHero) ? await crop(path.join(root, item.photo), photoW, primaryHero ? photoH : Math.round(H * .33), item.pos) : p;
+  const headlineY = topPhoto ? Math.round(H * .32) : Math.round(H * .12);
+  const textX = Math.round(W * .075);
+  const titleSize = Math.round(W * .07);
+  const titleLines = wrapLines(item.title, titleSize, Math.round(W * .78));
+  const subtitleY = headlineY + 65 + (titleLines.length * titleSize * 1.02) + 30;
+  const badge = `<defs><filter id="d"><feDropShadow dx="0" dy="16" stdDeviation="14" flood-color="#18312e" flood-opacity=".17"/></filter></defs>
+    <rect width="${W}" height="${H}" fill="${C.cream}"/>
+    <circle cx="${W * .92}" cy="${H * .09}" r="${W * .2}" fill="${item.color}" opacity=".16"/>
+    <circle cx="${W * .07}" cy="${H * .57}" r="${W * .11}" fill="${item.color}" opacity=".12"/>
+    ${round(textX, headlineY - 38, 205, 42, 21, item.color)}
+    ${txt(textX + 18, headlineY - 10, item.kicker, 15, 800, C.ink)}
+    ${titleLines.map((v, i) => txt(textX, headlineY + 65 + i * titleSize * 1.02, v, titleSize, 800)).join("")}
+    ${wrap(textX, subtitleY, item.sub, Math.round(W * .031), Math.round(W * .69), 1.22, "#536762")}
+    ${round(textX, H - 108, 145, 48, 24, C.ink)}${txt(textX + 20, H - 77, "FamilySync", 20, 800, C.paper)}
+    ${txt(W - textX, H - 77, `${slides.indexOf(item) + 1} / 08`, 18, 800, C.ink, "end")}`;
+  const comps = [{ input: svg(W, H, badge), left: 0, top: 0 }];
+  // Photography is deliberately an editorial counterweight to the product, never a small decoration.
+  comps.push(await layer(photoForSlide, photoX, photoY));
+  comps.push({ input: svg(W, H, `<defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop stop-color="${C.cream}" stop-opacity="0"/><stop offset="1" stop-color="${C.cream}" stop-opacity=".92"/></linearGradient></defs><rect x="0" y="${photoY}" width="${side ? photoW : W}" height="${side ? Math.round(H * .33) : photoH}" fill="url(#g)"/>`), left: 0, top: 0 });
+  comps.push(await layer(phone, phoneX, phoneY));
+  comps.push({ input: brandIcon, left: textX, top: 42 });
+  if (item.secondary) {
+    const secondaryW = Math.round(W * .42);
+    const secondaryH = Math.round(H * .255);
+    const secondary = await phoneCard(`${platform}/${item.secondary}.png`, secondaryW, secondaryH, item.color);
+    const secondaryX = side ? Math.round(W * .045) : Math.round(W * .055);
+    const secondaryY = topPhoto ? Math.round(H * .72) : primaryHero ? Math.round(H * .69) : Math.round(H * .68);
+    comps.push({ input: secondary, left: secondaryX, top: secondaryY });
+    comps.push({ input: svg(W, H, `${round(secondaryX + 16, secondaryY - 38, 148, 32, 16, item.color)}${txt(secondaryX + 29, secondaryY - 17, "IN COPPIA", 12, 800, C.ink)}`), left: 0, top: 0 });
   }
+  return sharp({ create: { width: W, height: H, channels: 3, background: C.cream } }).composite(comps).jpeg({ quality: 94, chromaSubsampling: "4:4:4" }).toBuffer();
 }
-fs.writeFileSync(path.join(sourceDir, "feature-graphic.svg"), featureSvg());
-await sharp(Buffer.from(featureSvg())).flatten({ background: C.cream }).png().toFile(path.join(outDir, "google-feature-graphic.png"));
-await sharp(Buffer.from(featureSvg())).flatten({ background: C.cream }).png().toFile(path.join(root, "feature-graphic.png"));
+
+async function feature() {
+  const W = 1024, H = 500;
+  const photo = await crop(path.join(root, "photo-family-planning.jpg"), 440, H, "left");
+  const icon = await sharp(path.join(images, "icon.png")).resize(62, 62).png().toBuffer();
+  const screen = await phoneCard("google/home.png", 245, 420, C.coral);
+  const base = svg(W, H, `<rect width="${W}" height="${H}" fill="${C.cream}"/><circle cx="780" cy="82" r="160" fill="${C.teal}" opacity=".14"/><rect x="56" y="66" width="64" height="64" rx="18" fill="${C.paper}"/>${txt(138, 108, "FamilySync", 31, 800, C.ink)}${txt(56, 220, "La famiglia,", 48, 800)}${txt(56, 278, "finalmente insieme.", 44, 800)}${txt(58, 345, "Meno rincorse. Più vita vera.", 23, 600, "#536762")}<rect x="56" y="383" width="195" height="46" rx="23" fill="${C.coral}"/>${txt(78, 413, "TUTTO IN ORDINE", 15, 800, C.paper)}`);
+  return sharp(base).composite([{ input: photo, left: 584, top: 0 }, { input: svg(W, H, `<rect x="584" width="440" height="500" fill="${C.ink}" opacity=".12"/>`), left: 0, top: 0 }, { input: screen, left: 690, top: 48 }, { input: icon, left: 57, top: 67 }]).jpeg({ quality: 94 }).toBuffer();
+}
+
+for (const item of slides) {
+  await sharp(await campaignSlide(item, 1080, 1920, "google")).png().toFile(path.join(out, `google-${item.slug}.png`));
+  await sharp(await campaignSlide(item, 1290, 2796, "apple")).png().toFile(path.join(out, `apple-${item.slug}.png`));
+}
+await sharp(await feature()).png().toFile(path.join(out, "google-feature-graphic.png"));
+
+const thumbs = await Promise.all(slides.map(async (item) => ({ input: await sharp(path.join(out, `google-${item.slug}.png`)).resize(270, 480).jpeg().toBuffer() })));
+const sheet = svg(1080, 1020, `<rect width="1080" height="1020" fill="${C.cream}"/>${txt(36, 55, "FamilySync — Google Play", 34, 800)}${txt(36, 88, "Anteprima campagna store", 19, 600, "#536762")}`);
+await sharp(sheet).composite(thumbs.map((t, i) => ({ ...t, left: 12 + (i % 4) * 270, top: 120 + Math.floor(i / 4) * 480 }))).jpeg({ quality: 92 }).toFile(path.join(root, "anteprima-google-play.jpg"));
+
+console.log("FamilySync store set generated: 8 Google, 8 Apple, feature graphic, contact sheet.");
