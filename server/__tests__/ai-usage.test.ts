@@ -10,7 +10,6 @@ import {
   __resetAiUsageStoreForTest,
   type AiUsageStore,
   type AiUsageStatus,
-  type ReserveResult,
 } from "../lib/ai-usage";
 import {
   __setEntitlementStoreForTest,
@@ -80,7 +79,7 @@ function makeMemoryStore() {
   }
 
   const store: AiUsageStore = {
-    async reserve(_userId, familyId, feature, max, _since, window): Promise<ReserveResult> {
+    async reserve(_userId, familyId, feature, max, _since, window) {
       return runExclusive(async () => {
         // Piccola attesa per amplificare eventuali race se NON fossimo serializzati.
         await new Promise((r) => setTimeout(r, 1));
@@ -147,6 +146,7 @@ describe("PLAN_LIMITS (quote per piano)", () => {
     if (blocked.status === "limited") {
       assert.equal(blocked.max, 1);
       assert.equal(blocked.window, "week");
+      assert.equal(blocked.plan, "free");
     }
   });
 
@@ -179,6 +179,7 @@ describe("PLAN_LIMITS (quote per piano)", () => {
     if (blocked.status === "limited") {
       assert.equal(blocked.max, 3);
       assert.equal(blocked.window, "week");
+      assert.equal(blocked.plan, "premium");
     }
   });
 });
@@ -395,7 +396,7 @@ describe("concorrenza: quota vicina al limite non viene superata", () => {
 describe("nessun bypass admin sulle quote AI", () => {
   function capturingStore(captured: { max?: number }): AiUsageStore {
     return {
-      async reserve(_u: string, _f: string, _feat: string, max: number): Promise<ReserveResult> {
+      async reserve(_u: string, _f: string, _feat: string, max: number) {
         captured.max = max;
         return { status: "ok", usageId: "test-usage-id", used: 1 };
       },

@@ -119,6 +119,12 @@ function lockKey(familyId: string, feature: AiFeature): string {
 /** Esito di una prenotazione di slot quota. */
 export type ReserveResult =
   | { status: "ok"; usageId: string; used: number }
+  | { status: "limited"; used: number; max: number; window: QuotaWindow; plan: Plan }
+  | { status: "unavailable" };
+
+/** Esito interno dello store: il piano viene aggiunto da reserveAiSlot. */
+type StoreReserveResult =
+  | { status: "ok"; usageId: string; used: number }
   | { status: "limited"; used: number; max: number; window: QuotaWindow }
   | { status: "unavailable" };
 
@@ -134,7 +140,7 @@ export interface AiUsageStore {
     max: number,
     since: Date,
     window: QuotaWindow,
-  ): Promise<ReserveResult>;
+  ): Promise<StoreReserveResult>;
   finalize(usageId: string, success: boolean): Promise<void>;
 }
 
@@ -233,8 +239,10 @@ export async function reserveAiSlot(
   // La quota dipende SOLO dal piano della famiglia (free/premium): il ruolo
   // famiglia (admin incluso) NON modifica mai le quote AI. Eventuali account
   // VIP/tester ottengono quote premium tramite gli entitlements, non dal ruolo.
-  const { max, window } = await resolveFeatureLimit(familyId, feature);
-  return store.reserve(userId, familyId, feature, max, windowStart(window), window);
+  const plan = await getPlanForFamily(familyId);
+  const { max, window } = PLAN_LIMITS[plan][feature];
+  const result = await store.reserve(userId, familyId, feature, max, windowStart(window), window);
+  return result.status === "limited" ? { ...result, plan } : result;
 }
 
 /** Aggiorna un record "started" a "succeeded"/"failed". Non lancia mai. */
@@ -245,7 +253,7 @@ export async function finalizeAiUsage(usageId: string, success: boolean): Promis
 /** Esito dell'esecuzione di una funzione AI con tracciamento uso. */
 export type AiUsageRun<T> =
   | { outcome: "ok"; value: T }
-  | { outcome: "limited"; used: number; max: number; window: QuotaWindow }
+  | { outcome: "limited"; used: number; max: number; window: QuotaWindow; plan: Plan }
   | { outcome: "unavailable" };
 
 /**
@@ -266,7 +274,13 @@ export async function withAiUsage<T>(
 ): Promise<AiUsageRun<T>> {
   const reservation = await reserveAiSlot(ctx.userId, ctx.familyId, ctx.feature);
   if (reservation.status === "limited") {
-    return { outcome: "limited", used: reservation.used, max: reservation.max, window: reservation.window };
+    return {
+      outcome: "limited",
+      used: reservation.used,
+      max: reservation.max,
+      window: reservation.window,
+      plan: reservation.plan,
+    };
   }
   if (reservation.status === "unavailable") {
     return { outcome: "unavailable" };
