@@ -271,3 +271,17 @@ uri = "file://assets/store/FamilySync-store-assets.zip"
 type = "unspecified"
 title = "Pacchetto immagini Google Play e App Store"
 description = "Archivio finale: 8 PNG Google Play, feature graphic 1024×500, 8 PNG Apple App Store e README. Tutti i file sono RGB senza trasparenza."
+
+[[outputs]]
+id = "oXfEcEsdXQUcl_oELt-K0"
+uri = "file://assets/store/welcome/google-play-welcome.png"
+type = "image"
+title = "Pagina di benvenuto — Google Play"
+description = "Schermata reale FamilySync, 1080×1920 PNG, RGB senza trasparenza."
+
+[[outputs]]
+id = "2jCUJHTAcZTOVJvblpCUX"
+uri = "file://assets/store/welcome/apple-app-store-welcome.png"
+type = "image"
+title = "Pagina di benvenuto — Apple App Store"
+description = "Schermata reale FamilySync, 1290×2796 PNG, RGB senza trasparenza."
