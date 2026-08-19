@@ -1,0 +1,28 @@
+diff --git a/node_modules/expo-keep-awake/src/index.ts b/node_modules/expo-keep-awake/src/index.ts
+--- a/node_modules/expo-keep-awake/src/index.ts
++++ b/node_modules/expo-keep-awake/src/index.ts
+@@ -30,17 +30,23 @@ export function useKeepAwake(tag?: string, options?: KeepAwakeOptions): void {
+ 
+   useEffect(() => {
+     let isMounted = true;
+-    activateKeepAwakeAsync(tagOrDefault).then(() => {
++    const activation = activateKeepAwakeAsync(tagOrDefault).then(() => {
+       if (isMounted && ExpoKeepAwake.addListenerForTag && options?.listener) {
+         addListener(tagOrDefault, options.listener);
+       }
+     });
++    // Expo's development wrapper opts into suppressed warnings. Some Android
++    // devices reject the native keep-awake request in Expo Go; do not turn that
++    // optional development convenience into an unhandled promise/red screen.
++    if (options?.suppressDeactivateWarnings) {
++      activation.catch(() => {});
++    }
+     return () => {
+       isMounted = false;
+       if (options?.suppressDeactivateWarnings) {
+         deactivateKeepAwake(tagOrDefault).catch(() => {});
+       } else {
+         deactivateKeepAwake(tagOrDefault);
+       }
+     };
+   }, [tagOrDefault]);
