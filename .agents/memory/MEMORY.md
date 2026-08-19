@@ -1,6 +1,7 @@
 - [EAS/CI lockfile proxy URLs](eas-lockfile-proxy-urls.md) — `npm ci` crashes ("Exit handler never called!") on EAS/GitHub CI when package-lock.json resolved URLs point to `package-firewall.replit.local`; rewrite to registry.npmjs.org.
 - [Metro environment quirks](metro-environment-quirks.md) — `.local` must stay in metro blockList (FallbackWatcher ENOENT crash); clear Metro cache after installing native modules; `/tmp/logs` are stale snapshots.
 - [Expo dev connectivity (exps://)](expo-dev-connectivity.md) — Android via `expo start --tunnel` (exp.direct); personal ngrok v3 DEAD (free bandwidth cap ERR_NGROK_725); patch-package `exp`→`exps` per dominio Replit.
+- [API native Expo Go](expo-native-api-url.md) — Expo Go espone `window.location` del tunnel Metro: rilevare il web con `Platform.OS`, mai con la sola presenza di `window`.
 - [Compatibilità WebView in-app](webview-compat.md) — bundle web crashava su browser in-app WhatsApp (findLast/toSorted mancanti); polyfill in lib/runtime-polyfills.ts, PRIMO import di app/_layout.tsx.
 - [Static web-build staleness](expo-static-web-build.md) — backend serves a static Expo export from `web-build/`; regenerate + swap + restart after user-visible frontend changes or previews show old UI.
 - [Test UI e2e committati](e2e-ui-tests.md) — task "test UI" chiusi con Playwright committato in e2e/ (API stubbate, dialog handler, race sul testo già visibile); run del subagent da soli non passano il review.
