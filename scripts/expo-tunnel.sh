@@ -42,11 +42,9 @@ done
 
 export EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN:5000"
 
-# Fixed tunnel subdomain: the auto-generated one includes the Expo username,
-# which may contain underscores — invalid in hostnames, and Android's URL
-# parser (toASCII STD3) rejects them with "Android internal error".
-# A fixed, hyphen-only subdomain also keeps the QR URL stable across restarts.
-export EXPO_TUNNEL_SUBDOMAIN="familysync-marino-dev"
+# Lascia che Expo generi il proprio URL exp.direct. Forzare un sottodominio
+# ngrok.io riusa il vecchio backend tunnel e può fallire con "remote gone away".
+unset EXPO_TUNNEL_SUBDOMAIN || true
 
 # Ponte anteprima: la porta 8081 (esterna 80) deve servire il BACKEND (5000),
 # come in produzione — Metro qui serviva bundle dev stantii e rompeva l'OAuth.

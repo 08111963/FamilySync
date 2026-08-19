@@ -9,16 +9,43 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import * as Notifications from 'expo-notifications';
 import { getApiUrl } from '@/lib/query-client';
 
 export const PUSH_TOKEN_STORAGE_KEY = '@family_sync_push_token';
+
+let notificationsModulePromise:
+  | Promise<typeof import('expo-notifications')>
+  | null = null;
+let notificationHandlerConfigured = false;
 
 /** True solo dove le push remote possono funzionare (build nativa, non web/Expo Go). */
 export function isPushSupported(): boolean {
   if (Platform.OS === 'web') return false;
   if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return false;
   return true;
+}
+
+/**
+ * Carica expo-notifications solo nelle build native installabili.
+ * In Expo Go SDK 53+ il solo import del modulo mostra un errore bloccante.
+ */
+export async function getNotificationsModule() {
+  if (!isPushSupported()) return null;
+  notificationsModulePromise ??= import('expo-notifications');
+  const notifications = await notificationsModulePromise;
+  if (!notificationHandlerConfigured) {
+    notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+    notificationHandlerConfigured = true;
+  }
+  return notifications;
 }
 
 interface StoredPushRegistration {
@@ -48,19 +75,21 @@ export async function getStoredPushRegistration(): Promise<StoredPushRegistratio
 export async function registerForPushNotifications(accessToken: string, userId: string): Promise<void> {
   try {
     if (!isPushSupported()) return;
+    const notifications = await getNotificationsModule();
+    if (!notifications) return;
 
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
+      await notifications.setNotificationChannelAsync('default', {
         name: 'Notifiche FamilySync',
-        importance: Notifications.AndroidImportance.DEFAULT,
+        importance: notifications.AndroidImportance.DEFAULT,
         sound: 'default',
       });
     }
 
-    const { status: existing } = await Notifications.getPermissionsAsync();
+    const { status: existing } = await notifications.getPermissionsAsync();
     let status = existing;
     if (existing !== 'granted') {
-      const req = await Notifications.requestPermissionsAsync();
+      const req = await notifications.requestPermissionsAsync();
       status = req.status;
     }
     if (status !== 'granted') return;
@@ -73,7 +102,7 @@ export async function registerForPushNotifications(accessToken: string, userId: 
       return;
     }
 
-    const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+    const tokenResponse = await notifications.getExpoPushTokenAsync({ projectId });
     const token = tokenResponse.data;
     if (!token) return;
 

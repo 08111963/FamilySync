@@ -16,21 +16,11 @@ import { FamilyProvider } from "@/context/FamilyContext";
 import { BillNotificationsSyncProvider } from "@/context/BillNotificationsProvider";
 import { SubscriptionProvider, initializeRevenueCat } from "@/lib/revenuecat";
 import { trackEvent, trackScreenView } from "@/lib/test-analytics";
-import * as Notifications from "expo-notifications";
-import { isPushSupported, registerForPushNotifications } from "@/lib/push-notifications";
-
-// Come mostrare le notifiche quando l'app è in primo piano (solo build native).
-if (isPushSupported()) {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
-}
+import {
+  getNotificationsModule,
+  isPushSupported,
+  registerForPushNotifications,
+} from "@/lib/push-notifications";
 
 // Registra il token push quando l'utente è autenticato e gestisce il tap
 // sulla notifica navigando alla schermata indicata in data.route.
@@ -48,13 +38,21 @@ function PushNotificationsManager() {
 
   useEffect(() => {
     if (!isPushSupported()) return;
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const route = response.notification.request.content.data?.route;
-      if (typeof route === "string" && route.startsWith("/")) {
-        router.push(route as any);
-      }
+    let active = true;
+    let sub: { remove: () => void } | undefined;
+    void getNotificationsModule().then((notifications) => {
+      if (!active || !notifications) return;
+      sub = notifications.addNotificationResponseReceivedListener((response) => {
+        const route = response.notification.request.content.data?.route;
+        if (typeof route === "string" && route.startsWith("/")) {
+          router.push(route as any);
+        }
+      });
     });
-    return () => sub.remove();
+    return () => {
+      active = false;
+      sub?.remove();
+    };
   }, [router]);
 
   return null;

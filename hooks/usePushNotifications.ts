@@ -1,28 +1,18 @@
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
-import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants, { ExecutionEnvironment } from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest } from "@/lib/query-client";
+import { getNotificationsModule } from "@/lib/push-notifications";
 
 export const PUSH_TOKEN_STORAGE_KEY = "@family_sync_push_token";
 
 const isExpoGo =
   Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
-
 /**
- * Mostra subito una notifica locale (funziona in Expo Go).
+ * Mostra subito una notifica locale nelle build native installabili.
  */
 export async function presentLocalNotification(
   title: string,
@@ -30,10 +20,11 @@ export async function presentLocalNotification(
   data?: Record<string, any>
 ): Promise<void> {
   try {
-    if (Platform.OS === "web") return;
-    const settings = await Notifications.getPermissionsAsync();
+    const notifications = await getNotificationsModule();
+    if (!notifications) return;
+    const settings = await notifications.getPermissionsAsync();
     if (!settings.granted) return;
-    await Notifications.scheduleNotificationAsync({
+    await notifications.scheduleNotificationAsync({
       content: { title, body, data: data ?? {}, sound: "default" },
       trigger: null,
     });
@@ -122,19 +113,21 @@ async function registerForPush(): Promise<string | null> {
     if (Platform.OS === "web") return null;
     if (isExpoGo) return null;
     if (!Device.isDevice) return null;
+    const notifications = await getNotificationsModule();
+    if (!notifications) return null;
 
     if (Platform.OS === "android") {
-      await Notifications.setNotificationChannelAsync("default", {
+      await notifications.setNotificationChannelAsync("default", {
         name: "Predefinito",
-        importance: Notifications.AndroidImportance.MAX,
+        importance: notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
       });
     }
 
-    const existing = await Notifications.getPermissionsAsync();
+    const existing = await notifications.getPermissionsAsync();
     let status = existing.status;
     if (status !== "granted" && existing.canAskAgain) {
-      const req = await Notifications.requestPermissionsAsync();
+      const req = await notifications.requestPermissionsAsync();
       status = req.status;
     }
     if (status !== "granted") return null;
@@ -143,7 +136,7 @@ async function registerForPush(): Promise<string | null> {
       Constants?.expoConfig?.extra?.eas?.projectId ??
       (Constants as any)?.easConfig?.projectId;
 
-    const tokenResponse = await Notifications.getExpoPushTokenAsync(
+    const tokenResponse = await notifications.getExpoPushTokenAsync(
       projectId ? { projectId } : undefined
     );
     return tokenResponse.data ?? null;

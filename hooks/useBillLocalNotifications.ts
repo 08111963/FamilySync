@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
-import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  getNotificationsModule,
+  isPushSupported,
+} from "@/lib/push-notifications";
 
 import {
   type BillPlan,
@@ -66,7 +69,7 @@ export function useBillLocalNotifications({
   enabled = true,
 }: UseBillLocalNotificationsArgs) {
   const [permission, setPermission] = useState<NotifPermission>(
-    Platform.OS === "web" ? "unsupported" : "undetermined"
+    isPushSupported() ? "undetermined" : "unsupported"
   );
   const runningRef = useRef(false);
   const pendingRef = useRef(false);
@@ -78,7 +81,7 @@ export function useBillLocalNotifications({
 
   // Riprogramma quando l'app torna in primo piano.
   useEffect(() => {
-    if (Platform.OS === "web") return;
+    if (!isPushSupported()) return;
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") setAppActiveTick((t) => t + 1);
     });
@@ -86,12 +89,14 @@ export function useBillLocalNotifications({
   }, []);
 
   const ensurePermission = useCallback(async (): Promise<NotifPermission> => {
-    if (Platform.OS === "web") return "unsupported";
+    if (!isPushSupported()) return "unsupported";
     try {
-      const current = await Notifications.getPermissionsAsync();
+      const notifications = await getNotificationsModule();
+      if (!notifications) return "unsupported";
+      const current = await notifications.getPermissionsAsync();
       let status = current.status;
       if (status !== "granted" && current.canAskAgain) {
-        const req = await Notifications.requestPermissionsAsync();
+        const req = await notifications.requestPermissionsAsync();
         status = req.status;
       }
       if (status === "granted") return "granted";
@@ -106,11 +111,13 @@ export function useBillLocalNotifications({
   const syncOnce = useCallback(async () => {
     const { familyId: fam, bills: currentBills, plan: currentPlan, enabled: isEnabled } =
       latestRef.current;
-    if (!isEnabled || !fam || Platform.OS === "web") return;
+    if (!isEnabled || !fam || !isPushSupported()) return;
 
     const perm = await ensurePermission();
     setPermission(perm);
     if (perm !== "granted") return;
+    const notifications = await getNotificationsModule();
+    if (!notifications) return;
 
     const stored = await loadStored(fam);
     const desired = currentBills.map((b) => ({
@@ -129,7 +136,7 @@ export function useBillLocalNotifications({
       if (entry) {
         for (const id of entry.notifIds) {
           try {
-            await Notifications.cancelScheduledNotificationAsync(id);
+            await notifications.cancelScheduledNotificationAsync(id);
           } catch {}
         }
       }
@@ -147,7 +154,7 @@ export function useBillLocalNotifications({
       if (prev) {
         for (const id of prev.notifIds) {
           try {
-            await Notifications.cancelScheduledNotificationAsync(id);
+            await notifications.cancelScheduledNotificationAsync(id);
           } catch {}
         }
       }
@@ -155,7 +162,7 @@ export function useBillLocalNotifications({
       const notifIds: string[] = [];
       for (const t of triggers) {
         try {
-          const id = await Notifications.scheduleNotificationAsync({
+          const id = await notifications.scheduleNotificationAsync({
             content: {
               title: t.title,
               body: t.body,
@@ -163,7 +170,7 @@ export function useBillLocalNotifications({
               sound: "default",
             },
             trigger: {
-              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              type: notifications.SchedulableTriggerInputTypes.DATE,
               date: t.date,
             },
           });
@@ -205,7 +212,7 @@ export function useBillLocalNotifications({
     .join(",");
 
   useEffect(() => {
-    if (!enabled || !familyId || Platform.OS === "web") return;
+    if (!enabled || !familyId || !isPushSupported()) return;
     kickRunner();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [familyId, billsSignature, plan, enabled, appActiveTick, kickRunner]);
