@@ -5,6 +5,7 @@ import { AiError, assertAiConfigured, mapOpenAiError, resolveOpenAiConfig } from
 import {
   buildMealPlanConstraintPrompt,
   hasMealPlanConstraints,
+  mealPlanPreferencesContainHealthData,
   mealPlanRequiresGlutenFree,
   validateMealPlanConstraints,
   type MealPlanConstraintViolation,
@@ -317,13 +318,15 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
  */
 function mealPlanResponseFormat(
   preferences?: MealPlanGenerationContext["preferences"],
-  options?: { dates: string[]; mealTypes: string[]; itemCount: number },
+  options?: { dates: string[]; mealTypes: string[]; itemCount: number; ingredientNames?: string[] },
 ) {
-  if (!requiresAllergenSafeRendering(preferences)) return MEAL_PLAN_RESPONSE_FORMAT;
+  if (!options) return MEAL_PLAN_RESPONSE_FORMAT;
 
-  const ingredientNames = naturallyGlutenFreeIngredients(preferences)
-    .split(", ")
-    .filter(Boolean);
+  const ingredientNames = options.ingredientNames || (
+    requiresAllergenSafeRendering(preferences)
+      ? compatibleMealIngredients(preferences, options.mealTypes.includes("breakfast") && options.mealTypes.length === 1 ? "breakfast" : "main")
+      : undefined
+  );
   const schema = MEAL_PLAN_RESPONSE_FORMAT.json_schema.schema;
   const itemSchema = schema.properties.items.items;
   const ingredientSchema = itemSchema.properties.ingredients.items;
@@ -335,7 +338,7 @@ function mealPlanResponseFormat(
     type: "json_schema" as const,
     json_schema: {
       ...MEAL_PLAN_RESPONSE_FORMAT.json_schema,
-      name: "gluten_free_meal_plan_response",
+      name: ingredientNames ? "allergen_safe_meal_plan_response" : "weekly_meal_plan_response",
       schema: {
         ...schema,
         properties: {
@@ -356,7 +359,9 @@ function mealPlanResponseFormat(
                     ...ingredientSchema,
                     properties: {
                       ...ingredientSchema.properties,
-                      name: { type: "string", enum: ingredientNames },
+                      name: ingredientNames
+                        ? { type: "string", enum: ingredientNames }
+                        : ingredientSchema.properties.name,
                     },
                   },
                 },
@@ -692,9 +697,11 @@ class MealPlanConstraintRetryError extends Error {
 // richiesta dall'utente. Ritentare tre settimane di pasti dopo aver già
 // consumato minuti di attesa lascia l'utente senza un risultato verificabile.
 const MAX_CONSTRAINT_GENERATION_ATTEMPTS = 1;
-const NATURALLY_GLUTEN_FREE_INGREDIENTS = [
+const SAFE_MAIN_INGREDIENTS = [
+  "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
   "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
   "patate", "patate dolci", "ceci", "lenticchie", "fagioli", "piselli",
+  "uova", "pollo", "tacchino", "salmone", "merluzzo", "tonno",
   "olio extravergine di oliva",
   "pomodori", "zucchine", "melanzane", "peperoni", "carote", "spinaci",
   "bietole", "broccoli", "cavolfiore", "zucca", "cipolle", "aglio",
@@ -703,13 +710,59 @@ const NATURALLY_GLUTEN_FREE_INGREDIENTS = [
   "sale", "pepe", "aceto",
 ];
 
-function naturallyGlutenFreeIngredients(
-  preferences?: MealPlanGenerationContext["preferences"],
-): string {
-  const declaredAllergies = `${preferences?.allergies || ""} ${preferences?.notes || ""}`
+const SAFE_BREAKFAST_INGREDIENTS = [
+  "mela", "banana", "pera", "arancia", "mandarino", "pesca", "albicocca",
+  "fragole", "mirtilli", "lamponi", "uva", "kiwi",
+  "yogurt bianco", "latte", "caffè", "cacao amaro", "miele", "marmellata",
+  "pane", "fette biscottate",
+  "pane senza glutine", "fette biscottate senza glutine", "biscotti senza glutine",
+  "gallette di riso",
+  "bevanda di riso", "bevanda di cocco", "yogurt vegetale di cocco",
+];
+
+const BREAKFAST_COMPATIBLE_MAIN_TERMS = new Set([
+  "avena", "cereali", "limone",
+  "olio extravergine di oliva", "basilico", "prezzemolo", "rosmarino", "origano",
+  "sale", "pepe", "aceto",
+]);
+
+const SAVORY_BREAKFAST_TERMS = SAFE_MAIN_INGREDIENTS
+  .filter((ingredient) =>
+    !SAFE_BREAKFAST_INGREDIENTS.includes(ingredient) &&
+    !BREAKFAST_COMPATIBLE_MAIN_TERMS.has(ingredient))
+  .sort((a, b) => b.length - a.length);
+
+function savoryBreakfastTerm(value: string): string | undefined {
+  const normalizedValue = value
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/\b(?:gallette|bevanda) di riso\b/g, "");
+  return SAVORY_BREAKFAST_TERMS.find((ingredient) => {
+    const normalizedIngredient = ingredient
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?:^|[^a-z0-9])${normalizedIngredient}(?:$|[^a-z0-9])`).test(normalizedValue);
+  });
+}
+
+function normalizedMealPlanPreferences(
+  preferences?: MealPlanGenerationContext["preferences"],
+): string {
+  return `${preferences?.diet || ""} ${preferences?.allergies || ""} ${preferences?.notes || ""}`
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function compatibleMealIngredients(
+  preferences?: MealPlanGenerationContext["preferences"],
+  mealType: "breakfast" | "main" = "main",
+): string[] {
+  const normalizedPreferences = normalizedMealPlanPreferences(preferences);
+  const declaredAllergies = normalizedPreferences
     .split(/[^a-z0-9]+/)
     .filter((word) => word.length >= 3);
   const excluded = new Set(declaredAllergies.flatMap((word) => {
@@ -717,23 +770,49 @@ function naturallyGlutenFreeIngredients(
     if (word.endsWith("i")) return [word, `${word.slice(0, -1)}o`, `${word.slice(0, -1)}e`];
     return [word];
   }));
-  return NATURALLY_GLUTEN_FREE_INGREDIENTS
+  const isGlutenFree = mealPlanRequiresGlutenFree(preferences);
+  const avoidsMilk = /\b(?:latte|lattosio|caseina|proteine del latte)\b/.test(normalizedPreferences);
+  const avoidsEgg = /\b(?:uovo|uova|albume|tuorlo)\b/.test(normalizedPreferences);
+  const avoidsFish = /\b(?:pesce|tonno|salmone|merluzzo|sgombro)\b/.test(normalizedPreferences);
+  const vegetarian = /\b(?:vegetarian|vegetariana|vegetariano|vegan|vegana|vegano)\b/.test(normalizedPreferences);
+  const vegan = /\b(?:vegan|vegana|vegano)\b/.test(normalizedPreferences);
+  const base = mealType === "breakfast" ? SAFE_BREAKFAST_INGREDIENTS : SAFE_MAIN_INGREDIENTS;
+
+  return base
     .filter((ingredient) => {
-      const tokens = ingredient
-        .normalize("NFKD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
+      const normalizedIngredient = ingredient
+        .normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const tokens = normalizedIngredient
         .split(/[^a-z0-9]+/)
         .filter((word) => word.length >= 3);
-      return !tokens.some((token) => excluded.has(token));
-    })
-    .join(", ");
+      if (tokens.some((token) => excluded.has(token))) return false;
+      if (!isGlutenFree && normalizedIngredient.includes("senza glutine")) return false;
+      if (isGlutenFree && /\b(?:pane|fette biscottate|biscotti|cornetto|pancake|avena|granola)\b/.test(normalizedIngredient) && !normalizedIngredient.includes("senza glutine")) return false;
+      if (avoidsMilk && /\b(?:latte|yogurt|biscotti|fette biscottate)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso)\b/.test(normalizedIngredient)) return false;
+      if (avoidsEgg && /\buova?\b/.test(normalizedIngredient)) return false;
+      if (avoidsFish && /\b(?:tonno|salmone|merluzzo)\b/.test(normalizedIngredient)) return false;
+      if (vegetarian && /\b(?:pollo|tacchino)\b/.test(normalizedIngredient)) return false;
+      if (vegan && /\b(?:uova?|miele|latte|yogurt)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso)\b/.test(normalizedIngredient)) return false;
+      if (mealPlanConstraintsHaveViolation(ingredient, preferences)) return false;
+      return true;
+    });
+}
+
+function mealPlanConstraintsHaveViolation(
+  ingredient: string,
+  preferences?: MealPlanGenerationContext["preferences"],
+): boolean {
+  if (!preferences) return false;
+  return validateMealPlanConstraints(
+    [{ title: ingredient, ingredients: [{ name: ingredient }] }],
+    preferences,
+  ).length > 0;
 }
 
 function requiresAllergenSafeRendering(
   preferences?: MealPlanGenerationContext["preferences"],
 ): boolean {
-  return mealPlanRequiresGlutenFree(preferences) || !!preferences?.allergies?.trim();
+  return mealPlanRequiresGlutenFree(preferences) || mealPlanPreferencesContainHealthData(preferences);
 }
 
 /**
@@ -746,30 +825,43 @@ function renderNaturallyGlutenFreeMealPlan(
   items: MealPlanSuggestion["items"],
   preferences?: MealPlanGenerationContext["preferences"],
 ): MealPlanSuggestion["items"] {
-  if (!requiresAllergenSafeRendering(preferences)) return items;
-
   return items.map((item) => {
+    if (!requiresAllergenSafeRendering(preferences) && item.mealType !== "breakfast") {
+      return item;
+    }
     const ingredientNames = (item.ingredients || [])
       .map((ingredient) => ingredient?.name?.trim())
       .filter((name): name is string => !!name)
       .slice(0, 4);
     const listedIngredients = ingredientNames.join(", ") || "ingredienti compatibili";
-    const titleIngredients = ingredientNames.slice(0, 2).join(" e ") || "ingredienti compatibili";
-    const mealLabel = item.mealType === "breakfast"
-      ? "Colazione"
-      : item.mealType === "lunch"
-        ? "Pranzo"
-        : item.mealType === "dinner"
-          ? "Cena"
-          : "Spuntino";
+    const titleIngredients = ingredientNames.slice(0, 3);
+    const readableTitle = item.mealType === "breakfast"
+      ? (() => {
+          const breakfastBaseIndex = titleIngredients.findIndex((name) =>
+            /\b(?:yogurt|latte|bevanda|pane|fette biscottate|uova|caff[eè]|gallette)\b/i.test(name));
+          const main = breakfastBaseIndex >= 0
+            ? titleIngredients[breakfastBaseIndex]!
+            : titleIngredients[0] || "Colazione compatibile";
+          const other = titleIngredients.filter((_, index) =>
+            index !== (breakfastBaseIndex >= 0 ? breakfastBaseIndex : 0));
+          if (other.length === 0) return main.charAt(0).toUpperCase() + main.slice(1);
+          if (/(mela|banana|pera|arancia|mandarino|pesca|albicocca|fragole|mirtilli|lamponi|uva|kiwi)/.test(main) &&
+            other.every((name) => /(mela|banana|pera|arancia|mandarino|pesca|albicocca|fragole|mirtilli|lamponi|uva|kiwi)/.test(name))) {
+            return `Macedonia di ${titleIngredients.join(", ")}`;
+          }
+          return `${main.charAt(0).toUpperCase() + main.slice(1)} con ${other.join(" e ")}`;
+        })()
+      : `${titleIngredients[0] || "Piatto compatibile"}${titleIngredients.length > 1 ? ` con ${titleIngredients.slice(1).join(" e ")}` : ""}`;
 
     return {
       ...item,
-      title: `${mealLabel} con ${titleIngredients}`,
+      title: readableTitle,
       description: `Pasto preparato con ${listedIngredients}.`,
       steps: [
         `Prepara ${listedIngredients} nelle quantità indicate.`,
-        `Cuoci e condisci gli ingredienti con cura.`,
+        item.mealType === "breakfast"
+          ? "Assembla gli ingredienti e servi a colazione."
+          : "Cuoci e condisci gli ingredienti con cura.",
         "Servi subito.",
       ],
     };
@@ -823,7 +915,9 @@ async function generateWeeklyMealPlanAttempt(
   const dietLower = (context.preferences?.diet || '').toLowerCase();
   const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
   const constrainedPlan = hasMealPlanConstraints(context.preferences);
-  const safeGlutenIngredients = naturallyGlutenFreeIngredients(context.preferences);
+  const lactoseAllowsGluten = !glutenFreeRequired &&
+    /\b(?:lattosio|latte|caseina|proteine del latte)\b/.test(normalizedMealPlanPreferences(context.preferences)) &&
+    !/\b(?:chetogen|keto|low carb|basso contenuto di carboidrati)\b/.test(dietLower);
   const mediterraneanRule = dietLower.includes('mediterran') && glutenFreeRequired
     ? `\n- DIETA MEDITERRANEA SENZA GLUTINE: riso, quinoa, polenta e patate come fonti di carboidrati; verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte; carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
     : dietLower.includes('mediterran') && constrainedPlan
@@ -852,24 +946,12 @@ async function generateWeeklyMealPlanAttempt(
   // della ricetta (titolo, ingredienti e passaggi). Per una richiesta legata
   // al glutine privilegiamo quindi ingredienti naturalmente idonei: è più
   // sicuro e impedisce che un'etichetta parziale faccia scartare l'intero piano.
-  const naturallyGlutenFreeRule = glutenFreeRequired
-    ? `\n- PIANO NATURALMENTE PRIVO DI GLUTINE: scegli OGNI ingrediente solamente da questa lista chiusa: ${safeGlutenIngredients}. Puoi combinare gli ingredienti della lista in ricette italiane varie, ma non aggiungere ingredienti esterni.
-- Non proporre prodotti sostitutivi da forno o a base di farina/cereali, nemmeno se potrebbero essere "senza glutine". Non scrivere mai pasta, pane, pizza, biscotti, cracker, couscous, farro, orzo, avena, cereali, farina, frumento o prodotti da forno in titolo, descrizione, ingrediente o passaggio.
-- Prima di restituire il JSON, ricontrolla ogni singola stringa: se contiene una di quelle parole, riscrivi la ricetta usando solo la lista chiusa sopra.`
-    : '';
-
   const dates: string[] = [];
   const start = new Date(context.weekStartDate);
   for (let i = 0; i < 7; i++) {
     const d = new Date(start);
     d.setDate(d.getDate() + i);
     dates.push(d.toISOString().split('T')[0]!);
-  }
-
-  const CHUNK = 1;
-  const chunks: string[][] = [];
-  for (let i = 0; i < dates.length; i += CHUNK) {
-    chunks.push(dates.slice(i, i + CHUNK));
   }
 
   const mealOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
@@ -985,10 +1067,33 @@ async function generateWeeklyMealPlanAttempt(
       ? compatibleBreakfastThemes
       : breakfastThemes;
 
-  async function fetchChunk(chunkDates: string[], excludeTitles: string[], themeHint?: string, breakfastHint?: string): Promise<MealPlanSuggestion['items']> {
-    const excludeRule = excludeTitles.length
-      ? `\n- VARIETÀ OBBLIGATORIA: questi piatti sono GIÀ stati pianificati in altri giorni della settimana, quindi NON riproporli e NON proporne di simili: ${excludeTitles.join('; ')}. Scegli piatti chiaramente DIVERSI per ogni pasto.`
-      : '';
+  type WeeklyMealRequest = {
+    dates: string[];
+    mealTypes: string[];
+    ingredientNames?: string[];
+    label: string;
+  };
+  const allergenSafePlan = requiresAllergenSafeRendering(context.preferences);
+  const weeklyRequests: WeeklyMealRequest[] = mealTypes.map((mealType) => ({
+    dates,
+    mealTypes: [mealType],
+    ingredientNames: mealType === "breakfast" || allergenSafePlan
+      ? compatibleMealIngredients(context.preferences, mealType === "breakfast" ? "breakfast" : "main")
+      : undefined,
+    label: mealType,
+  }));
+
+  async function fetchChunk(request: WeeklyMealRequest, themeHint?: string, breakfastHint?: string): Promise<MealPlanSuggestion['items']> {
+    const chunkDates = request.dates;
+    const requestMealTypes = request.mealTypes;
+    const mealsForRequest = requestMealTypes.length;
+    const requestGlutenRule = glutenFreeRequired
+      ? `\n- PIANO SENZA GLUTINE: scegli OGNI ingrediente solamente da questa lista chiusa per questa richiesta: ${(request.ingredientNames || compatibleMealIngredients(context.preferences, "main")).join(", ")}. Non aggiungere ingredienti esterni.
+- Se il nome di un ingrediente contiene pane, fette biscottate, biscotti, avena o altri prodotti a rischio glutine, deve includere esplicitamente la dicitura "senza glutine".`
+      : "";
+    const lactosePastaRule = lactoseAllowsGluten && requestMealTypes.includes("lunch")
+      ? "\n- Il vincolo lattosio/latte NON richiede di evitare il glutine: includi pasta di semola classica in almeno due pranzi della settimana, sempre senza latte o derivati incompatibili."
+      : "";
     const breakfastMealRule = constrainedPlan
       ? `- breakfast (colazione): SOLO una colazione leggera composta esclusivamente da ingredienti compatibili con TUTTI i vincoli.${glutenFreeRequired ? ' Se usi un prodotto a base di cereali o farina, deve essere dichiarato esplicitamente senza glutine in titolo, ingredienti e passaggi.' : ''} Non usare esempi standard né sostituti impliciti.`
       : `- breakfast (colazione): SOLO colazione italiana tipica, dolce e leggera. Es. cappuccino e cornetto, latte e biscotti, fette biscottate con marmellata, yogurt con cereali e frutta, pane con marmellata o miele, crostata, ciambellone, pancake, porridge, spremuta con plumcake. MAI piatti salati come pasta, carne, pesce, verdure cotte o bruschette salate.`;
@@ -1009,8 +1114,8 @@ async function generateWeeklyMealPlanAttempt(
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
-- Per ogni giorno genera esattamente ${mealsPerDay} pasti: ${mealTypes.join(', ')}.
-- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${mealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array), steps (array).
+- Questa richiesta riguarda SOLO questi tipi di pasto: ${requestMealTypes.join(', ')}. Per ogni giorno genera esattamente ${mealsForRequest} pasti: ${requestMealTypes.join(', ')}.
+- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array), steps (array).
 - Ogni ingrediente ha: name (italiano), quantity (stringa, es. "200"), unit (es. "g", "ml", "pezzi").
 - steps è la RICETTA passo-passo: da 3 a 6 passaggi brevi e chiari in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale).
 - IMPORTANTE: ogni piatto DEVE essere adatto al suo tipo di pasto secondo le abitudini italiane:
@@ -1021,9 +1126,9 @@ REGOLE:
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}
-  - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${naturallyGlutenFreeRule}
-- Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno.${excludeRule}
-- ${variantHint}${themeHint ? `\n- Per pranzo e cena di questi giorni ${themeHint}.` : ''}${breakfastHint && mealTypes.includes('breakfast') ? `\n- Per la colazione di questi giorni proponi: ${breakfastHint}. NON ripetere la stessa colazione in giorni diversi.` : ''}
+   - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}
+- Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno né in giorni diversi della settimana.
+- ${variantHint}${themeHint ? `\n- Per pranzo e cena distribuisci nella settimana questi orientamenti, senza ripeterli: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per le colazioni distribuisci nella settimana queste idee, una diversa per giorno: ${breakfastHint}.` : ''}
 ${constraintRule}${constraintCorrection}
 - Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
@@ -1048,8 +1153,9 @@ ${constraintRule}${constraintCorrection}
       ],
       response_format: mealPlanResponseFormat(context.preferences, {
         dates: chunkDates,
-        mealTypes,
-        itemCount: mealsPerDay,
+        mealTypes: requestMealTypes,
+        itemCount: chunkDates.length * mealsForRequest,
+        ingredientNames: request.ingredientNames,
       }),
       max_completion_tokens: 4000,
     });
@@ -1067,119 +1173,25 @@ ${constraintRule}${constraintCorrection}
 
   const aiStartTime = Date.now();
   const allItems: MealPlanSuggestion['items'] = [];
-  const usedTitles: string[] = [];
   let failedChunks = 0;
   let firstReason: unknown = null;
-  // Ondate di 3 giorni in PARALLELO (7 chiamate seriali → 3 attese):
-  // dentro l'ondata la varietà è garantita dai temi rotanti, tra le ondate
-  // dai titoli già usati (excludeTitles).
-  const WAVE = 3;
-  for (let w = 0; w < chunks.length; w += WAVE) {
-    const wave = chunks.slice(w, w + WAVE);
-    const excludeSnapshot = usedTitles.slice();
-    const results = await Promise.allSettled(
-      wave.map((chunkDates, i) =>
-        fetchChunk(
-          chunkDates,
-          excludeSnapshot,
-          activeDayThemes[(w + i) % activeDayThemes.length],
-          activeBreakfastThemes[(w + i) % activeBreakfastThemes.length],
-        )
-      )
-    );
-    for (const result of results) {
-      if (result.status === 'rejected') {
-        failedChunks++;
-        if (firstReason === null) firstReason = result.reason;
-        if (!context.suppressInternalLogs) {
-          console.error('Meal plan chunk failed:', String(result.reason));
-        }
-        continue;
-      }
-      const items = result.value;
-      allItems.push(...items);
-      for (const it of items) {
-        if (it.title) usedTitles.push(it.title);
-      }
-      if (context.onProgress && !deferProgressUntilValidated) {
-        const dayItems = items
-          .filter((it) => validDates.has(it.date))
-          .sort((a, b) => {
-            if (a.date !== b.date) return a.date.localeCompare(b.date);
-            return (mealOrder[a.mealType] ?? 99) - (mealOrder[b.mealType] ?? 99);
-          });
-        if (dayItems.length) {
-          try { context.onProgress(dayItems); } catch {}
-        }
-      }
-    }
-  }
-
-  // Ripassata anti-doppioni: i giorni della stessa ondata non si vedono tra
-  // loro, quindi possono capitare piatti identici in giorni diversi. Se
-  // succede, UNA sola chiamata extra rigenera i giorni coinvolti e sostituisce
-  // solo i piatti doppi; se non trova alternative, il piatto resta (mai buchi).
-  const normTitle = (t: string) => t.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  // Confronto "fuzzy": due titoli sono lo stesso piatto se condividono la
-  // maggior parte delle parole significative (es. "Pasta al tonno e pomodorini"
-  // ≈ "Spaghetti con tonno e pomodorini"). Stopword e formati di pasta
-  // vengono normalizzati prima del confronto (similarità di Jaccard ≥ 0.6).
-  const MEAL_STOPWORDS = new Set(['con', 'e', 'ed', 'di', 'del', 'della', 'delle', 'dei', 'al', 'alla', 'alle', 'ai', 'agli', 'allo', 'la', 'il', 'lo', 'le', 'i', 'gli', 'un', 'una', 'uno', 'in', 'su', 'per', 'da', 'fresco', 'fresca', 'freschi', 'fresche', 'misto', 'mista', 'misti', 'miste']);
-  const PASTA_SYNONYMS = new Set(['spaghetti', 'penne', 'fusilli', 'rigatoni', 'linguine', 'tagliatelle', 'orecchiette', 'farfalle', 'maccheroni', 'trofie', 'paccheri', 'bucatini', 'mezze', 'maniche', 'caserecce', 'pennette']);
-  const titleTokens = (t: string): Set<string> => {
-    const out = new Set<string>();
-    for (const w of normTitle(t).split(' ')) {
-      if (MEAL_STOPWORDS.has(w)) continue;
-      if (w.length < 3 && !/^\d+$/.test(w)) continue;
-      out.add(PASTA_SYNONYMS.has(w) ? 'pasta' : w);
-    }
-    return out;
-  };
-  const sameDish = (a: Set<string>, b: Set<string>): boolean => {
-    if (a.size === 0 || b.size === 0) return false;
-    let inter = 0;
-    for (const w of a) if (b.has(w)) inter++;
-    const union = a.size + b.size - inter;
-    return inter / union >= 0.6;
-  };
-  const seenTokenSets: Set<string>[] = [];
-  const isDupTitle = (title: string): boolean => {
-    const toks = titleTokens(title);
-    return seenTokenSets.some(s => sameDish(s, toks));
-  };
-  const markSeen = (title: string) => { seenTokenSets.push(titleTokens(title)); };
-  const dupSlots: { date: string; mealType: string }[] = [];
-  for (const it of allItems) {
-    if (!it.title || !validDates.has(it.date)) continue;
-    if (isDupTitle(it.title)) dupSlots.push({ date: it.date, mealType: it.mealType });
-    else markSeen(it.title);
-  }
-  let duplicatesFixed = 0;
-  // Con vincoli sanitari evitiamo una chiamata AI aggiuntiva per la sola
-  // varietà: il piano è già generato in un unico passaggio controllato e la
-  // sicurezza ha priorità su una ripassata cosmetica dei titoli.
-  if (dupSlots.length > 0 && !constrainedPlan) {
-    try {
-      const dupDates = Array.from(new Set(dupSlots.map(s => s.date)));
-      const replacements = await fetchChunk(dupDates, usedTitles, 'proponi piatti mai citati finora', 'una colazione italiana diversa da quelle già proposte');
-      for (const slot of dupSlots) {
-        // Sostituisce SOLO l'item doppio di quello slot (titolo già visto).
-        const target = allItems.find(it =>
-          it.date === slot.date && it.mealType === slot.mealType && it.title && isDupTitle(it.title));
-        const candidate = replacements.find(r =>
-          r.date === slot.date && r.mealType === slot.mealType && r.title && !isDupTitle(r.title));
-        if (candidate && target) {
-          Object.assign(target, candidate);
-          markSeen(candidate.title!);
-          duplicatesFixed++;
-        }
-      }
-    } catch (reason) {
-      // Doppione non sostituito: meglio un piatto ripetuto che un pasto mancante.
+  const results = await Promise.allSettled(
+    weeklyRequests.map((request) => fetchChunk(
+      request,
+      request.mealTypes.some((type) => type !== "breakfast") ? activeDayThemes.join(" | ") : undefined,
+      request.mealTypes.includes("breakfast") ? activeBreakfastThemes.join(" | ") : undefined,
+    )),
+  );
+  for (const result of results) {
+    if (result.status === "rejected") {
+      failedChunks++;
+      if (firstReason === null) firstReason = result.reason;
       if (!context.suppressInternalLogs) {
-        console.error('Meal plan dedupe pass failed:', String(reason));
+        console.error("Meal plan request failed:", String(result.reason));
       }
+      continue;
     }
+    allItems.push(...result.value);
   }
 
   const filtered = allItems.filter((it) => validDates.has(it.date));
@@ -1190,12 +1202,43 @@ ${constraintRule}${constraintCorrection}
 
   const aiDurationMs = Date.now() - aiStartTime;
   if (!context.suppressInternalLogs) {
-    console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, generationAttempt: context.generationAttempt, aiDurationMs, chunks: chunks.length, failedChunks, itemsCount: filtered.length, duplicates: dupSlots.length, duplicatesFixed }));
+    console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, generationAttempt: context.generationAttempt, aiDurationMs, chunks: weeklyRequests.length, failedChunks, itemsCount: filtered.length }));
   }
 
-  // Se non è stato generato nessun pasto valido e c'è stato un errore, propagalo tipizzato.
-  if (filtered.length === 0 && firstReason !== null) {
+  if (failedChunks > 0 && firstReason !== null) {
     throw mapOpenAiError(firstReason);
+  }
+  const expectedMeals = dates.length * mealTypes.length;
+  const seenSlots = new Set(filtered.map((item) => `${item.date}/${item.mealType}`));
+  if (filtered.length !== expectedMeals || seenSlots.size !== expectedMeals) {
+    throw new AiError(
+      "AI_BAD_RESPONSE",
+      `Piano pasti incompleto: ricevuti ${filtered.length} pasti, attesi ${expectedMeals}`,
+    );
+  }
+  const unsuitableBreakfast = filtered.find((item) => {
+    if (item.mealType !== "breakfast") return false;
+    const text = [
+      item.title,
+      item.description,
+      ...(item.ingredients || []).map((ingredient) => ingredient.name),
+      ...(item.steps || []),
+    ].join(" ");
+    return !!savoryBreakfastTerm(text);
+  });
+  if (unsuitableBreakfast) {
+    throw new AiError(
+      "AI_BAD_RESPONSE",
+      "La risposta AI contiene un pasto non adatto alla colazione",
+    );
+  }
+  if (context.onProgress && !deferProgressUntilValidated) {
+    for (const date of dates) {
+      const dayItems = filtered.filter((item) => item.date === date);
+      if (dayItems.length > 0) {
+        try { context.onProgress(dayItems); } catch {}
+      }
+    }
   }
 
   context.onStatus?.("Controllo che ogni pasto rispetti i vincoli alimentari.");

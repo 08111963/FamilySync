@@ -1,63 +1,62 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-// La chiave non serve per davvero: iniettiamo un client fittizio, ma
-// assertAiConfigured richiede che una chiave sia presente nell'ambiente.
 process.env.AI_INTEGRATIONS_OPENAI_API_KEY = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "test-key";
 import { generateWeeklyMealPlan, __setOpenAiClientForTest } from "../lib/openai";
+import { validateMealPlanConstraints } from "../lib/meal-plan-constraints";
 
-const WEEK_START = "2026-08-03"; // lunedì
+const WEEK_START = "2026-08-03";
 const DATES = Array.from({ length: 7 }, (_, i) => {
   const d = new Date(WEEK_START);
   d.setDate(d.getDate() + i);
   return d.toISOString().split("T")[0]!;
 });
 
-type Meal = { date: string; mealType: string; title: string; description: string; ingredients: unknown[]; steps: string[] };
+type Ingredient = { name: string; quantity: string; unit: string };
+type Meal = {
+  date: string;
+  mealType: string;
+  title: string;
+  description: string;
+  ingredients: Ingredient[];
+  steps: string[];
+};
+type RequestInfo = {
+  dates: string[];
+  mealTypes: string[];
+  ingredientNames?: string[];
+  sysPrompt: string;
+};
 
-function meal(date: string, mealType: string, title: string): Meal {
-  return { date, mealType, title, description: "d", ingredients: [{ name: "x", quantity: "1", unit: "pz" }], steps: ["fai"] };
+function makeMeal(date: string, mealType: string, title: string, ingredients: Ingredient[]): Meal {
+  return { date, mealType, title, description: "Preparazione semplice.", ingredients, steps: ["Prepara gli ingredienti.", "Servi."] };
 }
 
-/** Estrae le date richieste dal system prompt di fetchChunk. */
 function requestedDates(sysPrompt: string): string[] {
-  const m = sysPrompt.match(/SOLO per questi giorni: ([0-9,\- ]+)\./);
-  assert.ok(m, "system prompt deve indicare i giorni richiesti");
-  return m![1]!.split(",").map((s) => s.trim()).filter(Boolean);
+  const match = sysPrompt.match(/SOLO per questi giorni: ([0-9,\- ]+)\./);
+  assert.ok(match, "il prompt deve indicare tutti i giorni richiesti");
+  return match![1]!.split(",").map((value) => value.trim()).filter(Boolean);
 }
 
-/**
- * Client OpenAI simulato: per ogni chiamata decide la risposta in base alle
- * date richieste nel prompt. `plan` mappa la data -> handler che restituisce
- * gli item (o lancia). `onDedupe` gestisce la chiamata di ripassata (quella
- * con più date o con hint "mai citati finora").
- */
-function makeFakeClient(opts: {
-  itemsForDate: (date: string, callIndex: number) => Meal[];
-  failDates?: Set<string>;
-  onDedupe?: (dates: string[], sysPrompt: string) => Meal[];
-  dedupeFails?: boolean;
-}) {
-  const calls: { dates: string[]; sysPrompt: string }[] = [];
+function createFakeClient(buildItems: (request: RequestInfo) => Meal[]) {
+  const calls: RequestInfo[] = [];
   const client = {
     chat: {
       completions: {
-        create: async (req: { messages: Array<{ role: string; content: string }> }) => {
-          const sysPrompt = req.messages.find((m) => m.role === "system")!.content;
-          const dates = requestedDates(sysPrompt);
-          const callIndex = calls.length;
-          calls.push({ dates, sysPrompt });
-          const isDedupe = sysPrompt.includes("mai citati finora");
-          if (isDedupe) {
-            if (opts.dedupeFails) throw new Error("dedupe boom");
-            const items = opts.onDedupe ? opts.onDedupe(dates, sysPrompt) : [];
-            return { choices: [{ message: { content: JSON.stringify({ items }) }, finish_reason: "stop" }] };
-          }
-          assert.equal(dates.length, 1, "le ondate chiedono un giorno per chiamata");
-          const date = dates[0]!;
-          if (opts.failDates?.has(date)) throw new Error(`boom ${date}`);
-          const items = opts.itemsForDate(date, callIndex);
-          return { choices: [{ message: { content: JSON.stringify({ items }) }, finish_reason: "stop" }] };
+        create: async (request: any) => {
+          const sysPrompt = request.messages.find((message: any) => message.role === "system")!.content;
+          const schema = request.response_format.json_schema.schema;
+          const itemSchema = schema.properties.items.items;
+          const info: RequestInfo = {
+            dates: requestedDates(sysPrompt),
+            mealTypes: itemSchema.properties.mealType.enum,
+            ingredientNames: itemSchema.properties.ingredients.items.properties.name.enum,
+            sysPrompt,
+          };
+          calls.push(info);
+          return {
+            choices: [{ message: { content: JSON.stringify({ items: buildItems(info) }) }, finish_reason: "stop" }],
+          };
         },
       },
     },
@@ -65,60 +64,63 @@ function makeFakeClient(opts: {
   return { client, calls };
 }
 
-const mealOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
+function weekItems(request: RequestInfo): Meal[] {
+  return request.dates.flatMap((date, index) =>
+    request.mealTypes.map((mealType) => {
+      if (mealType === "breakfast") {
+        return makeMeal(date, mealType, `Colazione ${index}`, [
+          { name: "banana", quantity: "1", unit: "pezzo" },
+          { name: "yogurt bianco", quantity: "125", unit: "g" },
+        ]);
+      }
+      if (mealType === "lunch") {
+        return makeMeal(date, mealType, `Pranzo ${index}`, [
+          { name: "pasta", quantity: "80", unit: "g" },
+          { name: "ceci", quantity: "100", unit: "g" },
+          { name: "zucchine", quantity: "150", unit: "g" },
+        ]);
+      }
+      return makeMeal(date, mealType, `Cena ${index}`, [
+        { name: "pollo", quantity: "120", unit: "g" },
+        { name: "patate", quantity: "180", unit: "g" },
+        { name: "spinaci", quantity: "150", unit: "g" },
+      ]);
+    }),
+  );
+}
 
-function assertChronological(items: Array<{ date: string; mealType: string }>) {
-  for (let i = 1; i < items.length; i++) {
-    const a = items[i - 1]!;
-    const b = items[i]!;
-    const cmp = a.date.localeCompare(b.date);
-    assert.ok(
-      cmp < 0 || (cmp === 0 && (mealOrder[a.mealType] ?? 99) <= (mealOrder[b.mealType] ?? 99)),
-      `items non in ordine cronologico: ${a.date}/${a.mealType} prima di ${b.date}/${b.mealType}`
-    );
+function assertCompleteWeek(items: Array<{ date: string; mealType: string }>, mealsPerDay: number) {
+  assert.equal(items.length, 7 * mealsPerDay);
+  for (const date of DATES) {
+    assert.equal(items.filter((item) => item.date === date).length, mealsPerDay, `pasti completi per ${date}`);
   }
 }
 
-test("piano completo: 7 giorni, item in ordine cronologico, onProgress per giorno ordinato", async (t) => {
-  const { client, calls } = makeFakeClient({
-    itemsForDate: (date) => {
-      const idx = DATES.indexOf(date);
-      return [
-        meal(date, "dinner", `Cena ${idx}`),
-        meal(date, "breakfast", `Colazione ${idx}`),
-        meal(date, "lunch", `Pranzo ${idx}`),
-      ];
-    },
-  });
+test("senza opzioni: tre richieste parallele generano l'intera settimana", async (t) => {
+  const { client, calls } = createFakeClient(weekItems);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
-  const progress: Array<Array<{ date: string; mealType: string }>> = [];
+  const progress: Meal[][] = [];
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    onProgress: (items) => progress.push(items.map((i) => ({ date: i.date, mealType: i.mealType }))),
+    onProgress: (items) => progress.push(items as Meal[]),
   });
 
-  assert.equal(calls.length, 7, "7 chiamate (una per giorno), nessuna ripassata senza doppioni");
-  assert.equal(plan.items.length, 21);
-  assertChronological(plan.items);
-  assert.deepEqual(plan.items.map((i) => i.date), DATES.flatMap((d) => [d, d, d]));
-  assert.equal(progress.length, 7);
-  for (const batch of progress) {
-    assert.equal(new Set(batch.map((item) => item.date)).size, 1);
-    assertChronological(batch);
+  assert.equal(calls.length, 3, "una richiesta settimanale per tipo di pasto, nessuna ripassata finale");
+  for (const call of calls) assert.deepEqual(call.dates, DATES);
+  assert.deepEqual(calls.map((call) => call.mealTypes[0]).sort(), ["breakfast", "dinner", "lunch"]);
+  const breakfastCall = calls.find((call) => call.mealTypes[0] === "breakfast")!;
+  for (const unsuitable of ["pasta", "riso", "polenta di mais", "zucchine", "uova"]) {
+    assert.ok(!breakfastCall.ingredientNames?.includes(unsuitable), unsuitable);
   }
+  assertCompleteWeek(plan.items, 3);
+  assert.equal(progress.length, 7, "l'interfaccia riceve comunque gli aggiornamenti per giorno");
 });
 
-test("ondata parzialmente fallita: i giorni riusciti restano, nessun errore", async (t) => {
-  const { client } = makeFakeClient({
-    itemsForDate: (date) => {
-      const idx = DATES.indexOf(date);
-      return [meal(date, "lunch", `Pranzo ${idx}`), meal(date, "dinner", `Cena ${idx}`)];
-    },
-    failDates: new Set([DATES[1]!, DATES[4]!]),
-  });
+test("due pasti al giorno mantengono il contratto da 14 pasti completi", async (t) => {
+  const { client, calls } = createFakeClient(weekItems);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
@@ -128,300 +130,156 @@ test("ondata parzialmente fallita: i giorni riusciti restano, nessun errore", as
     preferences: { mealsPerDay: 2 },
   });
 
-  // 5 giorni riusciti x 2 pasti; i giorni falliti mancano ma il piano non è vuoto.
-  assert.equal(plan.items.length, 10);
-  assert.ok(!plan.items.some((i) => i.date === DATES[1] || i.date === DATES[4]));
-  assertChronological(plan.items);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls.map((call) => call.mealTypes[0]).sort(), ["dinner", "lunch"]);
+  assertCompleteWeek(plan.items, 2);
 });
 
-test("tutte le ondate fallite: propaga un errore tipizzato invece di piano vuoto", async (t) => {
-  const { client } = makeFakeClient({
-    itemsForDate: () => [],
-    failDates: new Set(DATES),
+test("con glutine: tre richieste mirate mantengono colazioni dolci e pasti completi", async (t) => {
+  const { client, calls } = createFakeClient((request) => request.dates.flatMap((date, index) =>
+    request.mealTypes.map((mealType) => {
+      if (mealType === "breakfast") {
+        return makeMeal(date, mealType, "Titolo ignorato", [
+          { name: "banana", quantity: "1", unit: "pezzo" },
+          { name: "yogurt bianco", quantity: "125", unit: "g" },
+        ]);
+      }
+      return makeMeal(date, mealType, "Titolo ignorato", mealType === "lunch"
+        ? [
+            { name: "riso", quantity: "80", unit: "g" },
+            { name: "ceci", quantity: "100", unit: "g" },
+            { name: "zucchine", quantity: "150", unit: "g" },
+          ]
+        : [
+            { name: "pollo", quantity: "120", unit: "g" },
+            { name: "patate", quantity: "180", unit: "g" },
+            { name: "spinaci", quantity: "150", unit: "g" },
+          ]);
+    }),
+  ));
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { allergies: "Glutine" },
   });
+
+  assert.equal(calls.length, 3, "colazioni, pranzi e cene viaggiano in parallelo");
+  const breakfastCall = calls.find((call) => call.mealTypes.length === 1 && call.mealTypes[0] === "breakfast")!;
+  assert.ok(breakfastCall.ingredientNames);
+  for (const invalidBreakfastIngredient of ["riso", "polenta di mais", "zucchine", "melanzane", "pomodori", "ceci"]) {
+    assert.ok(!breakfastCall.ingredientNames!.includes(invalidBreakfastIngredient), invalidBreakfastIngredient);
+  }
+  assertCompleteWeek(plan.items, 3);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Glutine" }), []);
+  assert.ok(plan.items.filter((item) => item.mealType === "breakfast").every((item) => !/\b(?:riso|polenta|zucchine|melanzane|pomodori|ceci)\b/i.test(item.title)));
+  assert.ok(plan.items.some((item) => item.mealType === "breakfast" && /yogurt.*banana/i.test(item.title)));
+});
+
+test("con lattosio: la lista sicura esclude latticini ma consente la pasta", async (t) => {
+  const { client, calls } = createFakeClient((request) => request.dates.flatMap((date, index) =>
+    request.mealTypes.map((mealType) => {
+      if (mealType === "breakfast") {
+        return makeMeal(date, mealType, `Colazione ${index}`, [
+          { name: "banana", quantity: "1", unit: "pezzo" },
+          { name: "bevanda di riso", quantity: "200", unit: "ml" },
+        ]);
+      }
+      return makeMeal(date, mealType, `${mealType} ${index}`, mealType === "lunch"
+        ? [
+            { name: "pasta", quantity: "80", unit: "g" },
+            { name: "ceci", quantity: "100", unit: "g" },
+            { name: "pomodori", quantity: "120", unit: "g" },
+          ]
+        : [
+            { name: "pollo", quantity: "120", unit: "g" },
+            { name: "patate", quantity: "180", unit: "g" },
+            { name: "spinaci", quantity: "150", unit: "g" },
+          ]);
+    }),
+  ));
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { allergies: "Lattosio" },
+  });
+
+  const mainCall = calls.find((call) => call.mealTypes.includes("lunch"))!;
+  assert.ok(mainCall.ingredientNames?.includes("pasta"), "lattosio non deve vietare il glutine");
+  assert.ok(!mainCall.ingredientNames?.includes("latte"));
+  assert.ok(!mainCall.ingredientNames?.includes("pane senza glutine"));
+  assert.match(mainCall.sysPrompt, /NON richiede di evitare il glutine/i);
+  assertCompleteWeek(plan.items, 3);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+  assert.ok(plan.items.some((item) => item.ingredients?.some((ingredient) => ingredient.name === "pasta")));
+});
+
+test("gli elenchi strutturati rispettano anche allergeni diversi", async (t) => {
+  for (const allergy of ["Uova", "Pesce", "Arachidi", "Frutta a guscio", "Soia", "Fragole"]) {
+    const { client, calls } = createFakeClient((request) => request.dates.flatMap((date, index) =>
+      request.mealTypes.map((mealType) => {
+        const names = request.ingredientNames || ["mela"];
+        return makeMeal(date, mealType, `${mealType} ${index}`, [{ name: names[0]!, quantity: "1", unit: "pezzo" }]);
+      }),
+    ));
+    __setOpenAiClientForTest(client);
+    try {
+      await generateWeeklyMealPlan({
+        familySize: 4,
+        weekStartDate: WEEK_START,
+        preferences: { allergies: allergy },
+      });
+      for (const call of calls) {
+        for (const name of call.ingredientNames || []) {
+          assert.deepEqual(
+            validateMealPlanConstraints([{ title: name, ingredients: [{ name }] }], { allergies: allergy }),
+            [],
+            `${allergy}: ${name}`,
+          );
+        }
+      }
+    } finally {
+      __setOpenAiClientForTest(null);
+    }
+  }
+  t.diagnostic("Ogni allergene usa lo stesso validatore anche per l'enum degli ingredienti.");
+});
+
+test("una risposta incompleta non viene consegnata come settimana valida", async (t) => {
+  const { client } = createFakeClient((request) => request.dates.slice(0, 6).flatMap((date) =>
+    request.mealTypes.map((mealType) => makeMeal(date, mealType, "Pasto", [{ name: "mela", quantity: "1", unit: "pezzo" }])),
+  ));
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
   await assert.rejects(
     generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START }),
-    (err: unknown) => {
-      assert.ok(err instanceof Error);
-      return true;
-    }
+    (error: unknown) => (error as { code?: string }).code === "AI_BAD_RESPONSE",
   );
 });
 
-test("vincolo glutine: rifiuta subito un piano incompatibile senza emettere progressi", async (t) => {
-  const { client, calls } = makeFakeClient({
-    itemsForDate: (date) => [{
-      ...meal(date, "lunch", "Penne al tonno"),
-      ingredients: [
-        { name: "Penne di semola", quantity: "80", unit: "g" },
-        { name: "Tonno", quantity: "60", unit: "g" },
-      ],
-    }],
+test("un alimento da pranzo nel testo della colazione viene rimosso anche senza allergie", async (t) => {
+  const { client } = createFakeClient((request) => {
+    if (request.mealTypes[0] !== "breakfast") return weekItems(request);
+    return request.dates.map((date) => makeMeal(date, "breakfast", "Patate al forno", [
+      { name: "banana", quantity: "1", unit: "pezzo" },
+    ]));
   });
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
-  const progress: Meal[][] = [];
-  await assert.rejects(
-    generateWeeklyMealPlan({
-      familySize: 4,
-      weekStartDate: WEEK_START,
-      preferences: { allergies: "Glutine", mealsPerDay: 2 },
-      onProgress: (items) => progress.push(items as Meal[]),
-    }),
-    (error: unknown) => {
-      assert.equal((error as { code?: string }).code, "AI_CONSTRAINT_VIOLATION");
-      return true;
-    },
-  );
-  assert.equal(calls.length, 7, "un solo passaggio AI: nessun ciclo di rigenerazione");
-  assert.equal(progress.length, 0, "nessun chunk incompatibile deve raggiungere il client");
-});
-
-test("vincolo allergeni: un chiamante interno può ridurre ma mai aumentare il tetto dei tentativi", async (t) => {
-  const { client, calls } = makeFakeClient({
-    itemsForDate: (date) => {
-      const idx = DATES.indexOf(date);
-      const lunchTitle = idx <= 1 ? "Minestrone" : `Pranzo ${idx}`;
-      return [meal(date, "lunch", lunchTitle), meal(date, "dinner", `Cena ${idx}`)];
-    },
-    dedupeFails: true,
-  });
-  __setOpenAiClientForTest(client);
-  t.after(() => __setOpenAiClientForTest(null));
-
-  const progress: Meal[][] = [];
-  const plan = await generateWeeklyMealPlan({
-    familySize: 4,
-    weekStartDate: WEEK_START,
-    preferences: { mealsPerDay: 2 },
-  });
-
-  assert.equal(calls.length, 7, "nessuna ripassata: nessun falso positivo");
-  assert.equal(plan.items.length, 14);
-});
-
-test("ripassata fallita: il doppione resta al suo posto (mai buchi nel piano)", async (t) => {
-  const { client, calls } = makeFakeClient({
-    itemsForDate: (date) => {
-      const idx = DATES.indexOf(date);
-      const lunchTitle = idx <= 1 ? "Minestrone" : `Pranzo ${idx}`;
-      return [meal(date, "lunch", lunchTitle), meal(date, "dinner", `Cena ${idx}`)];
-    },
-    dedupeFails: true,
-  });
-  __setOpenAiClientForTest(client);
-  t.after(() => __setOpenAiClientForTest(null));
-
-  const statuses: string[] = [];
-  await generateWeeklyMealPlan({
-    familySize: 4,
-    weekStartDate: WEEK_START,
-    preferences: { diet: "Mediterranea", allergies: "Glutine", mealsPerDay: 2 },
-    onStatus: (message) => statuses.push(message),
-  });
-
-  assert.equal(calls.length, 7);
-  const prompt = calls.map((call) => call.sysPrompt).join("\n");
-  assert.match(prompt, /DIETA MEDITERRANEA SENZA GLUTINE/);
-  assert.match(prompt, /riso naturalmente privo di glutine/);
-  assert.match(prompt, /PIANO NATURALMENTE PRIVO DI GLUTINE/);
-  assert.match(prompt, /riso, quinoa, polenta di mais, patate, legumi, frutta e verdura/);
-  assert.match(prompt, /colazione leggera e senza glutine/);
-  assert.match(prompt, /Non scrivere mai pasta, pane, pizza/);
-  assert.doesNotMatch(prompt, /privilegia primi di pasta/);
-  assert.doesNotMatch(prompt, /cappuccino e cornetto/);
-  assert.ok(statuses.some((status) => status.includes("piano compatibile")));
-  assert.ok(statuses.some((status) => status.includes("Controllo")));
-});
-
-test("allergie diverse dal glutine: il prompt elimina i temi standard incompatibili", async (t) => {
-  const { client, calls } = makeFakeClient({
-    itemsForDate: (date) => [
-      meal(date, "breakfast", `Colazione ${date}`),
-      meal(date, "lunch", `Pranzo ${date}`),
-      meal(date, "dinner", `Cena ${date}`),
-    ],
-    dedupeFails: true,
-  });
-  __setOpenAiClientForTest(client);
-  t.after(() => __setOpenAiClientForTest(null));
-
-  await generateWeeklyMealPlan({
-    familySize: 4,
-    weekStartDate: WEEK_START,
-    preferences: { allergies: "Latte", mealsPerDay: 3 },
-  });
-
-  const prompt = calls.map((call) => call.sysPrompt).join("\n");
-  assert.match(prompt, /ingredienti compatibili con TUTTI i vincoli/);
-  assert.doesNotMatch(prompt, /cappuccino|cornetto|latte e biscotti/i);
-});
-
-test("vincoli combinati: il prompt non reintroduce latticini nelle istruzioni senza glutine", async (t) => {
-  const { client, calls } = makeFakeClient({
-    itemsForDate: (date) => [
-      meal(date, "breakfast", `Colazione ${date}`),
-      meal(date, "lunch", `Pranzo ${date}`),
-      meal(date, "dinner", `Cena ${date}`),
-    ],
-    dedupeFails: true,
-  });
-  __setOpenAiClientForTest(client);
-  t.after(() => __setOpenAiClientForTest(null));
-
-  await generateWeeklyMealPlan({
-    familySize: 4,
-    weekStartDate: WEEK_START,
-    preferences: { allergies: "Glutine, Latte", mealsPerDay: 3 },
-  });
-
-  const prompt = calls.map((call) => call.sysPrompt).join("\n");
-  assert.match(prompt, /ingredienti compatibili con TUTTI i vincoli/);
-  assert.doesNotMatch(prompt, /yogurt|ricotta|cappuccino|cornetto/i);
-});
-
-test("allergia espressa nelle note: l'alimento viene estratto e il piano viene rifiutato", async (t) => {
-  const { client } = makeFakeClient({
-    itemsForDate: (date) => [{
-      ...meal(date, "lunch", "Macedonia di fragole"),
-      ingredients: [{ name: "Fragole", quantity: "150", unit: "g" }],
-    }],
-  });
-  __setOpenAiClientForTest(client);
-  t.after(() => __setOpenAiClientForTest(null));
-
-  await assert.rejects(
-    generateWeeklyMealPlan({
-      familySize: 4,
-      weekStartDate: WEEK_START,
-      preferences: { notes: "Non posso mangiare fragole", mealsPerDay: 2 },
-    }),
-    (error: unknown) => {
-      assert.equal((error as { code?: string }).code, "AI_CONSTRAINT_VIOLATION");
-      return true;
-    },
-  );
-});
-
-test("ripassata anti-doppioni: il doppione intra-ondata viene sostituito", async (t) => {
-  // Giorno 0 e giorno 1 (stessa ondata) propongono lo stesso pranzo.
-  const { client, calls } = makeFakeClient({
-    itemsForDate: (date) => {
-      const idx = DATES.indexOf(date);
-      const lunchTitle = idx <= 1 ? "Minestrone" : `Pranzo ${idx}`;
-      return [meal(date, "lunch", lunchTitle), meal(date, "dinner", `Cena ${idx}`)];
-    },
-    dedupeFails: true,
-  });
-  __setOpenAiClientForTest(client);
-  t.after(() => __setOpenAiClientForTest(null));
-
-  const plan = await generateWeeklyMealPlan({
-    familySize: 4,
-    weekStartDate: WEEK_START,
-    preferences: { mealsPerDay: 2 },
-  });
-
-  assert.equal(calls.length, 8, "7 giorni + 1 sola chiamata di ripassata");
-  const day1Lunch = plan.items.find((i) => i.date === DATES[1] && i.mealType === "lunch");
-  assert.equal(day1Lunch?.title, "Risotto agli asparagi", "doppione sostituito");
-  // La cena del giorno 1 NON era doppia e resta invariata.
-  const day1Dinner = plan.items.find((i) => i.date === DATES[1] && i.mealType === "dinner");
-  assert.equal(day1Dinner?.title, "Cena 1");
-  assert.equal(plan.items.length, 14, "nessun buco né item extra");
-  // Nessun titolo (normalizzato) doppio nel piano finale.
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const titles = plan.items.map((i) => norm(i.title));
-  assert.equal(new Set(titles).size, titles.length);
-});
-
-test("ripassata anti-doppioni: riconosce lo stesso piatto scritto in modo diverso (fuzzy)", async (t) => {
-  // Caso reale: 3 pranzi consecutivi erano "pasta al tonno e pomodorini"
-  // con titoli leggermente diversi (anche "Spaghetti" invece di "Pasta").
-  const nearDupes = [
-    "Pasta al tonno e pomodorini con insalata mista",
-    "Spaghetti con tonno e pomodorini + insalata mista",
-    "Pasta al tonno con pomodorini e insalata mista",
-  ];
-  const dedupeCalls: string[][] = [];
-  const { client } = makeFakeClient({
-    itemsForDate: (date) => {
-      const idx = DATES.indexOf(date);
-      const lunchTitle = idx < 3 ? nearDupes[idx]! : `Pranzo ${idx}`;
-      return [meal(date, "lunch", lunchTitle), meal(date, "dinner", `Cena ${idx}`)];
-    },
-    onDedupe: (dates) => {
-      dedupeCalls.push(dates);
-      return dates.map((d, i) => meal(d, "lunch", `Piatto alternativo ${i}`));
-    },
-  });
-  __setOpenAiClientForTest(client);
-  t.after(() => __setOpenAiClientForTest(null));
-
-  const plan = await generateWeeklyMealPlan({
-    familySize: 4,
-    weekStartDate: WEEK_START,
-    preferences: { mealsPerDay: 2 },
-  });
-
-  // I giorni 1 e 2 sono riconosciuti come doppioni del giorno 0 e sostituiti.
-  assert.deepEqual(dedupeCalls, [[DATES[1], DATES[2]]]);
-  const lunch1 = plan.items.find((i) => i.date === DATES[1] && i.mealType === "lunch");
-  const lunch2 = plan.items.find((i) => i.date === DATES[2] && i.mealType === "lunch");
-  assert.equal(lunch1?.title, "Piatto alternativo 0");
-  assert.equal(lunch2?.title, "Piatto alternativo 1");
-  // Il giorno 0 resta invariato e piatti legittimamente diversi non vengono toccati.
-  const lunch0 = plan.items.find((i) => i.date === DATES[0] && i.mealType === "lunch");
-  assert.equal(lunch0?.title, nearDupes[0]);
-  assert.equal(plan.items.length, 14);
-});
-
-test("ripassata fuzzy: piatti diversi con un ingrediente in comune NON sono doppioni", async (t) => {
-  const { client, calls } = makeFakeClient({
-    itemsForDate: (date) => {
-      const idx = DATES.indexOf(date);
-      const lunchTitle = idx <= 1 ? "Minestrone" : `Pranzo ${idx}`;
-      return [meal(date, "lunch", lunchTitle), meal(date, "dinner", `Cena ${idx}`)];
-    },
-    dedupeFails: true,
-  });
-  __setOpenAiClientForTest(client);
-  t.after(() => __setOpenAiClientForTest(null));
-
-  const plan = await generateWeeklyMealPlan({
-    familySize: 4,
-    weekStartDate: WEEK_START,
-    preferences: { mealsPerDay: 2 },
-  });
-
-  assert.equal(calls.length, 7, "nessuna ripassata: nessun falso positivo");
-  assert.equal(plan.items.length, 14);
-});
-
-test("ripassata fallita: il doppione resta al suo posto (mai buchi nel piano)", async (t) => {
-  const { client, calls } = makeFakeClient({
-    itemsForDate: (date) => {
-      const idx = DATES.indexOf(date);
-      const lunchTitle = idx <= 1 ? "Minestrone" : `Pranzo ${idx}`;
-      return [meal(date, "lunch", lunchTitle), meal(date, "dinner", `Cena ${idx}`)];
-    },
-    dedupeFails: true,
-  });
-  __setOpenAiClientForTest(client);
-  t.after(() => __setOpenAiClientForTest(null));
-
-  const plan = await generateWeeklyMealPlan({
-    familySize: 4,
-    weekStartDate: WEEK_START,
-    preferences: { mealsPerDay: 2 },
-  });
-
-  assert.equal(calls.length, 8, "la ripassata viene comunque tentata una volta");
-  assert.equal(plan.items.length, 14, "nessun pasto perso anche se la ripassata fallisce");
-  const minestroni = plan.items.filter((i) => i.title === "Minestrone");
-  assert.equal(minestroni.length, 2, "il doppione resta: meglio ripetuto che mancante");
+  const plan = await generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START });
+  const breakfasts = plan.items.filter((item) => item.mealType === "breakfast");
+  assert.ok(breakfasts.length > 0);
+  assert.ok(breakfasts.every((item) => !/\bpatate\b/i.test([
+    item.title,
+    item.description,
+    ...(item.ingredients || []).map((ingredient) => ingredient.name),
+    ...(item.steps || []),
+  ].join(" "))));
 });
