@@ -89,13 +89,13 @@ name = "Start Frontend"
 author = "agent"
 mode = "sequential"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash scripts/expo-tunnel.sh"
-waitForPort = 8081
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node scripts/preview-proxy.cjs"
+waitForPort = 8081
 
 [userenv]
 
