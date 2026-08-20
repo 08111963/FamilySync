@@ -57,11 +57,18 @@ PROXY_PID=$!
 echo "[tunnel] Starting Expo with its built-in tunnel (exp.direct) on port 8082."
 echo "[tunnel] Scan the Expo Go QR below on Android to connect."
 
-# Run Expo in the foreground and forward termination signals so a workflow
-# restart shuts down cleanly.
-# Expo può fallire (es. tunnel giù) senza compromettere l'anteprima web:
-# il processo "principale" del workflow è il proxy, non Metro.
-npx expo start --tunnel --port 8082 &
-EXPO_PID=$!
-trap 'kill -TERM "$EXPO_PID" "$PROXY_PID" 2>/dev/null || true' TERM INT
-wait "$PROXY_PID"
+# Avvia prima il tunnel. Se il provider del tunnel non risponde, Expo termina
+# senza QR né simulazione: in quel caso riavviamo Metro in modalità locale,
+# mantenendo disponibile l'ambiente Expo invece di lasciare il workflow a metà.
+start_expo() {
+  npx expo start "$@" --port 8082 &
+  EXPO_PID=$!
+  wait "$EXPO_PID"
+}
+
+EXPO_PID=""
+trap 'kill -TERM "${EXPO_PID:-}" "$PROXY_PID" 2>/dev/null || true' TERM INT
+if ! start_expo --tunnel; then
+  echo "[tunnel] Il tunnel Expo non è disponibile; avvio Metro in modalità locale per QR e simulazione."
+  start_expo --localhost
+fi

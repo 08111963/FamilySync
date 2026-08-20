@@ -101,7 +101,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "node scripts/preview-proxy.cjs"
+args = "bash scripts/expo-tunnel.sh"
 waitForPort = 8081
 
 [userenv]
