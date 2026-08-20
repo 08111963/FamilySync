@@ -284,6 +284,51 @@ test("con lattosio: i passaggi dettagliati usano il contesto dell'ingrediente ve
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
 });
 
+test("un piano incompatibile viene rigenerato automaticamente una sola volta", async (t) => {
+  let callNumber = 0;
+  const { client, calls } = createFakeClient((request) => {
+    const incompatibleAttempt = callNumber++ < 3;
+    return request.dates.flatMap((date, index) =>
+      request.mealTypes.map((mealType) => {
+        if (incompatibleAttempt) {
+          return makeMeal(date, mealType, `Pasto con latte ${index}`, [
+            { name: "latte", quantity: "200", unit: "ml" },
+          ]);
+        }
+        if (mealType === "breakfast") {
+          return makeMeal(date, mealType, `Colazione ${index}`, [
+            { name: "banana", quantity: "1", unit: "pezzo" },
+            { name: "bevanda di riso", quantity: "200", unit: "ml" },
+          ]);
+        }
+        return makeMeal(date, mealType, `${mealType} ${index}`, mealType === "lunch"
+          ? [
+              { name: "pasta", quantity: "80", unit: "g" },
+              { name: "ceci", quantity: "100", unit: "g" },
+              { name: "pomodori", quantity: "120", unit: "g" },
+            ]
+          : [
+              { name: "pollo", quantity: "120", unit: "g" },
+              { name: "patate", quantity: "180", unit: "g" },
+              { name: "spinaci", quantity: "150", unit: "g" },
+            ]);
+      }),
+    );
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { allergies: "Lattosio" },
+  });
+
+  assert.equal(calls.length, 6, "tre richieste iniziali e una sola rigenerazione completa");
+  assertCompleteWeek(plan.items, 3);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+});
+
 test("gli elenchi strutturati rispettano anche allergeni diversi", async (t) => {
   for (const allergy of ["Uova", "Pesce", "Arachidi", "Frutta a guscio", "Soia", "Fragole"]) {
     const { client, calls } = createFakeClient((request) => request.dates.flatMap((date, index) =>

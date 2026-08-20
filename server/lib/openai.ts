@@ -708,10 +708,12 @@ class MealPlanConstraintRetryError extends Error {
   }
 }
 
-// Un piano con vincoli sanitari deve essere corretto già nella generazione
-// richiesta dall'utente. Ritentare tre settimane di pasti dopo aver già
-// consumato minuti di attesa lascia l'utente senza un risultato verificabile.
-const MAX_CONSTRAINT_GENERATION_ATTEMPTS = 1;
+// Un piano con vincoli sanitari può richiedere UNA sola rigenerazione completa
+// dopo una risposta semanticamente incompatibile. Il primo output non viene
+// mai mostrato, quindi l'utente riceve solo il piano verificato e non deve
+// premere nuovamente il pulsante. Oltre questo limite l'attesa e il consumo
+// quota diventano sproporzionati.
+const MAX_CONSTRAINT_GENERATION_ATTEMPTS = 2;
 const MAX_MALFORMED_RESPONSE_RETRIES = 1;
 const SAFE_MAIN_INGREDIENTS = [
   "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
@@ -1088,6 +1090,9 @@ async function generateWeeklyMealPlanAttempt(
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
     const itemContract = `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array), steps (array).`;
     const preparationContract = `- steps è la RICETTA completa, passo-passo: da 3 a 6 istruzioni concrete e chiare in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale). Indica operazioni reali come lavare, tagliare, cuocere e assemblare, usando ingredienti e tempi quando utili. NON usare frasi generiche come "cuoci e condisci con cura" o "servi subito" come unico dettaglio della ricetta.`;
+    const constrainedRecipeReferenceRule = constrainedPlan
+      ? `- VINCOLI NELLA RICETTA: per ogni ingrediente soggetto a un vincolo usa, nel titolo, descrizione e in OGNI passaggio, il nome completo e compatibile scritto nell'array ingredients. Non abbreviare né sostituire con parole generiche un ingrediente sensibile (per esempio non scrivere "latte", "yogurt" o "formaggio" se nell'array è presente un sostituto vegetale o senza lattosio).`
+      : "";
     const responseContract = `{"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
@@ -1095,6 +1100,7 @@ REGOLE:
 ${itemContract}
 - Ogni ingrediente ha: name (italiano), quantity (stringa, es. "200"), unit (es. "g", "ml", "pezzi").
 ${preparationContract}
+${constrainedRecipeReferenceRule}
 - IMPORTANTE: ogni piatto DEVE essere adatto al suo tipo di pasto secondo le abitudini italiane:
   ${breakfastMealRule}
   ${lunchMealRule}
