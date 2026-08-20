@@ -158,22 +158,25 @@ test("con dieta mediterranea il prompt contiene la regola di distribuzione e il 
   // mediterraneanRule nel system prompt e che un piano conforme alla regola
   // passi l'analisi end-to-end (generazione -> conteggio).
   const week = balancedWeek();
-  const byDate = new Map<string, MealPlanItem[]>();
-  for (const it of week) {
-    const arr = byDate.get(it.date) ?? [];
-    arr.push(it);
-    byDate.set(it.date, arr);
-  }
   const sysPrompts: string[] = [];
   const client = {
     chat: {
       completions: {
-        create: async (req: { messages: Array<{ role: string; content: string }> }) => {
-          const sysPrompt = req.messages.find((m) => m.role === "system")!.content;
+        create: async (req: any) => {
+          const sysPrompt = req.messages.find((message: { role: string; content: string }) => message.role === "system")!.content;
           sysPrompts.push(sysPrompt);
           const m = sysPrompt.match(/SOLO per questi giorni: ([0-9,\- ]+)\./);
-          const date = m![1]!.split(",")[0]!.trim();
-          const items = byDate.get(date) ?? [];
+          const dates = m![1]!.split(",").map((date: string) => date.trim());
+          const mealTypes: string[] = req.response_format.json_schema.schema.properties.items.items.properties.mealType.enum;
+          const items = week
+            .filter((item) => dates.includes(item.date) && mealTypes.includes(item.mealType))
+            .map((item) => ({
+              ...item,
+              description: item.description || "Pasto completo e semplice.",
+              ingredients: item.ingredients?.length
+                ? item.ingredients
+                : [{ name: "pomodori", quantity: "1", unit: "pz" }],
+            }));
           return { choices: [{ message: { content: JSON.stringify({ items }) }, finish_reason: "stop" }] };
         },
       },
@@ -189,7 +192,7 @@ test("con dieta mediterranea il prompt contiene la regola di distribuzione e il 
   });
 
   assert.ok(
-    sysPrompts.every((p) => p.includes("DIETA MEDITERRANEA VERA")),
+    sysPrompts.every((p) => p.includes("DIETA MEDITERRANEA CON VINCOLI")),
     "ogni chiamata deve contenere la regola mediterranea"
   );
   assert.ok(
@@ -207,19 +210,21 @@ test("senza dieta mediterranea la regola dedicata NON viene aggiunta al prompt",
   const client = {
     chat: {
       completions: {
-        create: async (req: { messages: Array<{ role: string; content: string }> }) => {
-          const sysPrompt = req.messages.find((m) => m.role === "system")!.content;
+        create: async (req: any) => {
+          const sysPrompt = req.messages.find((message: { role: string; content: string }) => message.role === "system")!.content;
           sysPrompts.push(sysPrompt);
           const m = sysPrompt.match(/SOLO per questi giorni: ([0-9,\- ]+)\./);
-          const date = m![1]!.split(",")[0]!.trim();
+          const dates = m![1]!.split(",").map((date: string) => date.trim());
+          const mealTypes: string[] = req.response_format.json_schema.schema.properties.items.items.properties.mealType.enum;
           return {
             choices: [{
               message: {
                 content: JSON.stringify({
-                  items: [{
-                    ...meal(date, "lunch", `Pranzo vegetariano ${date}`),
+                  items: dates.flatMap((date: string) => mealTypes.map((mealType: string) => ({
+                    ...meal(date, mealType, `${mealType} vegetariano ${date}`),
+                    description: "Pasto completo e semplice.",
                     ingredients: [{ name: "Lenticchie", quantity: "150", unit: "g" }],
-                  }],
+                  }))),
                 }),
               },
               finish_reason: "stop",

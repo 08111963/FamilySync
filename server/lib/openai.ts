@@ -7,6 +7,7 @@ import {
   hasMealPlanConstraints,
   mealPlanPreferencesContainHealthData,
   mealPlanRequiresGlutenFree,
+  unsupportedMealPlanHealthNote,
   validateMealPlanConstraints,
   type MealPlanConstraintViolation,
 } from './meal-plan-constraints';
@@ -311,6 +312,61 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
 };
 
 /**
+ * Il piano standard non deve pagare il costo di una ricetta completa per
+ * ciascun pasto: ingredienti, una descrizione breve e due micro-passaggi
+ * preservano l'anteprima della ricetta senza pagare il costo di istruzioni
+ * dettagliate. I percorsi con vincoli mantengono la ricetta completa.
+ */
+const MEAL_PLAN_COMPACT_RESPONSE_FORMAT = {
+  type: 'json_schema' as const,
+  json_schema: {
+    name: 'compact_weekly_meal_plan_response',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              date: { type: 'string' },
+              mealType: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              ingredients: {
+                type: 'array',
+                minItems: 1,
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    name: { type: 'string' },
+                    quantity: { type: 'string' },
+                    unit: { type: 'string' },
+                  },
+                  required: ['name', 'quantity', 'unit'],
+                },
+              },
+              steps: {
+                type: 'array',
+                minItems: 2,
+                maxItems: 2,
+                items: { type: 'string' },
+              },
+            },
+            required: ['date', 'mealType', 'title', 'description', 'ingredients', 'steps'],
+          },
+        },
+      },
+      required: ['items'],
+    },
+  },
+};
+
+/**
  * Per il glutine non ci affidiamo solo alle istruzioni in linguaggio naturale:
  * il nome di ogni ingrediente viene vincolato dallo schema strutturato a una
  * lista naturale e già compatibile. Titoli e passaggi vengono comunque
@@ -318,16 +374,25 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
  */
 function mealPlanResponseFormat(
   preferences?: MealPlanGenerationContext["preferences"],
-  options?: { dates: string[]; mealTypes: string[]; itemCount: number; ingredientNames?: string[] },
+  options?: {
+    dates: string[];
+    mealTypes: string[];
+    itemCount: number;
+    ingredientNames?: string[];
+    compact?: boolean;
+  },
 ) {
   if (!options) return MEAL_PLAN_RESPONSE_FORMAT;
 
+  const baseFormat = options.compact
+    ? MEAL_PLAN_COMPACT_RESPONSE_FORMAT
+    : MEAL_PLAN_RESPONSE_FORMAT;
   const ingredientNames = options.ingredientNames || (
     requiresAllergenSafeRendering(preferences)
       ? compatibleMealIngredients(preferences, options.mealTypes.includes("breakfast") && options.mealTypes.length === 1 ? "breakfast" : "main")
       : undefined
   );
-  const schema = MEAL_PLAN_RESPONSE_FORMAT.json_schema.schema;
+  const schema = baseFormat.json_schema.schema;
   const itemSchema = schema.properties.items.items;
   const ingredientSchema = itemSchema.properties.ingredients.items;
   const itemCount = options?.itemCount || 3;
@@ -337,8 +402,12 @@ function mealPlanResponseFormat(
   return {
     type: "json_schema" as const,
     json_schema: {
-      ...MEAL_PLAN_RESPONSE_FORMAT.json_schema,
-      name: ingredientNames ? "allergen_safe_meal_plan_response" : "weekly_meal_plan_response",
+      ...baseFormat.json_schema,
+      name: ingredientNames
+        ? "allergen_safe_meal_plan_response"
+        : options.compact
+          ? "compact_weekly_meal_plan_response"
+          : "weekly_meal_plan_response",
       schema: {
         ...schema,
         properties: {
@@ -1075,14 +1144,27 @@ async function generateWeeklyMealPlanAttempt(
     label: string;
   };
   const allergenSafePlan = requiresAllergenSafeRendering(context.preferences);
-  const weeklyRequests: WeeklyMealRequest[] = mealTypes.map((mealType) => ({
-    dates,
-    mealTypes: [mealType],
-    ingredientNames: mealType === "breakfast" || allergenSafePlan
-      ? compatibleMealIngredients(context.preferences, mealType === "breakfast" ? "breakfast" : "main")
-      : undefined,
-    label: mealType,
-  }));
+  const compactStandardPlan = !constrainedPlan;
+  // Nel caso normale una risposta compatta può contenere tutta la settimana:
+  // una sola richiesta elimina due attese indipendenti senza compromettere il
+  // controllo finale di slot, colazioni, completezza e varietà. I vincoli
+  // restano invece separati per tipo di pasto, così ogni risposta può usare
+  // l'elenco chiuso di ingredienti compatibili.
+  const weeklyRequests: WeeklyMealRequest[] = compactStandardPlan
+    ? [{
+        dates,
+        mealTypes,
+        ingredientNames: undefined,
+        label: "weekly",
+      }]
+    : mealTypes.map((mealType) => ({
+        dates,
+        mealTypes: [mealType],
+        ingredientNames: mealType === "breakfast" || allergenSafePlan
+          ? compatibleMealIngredients(context.preferences, mealType === "breakfast" ? "breakfast" : "main")
+          : undefined,
+        label: mealType,
+      }));
 
   async function fetchChunk(request: WeeklyMealRequest, themeHint?: string, breakfastHint?: string): Promise<MealPlanSuggestion['items']> {
     const chunkDates = request.dates;
@@ -1113,12 +1195,21 @@ async function generateWeeklyMealPlanAttempt(
     const snackMealRule = constrainedPlan
       ? `- snack (spuntino): piccolo e leggero, composto esclusivamente da ingredienti compatibili con TUTTI i vincoli.`
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
+    const itemContract = compactStandardPlan
+      ? `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano), description (una frase breve con la preparazione), ingredients (array completo), steps (array di 2 micro-passaggi).`
+      : `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array), steps (array).`;
+    const preparationContract = compactStandardPlan
+      ? `- Mantieni la risposta compatta: description in una sola frase, solo gli ingredienti realmente necessari con quantità e unità, e steps con ESATTAMENTE 2 micro-passaggi pratici di massimo 8 parole ciascuno.`
+      : `- steps è la RICETTA passo-passo: da 3 a 6 passaggi brevi e chiari in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale).`;
+    const responseContract = compactStandardPlan
+      ? `{"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio breve 1","passaggio breve 2"]}]}`
+      : `{"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
 - Questa richiesta riguarda SOLO questi tipi di pasto: ${requestMealTypes.join(', ')}. Per ogni giorno genera esattamente ${mealsForRequest} pasti: ${requestMealTypes.join(', ')}.
-- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array), steps (array).
+${itemContract}
 - Ogni ingrediente ha: name (italiano), quantity (stringa, es. "200"), unit (es. "g", "ml", "pezzi").
-- steps è la RICETTA passo-passo: da 3 a 6 passaggi brevi e chiari in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale).
+${preparationContract}
 - IMPORTANTE: ogni piatto DEVE essere adatto al suo tipo di pasto secondo le abitudini italiane:
   ${breakfastMealRule}
   ${lunchMealRule}
@@ -1131,7 +1222,7 @@ REGOLE:
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno né in giorni diversi della settimana.
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena distribuisci nella settimana questi orientamenti, senza ripeterli: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per le colazioni distribuisci nella settimana queste idee, una diversa per giorno: ${breakfastHint}.` : ''}
 ${constraintRule}${constraintCorrection}
-- Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
+- Rispondi SOLO con JSON: ${responseContract}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
     if (context.modelCallBudget) {
@@ -1145,6 +1236,7 @@ ${constraintRule}${constraintCorrection}
       // in parallelo non possono oltrepassare il tetto condiviso.
       context.modelCallBudget.usedCalls++;
     }
+    modelCallsStarted++;
     const response = await getOpenAiClient().chat.completions.create({
       model: 'gpt-5-mini',
       reasoning_effort: 'minimal',
@@ -1157,8 +1249,9 @@ ${constraintRule}${constraintCorrection}
         mealTypes: requestMealTypes,
         itemCount: chunkDates.length * mealsForRequest,
         ingredientNames: request.ingredientNames,
+        compact: compactStandardPlan,
       }),
-      max_completion_tokens: 4000,
+      max_completion_tokens: compactStandardPlan ? 3000 : 4000,
     });
 
     const content = response.choices[0].message.content || '{"items":[]}';
@@ -1176,6 +1269,7 @@ ${constraintRule}${constraintCorrection}
   const allItems: MealPlanSuggestion['items'] = [];
   let failedChunks = 0;
   let firstReason: unknown = null;
+  let modelCallsStarted = 0;
   const results = await Promise.allSettled(
     weeklyRequests.map((request) => fetchChunk(
       request,
@@ -1203,7 +1297,17 @@ ${constraintRule}${constraintCorrection}
 
   const aiDurationMs = Date.now() - aiStartTime;
   if (!context.suppressInternalLogs) {
-    console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, generationAttempt: context.generationAttempt, aiDurationMs, chunks: weeklyRequests.length, failedChunks, itemsCount: filtered.length }));
+    console.log(JSON.stringify({
+      tag: "AI_MEAL_PLAN_CALL",
+      variant,
+      mode: compactStandardPlan ? "standard" : "constrained",
+      generationAttempt: context.generationAttempt,
+      aiDurationMs,
+      modelCalls: modelCallsStarted,
+      chunks: weeklyRequests.length,
+      failedChunks,
+      itemsCount: filtered.length,
+    }));
   }
 
   if (failedChunks > 0 && firstReason !== null) {
@@ -1215,6 +1319,13 @@ ${constraintRule}${constraintCorrection}
     throw new AiError(
       "AI_BAD_RESPONSE",
       `Piano pasti incompleto: ricevuti ${filtered.length} pasti, attesi ${expectedMeals}`,
+    );
+  }
+  const uniqueTitles = new Set(filtered.map((item) => normalizeItemName(item.title)));
+  if (compactStandardPlan && uniqueTitles.size !== expectedMeals) {
+    throw new AiError(
+      "AI_BAD_RESPONSE",
+      "La risposta AI non contiene pasti abbastanza vari",
     );
   }
   const unsuitableBreakfast = filtered.find((item) => {
@@ -1231,6 +1342,19 @@ ${constraintRule}${constraintCorrection}
     throw new AiError(
       "AI_BAD_RESPONSE",
       "La risposta AI contiene un pasto non adatto alla colazione",
+    );
+  }
+  const incompleteMeal = filtered.find((item) =>
+    !item.title.trim() ||
+    !item.description?.trim() ||
+    !item.ingredients?.length ||
+    !item.steps?.length ||
+    item.ingredients.some((ingredient) =>
+      !ingredient.name?.trim() || !ingredient.quantity?.trim() || !ingredient.unit?.trim()));
+  if (incompleteMeal) {
+    throw new AiError(
+      "AI_BAD_RESPONSE",
+      "La risposta AI contiene un pasto incompleto",
     );
   }
   if (context.onProgress && !deferProgressUntilValidated) {
@@ -1281,6 +1405,13 @@ ${constraintRule}${constraintCorrection}
 export async function generateWeeklyMealPlan(
   context: MealPlanGenerationContext,
 ): Promise<MealPlanSuggestion> {
+  // Difesa in profondità per eventuali chiamanti interni che bypassassero la
+  // preparazione HTTP: una nota sanitaria non traducibile in regole
+  // verificabili non deve mai raggiungere OpenAI come preferenza generica.
+  const unsupportedHealthNote = unsupportedMealPlanHealthNote(context.preferences);
+  if (unsupportedHealthNote) {
+    throw new AiError("AI_CONSTRAINT_VIOLATION", unsupportedHealthNote);
+  }
   const requestedLimit = Number.isFinite(context.maxConstraintAttempts)
     ? Math.floor(context.maxConstraintAttempts!)
     : MAX_CONSTRAINT_GENERATION_ATTEMPTS;

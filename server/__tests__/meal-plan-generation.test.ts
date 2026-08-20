@@ -26,6 +26,10 @@ type RequestInfo = {
   mealTypes: string[];
   ingredientNames?: string[];
   sysPrompt: string;
+  compact: boolean;
+  stepMinItems: number | undefined;
+  stepMaxItems: number | undefined;
+  maxCompletionTokens: number | undefined;
 };
 
 function makeMeal(date: string, mealType: string, title: string, ingredients: Ingredient[]): Meal {
@@ -52,6 +56,10 @@ function createFakeClient(buildItems: (request: RequestInfo) => Meal[]) {
             mealTypes: itemSchema.properties.mealType.enum,
             ingredientNames: itemSchema.properties.ingredients.items.properties.name.enum,
             sysPrompt,
+            compact: request.response_format.json_schema.name === "compact_weekly_meal_plan_response",
+            stepMinItems: itemSchema.properties.steps?.minItems,
+            stepMaxItems: itemSchema.properties.steps?.maxItems,
+            maxCompletionTokens: request.max_completion_tokens,
           };
           calls.push(info);
           return {
@@ -65,11 +73,12 @@ function createFakeClient(buildItems: (request: RequestInfo) => Meal[]) {
 }
 
 function weekItems(request: RequestInfo): Meal[] {
+  const breakfastFruits = ["banana", "mela", "pera", "arancia", "kiwi", "mirtilli", "pesca"];
   return request.dates.flatMap((date, index) =>
     request.mealTypes.map((mealType) => {
       if (mealType === "breakfast") {
         return makeMeal(date, mealType, `Colazione ${index}`, [
-          { name: "banana", quantity: "1", unit: "pezzo" },
+          { name: breakfastFruits[index]!, quantity: "1", unit: "pezzo" },
           { name: "yogurt bianco", quantity: "125", unit: "g" },
         ]);
       }
@@ -96,7 +105,7 @@ function assertCompleteWeek(items: Array<{ date: string; mealType: string }>, me
   }
 }
 
-test("senza opzioni: tre richieste parallele generano l'intera settimana", async (t) => {
+test("senza vincoli: una richiesta compatta genera l'intera settimana", async (t) => {
   const { client, calls } = createFakeClient(weekItems);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
@@ -108,14 +117,19 @@ test("senza opzioni: tre richieste parallele generano l'intera settimana", async
     onProgress: (items) => progress.push(items as Meal[]),
   });
 
-  assert.equal(calls.length, 3, "una richiesta settimanale per tipo di pasto, nessuna ripassata finale");
-  for (const call of calls) assert.deepEqual(call.dates, DATES);
-  assert.deepEqual(calls.map((call) => call.mealTypes[0]).sort(), ["breakfast", "dinner", "lunch"]);
-  const breakfastCall = calls.find((call) => call.mealTypes[0] === "breakfast")!;
-  for (const unsuitable of ["pasta", "riso", "polenta di mais", "zucchine", "uova"]) {
-    assert.ok(!breakfastCall.ingredientNames?.includes(unsuitable), unsuitable);
-  }
+  assert.equal(calls.length, 1, "il percorso standard usa al massimo una richiesta AI");
+  assert.deepEqual(calls[0]!.dates, DATES);
+  assert.deepEqual(calls[0]!.mealTypes, ["breakfast", "lunch", "dinner"]);
+  assert.equal(calls[0]!.compact, true, "il contratto standard resta compatto anche con micro-passaggi");
+  assert.equal(calls[0]!.stepMinItems, 2, "il contratto compatto richiede due passaggi");
+  assert.equal(calls[0]!.stepMaxItems, 2, "il contratto compatto limita i passaggi per restare rapido");
+  assert.equal(calls[0]!.maxCompletionTokens, 3000, "il percorso standard usa un budget di output ridotto");
+  assert.match(calls[0]!.sysPrompt, /Mantieni la risposta compatta/i);
   assertCompleteWeek(plan.items, 3);
+  assert.ok(
+    plan.items.every((item) => (item.steps?.length || 0) >= 2),
+    "il piano compatto mantiene passaggi visibili per ogni ricetta",
+  );
   assert.equal(progress.length, 7, "l'interfaccia riceve comunque gli aggiornamenti per giorno");
 });
 
@@ -130,8 +144,9 @@ test("due pasti al giorno mantengono il contratto da 14 pasti completi", async (
     preferences: { mealsPerDay: 2 },
   });
 
-  assert.equal(calls.length, 2);
-  assert.deepEqual(calls.map((call) => call.mealTypes[0]).sort(), ["dinner", "lunch"]);
+  assert.equal(calls.length, 1, "anche con due pasti il percorso standard resta una sola richiesta");
+  assert.deepEqual(calls[0]!.mealTypes, ["lunch", "dinner"]);
+  assert.equal(calls[0]!.compact, true);
   assertCompleteWeek(plan.items, 2);
 });
 
@@ -263,6 +278,23 @@ test("una risposta incompleta non viene consegnata come settimana valida", async
   );
 });
 
+test("un piano standard senza varietà viene rifiutato invece di essere consegnato", async (t) => {
+  const { client, calls } = createFakeClient((request) => request.dates.flatMap((date) =>
+    request.mealTypes.map((mealType) => makeMeal(date, mealType, "Pasto ripetuto", [
+      { name: "mela", quantity: "1", unit: "pezzo" },
+    ])),
+  ));
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  await assert.rejects(
+    generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START }),
+    (error: unknown) => (error as { code?: string }).code === "AI_BAD_RESPONSE",
+  );
+  assert.equal(calls.length, 2, "una sola rigenerazione è consentita prima dell'errore");
+  assert.ok(calls.every((call) => call.compact), "anche il retry standard resta compatto");
+});
+
 test("una risposta incompleta viene rigenerata una sola volta senza inviare piani parziali", async (t) => {
   let callsBeforeCompleteRetry = 0;
   const { client, calls } = createFakeClient((request) => {
@@ -310,23 +342,20 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
 });
 
-test("un alimento da pranzo nel testo della colazione viene rimosso anche senza allergie", async (t) => {
-  const { client } = createFakeClient((request) => {
-    if (request.mealTypes[0] !== "breakfast") return weekItems(request);
-    return request.dates.map((date) => makeMeal(date, "breakfast", "Patate al forno", [
-      { name: "banana", quantity: "1", unit: "pezzo" },
-    ]));
+test("un alimento da pranzo nel testo della colazione fa fallire il piano standard", async (t) => {
+  const { client, calls } = createFakeClient((request) => {
+    return weekItems(request).map((item) => item.mealType === "breakfast"
+      ? makeMeal(item.date, "breakfast", "Patate al forno", [
+          { name: "banana", quantity: "1", unit: "pezzo" },
+        ])
+      : item);
   });
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
-  const plan = await generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START });
-  const breakfasts = plan.items.filter((item) => item.mealType === "breakfast");
-  assert.ok(breakfasts.length > 0);
-  assert.ok(breakfasts.every((item) => !/\bpatate\b/i.test([
-    item.title,
-    item.description,
-    ...(item.ingredients || []).map((ingredient) => ingredient.name),
-    ...(item.steps || []),
-  ].join(" "))));
+  await assert.rejects(
+    generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START }),
+    (error: unknown) => (error as { code?: string }).code === "AI_BAD_RESPONSE",
+  );
+  assert.equal(calls.length, 2, "un solo retry è consentito per una colazione non valida");
 });

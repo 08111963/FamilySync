@@ -118,6 +118,8 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     for (const preferences of [
       { allergies: "Glutine", mealsPerDay: 2 },
       { notes: "Non posso mangiare arachidi", mealsPerDay: 2 },
+      { notes: "Sono celiaco", mealsPerDay: 2 },
+      { notes: "Sono celiaca", mealsPerDay: 2 },
     ]) {
       const res = await request("POST", `/api/ai/${familyId}/weekly-meal-plan/stream`, {
         weekStartDate: WEEK,
@@ -126,6 +128,28 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
       assert.equal(res.status, 403);
       const body = await res.json();
       assert.equal(body.error.code, "AI_HEALTH_CONSENT_REQUIRED");
+    }
+  });
+
+  test("0b) note mediche non verificabili vengono rifiutate prima della chiamata AI", async () => {
+    for (const notes of [
+      "Sono diabetico",
+      "Sono in gravidanza",
+      "Ho insufficienza renale",
+      "Sono incinta",
+      "Ho problemi ai reni",
+      "Ho una cardiopatia",
+      "Sono diabetico e allergico alle arachidi",
+      "Sono in gravidanza e non posso mangiare fragole",
+      "Ho insufficienza renale e devo evitare le noci",
+    ]) {
+      const res = await request("POST", `/api/ai/${familyId}/weekly-meal-plan/stream`, {
+        weekStartDate: WEEK,
+        preferences: { notes, mealsPerDay: 2 },
+      });
+      assert.equal(res.status, 422, notes);
+      const body = await res.json();
+      assert.equal(body.error.code, "UNSUPPORTED_ALLERGY_NOTE", notes);
     }
   });
 

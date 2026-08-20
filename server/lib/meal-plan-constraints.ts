@@ -4,6 +4,9 @@ export interface MealPlanConstraintPreferences {
   notes?: string;
 }
 
+const UNSUPPORTED_MEDICAL_CONDITION_PATTERN = /\b(?:diabet\w*|glicemi\w*|insufficienza|renal\w*|reni\w*|gravidanz\w*|incinta|incinto|ipertension\w*|pressione alta|cardiac\w*|cardiopat\w*|cuore|oncolog\w*|patolog\w*|malatti\w*|diagnos\w*|terap\w*|farmac\w*|medic\w*|colesterolo)\b/;
+const HEALTH_NOTE_PATTERN = /\b(?:allerg\w*|intoller\w*|celiac\w*|anafil\w*|senza glutine|gluten free|senza lattosio|non posso mangiare|non posso assumere|devo evitare|mi fa stare male|diabet\w*|glicemi\w*|insufficienza|renal\w*|reni\w*|gravidanz\w*|incinta|incinto|ipertension\w*|pressione alta|cardiac\w*|cardiopat\w*|cuore|oncolog\w*|patolog\w*|malatti\w*|diagnos\w*|terap\w*|farmac\w*|medic\w*|colesterolo)\b/;
+
 export interface MealPlanConstraintItem {
   title?: string | null;
   description?: string | null;
@@ -221,7 +224,11 @@ export function mealPlanPreferencesContainHealthData(
   if (preferences?.allergies?.trim()) return true;
   const notes = normalize(preferences?.notes || "");
   if (!notes) return false;
-  return /\b(?:allerg\w*|intoller\w*|celiach\w*|anafil\w*|senza glutine|gluten free|senza lattosio|non posso mangiare|non posso assumere|devo evitare|mi fa stare male)\b/.test(notes);
+  // Riconoscimento volutamente conservativo: una nota sanitaria che non
+  // possiamo tradurre in un vincolo alimentare verificabile deve essere
+  // bloccata prima di essere inviata al provider AI, non trattata come una
+  // semplice preferenza libera.
+  return HEALTH_NOTE_PATTERN.test(notes);
 }
 
 function cleanExtractedConstraint(value: string): string {
@@ -238,7 +245,7 @@ export function extractMealPlanHealthConstraints(
   if (!notes) return [];
 
   const extracted: string[] = [];
-  if (notes.includes("senza glutine") || notes.includes("gluten free") || notes.includes("celiach")) {
+  if (notes.includes("senza glutine") || notes.includes("gluten free") || notes.includes("celiac")) {
     extracted.push("glutine");
   }
   if (notes.includes("senza lattosio")) extracted.push("lattosio");
@@ -261,6 +268,14 @@ export function unsupportedMealPlanHealthNote(
   preferences?: MealPlanConstraintPreferences,
 ): string | undefined {
   if (!mealPlanPreferencesContainHealthData(preferences)) return undefined;
+  const notes = normalize(preferences?.notes || "");
+  // Le condizioni mediche generiche non hanno una regola alimentare
+  // deterministica in questo prodotto. Un'allergia estraibile nella stessa
+  // frase non rende verificabile diabete, gravidanza o insufficienza renale:
+  // la condizione non supportata deve restare bloccante.
+  if (UNSUPPORTED_MEDICAL_CONDITION_PATTERN.test(notes)) {
+    return "La condizione medica indicata nelle note non può essere verificata con sicurezza. Chiedi consiglio al medico e inserisci solo gli alimenti da evitare nel campo Allergie.";
+  }
   if (preferences?.allergies?.trim() || extractMealPlanHealthConstraints(preferences).length > 0) {
     return undefined;
   }
@@ -284,7 +299,7 @@ function rulesForPreferences(preferences?: MealPlanConstraintPreferences): FoodR
     addRule(rules, MEAT_RULE);
   }
 
-  if (/\b(senza glutine|gluten free|celiach|glutine)\b/.test(diet)) addRule(rules, GLUTEN_RULE);
+  if (/\b(senza glutine|gluten free|celiac\w*|glutine)\b/.test(diet)) addRule(rules, GLUTEN_RULE);
   if (/\b(senza lattosio|lattosio)\b/.test(diet)) addRule(rules, LACTOSE_RULE);
   if (/\b(chetogen|keto|low carb|basso contenuto di carboidrati)\b/.test(diet)) addRule(rules, LOW_CARB_RULE);
   if (/\bhalal\b/.test(diet)) {
@@ -295,7 +310,7 @@ function rulesForPreferences(preferences?: MealPlanConstraintPreferences): FoodR
     });
   }
 
-  if (/\b(glutine|celiach)\b/.test(allergies)) addRule(rules, GLUTEN_RULE);
+  if (/\b(glutine|celiac\w*)\b/.test(allergies)) addRule(rules, GLUTEN_RULE);
   if (/\blattosio\b/.test(allergies)) addRule(rules, LACTOSE_RULE);
   if (/\b(latte|caseina|proteine del latte)\b/.test(allergies) && !/\blattosio\b/.test(allergies)) addRule(rules, MILK_RULE);
   if (/\b(uovo|uova|albume|tuorlo)\b/.test(allergies)) addRule(rules, EGG_RULE);
@@ -338,7 +353,7 @@ function rulesForPreferences(preferences?: MealPlanConstraintPreferences): FoodR
 
 export function hasMealPlanConstraints(preferences?: MealPlanConstraintPreferences): boolean {
   const { diet, allergies } = safetySources(preferences);
-  return !!diet || !!allergies;
+  return !!diet || !!allergies || mealPlanPreferencesContainHealthData(preferences);
 }
 
 export function mealPlanRequiresGlutenFree(preferences?: MealPlanConstraintPreferences): boolean {

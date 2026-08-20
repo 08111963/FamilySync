@@ -49,8 +49,22 @@ let streamMode: "success" | "constraint-error" = "success";
 const postBodies: any[] = [];
 
 const STREAM_ITEMS = [
-  { date: "2030-03-04", mealType: "lunch", title: "Pasta al pomodoro E2E" },
-  { date: "2030-03-05", mealType: "dinner", title: "Minestrone E2E" },
+  {
+    date: "2030-03-04",
+    mealType: "lunch",
+    title: "Pasta al pomodoro E2E",
+    description: "Un primo veloce con salsa di pomodoro fresco.",
+    ingredients: [{ name: "Pasta", quantity: "160", unit: "g" }],
+    steps: ["Cuoci la pasta.", "Condisci con il pomodoro e servi."],
+  },
+  {
+    date: "2030-03-05",
+    mealType: "dinner",
+    title: "Minestrone E2E",
+    description: "Una cena calda di verdure di stagione.",
+    ingredients: [{ name: "Verdure miste", quantity: "400", unit: "g" }],
+    steps: ["Cuoci le verdure nel brodo.", "Servi il minestrone caldo."],
+  },
 ];
 
 let browser: Browser;
@@ -135,6 +149,9 @@ async function generatePlan() {
   await page.getByText("Salva questo piano").first().waitFor({ timeout: 15000 });
   // Il piano generato (stub) deve essere visibile in anteprima.
   await page.getByText("Pasta al pomodoro E2E").first().waitFor({ timeout: 15000 });
+  await page.getByText("Pasta al pomodoro E2E").first().tap();
+  await page.getByText("Un primo veloce con salsa di pomodoro fresco.").waitFor({ timeout: 5000 });
+  await page.getByText("Cuoci la pasta.").waitFor({ timeout: 5000 });
 }
 
 describe("Sostituzione piano pasti (Salva → conferma / Annulla)", () => {

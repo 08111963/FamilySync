@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   mealPlanPreferencesContainHealthData,
+  extractMealPlanHealthConstraints,
   unsupportedMealPlanHealthNote,
   unsupportedMealPlanDiet,
   validateMealPlanConstraints,
@@ -140,4 +141,54 @@ test("una nota sanitaria ambigua viene rifiutata invece di essere ignorata", () 
     unsupportedMealPlanHealthNote({ notes: "L'anafilassi è un problema importante" }) || "",
     /non può essere verificata/i,
   );
+});
+
+test("condizioni mediche generiche non attraversano il percorso di preferenze standard", () => {
+  for (const notes of [
+    "Sono diabetico",
+    "Sono in gravidanza",
+    "Ho insufficienza renale",
+    "Sono incinta",
+    "Ho problemi ai reni",
+    "Ho una cardiopatia",
+    "Ho problemi al cuore",
+  ]) {
+    assert.equal(mealPlanPreferencesContainHealthData({ notes }), true, notes);
+    assert.match(
+      unsupportedMealPlanHealthNote({ notes }) || "",
+      /non può essere verificata/i,
+      notes,
+    );
+  }
+});
+
+test("una condizione medica non supportata resta bloccante anche con un'allergia estraibile", () => {
+  for (const notes of [
+    "Sono diabetico e allergico alle arachidi",
+    "Sono in gravidanza e non posso mangiare fragole",
+    "Ho insufficienza renale e devo evitare le noci",
+  ]) {
+    assert.equal(mealPlanPreferencesContainHealthData({ notes }), true, notes);
+    assert.ok(extractMealPlanHealthConstraints({ notes }).length > 0, notes);
+    assert.match(
+      unsupportedMealPlanHealthNote({ notes }) || "",
+      /condizione medica/i,
+      notes,
+    );
+  }
+});
+
+test("celiaco e celiaca diventano un vincolo sul glutine prima della generazione", () => {
+  for (const notes of ["Sono celiaco", "Sono celiaca"]) {
+    assert.equal(mealPlanPreferencesContainHealthData({ notes }), true, notes);
+    assert.deepEqual(extractMealPlanHealthConstraints({ notes }), ["glutine"], notes);
+    assert.equal(unsupportedMealPlanHealthNote({ notes }), undefined, notes);
+    assert.ok(
+      validateMealPlanConstraints(
+        [{ title: "Pasta al pomodoro", ingredients: [ingredient("Pasta")] }],
+        { notes },
+      ).some((violation) => violation.code === "gluten"),
+      notes,
+    );
+  }
 });
