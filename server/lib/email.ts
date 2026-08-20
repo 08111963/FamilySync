@@ -619,6 +619,43 @@ export async function sendMealPlanBalanceAlertEmail(report: {
 }
 
 /**
+ * Avvisa il proprietario solo quando la sentinella sintetica ha esaurito ogni
+ * tentativo del validatore allergeni. Il messaggio contiene soltanto codici
+ * di regola e contatori: mai pasti, ingredienti o preferenze.
+ */
+export async function sendMealPlanAllergenRegressionAlertEmail(report: {
+  attempts: number;
+  violationCodes: string[];
+}): Promise<void> {
+  const raw = process.env.APP_OWNER_EMAILS || '';
+  const recipients = raw.split(',').map((e) => e.trim()).filter(Boolean);
+  if (recipients.length === 0) {
+    return;
+  }
+  if (!isEmailConfigured()) {
+    return;
+  }
+
+  const codes = report.violationCodes.map(escapeHtml).join(', ') || 'nessun codice disponibile';
+  await Promise.all(
+    recipients.map((to) =>
+      sendEmail({
+        to,
+        subject: '[FamilySync] Regressione AI: vincoli allergeni non rispettati',
+        html: `
+          <h2>Regressione confermata del controllo allergeni AI</h2>
+          <p>La sentinella periodica con dati sintetici ha esaurito tutti i
+          <strong>${report.attempts}</strong> tentativi senza ottenere un piano verificato.</p>
+          <p>Codici di violazione rilevati: <strong>${codes}</strong>.</p>
+          <p style="color:#888;font-size:12px;">Questo alert non contiene dati sanitari o contenuti di piani utente.
+          Vedi i log con tag MEAL_PLAN_ALLERGEN_MONITOR.</p>
+        `,
+      })
+    )
+  );
+}
+
+/**
  * Invia alla casella di assistenza una richiesta inviata da un utente dall'app.
  * Il Reply-To è impostato sull'email dell'utente, così l'assistenza può
  * rispondere direttamente con un semplice "Rispondi". Il chiamante deve aver già

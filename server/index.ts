@@ -16,6 +16,7 @@ import { startBillReminderScheduler } from './lib/bill-reminders';
 import { startEventReminderScheduler } from './lib/event-reminders';
 import { startUploadIntegrityScheduler } from './lib/upload-integrity';
 import { startMealPlanBalanceScheduler } from './lib/meal-plan-balance-monitor';
+import { startMealPlanAllergenMonitorScheduler } from './lib/meal-plan-allergen-monitor';
 import { startGcalReconcileScheduler } from './lib/google-calendar-sync';
 import { checkWebBuildStaleness, type WebBuildStaleness } from './lib/web-build-staleness';
 
@@ -587,6 +588,9 @@ function setupErrorHandler(app: express.Application) {
       // Valutazione settimanale equilibrio piani mediterranei AI reali
       // (opt-in via MEAL_PLAN_BALANCE_MONITOR=true: consuma quota AI).
       startMealPlanBalanceScheduler();
+      // Sentinella settimanale con allergene sintetico: rileva regressioni
+      // confermate del modello (opt-in via MEAL_PLAN_ALLERGEN_MONITOR=true).
+      startMealPlanAllergenMonitorScheduler();
       // Riconciliazione Google Calendar: recupera gli eventi non sincronizzati
       // dopo errori temporanei (backfill periodico, dedup su mapping unique).
       startGcalReconcileScheduler();

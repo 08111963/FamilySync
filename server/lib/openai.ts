@@ -566,18 +566,59 @@ export function parseMealItems(raw: unknown): MealPlanSuggestion['items'] {
   return results;
 }
 
+export interface MealPlanConstraintAttemptReport {
+  /** Tentativo completo rifiutato dal validatore applicativo. */
+  attempt: number;
+  /** Solo codici di regola: non contiene titoli, ingredienti o preferenze. */
+  violationCodes: string[];
+}
 interface MealPlanGenerationContext {
   familySize: number;
+
   weekStartDate: string;
+
   preferences?: { diet?: string; allergies?: string; maxTimeMinutes?: number; mealsPerDay?: number; notes?: string };
+
   planVariant?: number;
+
   onProgress?: (items: MealPlanSuggestion['items']) => void;
+  /**
+   * Telemetria server-side del rifiuto di un tentativo. Non è esposta al
+   * client e riceve esclusivamente codici di regola già normalizzati.
+   */
+
   onStatus?: (message: string) => void;
+
+  onConstraintViolation?: (report: MealPlanConstraintAttemptReport) => void;
+  /**
+   * Limite ulteriore opzionale per un chiamante interno. Non può mai innalzare
+   * il tetto applicativo standard di tentativi.
+   */
+
+  maxConstraintAttempts?: number;
+  /**
+   * Budget rigido opzionale delle invocazioni al modello per l'intera
+   * generazione, inclusi ritentativi e ripassate anti-doppioni.
+   */
+
+  maxModelCalls?: number;
+  /**
+   * Per sentinelle sintetiche con contratto di telemetria minimale: sopprime
+   * tutti i log interni della generazione. Il chiamante registra poi un unico
+   * esito allow-listed (tentativi e soli codici di violazione).
+   */
+
+  suppressInternalLogs?: boolean;
 }
 
+interface MealPlanModelCallBudget {
+  maxCalls: number;
+  usedCalls: number;
+}
 interface MealPlanGenerationAttemptContext extends MealPlanGenerationContext {
   constraintCorrection?: string;
   generationAttempt: number;
+  modelCallBudget?: MealPlanModelCallBudget;
 }
 
 class MealPlanConstraintRetryError extends Error {
@@ -791,6 +832,17 @@ ${constraintRule}${constraintCorrection}
 - Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
+    if (context.modelCallBudget) {
+      if (context.modelCallBudget.usedCalls >= context.modelCallBudget.maxCalls) {
+        throw new AiError(
+          "AI_PROVIDER_ERROR",
+          `Budget interno chiamate piano pasti esaurito (${context.modelCallBudget.maxCalls})`,
+        );
+      }
+      // L'incremento avviene prima del primo await: anche le chiamate avviate
+      // in parallelo non possono oltrepassare il tetto condiviso.
+      context.modelCallBudget.usedCalls++;
+    }
     const response = await getOpenAiClient().chat.completions.create({
       model: 'gpt-5-mini',
       reasoning_effort: 'minimal',
@@ -836,7 +888,9 @@ ${constraintRule}${constraintCorrection}
       if (result.status === 'rejected') {
         failedChunks++;
         if (firstReason === null) firstReason = result.reason;
-        console.error('Meal plan chunk failed:', String(result.reason));
+        if (!context.suppressInternalLogs) {
+          console.error('Meal plan chunk failed:', String(result.reason));
+        }
         continue;
       }
       const items = result.value;
@@ -916,7 +970,9 @@ ${constraintRule}${constraintCorrection}
       }
     } catch (reason) {
       // Doppione non sostituito: meglio un piatto ripetuto che un pasto mancante.
-      console.error('Meal plan dedupe pass failed:', String(reason));
+      if (!context.suppressInternalLogs) {
+        console.error('Meal plan dedupe pass failed:', String(reason));
+      }
     }
   }
 
@@ -927,7 +983,9 @@ ${constraintRule}${constraintCorrection}
   });
 
   const aiDurationMs = Date.now() - aiStartTime;
-  console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, generationAttempt: context.generationAttempt, aiDurationMs, chunks: chunks.length, failedChunks, itemsCount: filtered.length, duplicates: dupSlots.length, duplicatesFixed }));
+  if (!context.suppressInternalLogs) {
+    console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, generationAttempt: context.generationAttempt, aiDurationMs, chunks: chunks.length, failedChunks, itemsCount: filtered.length, duplicates: dupSlots.length, duplicatesFixed }));
+  }
 
   // Se non è stato generato nessun pasto valido e c'è stato un errore, propagalo tipizzato.
   if (filtered.length === 0 && firstReason !== null) {
@@ -937,11 +995,24 @@ ${constraintRule}${constraintCorrection}
   context.onStatus?.("Controllo che ogni pasto rispetti i vincoli alimentari.");
   const constraintViolations = validateMealPlanConstraints(filtered, context.preferences);
   if (constraintViolations.length > 0) {
-    console.error(JSON.stringify({
-      tag: "AI_MEAL_PLAN_CONSTRAINT_REJECTED",
-      variant,
-      violations: constraintViolations.map((violation) => violation.code),
-    }));
+    const violationCodes = Array.from(new Set(constraintViolations.map((violation) => violation.code)));
+    if (!context.suppressInternalLogs) {
+      console.error(JSON.stringify({
+        tag: "AI_MEAL_PLAN_CONSTRAINT_REJECTED",
+        variant,
+        violations: violationCodes,
+      }));
+    }
+    // È telemetria server-side best-effort: un observer non deve poter
+    // interrompere né alterare il percorso di sicurezza della generazione.
+    try {
+      context.onConstraintViolation?.({
+        attempt: context.generationAttempt,
+        violationCodes,
+      });
+    } catch {
+      /* callback osservativa: ignora errori */
+    }
     throw new MealPlanConstraintRetryError(constraintViolations);
   }
 
@@ -960,9 +1031,18 @@ ${constraintRule}${constraintCorrection}
 export async function generateWeeklyMealPlan(
   context: MealPlanGenerationContext,
 ): Promise<MealPlanSuggestion> {
+  const requestedLimit = Number.isFinite(context.maxConstraintAttempts)
+    ? Math.floor(context.maxConstraintAttempts!)
+    : MAX_CONSTRAINT_GENERATION_ATTEMPTS;
   const attempts = hasMealPlanConstraints(context.preferences)
-    ? MAX_CONSTRAINT_GENERATION_ATTEMPTS
+    ? Math.max(1, Math.min(MAX_CONSTRAINT_GENERATION_ATTEMPTS, requestedLimit))
     : 1;
+  const requestedModelCalls = Number.isFinite(context.maxModelCalls)
+    ? Math.floor(context.maxModelCalls!)
+    : undefined;
+  const modelCallBudget = requestedModelCalls === undefined
+    ? undefined
+    : { maxCalls: Math.max(1, requestedModelCalls), usedCalls: 0 };
   let constraintCorrection: string | undefined;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -978,6 +1058,7 @@ export async function generateWeeklyMealPlan(
         ...context,
         generationAttempt: attempt,
         constraintCorrection,
+        modelCallBudget,
       });
     } catch (error) {
       if (!(error instanceof MealPlanConstraintRetryError)) throw error;
@@ -989,13 +1070,15 @@ export async function generateWeeklyMealPlan(
         );
       }
 
-      console.warn(JSON.stringify({
-        tag: "AI_MEAL_PLAN_CONSTRAINT_RETRY",
-        variant: context.planVariant || 1,
-        failedAttempt: attempt,
-        nextAttempt: attempt + 1,
-        violations: Array.from(new Set(error.violations.map((violation) => violation.code))),
-      }));
+      if (!context.suppressInternalLogs) {
+        console.warn(JSON.stringify({
+          tag: "AI_MEAL_PLAN_CONSTRAINT_RETRY",
+          variant: context.planVariant || 1,
+          failedAttempt: attempt,
+          nextAttempt: attempt + 1,
+          violations: Array.from(new Set(error.violations.map((violation) => violation.code))),
+        }));
+      }
       constraintCorrection = buildConstraintCorrection(error.violations, attempt + 1);
     }
   }
