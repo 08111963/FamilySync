@@ -40,34 +40,29 @@ for i in $(seq 1 20); do
   sleep 0.5
 done
 
-# Sul telefono si raggiunge il proxy pubblico (443 → backend 5000), non la
-# porta interna 5000 che non è esposta direttamente fuori da Replit.
-export EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN"
+# Metro deve restare sulla 8081 per il simulatore interno Replit. Le API
+# viaggiano invece verso il backend separato esposto sulla 5000.
+export EXPO_PUBLIC_DOMAIN="$REPLIT_DEV_DOMAIN:5000"
+export EXPO_PUBLIC_API_BASE_URL="$REPLIT_DEV_DOMAIN:5000"
 
 # Lascia che Expo generi il proprio URL exp.direct. Forzare un sottodominio
 # ngrok.io riusa il vecchio backend tunnel e può fallire con "remote gone away".
 unset EXPO_TUNNEL_SUBDOMAIN || true
 
-# Ponte anteprima: la porta 8081 (esterna 80) deve servire il BACKEND (5000),
-# come in produzione — Metro qui serviva bundle dev stantii e rompeva l'OAuth.
-# Metro viene spostato sulla porta 8082 (solo per il tunnel Expo Go).
-node scripts/preview-proxy.cjs &
-PROXY_PID=$!
-
-echo "[tunnel] Starting Expo with its built-in tunnel (exp.direct) on port 8082."
+echo "[tunnel] Starting Expo with its built-in tunnel (exp.direct) on port 8081."
 echo "[tunnel] Scan the Expo Go QR below on Android to connect."
 
 # Avvia prima il tunnel. Se il provider del tunnel non risponde, Expo termina
 # senza QR né simulazione: in quel caso riavviamo Metro in modalità locale,
 # mantenendo disponibile l'ambiente Expo invece di lasciare il workflow a metà.
 start_expo() {
-  npx expo start "$@" --port 8082 &
+  npx expo start "$@" --port 8081 &
   EXPO_PID=$!
   wait "$EXPO_PID"
 }
 
 EXPO_PID=""
-trap 'kill -TERM "${EXPO_PID:-}" "$PROXY_PID" 2>/dev/null || true' TERM INT
+trap 'kill -TERM "${EXPO_PID:-}" 2>/dev/null || true' TERM INT
 if ! start_expo --tunnel; then
   echo "[tunnel] Il tunnel Expo non è disponibile; avvio Metro in modalità locale per QR e simulazione."
   start_expo --localhost

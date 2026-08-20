@@ -6,6 +6,11 @@ import { Platform } from "react-native";
 const AUTH_STORAGE_KEY = "@family_sync_auth";
 
 export function getApiUrl(): string {
+  const explicitApiBase = process.env.EXPO_PUBLIC_API_BASE_URL;
+  if (explicitApiBase) {
+    return new URL(`https://${explicitApiBase}`).href;
+  }
+
   // Sul web frontend e backend sono serviti dalla stessa origine: usarla
   // direttamente rende la build portabile (dev, anteprima, produzione)
   // senza dover "cucire" il dominio dentro il bundle all'export.
