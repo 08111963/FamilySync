@@ -309,6 +309,66 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
   },
 };
 
+/**
+ * Per il glutine non ci affidiamo solo alle istruzioni in linguaggio naturale:
+ * il nome di ogni ingrediente viene vincolato dallo schema strutturato a una
+ * lista naturale e già compatibile. Titoli e passaggi vengono comunque
+ * validati dal controllo indipendente prima della risposta al client.
+ */
+function mealPlanResponseFormat(
+  preferences?: MealPlanGenerationContext["preferences"],
+  options?: { dates: string[]; mealTypes: string[]; itemCount: number },
+) {
+  if (!requiresAllergenSafeRendering(preferences)) return MEAL_PLAN_RESPONSE_FORMAT;
+
+  const ingredientNames = naturallyGlutenFreeIngredients(preferences)
+    .split(", ")
+    .filter(Boolean);
+  const schema = MEAL_PLAN_RESPONSE_FORMAT.json_schema.schema;
+  const itemSchema = schema.properties.items.items;
+  const ingredientSchema = itemSchema.properties.ingredients.items;
+  const itemCount = options?.itemCount || 3;
+  const allowedDates = options?.dates || [];
+  const allowedMealTypes = options?.mealTypes || ["breakfast", "lunch", "dinner"];
+
+  return {
+    type: "json_schema" as const,
+    json_schema: {
+      ...MEAL_PLAN_RESPONSE_FORMAT.json_schema,
+      name: "gluten_free_meal_plan_response",
+      schema: {
+        ...schema,
+        properties: {
+          ...schema.properties,
+          items: {
+            ...schema.properties.items,
+            minItems: itemCount,
+            maxItems: itemCount,
+            items: {
+              ...itemSchema,
+              properties: {
+                ...itemSchema.properties,
+                date: { type: "string", enum: allowedDates },
+                mealType: { type: "string", enum: allowedMealTypes },
+                ingredients: {
+                  ...itemSchema.properties.ingredients,
+                  items: {
+                    ...ingredientSchema,
+                    properties: {
+                      ...ingredientSchema.properties,
+                      name: { type: "string", enum: ingredientNames },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
 export async function generateRecipeSuggestions(context: {
   familySize: number;
   dietaryPreferences?: string[] | string;
@@ -628,7 +688,93 @@ class MealPlanConstraintRetryError extends Error {
   }
 }
 
-const MAX_CONSTRAINT_GENERATION_ATTEMPTS = 3;
+// Un piano con vincoli sanitari deve essere corretto già nella generazione
+// richiesta dall'utente. Ritentare tre settimane di pasti dopo aver già
+// consumato minuti di attesa lascia l'utente senza un risultato verificabile.
+const MAX_CONSTRAINT_GENERATION_ATTEMPTS = 1;
+const NATURALLY_GLUTEN_FREE_INGREDIENTS = [
+  "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
+  "patate", "patate dolci", "ceci", "lenticchie", "fagioli", "piselli",
+  "olio extravergine di oliva",
+  "pomodori", "zucchine", "melanzane", "peperoni", "carote", "spinaci",
+  "bietole", "broccoli", "cavolfiore", "zucca", "cipolle", "aglio",
+  "insalata", "rucola", "cetrioli", "fagiolini", "asparagi", "funghi",
+  "limone", "olive", "basilico", "prezzemolo", "rosmarino", "origano",
+  "sale", "pepe", "aceto",
+];
+
+function naturallyGlutenFreeIngredients(
+  preferences?: MealPlanGenerationContext["preferences"],
+): string {
+  const declaredAllergies = `${preferences?.allergies || ""} ${preferences?.notes || ""}`
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length >= 3);
+  const excluded = new Set(declaredAllergies.flatMap((word) => {
+    if (word.endsWith("e")) return [word, `${word.slice(0, -1)}a`];
+    if (word.endsWith("i")) return [word, `${word.slice(0, -1)}o`, `${word.slice(0, -1)}e`];
+    return [word];
+  }));
+  return NATURALLY_GLUTEN_FREE_INGREDIENTS
+    .filter((ingredient) => {
+      const tokens = ingredient
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((word) => word.length >= 3);
+      return !tokens.some((token) => excluded.has(token));
+    })
+    .join(", ");
+}
+
+function requiresAllergenSafeRendering(
+  preferences?: MealPlanGenerationContext["preferences"],
+): boolean {
+  return mealPlanRequiresGlutenFree(preferences) || !!preferences?.allergies?.trim();
+}
+
+/**
+ * Con lo schema a enum l'AI può scegliere solo ingredienti sicuri; il testo
+ * libero (titolo/descrizione/passaggi) resta invece un canale non vincolabile
+ * dal JSON Schema. Lo rendiamo quindi a partire dagli ingredienti già
+ * verificati, senza sostituire o inventare un piano alternativo.
+ */
+function renderNaturallyGlutenFreeMealPlan(
+  items: MealPlanSuggestion["items"],
+  preferences?: MealPlanGenerationContext["preferences"],
+): MealPlanSuggestion["items"] {
+  if (!requiresAllergenSafeRendering(preferences)) return items;
+
+  return items.map((item) => {
+    const ingredientNames = (item.ingredients || [])
+      .map((ingredient) => ingredient?.name?.trim())
+      .filter((name): name is string => !!name)
+      .slice(0, 4);
+    const listedIngredients = ingredientNames.join(", ") || "ingredienti compatibili";
+    const titleIngredients = ingredientNames.slice(0, 2).join(" e ") || "ingredienti compatibili";
+    const mealLabel = item.mealType === "breakfast"
+      ? "Colazione"
+      : item.mealType === "lunch"
+        ? "Pranzo"
+        : item.mealType === "dinner"
+          ? "Cena"
+          : "Spuntino";
+
+    return {
+      ...item,
+      title: `${mealLabel} con ${titleIngredients}`,
+      description: `Pasto preparato con ${listedIngredients}.`,
+      steps: [
+        `Prepara ${listedIngredients} nelle quantità indicate.`,
+        `Cuoci e condisci gli ingredienti con cura.`,
+        "Servi subito.",
+      ],
+    };
+  });
+}
 
 function buildConstraintCorrection(
   violations: MealPlanConstraintViolation[],
@@ -677,6 +823,7 @@ async function generateWeeklyMealPlanAttempt(
   const dietLower = (context.preferences?.diet || '').toLowerCase();
   const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
   const constrainedPlan = hasMealPlanConstraints(context.preferences);
+  const safeGlutenIngredients = naturallyGlutenFreeIngredients(context.preferences);
   const mediterraneanRule = dietLower.includes('mediterran') && glutenFreeRequired
     ? `\n- DIETA MEDITERRANEA SENZA GLUTINE: riso, quinoa, polenta e patate come fonti di carboidrati; verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte; carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
     : dietLower.includes('mediterran') && constrainedPlan
@@ -695,12 +842,21 @@ async function generateWeeklyMealPlanAttempt(
   // pasta/pane integrali ovunque. Niente varianti integrali salvo richiesta.
   const wantsWholegrain = dietLower.includes('integral') || rawNotes.toLowerCase().includes('integral');
   const wholegrainRule = glutenFreeRequired
-    ? `\n- GLUTINE: pasta, pane, farine, cereali, biscotti e prodotti da forno sono ammessi SOLO se dichiarati esplicitamente "senza glutine" nel titolo, in ogni ingrediente e in ogni passaggio che li cita. Mai semola, frumento, farro, orzo o pane comune.`
+    ? ''
     : constrainedPlan
     ? `\n- VINCOLI: non usare esempi standard, prodotti confezionati o sostituti impliciti. Ogni ingrediente, condimento e componente deve essere dichiaratamente compatibile con TUTTI i vincoli indicati.`
     : wantsWholegrain
     ? ''
     : `\n- Pasta, riso e pane: usa quelli CLASSICI (pasta di semola, riso bianco, pane comune). NON proporre varianti "integrali" a meno che l'utente non le chieda espressamente.`;
+  // Il modello è poco affidabile nel dichiarare "senza glutine" su ogni campo
+  // della ricetta (titolo, ingredienti e passaggi). Per una richiesta legata
+  // al glutine privilegiamo quindi ingredienti naturalmente idonei: è più
+  // sicuro e impedisce che un'etichetta parziale faccia scartare l'intero piano.
+  const naturallyGlutenFreeRule = glutenFreeRequired
+    ? `\n- PIANO NATURALMENTE PRIVO DI GLUTINE: scegli OGNI ingrediente solamente da questa lista chiusa: ${safeGlutenIngredients}. Puoi combinare gli ingredienti della lista in ricette italiane varie, ma non aggiungere ingredienti esterni.
+- Non proporre prodotti sostitutivi da forno o a base di farina/cereali, nemmeno se potrebbero essere "senza glutine". Non scrivere mai pasta, pane, pizza, biscotti, cracker, couscous, farro, orzo, avena, cereali, farina, frumento o prodotti da forno in titolo, descrizione, ingrediente o passaggio.
+- Prima di restituire il JSON, ricontrolla ogni singola stringa: se contiene una di quelle parole, riscrivi la ricetta usando solo la lista chiusa sopra.`
+    : '';
 
   const dates: string[] = [];
   const start = new Date(context.weekStartDate);
@@ -865,7 +1021,7 @@ REGOLE:
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}
- - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}
+  - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${naturallyGlutenFreeRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno.${excludeRule}
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questi giorni ${themeHint}.` : ''}${breakfastHint && mealTypes.includes('breakfast') ? `\n- Per la colazione di questi giorni proponi: ${breakfastHint}. NON ripetere la stessa colazione in giorni diversi.` : ''}
 ${constraintRule}${constraintCorrection}
@@ -890,13 +1046,20 @@ ${constraintRule}${constraintCorrection}
         { role: 'system', content: sysPrompt },
         { role: 'user', content: userMsg },
       ],
-      response_format: MEAL_PLAN_RESPONSE_FORMAT,
+      response_format: mealPlanResponseFormat(context.preferences, {
+        dates: chunkDates,
+        mealTypes,
+        itemCount: mealsPerDay,
+      }),
       max_completion_tokens: 4000,
     });
 
     const content = response.choices[0].message.content || '{"items":[]}';
     const parsed: unknown = JSON.parse(content);
-    return parseMealItems(parsed);
+    return renderNaturallyGlutenFreeMealPlan(
+      parseMealItems(parsed),
+      context.preferences,
+    );
   }
 
   assertAiConfigured();
@@ -992,7 +1155,10 @@ ${constraintRule}${constraintCorrection}
     else markSeen(it.title);
   }
   let duplicatesFixed = 0;
-  if (dupSlots.length > 0) {
+  // Con vincoli sanitari evitiamo una chiamata AI aggiuntiva per la sola
+  // varietà: il piano è già generato in un unico passaggio controllato e la
+  // sicurezza ha priorità su una ripassata cosmetica dei titoli.
+  if (dupSlots.length > 0 && !constrainedPlan) {
     try {
       const dupDates = Array.from(new Set(dupSlots.map(s => s.date)));
       const replacements = await fetchChunk(dupDates, usedTitles, 'proponi piatti mai citati finora', 'una colazione italiana diversa da quelle già proposte');

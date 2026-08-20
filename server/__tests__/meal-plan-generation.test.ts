@@ -151,8 +151,8 @@ test("tutte le ondate fallite: propaga un errore tipizzato invece di piano vuoto
   );
 });
 
-test("vincolo glutine: dopo tre tentativi incompatibili rifiuta senza emettere progressi", async (t) => {
-  const { client } = makeFakeClient({
+test("vincolo glutine: rifiuta subito un piano incompatibile senza emettere progressi", async (t) => {
+  const { client, calls } = makeFakeClient({
     itemsForDate: (date) => [{
       ...meal(date, "lunch", "Penne al tonno"),
       ingredients: [
@@ -177,6 +177,7 @@ test("vincolo glutine: dopo tre tentativi incompatibili rifiuta senza emettere p
       return true;
     },
   );
+  assert.equal(calls.length, 7, "un solo passaggio AI: nessun ciclo di rigenerazione");
   assert.equal(progress.length, 0, "nessun chunk incompatibile deve raggiungere il client");
 });
 
@@ -227,8 +228,10 @@ test("ripassata fallita: il doppione resta al suo posto (mai buchi nel piano)", 
   const prompt = calls.map((call) => call.sysPrompt).join("\n");
   assert.match(prompt, /DIETA MEDITERRANEA SENZA GLUTINE/);
   assert.match(prompt, /riso naturalmente privo di glutine/);
+  assert.match(prompt, /PIANO NATURALMENTE PRIVO DI GLUTINE/);
+  assert.match(prompt, /riso, quinoa, polenta di mais, patate, legumi, frutta e verdura/);
   assert.match(prompt, /colazione leggera e senza glutine/);
-  assert.match(prompt, /in ogni passaggio che li cita/);
+  assert.match(prompt, /Non scrivere mai pasta, pane, pizza/);
   assert.doesNotMatch(prompt, /privilegia primi di pasta/);
   assert.doesNotMatch(prompt, /cappuccino e cornetto/);
   assert.ok(statuses.some((status) => status.includes("piano compatibile")));
