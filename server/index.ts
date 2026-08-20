@@ -12,6 +12,7 @@ import { ensureTesterAccounts } from './lib/tester-accounts';
 import { ensureVipAccount } from './lib/vip-account';
 import { ensurePantryUniqueIndex } from './lib/ensure-pantry-schema';
 import { ensureClientCrashSchema } from './lib/ensure-client-crash-schema';
+import { ensureMealPlanLatencyAlertSchema } from './lib/ensure-meal-plan-latency-alert-schema';
 import { startBillReminderScheduler } from './lib/bill-reminders';
 import { startEventReminderScheduler } from './lib/event-reminders';
 import { startUploadIntegrityScheduler } from './lib/upload-integrity';
@@ -535,6 +536,18 @@ function setupErrorHandler(app: express.Application) {
     if (r.created) log('client_crash_reports table created (was missing)');
   } catch (err) {
     log(`client crash schema ensure failed: ${String(err)}`);
+  }
+
+  // Stato condiviso del monitor di latenza piani (migrazione 0030) PRIMA di
+  // accettare richieste: senza tabella non possiamo deduplicare gli avvisi tra
+  // istanze, quindi in produzione un bootstrap fallito deve fermare l'avvio
+  // anziché lasciare l'alert silenziosamente inattivo.
+  try {
+    const r = await ensureMealPlanLatencyAlertSchema();
+    if (r.created) log('meal_plan_latency_alert_state table created (was missing)');
+  } catch (err) {
+    log(`meal plan latency alert schema ensure failed: ${String(err)}`);
+    if (process.env.NODE_ENV === 'production') throw err;
   }
 
   const port = parseInt(process.env.PORT || "5000", 10);

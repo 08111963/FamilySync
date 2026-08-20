@@ -647,6 +647,20 @@ export const clientCrashReports = pgTable("client_crash_reports", {
   index("client_crash_reports_at_idx").on(table.at),
 ]);
 
+// MEAL PLAN LATENCY ALERT STATE — stato operativo condiviso, senza contenuti
+// utente. Mantiene i contatori consecutivi e il ciclo aperto/risolto nel DB,
+// così più istanze autoscale non inviano notifiche duplicate dopo un riavvio.
+export const mealPlanLatencyAlertState = pgTable("meal_plan_latency_alert_state", {
+  mode: varchar("mode", { length: 16 }).primaryKey(),
+  consecutiveOverDurationBudget: integer("consecutive_over_duration_budget").default(0).notNull(),
+  consecutiveOverModelCallBudget: integer("consecutive_over_model_call_budget").default(0).notNull(),
+  episodeActive: boolean("episode_active").default(false).notNull(),
+  notificationDelivered: boolean("notification_delivered").default(false).notNull(),
+  notificationClaimId: varchar("notification_claim_id", { length: 36 }),
+  notificationClaimedAt: timestamp("notification_claimed_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // ENTITLEMENTS — Premium acquistato tramite store nativi (Google Play / Apple).
 // Premium è UNICO per famiglia: una sola riga per familyId (unique).
 // La verifica server-side aggiorna status/expiresAt; isPremium(familyId) legge qui.

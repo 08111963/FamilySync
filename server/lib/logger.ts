@@ -8,7 +8,7 @@ export function generateRequestId(): string {
 const IS_PROD = process.env.NODE_ENV === "production";
 
 // --- Redazione log di produzione (GDPR / information disclosure) ---
-// In produzione i log finiscono su stdout e vengono raccolti dalla piattaforma:
+// In produzione i log finiscono su stdout/stderr e vengono raccolti dalla piattaforma:
 // non devono mai contenere email in chiaro, token, JWT o credenziali.
 const MAX_LOG_LEN = 8000; // limite anti-regex-patologiche e anti-log giganti
 const EMAIL_RE = /([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
@@ -87,6 +87,20 @@ export const logger = {
   },
   error(message: string, meta?: Record<string, unknown>) {
     console.error(formatLog("error", message, meta));
+  },
+  /**
+   * Evento per il canale operativo del deployment.
+   *
+   * Gli alert usano stderr/error (non un normale warning applicativo), così il
+   * raccoglitore dei log di produzione può distinguerli dai log di routine.
+   * Il chiamante deve passare esclusivamente una allowlist di metadati
+   * operativi; la redazione protegge i log, ma non sostituisce tale vincolo.
+   */
+  operationalAlert(message: string, meta: Record<string, unknown>) {
+    console.error(formatLog("error", message, {
+      operationalChannel: "production_alerting",
+      ...meta,
+    }));
   },
   debug(message: string, meta?: Record<string, unknown>) {
     if (process.env.NODE_ENV === "development") {

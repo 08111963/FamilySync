@@ -656,6 +656,66 @@ export async function sendMealPlanAllergenRegressionAlertEmail(report: {
 }
 
 /**
+ * Avvisa il proprietario dell'app di una regressione persistente della latenza
+ * AI. Il payload è intenzionalmente una allowlist di categoria e numeri:
+ * nessun piano, ingrediente, preferenza, vincolo sanitario o identificativo
+ * utente/famiglia può arrivare nel messaggio.
+ *
+ * Restituisce il numero di destinatari a cui l'invio è stato richiesto. Zero
+ * significa canale email non configurato, non un errore del piano pasti.
+ */
+export async function sendMealPlanLatencyAlertEmail(report: {
+  mode: 'standard' | 'constrained';
+  signal: 'duration' | 'model_calls' | 'duration_and_model_calls';
+  consecutiveOverDurationBudget: number;
+  consecutiveOverModelCallBudget: number;
+  averageDurationMs: number;
+  p95DurationMs: number;
+  averageModelCalls: number;
+  durationBudgetMs: number;
+  modelCallBudget: number;
+}): Promise<number> {
+  const raw = process.env.APP_OWNER_EMAILS || '';
+  const recipients = raw.split(',').map((e) => e.trim()).filter(Boolean);
+  if (recipients.length === 0 || !isEmailConfigured()) {
+    return 0;
+  }
+
+  const modeLabel = report.mode === 'constrained' ? 'con vincoli' : 'standard';
+  const signalLabel = {
+    duration: 'durata',
+    model_calls: 'numero di chiamate AI',
+    duration_and_model_calls: 'durata e numero di chiamate AI',
+  }[report.signal];
+
+  await Promise.all(
+    recipients.map((to) =>
+      sendEmail({
+        to,
+        subject: '[FamilySync] Lentezza persistente nella generazione dei piani pasti',
+        html: `
+          <h2>Lentezza persistente rilevata</h2>
+          <p>Il monitor operativo ha aperto un episodio per il percorso
+          <strong>${modeLabel}</strong>: budget superato per <strong>${signalLabel}</strong>.</p>
+          <ul>
+            <li>Campioni consecutivi oltre budget — durata: <strong>${report.consecutiveOverDurationBudget}</strong>,
+            chiamate AI: <strong>${report.consecutiveOverModelCallBudget}</strong></li>
+            <li>Durata media / p95: <strong>${report.averageDurationMs} ms / ${report.p95DurationMs} ms</strong>
+            (budget: ${report.durationBudgetMs} ms)</li>
+            <li>Chiamate AI medie: <strong>${report.averageModelCalls}</strong>
+            (budget: ${report.modelCallBudget})</li>
+          </ul>
+          <p style="color:#888;font-size:12px;">Alert operativo: AI_MEAL_PLAN_LATENCY_ALERT.
+          Il messaggio contiene solo metriche aggregate e non include contenuti di piani,
+          preferenze, dati sanitari o identificativi di famiglia.</p>
+        `,
+      })
+    )
+  );
+  return recipients.length;
+}
+
+/**
  * Invia alla casella di assistenza una richiesta inviata da un utente dall'app.
  * Il Reply-To è impostato sull'email dell'utente, così l'assistenza può
  * rispondere direttamente con un semplice "Rispondi". Il chiamante deve aver già
