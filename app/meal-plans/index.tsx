@@ -68,9 +68,23 @@ interface AiMealPlanResponse {
 
 type TabKey = "plans" | "generate";
 
-function buildNotes(description?: string, steps?: string[]): string | undefined {
+function buildNotes(
+  description?: string,
+  steps?: string[],
+  ingredients?: MealPlanIngredient[],
+): string | undefined {
   const parts: string[] = [];
   if (description && description.trim()) parts.push(description.trim());
+  const ingredientLines = (ingredients ?? [])
+    .filter((ingredient) => ingredient.name?.trim())
+    .map((ingredient) =>
+      [ingredient.quantity?.trim(), ingredient.unit?.trim(), ingredient.name.trim()]
+        .filter(Boolean)
+        .join(" "),
+    );
+  if (ingredientLines.length > 0) {
+    parts.push(`Ingredienti:\n${ingredientLines.map((line) => `• ${line}`).join("\n")}`);
+  }
   if (steps && steps.length > 0) {
     const recipe = steps
       .map((s) => s.trim())
@@ -311,6 +325,13 @@ function PreviewMealRow({ meal, colors }: { meal: MealPlanItem; colors: ThemeCol
   const [expanded, setExpanded] = useState(false);
   const mealColor = getMealTypeColor(meal.mealType, colors.primary, colors.secondary);
   const recipeSteps = (meal.steps ?? []).map((s) => s.trim()).filter(Boolean);
+  const recipeIngredients = (meal.ingredients ?? [])
+    .filter((ingredient) => ingredient.name?.trim())
+    .map((ingredient) =>
+      [ingredient.quantity?.trim(), ingredient.unit?.trim(), ingredient.name.trim()]
+        .filter(Boolean)
+        .join(" "),
+    );
   const hasRecipe = recipeSteps.length > 0;
 
   return (
@@ -344,6 +365,16 @@ function PreviewMealRow({ meal, colors }: { meal: MealPlanItem; colors: ThemeCol
               {meal.description}
             </Text>
           ) : null}
+          {recipeIngredients.length > 0 && (
+            <View style={styles.ingredientsBox}>
+              <Text style={[styles.recipeHeading, { color: colors.text }]}>Ingredienti</Text>
+              {recipeIngredients.map((ingredient, index) => (
+                <Text key={`${ingredient}-${index}`} style={[styles.ingredientText, { color: colors.textSecondary }]}>
+                  • {ingredient}
+                </Text>
+              ))}
+            </View>
+          )}
           <Text style={[styles.recipeHeading, { color: colors.text }]}>Ricetta</Text>
           {recipeSteps.map((step, i) => (
             <View key={i} style={styles.recipeStepRow}>
@@ -741,7 +772,7 @@ export default function MealPlansScreen() {
           date: i.date,
           mealType: i.mealType,
           titleOverride: i.title,
-          notes: buildNotes(i.description, i.steps),
+          notes: buildNotes(i.description, i.steps, i.ingredients),
           ingredients: i.ingredients || null,
         })),
       });
@@ -1783,6 +1814,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_600SemiBold",
     marginBottom: 2,
+  },
+  ingredientsBox: {
+    gap: 2,
+    marginBottom: 4,
+  },
+  ingredientText: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 19,
   },
   recipeStepRow: {
     flexDirection: "row",

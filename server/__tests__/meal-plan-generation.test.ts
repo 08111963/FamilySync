@@ -39,7 +39,11 @@ function makeMeal(date: string, mealType: string, title: string, ingredients: In
     title,
     description: "Preparazione semplice.",
     ingredients,
-    steps: ["Prepara gli ingredienti.", "Servi."],
+    steps: [
+      "Lava e prepara gli ingredienti indicati.",
+      "Cuoci gli ingredienti seguendo le dosi previste.",
+      "Assembla il piatto e servilo caldo.",
+    ],
   };
 }
 
@@ -130,12 +134,11 @@ test("senza vincoli: richieste parallele per tipo mantengono ricette leggibili",
   assert.ok(calls.every((call) => !call.compact));
   assert.ok(calls.every((call) => call.maxCompletionTokens === 4000));
   assert.ok(calls.every((call) => call.stepMinItems === 3));
-  assert.ok(calls.every((call) => /da 3 a 6 passaggi brevi e chiari/i.test(call.sysPrompt)));
+  assert.ok(calls.every((call) => call.stepMaxItems === 6));
+  assert.ok(calls.every((call) => /da 3 a 6 istruzioni concrete e chiare/i.test(call.sysPrompt)));
   assertCompleteWeek(plan.items, 3);
-  assert.ok(
-    plan.items.every((item) => (item.steps?.length || 0) >= 2),
-    "ogni ricetta mantiene istruzioni visibili",
-  );
+  assert.ok(plan.items.every((item) => (item.steps?.length || 0) >= 3));
+  assert.ok(plan.items.every((item) => (item.steps?.length || 0) <= 6));
   assert.equal(progress.length, 7, "l'interfaccia riceve comunque gli aggiornamenti per giorno");
 });
 
@@ -160,7 +163,7 @@ test("con glutine: tre richieste mirate mantengono colazioni dolci e pasti compl
   const { client, calls } = createFakeClient((request) => request.dates.flatMap((date, index) =>
     request.mealTypes.map((mealType) => {
       if (mealType === "breakfast") {
-        return makeMeal(date, mealType, "Titolo ignorato", [
+        return makeMeal(date, mealType, "Colazione con yogurt e banana", [
           { name: "banana", quantity: "1", unit: "pezzo" },
           { name: "yogurt bianco", quantity: "125", unit: "g" },
         ]);
@@ -196,7 +199,7 @@ test("con glutine: tre richieste mirate mantengono colazioni dolci e pasti compl
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Glutine" }), []);
   assert.ok(plan.items.filter((item) => item.mealType === "breakfast").every((item) => !/\b(?:riso|polenta|zucchine|melanzane|pomodori|ceci)\b/i.test(item.title)));
-  assert.ok(plan.items.some((item) => item.mealType === "breakfast" && /yogurt.*banana/i.test(item.title)));
+  assert.ok(plan.items.some((item) => item.mealType === "breakfast" && item.title === "Colazione con yogurt e banana"));
 });
 
 test("con lattosio: la lista sicura esclude latticini ma consente la pasta", async (t) => {
@@ -331,9 +334,11 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
 });
 
-test("un alimento da pranzo nel testo della colazione viene reso sicuro senza rigenerare il piano", async (t) => {
+test("un alimento da pranzo nel testo della colazione viene rigenerato senza appiattire la ricetta", async (t) => {
+  let responseNumber = 0;
   const { client, calls } = createFakeClient((request) => {
-    return weekItems(request).map((item) => item.mealType === "breakfast"
+    const firstAttempt = responseNumber++ < 3;
+    return weekItems(request).map((item) => firstAttempt && item.mealType === "breakfast"
       ? makeMeal(item.date, "breakfast", "Patate al forno", [
           { name: "banana", quantity: "1", unit: "pezzo" },
         ])
@@ -355,7 +360,11 @@ test("un alimento da pranzo nel testo della colazione viene reso sicuro senza ri
         ...(item.ingredients || []).map((ingredient) => ingredient.name),
         ...(item.steps || []),
       ].join(" "))),
-    "la colazione non deve conservare il piatto salato nel testo finale",
+    "la colazione finale non deve conservare il piatto salato",
   );
-  assert.equal(calls.length, 3, "la normalizzazione non deve aggiungere una seconda generazione");
+  assert.equal(calls.length, 6, "una colazione non valida richiede una sola rigenerazione completa");
+  assert.ok(
+    plan.items.every((item) => (item.steps?.length || 0) >= 3 && (item.steps?.length || 0) <= 6),
+    "la rigenerazione deve mantenere una ricetta completa",
+  );
 });

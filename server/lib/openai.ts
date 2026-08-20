@@ -305,6 +305,7 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
               steps: {
                 type: 'array',
                 minItems: 3,
+                maxItems: 6,
                 items: { type: 'string' },
               },
             },
@@ -335,7 +336,7 @@ function mealPlanResponseFormat(
   if (!options) return MEAL_PLAN_RESPONSE_FORMAT;
 
   const ingredientNames = options.ingredientNames || (
-    requiresAllergenSafeRendering(preferences)
+    usesMealPlanIngredientAllowlist(preferences)
       ? compatibleMealIngredients(preferences, options.mealTypes.includes("breakfast") && options.mealTypes.length === 1 ? "breakfast" : "main")
       : undefined
   );
@@ -824,65 +825,19 @@ function mealPlanConstraintsHaveViolation(
   ).length > 0;
 }
 
-function requiresAllergenSafeRendering(
+function usesMealPlanIngredientAllowlist(
   preferences?: MealPlanGenerationContext["preferences"],
 ): boolean {
   return mealPlanRequiresGlutenFree(preferences) || mealPlanPreferencesContainHealthData(preferences);
 }
 
 /**
- * Con lo schema a enum l'AI può scegliere solo ingredienti sicuri; il testo
- * libero (titolo/descrizione/passaggi) resta invece un canale non vincolabile
- * dal JSON Schema. Lo rendiamo quindi a partire dagli ingredienti già
- * verificati, senza sostituire o inventare un piano alternativo.
+ * Gli ingredienti dei piani con vincoli sanitari usano un elenco chiuso.
+ * Titolo, descrizione e passaggi restano invece quelli completi prodotti
+ * dall'AI: vengono controllati dal validatore indipendente prima della
+ * consegna, così una ricetta incompatibile viene rigenerata e non appiattita
+ * in istruzioni generiche.
  */
-function renderNaturallyGlutenFreeMealPlan(
-  items: MealPlanSuggestion["items"],
-  preferences?: MealPlanGenerationContext["preferences"],
-): MealPlanSuggestion["items"] {
-  return items.map((item) => {
-    if (!requiresAllergenSafeRendering(preferences) && item.mealType !== "breakfast") {
-      return item;
-    }
-    const ingredientNames = (item.ingredients || [])
-      .map((ingredient) => ingredient?.name?.trim())
-      .filter((name): name is string => !!name)
-      .slice(0, 4);
-    const listedIngredients = ingredientNames.join(", ") || "ingredienti compatibili";
-    const titleIngredients = ingredientNames.slice(0, 3);
-    const readableTitle = item.mealType === "breakfast"
-      ? (() => {
-          const breakfastBaseIndex = titleIngredients.findIndex((name) =>
-            /\b(?:yogurt|latte|bevanda|pane|fette biscottate|uova|caff[eè]|gallette)\b/i.test(name));
-          const main = breakfastBaseIndex >= 0
-            ? titleIngredients[breakfastBaseIndex]!
-            : titleIngredients[0] || "Colazione compatibile";
-          const other = titleIngredients.filter((_, index) =>
-            index !== (breakfastBaseIndex >= 0 ? breakfastBaseIndex : 0));
-          if (other.length === 0) return main.charAt(0).toUpperCase() + main.slice(1);
-          if (/(mela|banana|pera|arancia|mandarino|pesca|albicocca|fragole|mirtilli|lamponi|uva|kiwi)/.test(main) &&
-            other.every((name) => /(mela|banana|pera|arancia|mandarino|pesca|albicocca|fragole|mirtilli|lamponi|uva|kiwi)/.test(name))) {
-            return `Macedonia di ${titleIngredients.join(", ")}`;
-          }
-          return `${main.charAt(0).toUpperCase() + main.slice(1)} con ${other.join(" e ")}`;
-        })()
-      : `${titleIngredients[0] || "Piatto compatibile"}${titleIngredients.length > 1 ? ` con ${titleIngredients.slice(1).join(" e ")}` : ""}`;
-
-    return {
-      ...item,
-      title: readableTitle,
-      description: `Pasto preparato con ${listedIngredients}.`,
-      steps: [
-        `Prepara ${listedIngredients} nelle quantità indicate.`,
-        item.mealType === "breakfast"
-          ? "Assembla gli ingredienti e servi a colazione."
-          : "Cuoci e condisci gli ingredienti con cura.",
-        "Servi subito.",
-      ],
-    };
-  });
-}
-
 function buildConstraintCorrection(
   violations: MealPlanConstraintViolation[],
   nextAttempt: number,
@@ -1088,7 +1043,7 @@ async function generateWeeklyMealPlanAttempt(
     ingredientNames?: string[];
     label: string;
   };
-  const allergenSafePlan = requiresAllergenSafeRendering(context.preferences);
+  const allergenSafePlan = usesMealPlanIngredientAllowlist(context.preferences);
   const standardPlan = !constrainedPlan;
   // Una risposta per ciascun tipo di pasto mantiene tre output piccoli in
   // parallelo. Una sola risposta da 21 ricette diventa seriale e più lenta,
@@ -1132,7 +1087,7 @@ async function generateWeeklyMealPlanAttempt(
       ? `- snack (spuntino): piccolo e leggero, composto esclusivamente da ingredienti compatibili con TUTTI i vincoli.`
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
     const itemContract = `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array), steps (array).`;
-    const preparationContract = `- steps è la RICETTA passo-passo: da 3 a 6 passaggi brevi e chiari in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale).`;
+    const preparationContract = `- steps è la RICETTA completa, passo-passo: da 3 a 6 istruzioni concrete e chiare in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale). Indica operazioni reali come lavare, tagliare, cuocere e assemblare, usando ingredienti e tempi quando utili. NON usare frasi generiche come "cuoci e condisci con cura" o "servi subito" come unico dettaglio della ricetta.`;
     const responseContract = `{"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
@@ -1185,10 +1140,7 @@ ${constraintRule}${constraintCorrection}
 
     const content = response.choices[0].message.content || '{"items":[]}';
     const parsed: unknown = JSON.parse(content);
-    return renderNaturallyGlutenFreeMealPlan(
-      parseMealItems(parsed),
-      context.preferences,
-    );
+    return parseMealItems(parsed);
   }
 
   assertAiConfigured();
@@ -1277,6 +1229,9 @@ ${constraintRule}${constraintCorrection}
     !item.description?.trim() ||
     !item.ingredients?.length ||
     !item.steps?.length ||
+    item.steps.length < 3 ||
+    item.steps.length > 6 ||
+    item.steps.some((step) => !step?.trim()) ||
     item.ingredients.some((ingredient) =>
       !ingredient.name?.trim() || !ingredient.quantity?.trim() || !ingredient.unit?.trim()));
   if (incompleteMeal) {
