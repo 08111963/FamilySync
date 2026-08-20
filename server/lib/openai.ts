@@ -572,6 +572,7 @@ interface MealPlanGenerationContext {
   preferences?: { diet?: string; allergies?: string; maxTimeMinutes?: number; mealsPerDay?: number; notes?: string };
   planVariant?: number;
   onProgress?: (items: MealPlanSuggestion['items']) => void;
+  onStatus?: (message: string) => void;
 }
 
 interface MealPlanGenerationAttemptContext extends MealPlanGenerationContext {
@@ -625,9 +626,12 @@ async function generateWeeklyMealPlanAttempt(
   // "Dieta mediterranea" senza guida diventa spesso "tanti legumi, poca pasta,
   // poche verdure": ancoriamo la distribuzione settimanale reale della dieta.
   const dietLower = (context.preferences?.diet || '').toLowerCase();
-  const mediterraneanRule = dietLower.includes('mediterran')
-    ? `\n- DIETA MEDITERRANEA VERA: pasta/riso/cereali come primo quasi ogni giorno a pranzo; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
-    : '';
+  const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
+  const mediterraneanRule = dietLower.includes('mediterran') && glutenFreeRequired
+    ? `\n- DIETA MEDITERRANEA SENZA GLUTINE: riso, quinoa, polenta e patate come fonti di carboidrati; verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte; carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
+    : dietLower.includes('mediterran')
+      ? `\n- DIETA MEDITERRANEA VERA: pasta/riso/cereali come primo quasi ogni giorno a pranzo; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
+      : '';
   const prefText = context.preferences
     ? `${context.preferences.diet ? ` Dieta: ${context.preferences.diet}.` : ''}${context.preferences.allergies ? ` Allergie: ${context.preferences.allergies}.` : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}${rawNotes ? ` Preferenze della famiglia (dettate a voce, seguile con attenzione): ${rawNotes}.` : ''}`
     : '';
@@ -638,8 +642,8 @@ async function generateWeeklyMealPlanAttempt(
   // Piatti tradizionali: il modello tende a "salutizzare" tutto proponendo
   // pasta/pane integrali ovunque. Niente varianti integrali salvo richiesta.
   const wantsWholegrain = dietLower.includes('integral') || rawNotes.toLowerCase().includes('integral');
-  const wholegrainRule = mealPlanRequiresGlutenFree(context.preferences)
-    ? `\n- GLUTINE: pasta, pane, farine, cereali, biscotti e prodotti da forno sono ammessi SOLO se dichiarati esplicitamente "senza glutine" sia nel titolo sia nell'ingrediente. Mai semola, frumento, farro, orzo o pane comune.`
+  const wholegrainRule = glutenFreeRequired
+    ? `\n- GLUTINE: pasta, pane, farine, cereali, biscotti e prodotti da forno sono ammessi SOLO se dichiarati esplicitamente "senza glutine" nel titolo, in ogni ingrediente e in ogni passaggio che li cita. Mai semola, frumento, farro, orzo o pane comune.`
     : wantsWholegrain
     ? ''
     : `\n- Pasta, riso e pane: usa quelli CLASSICI (pasta di semola, riso bianco, pane comune). NON proporre varianti "integrali" a meno che l'utente non le chieda espressamente.`;
@@ -697,7 +701,31 @@ async function generateWeeklyMealPlanAttempt(
     'a pranzo paella-risotto di verdure o minestrone con farro e crostini; a cena burger o polpette di ceci con verdure e pane',
     'a pranzo cannelloni o gnocchi alla sorrentina; a cena alici al forno oppure una tagliata magra con verdure e patate',
   ];
-  const activeDayThemes = mediterraneanRule
+  // Quando è richiesto il senza glutine, i temi normali diventano istruzioni
+  // contraddittorie (pasta, pane, farro, orzo, biscotti). Non basta chiedere
+  // al modello di ignorarli: sostituiamoli con alternative naturalmente prive
+  // di glutine, così il primo tentativo è già praticabile per il validatore.
+  const glutenFreeDayThemes = [
+    'privilegia riso naturalmente privo di glutine con verdure di stagione e una fonte proteica compatibile',
+    'privilegia pesce o una fonte proteica compatibile con patate e verdure',
+    'privilegia quinoa o polenta con verdure e una fonte proteica compatibile',
+    'privilegia legumi con riso, patate o polenta e verdure',
+    'privilegia risotti con verdure e una fonte proteica compatibile',
+    'privilegia zuppe di verdure e legumi con patate, riso o polenta',
+    'privilegia piatti regionali italiani naturalmente senza glutine con verdure',
+  ];
+  const glutenFreeDayThemesB = [
+    'privilegia riso basmati con verdure e una fonte proteica compatibile',
+    'privilegia polenta con verdure e una fonte proteica compatibile',
+    'privilegia quinoa con ortaggi di stagione e una fonte proteica compatibile',
+    'privilegia vellutate di verdure con legumi e patate',
+    'privilegia insalate di riso con verdure e una fonte proteica compatibile',
+    'privilegia patate al forno con verdure e una fonte proteica compatibile',
+    'privilegia un piatto mediterraneo naturalmente senza glutine con verdure',
+  ];
+  const activeDayThemes = glutenFreeRequired
+    ? (variant === 2 ? glutenFreeDayThemesB : glutenFreeDayThemes)
+    : mediterraneanRule
     ? (variant === 2 ? mediterraneanDayThemesB : mediterraneanDayThemes)
     : (variant === 2 ? [...dayThemes.slice(3), ...dayThemes.slice(0, 3)] : dayThemes);
 
@@ -712,11 +740,36 @@ async function generateWeeklyMealPlanAttempt(
     'ricotta o formaggio fresco con miele e frutta secca',
     'frullato o smoothie con biscotti secchi',
   ];
+  const glutenFreeBreakfastThemes = [
+    'yogurt o un’alternativa compatibile con frutta fresca',
+    'frullato di frutta con yogurt o un’alternativa compatibile',
+    'frutta fresca con ricotta o un’alternativa compatibile',
+    'smoothie di frutta con semi',
+    'yogurt o un’alternativa compatibile con frutta cotta',
+    'macedonia di frutta con yogurt o un’alternativa compatibile',
+    'frullato di banana e frutta fresca con una bevanda compatibile',
+  ];
+  const activeBreakfastThemes = glutenFreeRequired ? glutenFreeBreakfastThemes : breakfastThemes;
 
   async function fetchChunk(chunkDates: string[], excludeTitles: string[], themeHint?: string, breakfastHint?: string): Promise<MealPlanSuggestion['items']> {
     const excludeRule = excludeTitles.length
       ? `\n- VARIETÀ OBBLIGATORIA: questi piatti sono GIÀ stati pianificati in altri giorni della settimana, quindi NON riproporli e NON proporne di simili: ${excludeTitles.join('; ')}. Scegli piatti chiaramente DIVERSI per ogni pasto.`
       : '';
+    const breakfastMealRule = glutenFreeRequired
+      ? `- breakfast (colazione): SOLO una colazione leggera e senza glutine. Usa frutta, yogurt o un'alternativa compatibile, smoothie o semi. Non proporre prodotti da forno, pane, biscotti, cereali o farine salvo che siano dichiarati "senza glutine" nel titolo, negli ingredienti e nei passaggi.`
+      : `- breakfast (colazione): SOLO colazione italiana tipica, dolce e leggera. Es. cappuccino e cornetto, latte e biscotti, fette biscottate con marmellata, yogurt con cereali e frutta, pane con marmellata o miele, crostata, ciambellone, pancake, porridge, spremuta con plumcake. MAI piatti salati come pasta, carne, pesce, verdure cotte o bruschette salate.`;
+    const lunchMealRule = glutenFreeRequired
+      ? `- lunch (pranzo): pasto principale completo con riso, quinoa, polenta, patate o un altro carboidrato dichiaratamente senza glutine, una fonte proteica compatibile e verdure.`
+      : `- lunch (pranzo): pasto principale completo (es. primo di pasta/riso o piatto unico con contorno).`;
+    const dinnerMealRule = glutenFreeRequired
+      ? `- dinner (cena): pasto più leggero del pranzo con una fonte proteica compatibile, verdure e riso, patate, polenta o un altro carboidrato dichiaratamente senza glutine.`
+      : `- dinner (cena): pasto più leggero del pranzo (es. secondo di carne/pesce/uova/legumi con verdure, zuppe, minestre).`;
+    const completeLunchRule = glutenFreeRequired
+      ? `- A pranzo usa riso, quinoa, polenta, patate o un altro carboidrato dichiaratamente senza glutine insieme a proteine e verdure.`
+      : `- A pranzo il primo deve includere una fonte proteica (es. pasta con legumi/pesce/ragù bianco/uova/formaggio come tonno, ceci, sgombro, ricotta) oppure va aggiunto un secondo leggero: MAI solo pasta al pomodoro senza proteine.`;
+    const completeDinnerRule = glutenFreeRequired
+      ? `- A cena, accanto alla fonte proteica, includi sempre riso, patate, polenta, quinoa o un altro carboidrato dichiaratamente senza glutine.`
+      : `- A cena, accanto alla fonte proteica, includi SEMPRE una porzione di carboidrati (pane, patate, farro, orzo o riso): MAI solo proteine e verdure.`;
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
 - Per ogni giorno genera esattamente ${mealsPerDay} pasti: ${mealTypes.join(', ')}.
@@ -724,13 +777,13 @@ REGOLE:
 - Ogni ingrediente ha: name (italiano), quantity (stringa, es. "200"), unit (es. "g", "ml", "pezzi").
 - steps è la RICETTA passo-passo: da 3 a 6 passaggi brevi e chiari in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale).
 - IMPORTANTE: ogni piatto DEVE essere adatto al suo tipo di pasto secondo le abitudini italiane:
-  - breakfast (colazione): SOLO colazione italiana tipica, dolce e leggera. Es. cappuccino e cornetto, latte e biscotti, fette biscottate con marmellata, yogurt con cereali e frutta, pane con marmellata o miele, crostata, ciambellone, pancake, porridge, spremuta con plumcake. MAI piatti salati come pasta, carne, pesce, verdure cotte o bruschette salate.
-  - lunch (pranzo): pasto principale completo (es. primo di pasta/riso o piatto unico con contorno).
-  - dinner (cena): pasto più leggero del pranzo (es. secondo di carne/pesce/uova/legumi con verdure, zuppe, minestre).
+  ${breakfastMealRule}
+  ${lunchMealRule}
+  ${dinnerMealRule}
   - snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
-  - A pranzo il primo deve includere una fonte proteica (es. pasta con legumi/pesce/ragù bianco/uova/formaggio come tonno, ceci, sgombro, ricotta) oppure va aggiunto un secondo leggero: MAI solo pasta al pomodoro senza proteine.
-  - A cena, accanto alla fonte proteica, includi SEMPRE una porzione di carboidrati (pane, patate, farro, orzo o riso): MAI solo proteine e verdure.
+  ${completeLunchRule}
+  ${completeDinnerRule}
  - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno.${excludeRule}
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questi giorni ${themeHint}.` : ''}${breakfastHint && mealTypes.includes('breakfast') ? `\n- Per la colazione di questi giorni proponi: ${breakfastHint}. NON ripetere la stessa colazione in giorni diversi.` : ''}
@@ -775,7 +828,7 @@ ${constraintRule}${constraintCorrection}
           chunkDates,
           excludeSnapshot,
           activeDayThemes[(w + i) % activeDayThemes.length],
-          breakfastThemes[(w + i) % breakfastThemes.length],
+          activeBreakfastThemes[(w + i) % activeBreakfastThemes.length],
         )
       )
     );
@@ -881,6 +934,7 @@ ${constraintRule}${constraintCorrection}
     throw mapOpenAiError(firstReason);
   }
 
+  context.onStatus?.("Controllo che ogni pasto rispetti i vincoli alimentari.");
   const constraintViolations = validateMealPlanConstraints(filtered, context.preferences);
   if (constraintViolations.length > 0) {
     console.error(JSON.stringify({
@@ -913,6 +967,13 @@ export async function generateWeeklyMealPlan(
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
+      context.onStatus?.(
+        attempts === 1
+          ? "Creo il piano pasti."
+          : attempt === 1
+            ? "Creo un piano compatibile con i vincoli indicati."
+            : `Rigenero un piano compatibile (tentativo ${attempt} di ${attempts}).`,
+      );
       return await generateWeeklyMealPlanAttempt({
         ...context,
         generationAttempt: attempt,

@@ -226,6 +226,39 @@ test("vincolo glutine: rigenera automaticamente l'intero piano e mostra solo il 
   assert.ok(progress.flat().every((item) => item.title.startsWith("Riso al tonno")));
 });
 
+test("vincolo glutine: il prompt usa temi senza glutine e comunica gli stati di verifica", async (t) => {
+  const { client, calls } = makeFakeClient({
+    itemsForDate: (date, callIndex) => [{
+      ...meal(date, "lunch", `Riso e verdure ${callIndex}`),
+      ingredients: [
+        { name: "Riso", quantity: "80", unit: "g" },
+        { name: "Verdure di stagione", quantity: "200", unit: "g" },
+      ],
+    }],
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const statuses: string[] = [];
+  await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { diet: "Mediterranea", allergies: "Glutine", mealsPerDay: 2 },
+    onStatus: (message) => statuses.push(message),
+  });
+
+  assert.equal(calls.length, 7);
+  const prompt = calls.map((call) => call.sysPrompt).join("\n");
+  assert.match(prompt, /DIETA MEDITERRANEA SENZA GLUTINE/);
+  assert.match(prompt, /riso naturalmente privo di glutine/);
+  assert.match(prompt, /colazione leggera e senza glutine/);
+  assert.match(prompt, /in ogni passaggio che li cita/);
+  assert.doesNotMatch(prompt, /privilegia primi di pasta/);
+  assert.doesNotMatch(prompt, /cappuccino e cornetto/);
+  assert.ok(statuses.some((status) => status.includes("piano compatibile")));
+  assert.ok(statuses.some((status) => status.includes("Controllo")));
+});
+
 test("allergia espressa nelle note: l'alimento viene estratto e il piano viene rifiutato", async (t) => {
   const { client } = makeFakeClient({
     itemsForDate: (date) => [{

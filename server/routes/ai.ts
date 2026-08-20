@@ -999,22 +999,30 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     // Lo slot prenotato viene marcato "failed" dal finally.
     if (clientClosed) return;
 
+    // Dopo controlli input e prenotazione quota possiamo aprire lo stream per
+    // aggiornamenti di stato; i pasti restano comunque bufferizzati fino alla
+    // validazione completa, quindi nulla di incompatibile viene mai mostrato.
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    const writeStatus = (message: string) => {
+      if (clientClosed) return;
+      try { res.write(JSON.stringify({ type: 'status', message }) + '\n'); } catch {}
+    };
+    writeStatus('Preparo un piano pasti verificato.');
+
     const plan = await generateWeeklyMealPlan({
       familySize: members.length || 1,
       weekStartDate,
       preferences: preparedPreferences.preferences,
       planVariant,
+      onStatus: writeStatus,
     });
     await finalizeUsageOnce(true);
 
     if (clientClosed) return;
-
-    // Il piano viene bufferizzato e validato interamente PRIMA di aprire lo
-    // stream: nessun pasto incompatibile può comparire come anteprima parziale.
-    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders();
 
     const durationMs = Date.now() - startTime;
     console.log(JSON.stringify({

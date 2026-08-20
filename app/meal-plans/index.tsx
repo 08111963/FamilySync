@@ -483,6 +483,7 @@ export default function MealPlansScreen() {
   const [generatingAlt, setGeneratingAlt] = useState(false);
   const [aiDisabledError, setAiDisabledError] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const generateScrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -492,6 +493,14 @@ export default function MealPlansScreen() {
     }, 100);
     return () => clearTimeout(timer);
   }, [generationError]);
+
+  useEffect(() => {
+    if (!generationStatus) return;
+    const timer = setTimeout(() => {
+      generateScrollRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [generationStatus]);
 
   // Contatore degli stream: ogni nuova generazione lo incrementa, così gli
   // aggiornamenti (e la lettura vocale) di uno stream vecchio vengono ignorati.
@@ -506,6 +515,7 @@ export default function MealPlansScreen() {
     setSelectedPlanIndex(0);
     setAiDisabledError(false);
     setGenerationError(null);
+    setGenerationStatus("Preparo un piano pasti verificato.");
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const notes = (opts?.voiceNotes ?? voicePrefs).trim();
@@ -530,6 +540,8 @@ export default function MealPlansScreen() {
             streamErrorMessage = typeof obj.message === "string"
               ? obj.message
               : "Impossibile generare il piano pasti.";
+          } else if (obj?.type === "status" && typeof obj.message === "string") {
+            setGenerationStatus(obj.message);
           } else if (obj?.type === "items" && Array.isArray(obj.items)) {
             collectedItems.push(...(obj.items as MealPlanItem[]));
             if (!started) {
@@ -606,7 +618,10 @@ export default function MealPlansScreen() {
       }
       setAiPlans([]);
     } finally {
-      if (isActive()) setGenerating(false);
+      if (isActive()) {
+        setGenerating(false);
+        setGenerationStatus(null);
+      }
     }
   };
 
@@ -1038,7 +1053,12 @@ export default function MealPlansScreen() {
             ]}
           >
             {generating ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
+              <>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.generateButtonText}>
+                  Generazione in corso...
+                </Text>
+              </>
             ) : (
               <>
                 <Ionicons name="sparkles" size={20} color="#FFFFFF" />
@@ -1046,6 +1066,18 @@ export default function MealPlansScreen() {
               </>
             )}
           </Pressable>
+
+          {generating && generationStatus && (
+            <View
+              style={[styles.generationStatus, { backgroundColor: colors.primary + "12" }]}
+              testID="mealplan-generation-status"
+            >
+              <ActivityIndicator color={colors.primary} size="small" />
+              <Text style={[styles.generationStatusText, { color: colors.textSecondary }]}>
+                {generationStatus}
+              </Text>
+            </View>
+          )}
 
           {generationError && (
             <View
@@ -1645,6 +1677,21 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontFamily: "Inter_600SemiBold",
+  },
+  generationStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 10,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  generationStatusText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    lineHeight: 18,
   },
   generationErrorBox: {
     flexDirection: "row",
