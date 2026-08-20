@@ -26,6 +26,7 @@ import { recipeImageCacheKey, createRecipeImagePrewarm } from '../lib/recipe-ima
 import { isObjectStorageMode, persistUploadedFile, uploadObjectExists } from '../lib/upload-storage';
 import {
   type MealPlanConstraintPreferences,
+  hasMealPlanConstraints,
   mealPlanPreferencesContainHealthData,
   unsupportedMealPlanHealthNote,
   unsupportedMealPlanDiet,
@@ -929,13 +930,12 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
     const resultPlans: any[] = [{ ...plan, weekStartDate }];
 
     const durationMs = Date.now() - startTime;
-    console.log(JSON.stringify({
+    logger.info('Meal plan generated', {
       tag: "AI_MEAL_PLAN",
-      familyId,
-      variants,
+      mode: hasMealPlanConstraints(preparedPreferences.preferences) ? "constrained" : "standard",
       durationMs,
-      plans: resultPlans.map(p => ({ title: p.title, itemsCount: p.items?.length || 0 })),
-    }));
+      itemsCount: plan.items?.length || 0,
+    });
 
     res.json({ plans: resultPlans });
 
@@ -1025,12 +1025,12 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     if (clientClosed) return;
 
     const durationMs = Date.now() - startTime;
-    console.log(JSON.stringify({
+    logger.info('Meal plan stream generated', {
       tag: "AI_MEAL_PLAN_STREAM",
-      familyId,
+      mode: hasMealPlanConstraints(preparedPreferences.preferences) ? "constrained" : "standard",
       durationMs,
       itemsCount: plan.items.length,
-    }));
+    });
 
     res.write(JSON.stringify({ type: 'items', items: plan.items }) + '\n');
     res.write(JSON.stringify({

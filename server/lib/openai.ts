@@ -11,6 +11,7 @@ import {
   validateMealPlanConstraints,
   type MealPlanConstraintViolation,
 } from './meal-plan-constraints';
+import { recordMealPlanLatency } from './meal-plan-latency-monitor';
 
 // Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
 // SDK lancia se la chiave manca, e ciò impedirebbe l'avvio del server.
@@ -1297,6 +1298,12 @@ ${constraintRule}${constraintCorrection}
 
   const aiDurationMs = Date.now() - aiStartTime;
   if (!context.suppressInternalLogs) {
+    recordMealPlanLatency({
+      mode: compactStandardPlan ? 'standard' : 'constrained',
+      durationMs: aiDurationMs,
+      modelCalls: modelCallsStarted,
+      modelCallBudget: weeklyRequests.length,
+    });
     console.log(JSON.stringify({
       tag: "AI_MEAL_PLAN_CALL",
       variant,
