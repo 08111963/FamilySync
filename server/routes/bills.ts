@@ -34,6 +34,12 @@ import {
   MAX_UPLOAD_BYTES,
 } from './chat';
 import { persistUploadedFile, deleteStoredUploads } from '../lib/upload-storage';
+import {
+  syncCreatedEvents,
+  syncUpdatedEvent,
+  syncDeletedEvents,
+  getDeleteTargetsForEvent,
+} from '../lib/google-calendar-sync';
 
 const router = Router();
 
@@ -218,6 +224,9 @@ async function createBillCalendarEvent(
       return current ?? bill;
     }
     broadcastToFamily(bill.familyId, 'event_created', event);
+    // Sync diretta Google Calendar in background: se Google non è raggiungibile,
+    // l'evento senza link verrà recuperato dalla riconciliazione durevole.
+    void syncCreatedEvents(bill.familyId, [event], userId);
     return updated;
   } catch (error) {
     logger.warn('Bill calendar sync (create) failed', { billId: bill.id, error: String(error) });
@@ -234,7 +243,11 @@ async function updateBillCalendarEvent(bill: typeof bills.$inferSelect): Promise
       .set({ ...billEventFields(bill), updatedAt: new Date() })
       .where(and(eq(calendarEvents.id, bill.calendarEventId), eq(calendarEvents.familyId, bill.familyId)))
       .returning();
-    if (event) broadcastToFamily(bill.familyId, 'event_updated', event);
+    if (event) {
+      broadcastToFamily(bill.familyId, 'event_updated', event);
+      // Aggiornamento immediato nei Google Calendar già collegati.
+      void syncUpdatedEvent(event);
+    }
   } catch (error) {
     logger.warn('Bill calendar sync (update) failed', { billId: bill.id, error: String(error) });
   }
@@ -248,10 +261,24 @@ async function deleteBillCalendarEvent(
 ): Promise<void> {
   if (!calendarEventId) return;
   try {
+    // La cascade del DB elimina i mapping Google insieme all'evento: leggili
+    // prima della delete. Includi anche gli id deterministici delle creazioni
+    // ancora in volo, così pagamento/eliminazione non lasciano eventi orfani.
+    let gcalLinks: { userId: string; googleEventId: string }[] = [];
+    try {
+      gcalLinks = await getDeleteTargetsForEvent(familyId, calendarEventId);
+    } catch (error) {
+      // La cancellazione interna della bolletta resta best-effort anche se non
+      // si riescono a leggere i mapping per Google.
+      logger.warn('Bill Google Calendar links lookup failed', { billId, error: String(error) });
+    }
     await db
       .delete(calendarEvents)
       .where(and(eq(calendarEvents.id, calendarEventId), eq(calendarEvents.familyId, familyId)));
     await db.update(bills).set({ calendarEventId: null }).where(eq(bills.id, billId));
+    // Rimozione remota in background; 404/410 Google sono già trattati come
+    // successo da syncDeletedEvents.
+    void syncDeletedEvents(gcalLinks);
     broadcastToFamily(familyId, 'event_deleted', { eventId: calendarEventId });
   } catch (error) {
     logger.warn('Bill calendar sync (delete) failed', { billId, error: String(error) });

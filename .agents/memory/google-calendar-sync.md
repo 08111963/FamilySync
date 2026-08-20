@@ -13,6 +13,7 @@ description: Per-user OAuth (calendar.events) writes FamilySync events straight 
 - **Owner action**: lo scope calendar.events richiede verifica su Google Cloud Console (consent screen) prima della produzione.
 - Il feed ICS resta l'alternativa per Apple/Outlook.
 - **Orari malformati = 400 Bad Request**: Google rifiuta dateTime non RFC3339 (es. `…T15:00` costruito da time="15" senza minuti). Gli orari eventi vanno normalizzati a HH:MM sia in ingresso (route zod, `normalizeTimeOfDay` in shared/chore-recurrence) sia difensivamente nel payload Gcal (fallback all-day se irrecuperabile) — righe storiche pre-validazione esistono in prod e vengono recuperate dal reconcile orario.
+- **Ordering lifecycle**: create/update concorrenti devono convergere sullo snapshot DB più recente e le delete devono indirizzare anche create senza mapping. **Why:** il sync in background può pubblicare snapshot vecchi/orfani; trattenere una connessione DB durante Google può esaurire il pool. **How to apply:** ID Google deterministici, rilettura e PATCH compensativa dopo ogni risposta, nessuna transazione durante la rete, target delete raccolti prima della cascade.
 
 ## Setup Google Cloud Console (fatto 2026-08-05, owner)
 - Ogni nuovo callback OAuth (es. /api/calendar-sync/google/callback) va aggiunto agli "URI di reindirizzamento autorizzati" del client web, altrimenti redirect_uri_mismatch.

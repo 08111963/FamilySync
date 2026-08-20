@@ -1,6 +1,8 @@
 import { test, describe, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
+import express from "express";
+import type { Server } from "node:http";
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || "test-session-secret";
 process.env.GOOGLE_OAUTH_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID || "test-client-id";
@@ -18,8 +20,10 @@ import {
   getLinksForEvents,
   backfillUserCalendar,
   removeBlockedEventLinks,
+  googleEventIdForFamilySyncEvent,
 } from "../lib/google-calendar-sync";
 import type { CalendarEvent } from "../../shared/schema";
+import billsRouter from "../routes/bills";
 
 function makeEvent(overrides: Partial<CalendarEvent>): CalendarEvent {
   return {
@@ -166,6 +170,7 @@ import {
   googleCalendarConnections,
   googleCalendarEventLinks,
   blocks,
+  bills,
 } from "../../shared/schema";
 
 const hasDb = !!process.env.DATABASE_URL;
@@ -185,7 +190,7 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
   let calls: RecordedCall[] = [];
   // Handler configurabile per ogni test: riceve la chiamata registrata e
   // ritorna la Response simulata; se ritorna undefined si usa il default.
-  let handler: (call: RecordedCall) => Response | undefined = () => undefined;
+  let handler: (call: RecordedCall) => Response | Promise<Response | undefined> | undefined = () => undefined;
   let tokenCounter = 0;
 
   const userIds: string[] = [];
@@ -259,7 +264,7 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
           : null,
       };
       calls.push(call);
-      const custom = handler(call);
+      const custom = await handler(call);
       if (custom) return custom;
       // Default: token endpoint rilascia un token nuovo, calendar API ok.
       if (url === TOKEN_URL) {
@@ -268,7 +273,7 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
       }
       if (url.startsWith(CAL_PREFIX)) {
         if (method === "DELETE") return new Response(null, { status: 204 });
-        return json200({ id: `gid-${calls.length}` });
+        return json200({ id: call.body?.id ?? `gid-${calls.length}` });
       }
       throw new Error(`Chiamata fetch inattesa nel test: ${method} ${url}`);
     }) as typeof fetch;
@@ -290,6 +295,19 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
   }
   function json200(body: unknown): Response {
     return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+
+  async function waitUntil(
+    predicate: () => boolean | Promise<boolean>,
+    message: string,
+    timeoutMs = 2_000,
+  ): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (await predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.fail(message);
   }
 
   test("evento creato → POST corretto su calendar/v3, link salvato, lastSyncAt aggiornato", async () => {
@@ -315,7 +333,7 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
     const links = await getLinksForEvents([ev.id]);
     assert.equal(links.length, 1);
     assert.equal(links[0]!.userId, userId);
-    assert.match(links[0]!.googleEventId, /^gid-/);
+    assert.equal(links[0]!.googleEventId, googleEventIdForFamilySyncEvent(ev.id));
 
     const conn = await getConn(userId);
     assert.equal(conn.status, "active");
@@ -329,7 +347,11 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
     const ev = await makeDbEvent("Da aggiornare", userId, familyId);
     await db.insert(googleCalendarEventLinks).values({ userId, eventId: ev.id, googleEventId: "gid-update-1" });
 
-    const updated = { ...ev, title: "Titolo nuovo" } as CalendarEvent;
+    const [updated] = await db
+      .update(calendarEvents)
+      .set({ title: "Titolo nuovo", updatedAt: new Date() })
+      .where(eq(calendarEvents.id, ev.id))
+      .returning();
     await syncUpdatedEvent(updated);
 
     const patch = calls.find((c) => c.method === "PATCH");
@@ -376,6 +398,253 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
     const conn = await getConn(userId);
     assert.equal(conn.lastError, null);
   });
+
+  test("bollette: creazione, modifica, pagamento ed eliminazione si riflettono su Google", async () => {
+    const familyId = await makeFamily();
+    const userId = await makeUser("bills", familyId);
+    let server: Server | undefined;
+
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.user = { userId, email: "bills@test.local" };
+      next();
+    });
+    app.use("/api/bills", billsRouter);
+
+    await new Promise<void>((resolve) => {
+      server = app.listen(0, () => resolve());
+    });
+    const address = server!.address();
+    const baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+    const request = (method: string, path: string, body?: unknown) =>
+      realFetch(`${baseUrl}${path}`, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+
+    try {
+      let releaseCreate: (() => void) | undefined;
+      let releaseAlignmentPatch: (() => void) | undefined;
+      handler = (call) => {
+        if (call.method === "POST" && call.url === CAL_PREFIX) {
+          return new Promise<Response>((resolve) => {
+            releaseCreate = () => resolve(json200({ id: call.body.id }));
+          });
+        }
+        if (call.method === "PATCH" && !releaseAlignmentPatch) {
+          return new Promise<Response>((resolve) => {
+            releaseAlignmentPatch = () => resolve(json200({ id: createdGoogleId }));
+          });
+        }
+        return undefined;
+      };
+      let createdGoogleId = "";
+      const createRes = await request("POST", `/api/bills/${familyId}`, {
+        title: "Energia agosto",
+        provider: "Fornitore Test",
+        amount: 87.45,
+        dueDate: "2099-08-20",
+      });
+      assert.equal(createRes.status, 201);
+      const created = (await createRes.json()) as { id: string; calendarEventId: string | null };
+      assert.ok(created.calendarEventId, "la bolletta attiva deve avere un evento calendario");
+      createdGoogleId = googleEventIdForFamilySyncEvent(created.calendarEventId);
+
+      await waitUntil(() => !!releaseCreate, "la creazione Google deve essere in volo");
+      const updateRes = await request("PUT", `/api/bills/${familyId}/${created.id}`, {
+        title: "Energia settembre",
+        dueDate: "2099-09-20",
+      });
+      assert.equal(updateRes.status, 200);
+      releaseCreate!();
+
+      await waitUntil(
+        () => !!releaseAlignmentPatch,
+        "il riallineamento della prima modifica deve essere in volo",
+      );
+      const secondUpdateRes = await request("PUT", `/api/bills/${familyId}/${created.id}`, {
+        title: "Energia ottobre",
+        dueDate: "2099-10-20",
+      });
+      assert.equal(secondUpdateRes.status, 200);
+      await waitUntil(
+        () =>
+          calls.some(
+            (call) =>
+              call.method === "PATCH" &&
+              call.body.summary === "Scadenza bolletta: Energia ottobre",
+          ),
+        "il secondo update deve poter avanzare mentre il primo PATCH è bloccato",
+      );
+      const patchCountBeforeRelease = calls.filter((call) => call.method === "PATCH").length;
+      assert.ok(patchCountBeforeRelease >= 2, "i PATCH devono essere realmente fuori ordine");
+      releaseAlignmentPatch!();
+
+      await waitUntil(
+        async () => (await getLinksForEvents([created.calendarEventId!])).length === 1,
+        "la creazione della bolletta deve salvare il link Google",
+      );
+      const [createdLink] = await getLinksForEvents([created.calendarEventId]);
+      const insertCall = calls.find(
+        (call) =>
+          call.method === "POST" &&
+          call.url === CAL_PREFIX &&
+          call.body.extendedProperties.private.familySyncEventId === created.calendarEventId,
+      );
+      assert.ok(insertCall, "la scadenza della bolletta deve essere creata su Google");
+      assert.equal(insertCall.body.summary, "Scadenza bolletta: Energia agosto");
+      assert.deepEqual(insertCall.body.start, { date: "2099-08-20" });
+      await waitUntil(
+        () =>
+          calls.filter((call) => call.method === "PATCH").length > patchCountBeforeRelease &&
+          calls.filter((call) => call.method === "PATCH").at(-1)?.body.summary ===
+            "Scadenza bolletta: Energia ottobre",
+        "il PATCH vecchio completato per ultimo deve compensare con lo snapshot più recente",
+      );
+      const patchCall = calls.filter((call) => call.method === "PATCH").at(-1);
+      assert.equal(patchCall?.url, `${CAL_PREFIX}/${createdLink.googleEventId}`);
+      assert.equal(patchCall?.body.summary, "Scadenza bolletta: Energia ottobre");
+      assert.deepEqual(patchCall?.body.start, { date: "2099-10-20" });
+
+      handler = () => undefined;
+      calls = [];
+      const payRes = await request("PATCH", `/api/bills/${familyId}/${created.id}/pay`, { paid: true });
+      assert.equal(payRes.status, 200);
+      await waitUntil(
+        () => calls.some((call) => call.method === "DELETE"),
+        "il pagamento della bolletta deve rimuovere l'evento Google",
+      );
+      assert.ok(
+        calls.some(
+          (call) =>
+            call.method === "DELETE" &&
+            call.url === `${CAL_PREFIX}/${createdLink.googleEventId}`,
+        ),
+      );
+      const [paidBill] = await db.select().from(bills).where(eq(bills.id, created.id));
+      assert.equal(paidBill?.calendarEventId, null);
+
+      let releaseDeleteCreate: (() => void) | undefined;
+      handler = (call) => {
+        if (call.method !== "POST" || call.url !== CAL_PREFIX) return undefined;
+        return new Promise<Response>((resolve) => {
+          releaseDeleteCreate = () => resolve(json200({ id: call.body.id }));
+        });
+      };
+      calls = [];
+      const secondCreateRes = await request("POST", `/api/bills/${familyId}`, {
+        title: "Acqua da eliminare",
+        amount: 31,
+        dueDate: "2099-10-15",
+      });
+      assert.equal(secondCreateRes.status, 201);
+      const second = (await secondCreateRes.json()) as { id: string; calendarEventId: string | null };
+      assert.ok(second.calendarEventId);
+      await waitUntil(
+        () => !!releaseDeleteCreate,
+        "la seconda creazione Google deve essere in volo",
+      );
+      const expectedGoogleEventId = googleEventIdForFamilySyncEvent(second.calendarEventId);
+      const deleteRes = await request("DELETE", `/api/bills/${familyId}/${second.id}`);
+      assert.equal(deleteRes.status, 200);
+      await waitUntil(
+        () =>
+          calls.some(
+            (call) =>
+              call.method === "DELETE" &&
+              call.url === `${CAL_PREFIX}/${expectedGoogleEventId}`,
+          ),
+        "la DELETE deve anticipare anche una creazione Google senza mapping",
+      );
+      releaseDeleteCreate!();
+      await waitUntil(
+        () =>
+          calls.filter(
+            (call) =>
+              call.method === "DELETE" &&
+              call.url === `${CAL_PREFIX}/${expectedGoogleEventId}`,
+          ).length >= 2,
+        "la POST completata dopo la cancellazione deve ripulire l'evento remoto",
+      );
+      assert.equal((await db.select().from(bills).where(eq(bills.id, second.id))).length, 0);
+      assert.equal((await getLinksForEvents([second.calendarEventId])).length, 0);
+    } finally {
+      handler = () => undefined;
+      await new Promise<void>((resolve, reject) => {
+        server?.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  test(
+    "Google bloccato non impedisce a query DB indipendenti di avanzare",
+    { timeout: 10_000 },
+    async () => {
+      const scenarios: { familyId: string; userId: string; event: CalendarEvent }[] = [];
+      for (let i = 0; i < 12; i += 1) {
+        const familyId = await makeFamily();
+        const userId = await makeUser(`pool-${i}`, familyId);
+        const event = await makeDbEvent(`Pool ${i}`, userId, familyId, `2099-11-${String(i + 1).padStart(2, "0")}`);
+        scenarios.push({ familyId, userId, event });
+      }
+
+      let inFlightPosts = 0;
+      let releaseBlockedPosts: (() => void) | undefined;
+      const blockedPosts = new Promise<void>((resolve) => {
+        releaseBlockedPosts = resolve;
+      });
+      handler = async (call) => {
+        if (call.method !== "POST" || call.url !== CAL_PREFIX) return undefined;
+        inFlightPosts += 1;
+        await blockedPosts;
+        inFlightPosts -= 1;
+        return json200({ id: call.body.id });
+      };
+
+      const syncPromise = Promise.all(
+        scenarios.map(({ familyId, userId, event }) =>
+          syncCreatedEvents(familyId, [event], userId),
+        ),
+      );
+      try {
+        await waitUntil(
+          () => inFlightPosts >= 2,
+          "più chiamate Google devono essere bloccate contemporaneamente",
+        );
+        const independentQueryCompleted = await Promise.race([
+          db
+            .select({ id: families.id })
+            .from(families)
+            .where(eq(families.id, scenarios[0].familyId))
+            .limit(1)
+            .then(() => true),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 750)),
+        ]);
+        assert.equal(
+          independentQueryCompleted,
+          true,
+          "una fetch Google bloccata non deve trattenere connessioni del pool",
+        );
+      } finally {
+        releaseBlockedPosts?.();
+      }
+      await syncPromise;
+
+      assert.equal(
+        calls.filter((call) => call.method === "POST" && call.url === CAL_PREFIX).length,
+        scenarios.length,
+      );
+      for (const { event } of scenarios) {
+        assert.equal(
+          (await getLinksForEvents([event.id])).length,
+          1,
+          `mapping mancante per ${event.title}`,
+        );
+      }
+    },
+  );
 
   test("401 dalla calendar API → un solo retry con token fresco, poi ok", async () => {
     const familyId = await makeFamily();

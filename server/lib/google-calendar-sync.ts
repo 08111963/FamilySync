@@ -236,12 +236,16 @@ async function notifyConnectionExpired(userId: string, reason: string): Promise<
 }
 
 /** Registra l'ultimo errore di sync senza invalidare il collegamento. */
-async function recordSyncError(userId: string, reason: string): Promise<void> {
-  await db
-    .update(googleCalendarConnections)
-    .set({ lastError: reason.slice(0, 500), updatedAt: new Date() })
-    .where(eq(googleCalendarConnections.userId, userId))
-    .catch?.(() => {});
+async function recordSyncError(
+  userId: string,
+  reason: string,
+): Promise<void> {
+  try {
+    await db
+      .update(googleCalendarConnections)
+      .set({ lastError: reason.slice(0, 500), updatedAt: new Date() })
+      .where(eq(googleCalendarConnections.userId, userId));
+  } catch {}
 }
 
 async function recordSyncOk(userId: string): Promise<void> {
@@ -270,7 +274,7 @@ export async function getAccessTokenForUser(userId: string): Promise<string> {
   let refreshToken: string;
   try {
     refreshToken = decryptToken(conn.refreshTokenEnc);
-  } catch (err) {
+  } catch {
     await markConnectionExpired(userId, 'Token cifrato non leggibile: ricollega il calendario.');
     throw new GcalConnectionExpiredError();
   }
@@ -421,6 +425,21 @@ export function eventToGooglePayload(ev: CalendarEvent): Record<string, unknown>
 
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 
+/**
+ * Id Google stabile per ogni evento FamilySync.
+ *
+ * Google accetta id client-generated composti da caratteri base32hex; un hash
+ * esadecimale è valido e permette di indirizzare una DELETE anche mentre il
+ * mapping DB della creazione è ancora in volo.
+ */
+export function googleEventIdForFamilySyncEvent(eventId: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(`familysync:gcal-event:${eventId}`)
+    .digest('hex')
+    .slice(0, 32);
+}
+
 async function gcalFetch(
   userId: string,
   method: 'POST' | 'PATCH' | 'DELETE',
@@ -457,25 +476,205 @@ async function gcalFetch(
   return res;
 }
 
+async function deleteJustCreatedGoogleEvent(
+  userId: string,
+  googleEventId: string,
+): Promise<void> {
+  try {
+    const res = await gcalFetch(userId, 'DELETE', `/${encodeURIComponent(googleEventId)}`);
+    if (!res.ok && res.status !== 404 && res.status !== 410) {
+      const text = await res.text();
+      logger.error('Gcal orphan cleanup failed', {
+        userId,
+        googleEventId,
+        status: res.status,
+        body: text.slice(0, 200),
+      });
+      await recordSyncError(userId, `Errore Google (${res.status}) durante la pulizia di un evento.`);
+    }
+  } catch (err) {
+    if (!(err instanceof GcalConnectionExpiredError)) {
+      logger.error('Gcal orphan cleanup failed', { userId, googleEventId, error: String(err) });
+    }
+  }
+}
+
+const MAX_GCAL_ALIGNMENT_ATTEMPTS = 5;
+
+type AlignmentResult = 'ok' | 'deleted' | 'recreate' | 'failed';
+
+/**
+ * Porta Google allo snapshot DB più recente senza trattenere connessioni DB
+ * durante la rete. Se due PATCH arrivano fuori ordine, quello che termina per
+ * ultimo rilegge il DB e invia un'ultima compensazione con lo stato corrente.
+ */
+async function alignGoogleEventToLatest(
+  userId: string,
+  eventId: string,
+  googleEventId: string,
+  lastAppliedPayload?: Record<string, unknown>,
+): Promise<AlignmentResult> {
+  let appliedPayload = lastAppliedPayload;
+  for (let attempt = 0; attempt < MAX_GCAL_ALIGNMENT_ATTEMPTS; attempt += 1) {
+    const [current] = await db
+      .select()
+      .from(calendarEvents)
+      .where(eq(calendarEvents.id, eventId))
+      .limit(1);
+    if (!current) {
+      await deleteJustCreatedGoogleEvent(userId, googleEventId);
+      return 'deleted';
+    }
+
+    const currentPayload = eventToGooglePayload(current);
+    if (
+      appliedPayload &&
+      JSON.stringify(currentPayload) === JSON.stringify(appliedPayload)
+    ) {
+      await recordSyncOk(userId);
+      return 'ok';
+    }
+
+    const res = await gcalFetch(
+      userId,
+      'PATCH',
+      `/${encodeURIComponent(googleEventId)}`,
+      currentPayload,
+    );
+    if (res.status === 404 || res.status === 410) return 'recreate';
+    if (!res.ok) {
+      const text = await res.text();
+      logger.error('Gcal patch failed', {
+        userId,
+        eventId,
+        status: res.status,
+        body: text.slice(0, 200),
+      });
+      await recordSyncError(userId, `Errore Google (${res.status}) durante l'aggiornamento di un evento.`);
+      return 'failed';
+    }
+    appliedPayload = currentPayload;
+  }
+
+  logger.error('Gcal alignment did not converge', { userId, eventId });
+  await recordSyncError(userId, 'Sincronizzazione non completata: troppe modifiche ravvicinate.');
+  return 'failed';
+}
+
 /** Crea l'evento su Google e salva il mapping. Ritorna false se fallisce. */
 async function pushEventToUser(userId: string, ev: CalendarEvent): Promise<boolean> {
-  const res = await gcalFetch(userId, 'POST', '', eventToGooglePayload(ev));
-  if (!res.ok) {
+  // Rileggi dal DB prima della chiamata: un job di riconciliazione può aver
+  // caricato uno snapshot ormai modificato o già eliminato.
+  const [current] = await db
+    .select()
+    .from(calendarEvents)
+    .where(eq(calendarEvents.id, ev.id))
+    .limit(1);
+  if (!current) return true;
+
+  // Se un altro worker ha già completato il mapping, convergi comunque sullo
+  // snapshot più recente: evita che un PATCH concorrente più vecchio vinca.
+  const [existingLink] = await db
+    .select({
+      id: googleCalendarEventLinks.id,
+      googleEventId: googleCalendarEventLinks.googleEventId,
+    })
+    .from(googleCalendarEventLinks)
+    .where(
+      and(
+        eq(googleCalendarEventLinks.userId, userId),
+        eq(googleCalendarEventLinks.eventId, ev.id),
+      ),
+    )
+    .limit(1);
+  if (existingLink) {
+    const aligned = await alignGoogleEventToLatest(
+      userId,
+      ev.id,
+      existingLink.googleEventId,
+    );
+    if (aligned !== 'recreate') return aligned !== 'failed';
+    await db
+      .delete(googleCalendarEventLinks)
+      .where(eq(googleCalendarEventLinks.id, existingLink.id));
+  }
+
+  const googleEventId = googleEventIdForFamilySyncEvent(ev.id);
+  let remoteGoogleEventId = googleEventId;
+  const postedPayload = eventToGooglePayload(current);
+  const res = await gcalFetch(userId, 'POST', '', { id: googleEventId, ...postedPayload });
+  if (!res.ok && res.status !== 409) {
     const text = await res.text();
     logger.error('Gcal insert failed', { userId, eventId: ev.id, status: res.status, body: text.slice(0, 200) });
     await recordSyncError(userId, `Errore Google (${res.status}) durante la creazione di un evento.`);
     return false;
   }
-  const created = (await res.json()) as { id?: string };
-  if (!created.id) return false;
-  await db
-    .insert(googleCalendarEventLinks)
-    .values({ userId, eventId: ev.id, googleEventId: created.id })
-    .onConflictDoUpdate({
-      target: [googleCalendarEventLinks.userId, googleCalendarEventLinks.eventId],
-      set: { googleEventId: created.id },
-    });
-  return true;
+
+  // 409 = un altro worker ha già creato lo stesso id deterministico: il PATCH
+  // di convergenza sotto riallinea il contenuto e ricostruisce il mapping.
+  if (res.status !== 409) {
+    const created = (await res.json()) as { id?: string };
+    if (created.id && created.id !== googleEventId) {
+      remoteGoogleEventId = created.id;
+      logger.warn('Gcal ignored client-generated event id', {
+        userId,
+        eventId: ev.id,
+        expectedGoogleEventId: googleEventId,
+        actualGoogleEventId: created.id,
+      });
+    }
+  }
+
+  // Se l'evento è stato eliminato mentre la POST era in volo, rimuovi subito
+  // il remoto: non deve restare un orfano senza FK/mapping recuperabile.
+  const [beforeLink] = await db
+    .select()
+    .from(calendarEvents)
+    .where(eq(calendarEvents.id, ev.id))
+    .limit(1);
+  if (!beforeLink) {
+    await deleteJustCreatedGoogleEvent(userId, remoteGoogleEventId);
+    return true;
+  }
+
+  try {
+    await db
+      .insert(googleCalendarEventLinks)
+      .values({ userId, eventId: ev.id, googleEventId: remoteGoogleEventId })
+      .onConflictDoUpdate({
+        target: [googleCalendarEventLinks.userId, googleCalendarEventLinks.eventId],
+        set: { googleEventId: remoteGoogleEventId },
+      });
+  } catch (err) {
+    // Una DELETE concorrente può vincere tra il controllo e l'INSERT FK.
+    await deleteJustCreatedGoogleEvent(userId, remoteGoogleEventId);
+    const [stillExists] = await db
+      .select({ id: calendarEvents.id })
+      .from(calendarEvents)
+      .where(eq(calendarEvents.id, ev.id))
+      .limit(1);
+    if (!stillExists) return true;
+    throw err;
+  }
+
+  const aligned = await alignGoogleEventToLatest(
+    userId,
+    ev.id,
+    remoteGoogleEventId,
+    res.status === 409 ? undefined : postedPayload,
+  );
+  if (aligned === 'recreate') {
+    await db
+      .delete(googleCalendarEventLinks)
+      .where(
+        and(
+          eq(googleCalendarEventLinks.userId, userId),
+          eq(googleCalendarEventLinks.eventId, ev.id),
+        ),
+      );
+    return false;
+  }
+  return aligned !== 'failed';
 }
 
 /** Utenti della famiglia con collegamento Google Calendar ATTIVO. */
@@ -486,6 +685,28 @@ async function getConnectedFamilyUserIds(familyId: string): Promise<string[]> {
     .innerJoin(familyMembers, eq(familyMembers.userId, googleCalendarConnections.userId))
     .where(and(eq(familyMembers.familyId, familyId), eq(googleCalendarConnections.status, 'active')));
   return rows.map((r) => r.userId);
+}
+
+/**
+ * Target di cancellazione comprensivi delle creazioni ancora in volo.
+ *
+ * I mapping esistenti mantengono l'id Google storico; per gli utenti collegati
+ * senza mapping usiamo l'id deterministico dei nuovi insert. Una DELETE 404 è
+ * innocua e copre la race POST/DELETE senza lasciare eventi orfani.
+ */
+export async function getDeleteTargetsForEvent(
+  familyId: string,
+  eventId: string,
+): Promise<{ userId: string; googleEventId: string }[]> {
+  const [links, connectedUserIds] = await Promise.all([
+    getLinksForEvents([eventId]),
+    getConnectedFamilyUserIds(familyId),
+  ]);
+  const targets = new Map<string, string>(
+    connectedUserIds.map((userId) => [userId, googleEventIdForFamilySyncEvent(eventId)]),
+  );
+  for (const link of links) targets.set(link.userId, link.googleEventId);
+  return Array.from(targets, ([userId, googleEventId]) => ({ userId, googleEventId }));
 }
 
 /**
@@ -532,22 +753,16 @@ export async function syncUpdatedEvent(event: CalendarEvent): Promise<void> {
       .where(eq(googleCalendarEventLinks.eventId, event.id));
     for (const link of links) {
       try {
-        const res = await gcalFetch(
+        const result = await alignGoogleEventToLatest(
           link.userId,
-          'PATCH',
-          `/${encodeURIComponent(link.googleEventId)}`,
-          eventToGooglePayload(event),
+          event.id,
+          link.googleEventId,
         );
-        if (res.status === 404 || res.status === 410) {
-          // L'utente l'ha cancellato a mano su Google: lo ricreiamo.
-          await db.delete(googleCalendarEventLinks).where(eq(googleCalendarEventLinks.id, link.id));
+        if (result === 'recreate') {
+          await db
+            .delete(googleCalendarEventLinks)
+            .where(eq(googleCalendarEventLinks.id, link.id));
           await pushEventToUser(link.userId, event);
-        } else if (!res.ok) {
-          const text = await res.text();
-          logger.error('Gcal patch failed', { userId: link.userId, status: res.status, body: text.slice(0, 200) });
-          await recordSyncError(link.userId, `Errore Google (${res.status}) durante l'aggiornamento di un evento.`);
-        } else {
-          await recordSyncOk(link.userId);
         }
       } catch (err) {
         if (!(err instanceof GcalConnectionExpiredError)) {
