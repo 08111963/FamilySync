@@ -263,6 +263,53 @@ test("una risposta incompleta non viene consegnata come settimana valida", async
   );
 });
 
+test("una risposta incompleta viene rigenerata una sola volta senza inviare piani parziali", async (t) => {
+  let callsBeforeCompleteRetry = 0;
+  const { client, calls } = createFakeClient((request) => {
+    callsBeforeCompleteRetry++;
+    if (callsBeforeCompleteRetry <= 3) {
+      return request.dates.slice(0, 6).map((date) =>
+        makeMeal(date, request.mealTypes[0]!, "Pasto incompleto", [{ name: "mela", quantity: "1", unit: "pezzo" }]));
+    }
+    return request.dates.map((date, index) => {
+      const mealType = request.mealTypes[0]!;
+      if (mealType === "breakfast") {
+        return makeMeal(date, mealType, `Colazione ${index}`, [
+          { name: "banana", quantity: "1", unit: "pezzo" },
+          { name: "bevanda di riso", quantity: "200", unit: "ml" },
+        ]);
+      }
+      if (mealType === "lunch") {
+        return makeMeal(date, mealType, `Pranzo ${index}`, [
+          { name: "pasta", quantity: "80", unit: "g" },
+          { name: "ceci", quantity: "100", unit: "g" },
+          { name: "pomodori", quantity: "120", unit: "g" },
+        ]);
+      }
+      return makeMeal(date, mealType, `Cena ${index}`, [
+        { name: "pollo", quantity: "120", unit: "g" },
+        { name: "patate", quantity: "180", unit: "g" },
+        { name: "spinaci", quantity: "150", unit: "g" },
+      ]);
+    });
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const progress: Meal[][] = [];
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { allergies: "Lattosio" },
+    onProgress: (items) => progress.push(items as Meal[]),
+  });
+
+  assert.equal(calls.length, 6, "tre richieste iniziali e una sola rigenerazione completa");
+  assertCompleteWeek(plan.items, 3);
+  assert.equal(progress.length, 7, "nessun giorno parziale raggiunge il client");
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+});
+
 test("un alimento da pranzo nel testo della colazione viene rimosso anche senza allergie", async (t) => {
   const { client } = createFakeClient((request) => {
     if (request.mealTypes[0] !== "breakfast") return weekItems(request);

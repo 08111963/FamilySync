@@ -697,6 +697,7 @@ class MealPlanConstraintRetryError extends Error {
 // richiesta dall'utente. Ritentare tre settimane di pasti dopo aver già
 // consumato minuti di attesa lascia l'utente senza un risultato verificabile.
 const MAX_CONSTRAINT_GENERATION_ATTEMPTS = 1;
+const MAX_MALFORMED_RESPONSE_RETRIES = 1;
 const SAFE_MAIN_INGREDIENTS = [
   "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
   "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
@@ -1294,25 +1295,42 @@ export async function generateWeeklyMealPlan(
     : { maxCalls: Math.max(1, requestedModelCalls), usedCalls: 0 };
   let constraintCorrection: string | undefined;
 
-  for (let attempt = 1; attempt <= attempts; attempt++) {
+  let constraintAttempt = 1;
+  let malformedResponseRetries = 0;
+  while (constraintAttempt <= attempts) {
     try {
       context.onStatus?.(
         attempts === 1
           ? "Creo il piano pasti."
-          : attempt === 1
+          : constraintAttempt === 1
             ? "Creo un piano compatibile con i vincoli indicati."
-            : `Rigenero un piano compatibile (tentativo ${attempt} di ${attempts}).`,
+            : `Rigenero un piano compatibile (tentativo ${constraintAttempt} di ${attempts}).`,
       );
       return await generateWeeklyMealPlanAttempt({
         ...context,
-        generationAttempt: attempt,
+        generationAttempt: constraintAttempt + malformedResponseRetries,
         constraintCorrection,
         modelCallBudget,
       });
     } catch (error) {
+      if (error instanceof AiError && error.code === "AI_BAD_RESPONSE") {
+        if (malformedResponseRetries >= MAX_MALFORMED_RESPONSE_RETRIES) throw error;
+        malformedResponseRetries++;
+        if (!context.suppressInternalLogs) {
+          console.warn(JSON.stringify({
+            tag: "AI_MEAL_PLAN_FORMAT_RETRY",
+            variant: context.planVariant || 1,
+            retry: malformedResponseRetries,
+          }));
+        }
+        // Non esporre un ciclo di tentativi nell'interfaccia: il client riceve
+        // esclusivamente il piano già completo e validato.
+        context.onStatus?.("Completo il piano pasti verificato.");
+        continue;
+      }
       if (!(error instanceof MealPlanConstraintRetryError)) throw error;
 
-      if (attempt >= attempts) {
+      if (constraintAttempt >= attempts) {
         throw new AiError(
           "AI_CONSTRAINT_VIOLATION",
           `Piano pasti rifiutato dopo ${attempts} tentativi: ${error.violations.map((violation) => violation.code).join(",")}`,
@@ -1323,12 +1341,13 @@ export async function generateWeeklyMealPlan(
         console.warn(JSON.stringify({
           tag: "AI_MEAL_PLAN_CONSTRAINT_RETRY",
           variant: context.planVariant || 1,
-          failedAttempt: attempt,
-          nextAttempt: attempt + 1,
+          failedAttempt: constraintAttempt,
+          nextAttempt: constraintAttempt + 1,
           violations: Array.from(new Set(error.violations.map((violation) => violation.code))),
         }));
       }
-      constraintCorrection = buildConstraintCorrection(error.violations, attempt + 1);
+      constraintCorrection = buildConstraintCorrection(error.violations, constraintAttempt + 1);
+      constraintAttempt++;
     }
   }
 
