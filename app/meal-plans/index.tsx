@@ -482,6 +482,16 @@ export default function MealPlansScreen() {
 
   const [generatingAlt, setGeneratingAlt] = useState(false);
   const [aiDisabledError, setAiDisabledError] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const generateScrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (!generationError) return;
+    const timer = setTimeout(() => {
+      generateScrollRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [generationError]);
 
   // Contatore degli stream: ogni nuova generazione lo incrementa, così gli
   // aggiornamenti (e la lettura vocale) di uno stream vecchio vengono ignorati.
@@ -495,6 +505,7 @@ export default function MealPlansScreen() {
     setAiPlans([]);
     setSelectedPlanIndex(0);
     setAiDisabledError(false);
+    setGenerationError(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const notes = (opts?.voiceNotes ?? voicePrefs).trim();
@@ -508,7 +519,7 @@ export default function MealPlansScreen() {
     const collectedItems: MealPlanItem[] = [];
     let doneTitle = "Piano Settimanale";
     let started = false;
-    let streamErr = false;
+    let streamErrorMessage: string | null = null;
     try {
       await apiStream(
         `/api/ai/${currentFamily.id}/weekly-meal-plan/stream`,
@@ -516,7 +527,9 @@ export default function MealPlansScreen() {
         (obj) => {
           if (!isActive()) return;
           if (obj?.type === "error") {
-            streamErr = true;
+            streamErrorMessage = typeof obj.message === "string"
+              ? obj.message
+              : "Impossibile generare il piano pasti.";
           } else if (obj?.type === "items" && Array.isArray(obj.items)) {
             collectedItems.push(...(obj.items as MealPlanItem[]));
             if (!started) {
@@ -576,13 +589,9 @@ export default function MealPlansScreen() {
         }
       );
       if (!isActive()) return;
-      if (streamErr) {
+      if (streamErrorMessage) {
         if (opts?.speak) speakText("Non sono riuscita a generare il piano pasti. Riprova.");
-        if (Platform.OS === "web") {
-          window.alert("Impossibile generare il piano pasti.");
-        } else {
-          Alert.alert("Errore", "Impossibile generare il piano pasti.");
-        }
+        setGenerationError(streamErrorMessage);
         setAiPlans([]);
       } else if (opts?.speak && collectedItems.length > 0) {
         speakText(buildPlanSpeech(doneTitle, collectedItems));
@@ -593,12 +602,7 @@ export default function MealPlansScreen() {
       if (isAiDisabled(err)) {
         setAiDisabledError(true);
       } else {
-        const msg = aiErrorMessage(err, "Impossibile generare il piano pasti.");
-        if (Platform.OS === "web") {
-          window.alert(msg);
-        } else {
-          Alert.alert("Errore", msg);
-        }
+        setGenerationError(aiErrorMessage(err, "Impossibile generare il piano pasti."));
       }
       setAiPlans([]);
     } finally {
@@ -610,6 +614,7 @@ export default function MealPlansScreen() {
     if (!currentFamily || generating || generatingAlt) return;
     setGeneratingAlt(true);
     setAiDisabledError(false);
+    setGenerationError(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const preferences: Record<string, string> = {};
@@ -620,7 +625,7 @@ export default function MealPlansScreen() {
     if (Object.keys(preferences).length > 0) body.preferences = preferences;
 
     let started = false;
-    let streamErr = false;
+    let streamErrorMessage: string | null = null;
     const collectedItems: MealPlanItem[] = [];
     try {
       await apiStream(
@@ -628,7 +633,9 @@ export default function MealPlansScreen() {
         body,
         (obj) => {
           if (obj?.type === "error") {
-            streamErr = true;
+            streamErrorMessage = typeof obj.message === "string"
+              ? obj.message
+              : "Impossibile generare l'alternativa.";
           } else if (obj?.type === "items" && Array.isArray(obj.items)) {
             collectedItems.push(...(obj.items as MealPlanItem[]));
             if (!started) {
@@ -658,12 +665,8 @@ export default function MealPlansScreen() {
           }
         }
       );
-      if (streamErr) {
-        if (Platform.OS === "web") {
-          window.alert("Impossibile generare l'alternativa.");
-        } else {
-          Alert.alert("Errore", "Impossibile generare l'alternativa.");
-        }
+      if (streamErrorMessage) {
+        setGenerationError(streamErrorMessage);
         setAiPlans((prev) => prev.slice(0, 1));
         setSelectedPlanIndex(0);
       } else if (opts?.speak && collectedItems.length > 0) {
@@ -673,12 +676,7 @@ export default function MealPlansScreen() {
       if (isAiDisabled(err)) {
         setAiDisabledError(true);
       } else {
-        const msg = aiErrorMessage(err, "Impossibile generare l'alternativa.");
-        if (Platform.OS === "web") {
-          window.alert(msg);
-        } else {
-          Alert.alert("Errore", msg);
-        }
+        setGenerationError(aiErrorMessage(err, "Impossibile generare l'alternativa."));
       }
       setAiPlans((prev) => prev.slice(0, 1));
       setSelectedPlanIndex(0);
@@ -923,6 +921,7 @@ export default function MealPlansScreen() {
 
       {activeTab === "generate" && (
         <ScrollView
+          ref={generateScrollRef}
           style={styles.generateContainer}
           contentContainerStyle={[styles.generateContent, { paddingBottom: bottomInset + 20 }]}
           keyboardDismissMode="interactive"
@@ -1047,6 +1046,29 @@ export default function MealPlansScreen() {
               </>
             )}
           </Pressable>
+
+          {generationError && (
+            <View
+              style={[styles.generationErrorBox, { backgroundColor: colors.error + "12", borderColor: colors.error + "40" }]}
+              testID="mealplan-generation-error"
+            >
+              <Ionicons name="warning-outline" size={20} color={colors.error} />
+              <View style={styles.generationErrorContent}>
+                <Text style={[styles.generationErrorText, { color: colors.text }]}>
+                  {generationError}
+                </Text>
+                <Pressable
+                  onPress={handleGenerate}
+                  disabled={generating}
+                  style={styles.generationRetryButton}
+                  testID="mealplan-generation-retry"
+                >
+                  <Ionicons name="refresh" size={16} color={colors.primary} />
+                  <Text style={[styles.generationRetryText, { color: colors.primary }]}>Riprova</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
 
           {aiDisabledError && (
             <View style={[styles.aiDisabledBox, { backgroundColor: colors.error + "15", borderColor: colors.error + "40" }]}>
@@ -1622,6 +1644,34 @@ const styles = StyleSheet.create({
   generateButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+  },
+  generationErrorBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  generationErrorContent: {
+    flex: 1,
+    gap: 8,
+  },
+  generationErrorText: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 18,
+  },
+  generationRetryButton: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  generationRetryText: {
+    fontSize: 14,
     fontFamily: "Inter_600SemiBold",
   },
   resultSection: {

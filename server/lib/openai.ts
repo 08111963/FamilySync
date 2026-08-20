@@ -7,6 +7,7 @@ import {
   hasMealPlanConstraints,
   mealPlanRequiresGlutenFree,
   validateMealPlanConstraints,
+  type MealPlanConstraintViolation,
 } from './meal-plan-constraints';
 
 // Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
@@ -565,13 +566,49 @@ export function parseMealItems(raw: unknown): MealPlanSuggestion['items'] {
   return results;
 }
 
-export async function generateWeeklyMealPlan(context: {
+interface MealPlanGenerationContext {
   familySize: number;
   weekStartDate: string;
   preferences?: { diet?: string; allergies?: string; maxTimeMinutes?: number; mealsPerDay?: number; notes?: string };
   planVariant?: number;
   onProgress?: (items: MealPlanSuggestion['items']) => void;
-}): Promise<MealPlanSuggestion> {
+}
+
+interface MealPlanGenerationAttemptContext extends MealPlanGenerationContext {
+  constraintCorrection?: string;
+  generationAttempt: number;
+}
+
+class MealPlanConstraintRetryError extends Error {
+  constructor(readonly violations: MealPlanConstraintViolation[]) {
+    super("Il tentativo di generazione non rispetta i vincoli alimentari");
+    this.name = "MealPlanConstraintRetryError";
+  }
+}
+
+const MAX_CONSTRAINT_GENERATION_ATTEMPTS = 3;
+
+function buildConstraintCorrection(
+  violations: MealPlanConstraintViolation[],
+  nextAttempt: number,
+): string {
+  const detected = Array.from(new Set(
+    violations.map((violation) =>
+      violation.matched
+        ? `${violation.constraint}: ${violation.matched}`
+        : violation.constraint),
+  )).slice(0, 12);
+
+  return `
+- CORREZIONE AUTOMATICA OBBLIGATORIA (tentativo ${nextAttempt}): il piano precedente è stato scartato perché incompatibile.
+- Incompatibilità rilevate dal controllo: ${detected.join("; ")}.
+- Ricrea TUTTI i pasti da zero. Non riutilizzare gli alimenti incompatibili; usa soltanto alternative esplicitamente compatibili e dichiarale nel titolo e negli ingredienti.
+- Prima di rispondere esegui un secondo controllo completo contro dieta e allergie.`;
+}
+
+async function generateWeeklyMealPlanAttempt(
+  context: MealPlanGenerationAttemptContext,
+): Promise<MealPlanSuggestion> {
   const mealsPerDay = context.preferences?.mealsPerDay || 3;
   const mealTypes = mealsPerDay >= 4
     ? ['breakfast', 'lunch', 'dinner', 'snack']
@@ -595,6 +632,7 @@ export async function generateWeeklyMealPlan(context: {
     ? `${context.preferences.diet ? ` Dieta: ${context.preferences.diet}.` : ''}${context.preferences.allergies ? ` Allergie: ${context.preferences.allergies}.` : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}${rawNotes ? ` Preferenze della famiglia (dettate a voce, seguile con attenzione): ${rawNotes}.` : ''}`
     : '';
   const constraintRule = buildMealPlanConstraintPrompt(context.preferences);
+  const constraintCorrection = context.constraintCorrection || "";
   const deferProgressUntilValidated = hasMealPlanConstraints(context.preferences);
 
   // Piatti tradizionali: il modello tende a "salutizzare" tutto proponendo
@@ -693,9 +731,10 @@ REGOLE:
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   - A pranzo il primo deve includere una fonte proteica (es. pasta con legumi/pesce/ragù bianco/uova/formaggio come tonno, ceci, sgombro, ricotta) oppure va aggiunto un secondo leggero: MAI solo pasta al pomodoro senza proteine.
   - A cena, accanto alla fonte proteica, includi SEMPRE una porzione di carboidrati (pane, patate, farro, orzo o riso): MAI solo proteine e verdure.
- - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${constraintRule}
+ - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno.${excludeRule}
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questi giorni ${themeHint}.` : ''}${breakfastHint && mealTypes.includes('breakfast') ? `\n- Per la colazione di questi giorni proponi: ${breakfastHint}. NON ripetere la stessa colazione in giorni diversi.` : ''}
+${constraintRule}${constraintCorrection}
 - Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
@@ -835,7 +874,7 @@ REGOLE:
   });
 
   const aiDurationMs = Date.now() - aiStartTime;
-  console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, aiDurationMs, chunks: chunks.length, failedChunks, itemsCount: filtered.length, duplicates: dupSlots.length, duplicatesFixed }));
+  console.log(JSON.stringify({ tag: "AI_MEAL_PLAN_CALL", variant, generationAttempt: context.generationAttempt, aiDurationMs, chunks: chunks.length, failedChunks, itemsCount: filtered.length, duplicates: dupSlots.length, duplicatesFixed }));
 
   // Se non è stato generato nessun pasto valido e c'è stato un errore, propagalo tipizzato.
   if (filtered.length === 0 && firstReason !== null) {
@@ -849,10 +888,7 @@ REGOLE:
       variant,
       violations: constraintViolations.map((violation) => violation.code),
     }));
-    throw new AiError(
-      "AI_CONSTRAINT_VIOLATION",
-      `Piano pasti rifiutato: ${constraintViolations.map((violation) => violation.code).join(",")}`,
-    );
+    throw new MealPlanConstraintRetryError(constraintViolations);
   }
 
   if (context.onProgress && deferProgressUntilValidated) {
@@ -865,6 +901,45 @@ REGOLE:
   }
 
   return { title: 'Piano Settimanale', items: filtered };
+}
+
+export async function generateWeeklyMealPlan(
+  context: MealPlanGenerationContext,
+): Promise<MealPlanSuggestion> {
+  const attempts = hasMealPlanConstraints(context.preferences)
+    ? MAX_CONSTRAINT_GENERATION_ATTEMPTS
+    : 1;
+  let constraintCorrection: string | undefined;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await generateWeeklyMealPlanAttempt({
+        ...context,
+        generationAttempt: attempt,
+        constraintCorrection,
+      });
+    } catch (error) {
+      if (!(error instanceof MealPlanConstraintRetryError)) throw error;
+
+      if (attempt >= attempts) {
+        throw new AiError(
+          "AI_CONSTRAINT_VIOLATION",
+          `Piano pasti rifiutato dopo ${attempts} tentativi: ${error.violations.map((violation) => violation.code).join(",")}`,
+        );
+      }
+
+      console.warn(JSON.stringify({
+        tag: "AI_MEAL_PLAN_CONSTRAINT_RETRY",
+        variant: context.planVariant || 1,
+        failedAttempt: attempt,
+        nextAttempt: attempt + 1,
+        violations: Array.from(new Set(error.violations.map((violation) => violation.code))),
+      }));
+      constraintCorrection = buildConstraintCorrection(error.violations, attempt + 1);
+    }
+  }
+
+  throw new AiError("AI_CONSTRAINT_VIOLATION", "Nessun piano pasti conforme generato");
 }
 
 export async function generateFamilyInsights(context: {

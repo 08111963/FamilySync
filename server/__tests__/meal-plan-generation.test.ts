@@ -156,7 +156,7 @@ test("tutte le ondate fallite: propaga un errore tipizzato invece di piano vuoto
   );
 });
 
-test("vincolo glutine: un piano incompatibile viene rifiutato senza emettere progressi", async (t) => {
+test("vincolo glutine: dopo tre tentativi incompatibili rifiuta senza emettere progressi", async (t) => {
   const { client } = makeFakeClient({
     itemsForDate: (date) => [{
       ...meal(date, "lunch", "Penne al tonno"),
@@ -183,6 +183,47 @@ test("vincolo glutine: un piano incompatibile viene rifiutato senza emettere pro
     },
   );
   assert.equal(progress.length, 0, "nessun chunk incompatibile deve raggiungere il client");
+});
+
+test("vincolo glutine: rigenera automaticamente l'intero piano e mostra solo il tentativo compatibile", async (t) => {
+  const { client, calls } = makeFakeClient({
+    itemsForDate: (date, callIndex) => {
+      const dayIndex = DATES.indexOf(date);
+      if (callIndex < 7) {
+        return [{
+          ...meal(date, "lunch", `Penne al tonno ${dayIndex}`),
+          ingredients: [
+            { name: "Penne di semola", quantity: "80", unit: "g" },
+            { name: "Tonno", quantity: "60", unit: "g" },
+          ],
+        }];
+      }
+      return [{
+        ...meal(date, "lunch", `Riso al tonno ${dayIndex}`),
+        ingredients: [
+          { name: "Riso", quantity: "80", unit: "g" },
+          { name: "Tonno", quantity: "60", unit: "g" },
+        ],
+      }];
+    },
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const progress: Meal[][] = [];
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { allergies: "Glutine", mealsPerDay: 2 },
+    onProgress: (items) => progress.push(items as Meal[]),
+  });
+
+  assert.equal(calls.length, 14, "7 giorni rifiutati + 7 giorni rigenerati");
+  assert.ok(calls.slice(7).every((call) => call.sysPrompt.includes("CORREZIONE AUTOMATICA OBBLIGATORIA")));
+  assert.equal(plan.items.length, 7);
+  assert.ok(plan.items.every((item) => item.title.startsWith("Riso al tonno")));
+  assert.equal(progress.length, 7, "solo il tentativo compatibile raggiunge il client");
+  assert.ok(progress.flat().every((item) => item.title.startsWith("Riso al tonno")));
 });
 
 test("allergia espressa nelle note: l'alimento viene estratto e il piano viene rifiutato", async (t) => {

@@ -14,7 +14,7 @@ const USER_MESSAGES: Record<AiErrorCode, string> = {
   AI_USAGE_UNAVAILABLE: "Impossibile verificare il limite di utilizzo AI in questo momento. Riprova più tardi.",
   AI_TIMEOUT: "L'AI ci sta mettendo troppo tempo. Riprova tra poco.",
   AI_BAD_RESPONSE: "L'AI ha restituito una risposta non valida. Riprova.",
-  AI_CONSTRAINT_VIOLATION: "Il piano generato non rispettava tutte le allergie o la dieta indicate e non è stato mostrato. Riprova.",
+  AI_CONSTRAINT_VIOLATION: "Non è stato possibile creare un piano verificato dopo più tentativi. Le preferenze sono rimaste compilate: riprova.",
   AI_HEALTH_CONSENT_REQUIRED: "Per usare le allergie nella generazione devi prima abilitare il consenso AI per i dati relativi alla salute.",
   AI_PROVIDER_ERROR: "Servizio AI temporaneamente non disponibile. Riprova tra poco.",
 };

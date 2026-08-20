@@ -43,6 +43,7 @@ const CONFIRM_TEXT =
 /** Stato in-memory del "server": il piano salvato per la famiglia (o null). */
 let serverPlan: { id: string; title: string; weekStartDate: string; items: any[] } | null = null;
 let planSeq = 0;
+let streamMode: "success" | "constraint-error" = "success";
 
 /** Tutti i body ricevuti dalla POST di salvataggio piano. */
 const postBodies: any[] = [];
@@ -83,6 +84,14 @@ async function stubApi(pg: Page) {
 
     // Stream AI stubbato: due pasti + done, formato NDJSON come il backend vero.
     if (path === `/api/ai/${FAMILY_ID}/weekly-meal-plan/stream` && method === "POST") {
+      if (streamMode === "constraint-error") {
+        return json({
+          error: {
+            code: "AI_CONSTRAINT_VIOLATION",
+            message: "Non è stato possibile creare un piano verificato dopo più tentativi. Le preferenze sono rimaste compilate: riprova.",
+          },
+        }, 422);
+      }
       const lines = [
         JSON.stringify({ type: "items", items: STREAM_ITEMS }),
         JSON.stringify({ type: "done", title: "Piano Settimanale E2E" }),
@@ -230,5 +239,41 @@ describe("Sostituzione piano pasti (Salva → conferma / Annulla)", () => {
     assert.equal(serverPlan!.id, "plan-2", "il piano deve essere stato sostituito (nuovo id)");
     assert.equal(serverPlan!.title, "Piano Settimanale E2E");
     assert.equal(serverPlan!.items.length, STREAM_ITEMS.length);
+  });
+
+  test("5) fallimento definitivo dei vincoli: messaggio contestuale, nessun popup e allergie conservate", async () => {
+    streamMode = "constraint-error";
+    const unexpectedDialogs: string[] = [];
+    const dialogListener = async (dialog: any) => {
+      unexpectedDialogs.push(dialog.message());
+      await dialog.dismiss();
+    };
+    page.on("dialog", dialogListener);
+
+    try {
+      await page.getByText("Genera con AI").first().tap();
+      const allergiesInput = page.getByPlaceholder("Es. glutine, lattosio...");
+      await allergiesInput.fill("Glutine");
+      await page.getByText("Genera Piano").first().tap();
+
+      const errorBox = page.getByTestId("mealplan-generation-error");
+      await errorBox.waitFor({ timeout: 15000 });
+      await page.getByText("Le preferenze sono rimaste compilate: riprova.", { exact: false }).waitFor();
+      await page.waitForTimeout(500);
+      const errorBounds = await errorBox.boundingBox();
+      const viewportHeight = await page.evaluate(() => window.innerHeight);
+
+      assert.equal(unexpectedDialogs.length, 0, "l'errore non deve aprire popup bloccanti");
+      assert.equal(await allergiesInput.inputValue(), "Glutine", "il campo allergie deve restare compilato");
+      assert.equal(await page.getByText("Penne di semola", { exact: false }).count(), 0, "nessun pasto incompatibile deve essere visibile");
+      assert.ok(errorBounds, "il messaggio contestuale deve avere dimensioni visibili");
+      assert.ok(
+        errorBounds!.y >= 0 && errorBounds!.y + errorBounds!.height <= viewportHeight,
+        "il messaggio contestuale deve scorrere automaticamente dentro il viewport mobile",
+      );
+    } finally {
+      page.off("dialog", dialogListener);
+      streamMode = "success";
+    }
   });
 });
