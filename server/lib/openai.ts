@@ -641,11 +641,19 @@ function buildConstraintCorrection(
         : violation.constraint),
   )).slice(0, 12);
 
+  const glutenCorrection = violations.some((violation) => violation.code === "gluten")
+    ? `
+- VINCOLO GLUTINE: usa solo ingredienti naturalmente privi di glutine o dichiarati esplicitamente "senza glutine". Non scrivere pasta, pane, farina, cereali, biscotti, pizza, farro, orzo o prodotti da forno non dichiarati senza glutine in nessun campo.`
+    : "";
+  const exactCorrection = `
+- Non scrivere gli alimenti o i termini rilevati come incompatibili in nessun campo del nuovo piano, nemmeno come esempio o descrizione.
+- Sostituisci ogni componente incompatibile con un ingrediente di tipo diverso e compatibile con tutti i vincoli indicati.`;
+
   return `
 - CORREZIONE AUTOMATICA OBBLIGATORIA (tentativo ${nextAttempt}): il piano precedente è stato scartato perché incompatibile.
 - Incompatibilità rilevate dal controllo: ${detected.join("; ")}.
-- Ricrea TUTTI i pasti da zero. Non riutilizzare gli alimenti incompatibili; usa soltanto alternative esplicitamente compatibili e dichiarale nel titolo e negli ingredienti.
-- Prima di rispondere esegui un secondo controllo completo contro dieta e allergie.`;
+- Ricrea TUTTI i pasti da zero. Non riutilizzare gli alimenti incompatibili; usa soltanto alternative esplicitamente compatibili e dichiarale nel titolo e negli ingredienti.${exactCorrection}
+- Prima di rispondere esegui un secondo controllo completo contro dieta e allergie.${glutenCorrection}`;
 }
 
 async function generateWeeklyMealPlanAttempt(
@@ -668,8 +676,11 @@ async function generateWeeklyMealPlanAttempt(
   // poche verdure": ancoriamo la distribuzione settimanale reale della dieta.
   const dietLower = (context.preferences?.diet || '').toLowerCase();
   const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
+  const constrainedPlan = hasMealPlanConstraints(context.preferences);
   const mediterraneanRule = dietLower.includes('mediterran') && glutenFreeRequired
     ? `\n- DIETA MEDITERRANEA SENZA GLUTINE: riso, quinoa, polenta e patate come fonti di carboidrati; verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte; carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
+    : dietLower.includes('mediterran') && constrainedPlan
+      ? `\n- DIETA MEDITERRANEA CON VINCOLI: verdure in OGNI pranzo e cena, olio extravergine d'oliva e frutta; scegli ogni componente soltanto tra quelli compatibili con tutti i vincoli indicati.`
     : dietLower.includes('mediterran')
       ? `\n- DIETA MEDITERRANEA VERA: pasta/riso/cereali come primo quasi ogni giorno a pranzo; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
       : '';
@@ -685,6 +696,8 @@ async function generateWeeklyMealPlanAttempt(
   const wantsWholegrain = dietLower.includes('integral') || rawNotes.toLowerCase().includes('integral');
   const wholegrainRule = glutenFreeRequired
     ? `\n- GLUTINE: pasta, pane, farine, cereali, biscotti e prodotti da forno sono ammessi SOLO se dichiarati esplicitamente "senza glutine" nel titolo, in ogni ingrediente e in ogni passaggio che li cita. Mai semola, frumento, farro, orzo o pane comune.`
+    : constrainedPlan
+    ? `\n- VINCOLI: non usare esempi standard, prodotti confezionati o sostituti impliciti. Ogni ingrediente, condimento e componente deve essere dichiaratamente compatibile con TUTTI i vincoli indicati.`
     : wantsWholegrain
     ? ''
     : `\n- Pasta, riso e pane: usa quelli CLASSICI (pasta di semola, riso bianco, pane comune). NON proporre varianti "integrali" a meno che l'utente non le chieda espressamente.`;
@@ -764,8 +777,19 @@ async function generateWeeklyMealPlanAttempt(
     'privilegia patate al forno con verdure e una fonte proteica compatibile',
     'privilegia un piatto mediterraneo naturalmente senza glutine con verdure',
   ];
+  const compatibleDayThemes = [
+    'componi un pranzo e una cena esclusivamente con ingredienti compatibili e verdure di stagione',
+    'varia gli ortaggi e scegli soltanto fonti proteiche compatibili con i vincoli',
+    'usa una preparazione semplice con contorni di verdure e ingredienti compatibili',
+    'proponi un piatto completo verificando ogni componente contro i vincoli',
+    'scegli ingredienti freschi e compatibili, senza sostituti impliciti',
+    'varia tecniche di cottura e verdure mantenendo tutti gli ingredienti compatibili',
+    'proponi un piatto italiano semplice composto solo da ingredienti compatibili',
+  ];
   const activeDayThemes = glutenFreeRequired
     ? (variant === 2 ? glutenFreeDayThemesB : glutenFreeDayThemes)
+    : constrainedPlan
+    ? (variant === 2 ? [...compatibleDayThemes.slice(3), ...compatibleDayThemes.slice(0, 3)] : compatibleDayThemes)
     : mediterraneanRule
     ? (variant === 2 ? mediterraneanDayThemesB : mediterraneanDayThemes)
     : (variant === 2 ? [...dayThemes.slice(3), ...dayThemes.slice(0, 3)] : dayThemes);
@@ -782,35 +806,51 @@ async function generateWeeklyMealPlanAttempt(
     'frullato o smoothie con biscotti secchi',
   ];
   const glutenFreeBreakfastThemes = [
-    'yogurt o un’alternativa compatibile con frutta fresca',
-    'frullato di frutta con yogurt o un’alternativa compatibile',
-    'frutta fresca con ricotta o un’alternativa compatibile',
-    'smoothie di frutta con semi',
-    'yogurt o un’alternativa compatibile con frutta cotta',
-    'macedonia di frutta con yogurt o un’alternativa compatibile',
-    'frullato di banana e frutta fresca con una bevanda compatibile',
+    'una colazione leggera con ingredienti dichiaratamente compatibili e frutta fresca',
+    'un frullato di frutta composto solo da ingredienti compatibili',
+    'una colazione con frutta fresca e componenti compatibili',
+    'uno smoothie di frutta con ingredienti compatibili',
+    'una colazione leggera con frutta cotta e ingredienti compatibili',
+    'una macedonia di frutta con componenti compatibili',
+    'una colazione a base di frutta composta solo da ingredienti compatibili',
   ];
-  const activeBreakfastThemes = glutenFreeRequired ? glutenFreeBreakfastThemes : breakfastThemes;
+  const compatibleBreakfastThemes = [
+    'una colazione leggera composta soltanto da ingredienti compatibili con tutti i vincoli',
+    'una colazione semplice con ingredienti freschi già compatibili',
+    'una colazione con componenti dichiaratamente compatibili, senza sostituti impliciti',
+    'una colazione leggera verificata contro tutti i vincoli indicati',
+    'una colazione semplice con ingredienti compatibili e non confezionati',
+    'una colazione variata composta solo da ingredienti compatibili',
+    'una colazione italiana leggera che rispetti ogni vincolo indicato',
+  ];
+  const activeBreakfastThemes = glutenFreeRequired
+    ? glutenFreeBreakfastThemes
+    : constrainedPlan
+      ? compatibleBreakfastThemes
+      : breakfastThemes;
 
   async function fetchChunk(chunkDates: string[], excludeTitles: string[], themeHint?: string, breakfastHint?: string): Promise<MealPlanSuggestion['items']> {
     const excludeRule = excludeTitles.length
       ? `\n- VARIETÀ OBBLIGATORIA: questi piatti sono GIÀ stati pianificati in altri giorni della settimana, quindi NON riproporli e NON proporne di simili: ${excludeTitles.join('; ')}. Scegli piatti chiaramente DIVERSI per ogni pasto.`
       : '';
-    const breakfastMealRule = glutenFreeRequired
-      ? `- breakfast (colazione): SOLO una colazione leggera e senza glutine. Usa frutta, yogurt o un'alternativa compatibile, smoothie o semi. Non proporre prodotti da forno, pane, biscotti, cereali o farine salvo che siano dichiarati "senza glutine" nel titolo, negli ingredienti e nei passaggi.`
+    const breakfastMealRule = constrainedPlan
+      ? `- breakfast (colazione): SOLO una colazione leggera composta esclusivamente da ingredienti compatibili con TUTTI i vincoli.${glutenFreeRequired ? ' Se usi un prodotto a base di cereali o farina, deve essere dichiarato esplicitamente senza glutine in titolo, ingredienti e passaggi.' : ''} Non usare esempi standard né sostituti impliciti.`
       : `- breakfast (colazione): SOLO colazione italiana tipica, dolce e leggera. Es. cappuccino e cornetto, latte e biscotti, fette biscottate con marmellata, yogurt con cereali e frutta, pane con marmellata o miele, crostata, ciambellone, pancake, porridge, spremuta con plumcake. MAI piatti salati come pasta, carne, pesce, verdure cotte o bruschette salate.`;
-    const lunchMealRule = glutenFreeRequired
-      ? `- lunch (pranzo): pasto principale completo con riso, quinoa, polenta, patate o un altro carboidrato dichiaratamente senza glutine, una fonte proteica compatibile e verdure.`
+    const lunchMealRule = constrainedPlan
+      ? `- lunch (pranzo): pasto principale completo con ingredienti compatibili, una fonte proteica compatibile e verdure.${glutenFreeRequired ? ' Ogni componente a base di cereali o farina deve essere esplicitamente senza glutine.' : ''}`
       : `- lunch (pranzo): pasto principale completo (es. primo di pasta/riso o piatto unico con contorno).`;
-    const dinnerMealRule = glutenFreeRequired
-      ? `- dinner (cena): pasto più leggero del pranzo con una fonte proteica compatibile, verdure e riso, patate, polenta o un altro carboidrato dichiaratamente senza glutine.`
+    const dinnerMealRule = constrainedPlan
+      ? `- dinner (cena): pasto più leggero del pranzo con ingredienti compatibili, una fonte proteica compatibile e verdure.${glutenFreeRequired ? ' Ogni componente a base di cereali o farina deve essere esplicitamente senza glutine.' : ''}`
       : `- dinner (cena): pasto più leggero del pranzo (es. secondo di carne/pesce/uova/legumi con verdure, zuppe, minestre).`;
-    const completeLunchRule = glutenFreeRequired
-      ? `- A pranzo usa riso, quinoa, polenta, patate o un altro carboidrato dichiaratamente senza glutine insieme a proteine e verdure.`
+    const completeLunchRule = constrainedPlan
+      ? `- A pranzo includi soltanto componenti compatibili con tutti i vincoli, senza lasciare impliciti condimenti o ingredienti composti.`
       : `- A pranzo il primo deve includere una fonte proteica (es. pasta con legumi/pesce/ragù bianco/uova/formaggio come tonno, ceci, sgombro, ricotta) oppure va aggiunto un secondo leggero: MAI solo pasta al pomodoro senza proteine.`;
-    const completeDinnerRule = glutenFreeRequired
-      ? `- A cena, accanto alla fonte proteica, includi sempre riso, patate, polenta, quinoa o un altro carboidrato dichiaratamente senza glutine.`
+    const completeDinnerRule = constrainedPlan
+      ? `- A cena includi soltanto componenti compatibili con tutti i vincoli, senza lasciare impliciti condimenti o ingredienti composti.`
       : `- A cena, accanto alla fonte proteica, includi SEMPRE una porzione di carboidrati (pane, patate, farro, orzo o riso): MAI solo proteine e verdure.`;
+    const snackMealRule = constrainedPlan
+      ? `- snack (spuntino): piccolo e leggero, composto esclusivamente da ingredienti compatibili con TUTTI i vincoli.`
+      : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
 - Per ogni giorno genera esattamente ${mealsPerDay} pasti: ${mealTypes.join(', ')}.
@@ -821,7 +861,7 @@ REGOLE:
   ${breakfastMealRule}
   ${lunchMealRule}
   ${dinnerMealRule}
-  - snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).
+   ${snackMealRule}
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}

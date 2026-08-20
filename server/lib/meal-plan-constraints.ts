@@ -371,7 +371,7 @@ export function buildMealPlanConstraintPrompt(
 - VINCOLI ALIMENTARI OBBLIGATORI E PRIORITARI: prevalgono su QUALSIASI tema, esempio, regola nutrizionale o richiesta di varietà precedente.
 ${diet ? `- La dieta "${diet}" è un vincolo rigido: nessun pasto può contraddirla.` : ""}
 ${allergies ? `- Le allergie/intolleranze "${allergies}" sono vincoli di sicurezza: non usare gli allergeni né ingredienti che normalmente li contengono.` : ""}
-- Se usi un sostituto compatibile, dichiaralo esplicitamente nel titolo E nell'ingrediente (es. "pasta senza glutine", "latte vegetale", "yogurt senza lattosio"). Non lasciare mai implicita la compatibilità.
+- Se usi un sostituto compatibile, dichiarane esplicitamente la compatibilità nel titolo E nell'ingrediente. Non lasciare mai implicita la compatibilità e non usare esempi o alternative che possano contraddire un altro vincolo.
 - L'array ingredients deve essere completo per ogni pasto: non omettere ingredienti, condimenti o componenti composti.
 - Prima di rispondere ricontrolla ogni titolo, descrizione, ingrediente e passaggio contro dieta e allergie. Se un tema suggerito è incompatibile, sostituiscilo con un piatto compatibile.`;
 }
