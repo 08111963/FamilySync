@@ -20,6 +20,7 @@ import { generateResetToken, hashResetToken } from '../lib/reset-token';
 import { deleteUserAccount } from '../lib/account-deletion';
 import { activatePendingTrialsForUser } from '../lib/entitlements';
 import { recordConsent } from '../lib/consents';
+import { safeReturnTo } from '../../lib/safe-return-to';
 import {
   isGoogleLoginConfigured,
   isAllowedReturnUrl,
@@ -101,6 +102,7 @@ const signupSchema = z.object({
   }),
   // Consenso AI facoltativo e MAI preselezionato lato client.
   aiConsent: z.boolean().optional(),
+  returnTo: z.string().max(2048).optional(),
 });
 
 const loginSchema = z.object({
@@ -138,6 +140,14 @@ router.post('/signup', async (req: Request, res: Response) => {
     }
 
     const { email, password, name, ageBand, aiConsent } = parsed.data;
+    const returnTo = parsed.data.returnTo
+      ? safeReturnTo(parsed.data.returnTo)
+      : undefined;
+    if (parsed.data.returnTo && !returnTo) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Destinazione non valida" },
+      });
+    }
 
     if (ageBand === "under14") {
       return res.status(403).json({
@@ -189,7 +199,7 @@ router.post('/signup', async (req: Request, res: Response) => {
     // continuiamo, ma NON inviamo un link rotto. L'utente potrà richiedere un
     // nuovo invio quando la configurazione sarà corretta.
     if (!config.isProduction || isVerificationEmailConfigured()) {
-      await sendVerificationEmail(email, name, verificationToken);
+      await sendVerificationEmail(email, name, verificationToken, returnTo);
     } else {
       logger.warn('Verification email skipped: email service not fully configured', { userId: newUser.id });
     }
@@ -479,6 +489,15 @@ router.post('/verify-email', async (req: Request, res: Response) => {
 
 router.post('/resend-verification-email', authenticate, blockChildAccount, async (req: Request, res: Response) => {
   try {
+    const rawReturnTo =
+      typeof req.body?.returnTo === 'string' ? req.body.returnTo : undefined;
+    const returnTo = rawReturnTo ? safeReturnTo(rawReturnTo) : undefined;
+    if (rawReturnTo && !returnTo) {
+      return res.status(400).json({
+        error: { code: "VALIDATION_ERROR", message: "Destinazione non valida" },
+      });
+    }
+
     const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
 
     if (!user) {
@@ -510,7 +529,7 @@ router.post('/resend-verification-email', authenticate, blockChildAccount, async
       expiresAt,
     });
 
-    await sendVerificationEmail(user.email, user.name, verificationToken);
+    await sendVerificationEmail(user.email, user.name, verificationToken, returnTo);
 
     res.json({ message: 'Email di verifica inviata' });
   } catch (error) {

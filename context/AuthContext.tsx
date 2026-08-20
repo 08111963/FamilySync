@@ -29,7 +29,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   accessToken: string | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string, acceptedTerms: boolean, ageBand?: '14_17' | 'adult', aiConsent?: boolean) => Promise<void>;
+  signup: (email: string, password: string, name: string, acceptedTerms: boolean, ageBand?: '14_17' | 'adult', aiConsent?: boolean, returnTo?: string) => Promise<void>;
   applySession: (user: User, accessToken: string, refreshToken: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshAccessToken: () => Promise<string | null>;
@@ -237,7 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signup = useCallback(
-    async (email: string, password: string, name: string, acceptedTerms: boolean, ageBand?: '14_17' | 'adult', aiConsent?: boolean) => {
+    async (email: string, password: string, name: string, acceptedTerms: boolean, ageBand?: '14_17' | 'adult', aiConsent?: boolean, returnTo?: string) => {
       let baseUrl: string;
       try {
         baseUrl = getApiUrl();
@@ -251,7 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         res = await authFetch(url.toString(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, name, acceptedTerms, ageBand, aiConsent }),
+          body: JSON.stringify({ email, password, name, acceptedTerms, ageBand, aiConsent, returnTo }),
         });
       } catch (networkError) {
         throw new Error('Errore di connessione. Verifica la tua connessione internet e riprova.');

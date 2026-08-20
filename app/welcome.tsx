@@ -15,8 +15,9 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import Animated, { FadeInDown, Easing, interpolate, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
+import { firstStringParam, safeReturnTo } from "@/lib/safe-return-to";
 
 const { width } = Dimensions.get("window");
 type Feature = { icon: keyof typeof Ionicons.glyphMap; title: string; description: string; gradient: [string, string] };
@@ -140,7 +141,16 @@ export default function WelcomeScreen() {
   const isDark = useColorScheme() === "dark";
   const { width: windowWidth } = useWindowDimensions();
   const isWide = windowWidth >= 700;
-  const handleGetStarted = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/login"); };
+  const params = useLocalSearchParams<{ returnTo?: string | string[] }>();
+  const returnTo = safeReturnTo(firstStringParam(params.returnTo));
+  const handleGetStarted = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push(
+      returnTo
+        ? ({ pathname: "/login", params: { returnTo } } as any)
+        : "/login",
+    );
+  };
   return <LinearGradient colors={isDark ? ["#0C292B", "#103D3D", "#14514D"] : ["#0D9488", "#14B8A6", "#5EEAD4"]} style={styles.container}>
     <FloatingOrb delay={0} x={width * .08} size={130} color="#fff" /><FloatingOrb delay={800} x={width * .66} size={82} color="#fff" />
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingTop: (Platform.OS === "web" ? 58 : insets.top) + 30, paddingBottom: (Platform.OS === "web" ? 32 : insets.bottom) + 30 }]}>

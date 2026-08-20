@@ -1,6 +1,7 @@
 import { db } from '../db';
 import {
   calendarEvents,
+  chores,
   eventReminderLog,
   familyMembers,
   users,
@@ -25,6 +26,20 @@ function addDays(isoDate: string, days: number): string {
   const d = new Date(`${isoDate}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+/** Link interno che apre la famiglia e il giorno della faccenda ricordata. */
+export function buildChoreReminderPath(params: {
+  familyId: string;
+  date: string;
+  choreId: string;
+}): string {
+  const query = new URLSearchParams({
+    familyId: params.familyId,
+    date: params.date,
+    choreId: params.choreId,
+  });
+  return `/chores?${query.toString()}`;
 }
 
 /** Formatta una data ISO in italiano (es. "23 luglio 2026"). */
@@ -76,6 +91,22 @@ async function processKind(kind: ReminderKind, date: string): Promise<void> {
       const claimed = await claimReminder(event.id, kind);
       if (!claimed) continue;
 
+      // Gli eventi creati automaticamente dalle faccende devono riportare
+      // l'utente alla famiglia/data giuste. Senza questo contesto il link
+      // generico può lasciare attiva un'altra famiglia o un filtro precedente.
+      const [linkedChore] = await db
+        .select({ id: chores.id })
+        .from(chores)
+        .where(eq(chores.calendarEventId, event.id))
+        .limit(1);
+      const appPath = linkedChore
+        ? buildChoreReminderPath({
+            familyId: event.familyId,
+            date: event.date,
+            choreId: linkedChore.id,
+          })
+        : undefined;
+
       // Utenti in blocco reciproco con l'autore dell'evento: né push né email.
       const blockRelated = new Set(
         await getBlockRelatedUserIds(event.createdBy, event.familyId),
@@ -92,7 +123,11 @@ async function processKind(kind: ReminderKind, date: string): Promise<void> {
         await sendPushToFamily(event.familyId, {
           title,
           body,
-          data: { type: 'event_reminder', eventId: event.id },
+          data: {
+            type: 'event_reminder',
+            eventId: event.id,
+            ...(appPath ? { route: appPath } : {}),
+          },
         }, { excludeUserIds: blockRelated });
 
         // Email ai membri con email verificata (esclusi utenti in blocco).
@@ -122,6 +157,7 @@ async function processKind(kind: ReminderKind, date: string): Promise<void> {
                 eventTime: !event.allDay ? event.time : null,
                 location: event.location,
                 kind,
+                appPath,
               });
               sent++;
             } catch (err) {

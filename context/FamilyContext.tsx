@@ -120,6 +120,8 @@ interface FamilyData {
 interface FamilyContextType {
   data: FamilyData;
   isLoading: boolean;
+  isFamiliesLoading: boolean;
+  isChoresLoading: boolean;
   currentFamily: FamilyInfo | null;
   families: FamilyInfo[];
   setFamilyName: (name: string) => Promise<void>;
@@ -234,13 +236,19 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   });
 
   const families = familiesQuery.data || [];
+  const isFamiliesLoading = familiesQuery.isLoading || familiesQuery.isFetching;
   const currentFamily = families.find(f => f.id === currentFamilyId) || null;
   const members: FamilyMember[] = familyDetailQuery.data?.members || [];
   const events: CalendarEvent[] = eventsQuery.data || [];
   const shoppingLists: ShoppingList[] = shoppingQuery.data || [];
   const choresList: Chore[] = choresQuery.data || [];
 
-  const isLoading = familiesQuery.isLoading || (!!currentFamilyId && (familyDetailQuery.isLoading || eventsQuery.isLoading));
+  const isChoresLoading =
+    !!currentFamilyId && (choresQuery.isLoading || choresQuery.isFetching);
+  const isLoading =
+    familiesQuery.isLoading ||
+    (!!currentFamilyId &&
+      (familyDetailQuery.isLoading || eventsQuery.isLoading || choresQuery.isLoading));
 
   const data: FamilyData = useMemo(() => ({
     familyName: currentFamily?.name || "FamilySync",
@@ -444,6 +452,8 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     () => ({
       data,
       isLoading,
+      isFamiliesLoading,
+      isChoresLoading,
       currentFamily,
       families,
       setFamilyName,
@@ -471,7 +481,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       getLeaderboard,
       refetchAll,
     }),
-    [data, isLoading, currentFamily, families, setFamilyName, createFamily, switchFamily, addMember, updateMember, deleteMember, addEvent, updateEvent, deleteEvent, addShoppingList, deleteShoppingList, addShoppingItem, toggleShoppingItem, deleteShoppingItem, addChore, updateChore, deleteChore, completeChore, getMemberById, getEventsForDate, getUpcomingEvents, getPendingChores, getLeaderboard, refetchAll]
+    [data, isLoading, isFamiliesLoading, isChoresLoading, currentFamily, families, setFamilyName, createFamily, switchFamily, addMember, updateMember, deleteMember, addEvent, updateEvent, deleteEvent, addShoppingList, deleteShoppingList, addShoppingItem, toggleShoppingItem, deleteShoppingItem, addChore, updateChore, deleteChore, completeChore, getMemberById, getEventsForDate, getUpcomingEvents, getPendingChores, getLeaderboard, refetchAll]
   );
 
   return <FamilyContext.Provider value={value}>{children}</FamilyContext.Provider>;

@@ -12,6 +12,12 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/context/AuthContext";
 import { getApiUrl } from "@/lib/query-client";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  firstStringParam,
+  PENDING_RETURN_TO_STORAGE_KEY,
+  safeReturnTo,
+} from "@/lib/safe-return-to";
 
 type VerifyState = "loading" | "success" | "invalid" | "expired" | "network";
 
@@ -20,11 +26,28 @@ export default function VerifyEmailTokenScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { user, refreshUser } = useAuth();
-  const { token } = useLocalSearchParams<{ token: string }>();
+  const { token, returnTo } = useLocalSearchParams<{
+    token: string | string[];
+    returnTo?: string | string[];
+  }>();
+  const returnToFromLink = safeReturnTo(firstStringParam(returnTo));
 
   const [state, setState] = useState<VerifyState>("loading");
   const [attempt, setAttempt] = useState(0);
+  const [storedReturnTo, setStoredReturnTo] = useState<string | undefined>();
   const runningRef = useRef(false);
+  const destination = returnToFromLink || storedReturnTo;
+
+  useEffect(() => {
+    if (returnToFromLink) {
+      AsyncStorage.setItem(PENDING_RETURN_TO_STORAGE_KEY, returnToFromLink).catch(() => {});
+      setStoredReturnTo(undefined);
+      return;
+    }
+    AsyncStorage.getItem(PENDING_RETURN_TO_STORAGE_KEY)
+      .then((value) => setStoredReturnTo(safeReturnTo(value)))
+      .catch(() => setStoredReturnTo(undefined));
+  }, [returnToFromLink]);
 
   useEffect(() => {
     if (runningRef.current) return;
@@ -76,17 +99,30 @@ export default function VerifyEmailTokenScreen() {
       } catch {
         // Anche se il refresh fallisce, la verifica è avvenuta: prosegui.
       }
-      router.replace("/(tabs)");
+      await AsyncStorage.removeItem(PENDING_RETURN_TO_STORAGE_KEY).catch(() => {});
+      router.replace((destination || "/(tabs)") as any);
     } else {
-      router.replace("/login");
+      router.replace(
+        destination
+          ? ({ pathname: "/login", params: { returnTo: destination } } as any)
+          : "/login",
+      );
     }
   };
 
   const goToResend = () => {
     if (user) {
-      router.replace("/verify-email");
+      router.replace(
+        destination
+          ? ({ pathname: "/verify-email", params: { returnTo: destination } } as any)
+          : "/verify-email",
+      );
     } else {
-      router.replace("/login");
+      router.replace(
+        destination
+          ? ({ pathname: "/login", params: { returnTo: destination } } as any)
+          : "/login",
+      );
     }
   };
 

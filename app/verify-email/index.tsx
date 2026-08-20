@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -10,12 +10,17 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/context/AuthContext";
 import { getApiUrl } from "@/lib/query-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  firstStringParam,
+  PENDING_RETURN_TO_STORAGE_KEY,
+  safeReturnTo,
+} from "@/lib/safe-return-to";
 
 const AUTH_STORAGE_KEY = "@family_sync_auth";
 
@@ -23,10 +28,18 @@ export default function VerifyEmailScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { user, refreshUser, logout } = useAuth();
+  const params = useLocalSearchParams<{ returnTo?: string | string[] }>();
+  const destination = safeReturnTo(firstStringParam(params.returnTo));
 
   const [checking, setChecking] = useState(false);
   const [resending, setResending] = useState(false);
   const [resentMessage, setResentMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (destination) {
+      AsyncStorage.setItem(PENDING_RETURN_TO_STORAGE_KEY, destination).catch(() => {});
+    }
+  }, [destination]);
 
   const handleCheck = useCallback(async () => {
     setChecking(true);
@@ -59,7 +72,11 @@ export default function VerifyEmailScreen() {
       const url = new URL("/api/auth/resend-verification-email", getApiUrl());
       const res = await fetch(url.toString(), {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(destination ? { returnTo: destination } : {}),
       });
       if (res.ok) {
         if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -72,7 +89,7 @@ export default function VerifyEmailScreen() {
     } finally {
       setResending(false);
     }
-  }, []);
+  }, [destination]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>

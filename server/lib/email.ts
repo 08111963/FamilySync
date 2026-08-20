@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import { isChildSyntheticEmail } from './child-access';
 import { logger } from './logger';
+import { safeReturnTo } from '../../lib/safe-return-to';
 
 // Le variabili d'ambiente vengono lette a RUNTIME (non a load-time) così che le
 // funzioni di configurazione riflettano sempre lo stato reale del processo e
@@ -106,8 +107,17 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#039;');
 }
 
-export async function sendVerificationEmail(email: string, name: string, token: string) {
-  const link = `${clientBaseUrl()}/verify-email/${token}`;
+export async function sendVerificationEmail(
+  email: string,
+  name: string,
+  token: string,
+  returnTo?: string,
+) {
+  const destination = safeReturnTo(returnTo);
+  const link = `${clientBaseUrl()}/verify-email/${token}${
+    destination ? `?returnTo=${encodeURIComponent(destination)}` : ''
+  }`;
+  const safeLink = escapeHtml(link);
 
   if (!isEmailConfigured()) {
     console.log(`[DEV] Email verification link for ${email}: ${link}`);
@@ -117,7 +127,7 @@ export async function sendVerificationEmail(email: string, name: string, token: 
   await sendEmail({
     to: email,
     subject: 'Verifica il tuo account Family Sync',
-    html: `<h1>Ciao ${name}!</h1><p><a href="${link}">Verifica Email</a></p>`,
+    html: `<h1>Ciao ${escapeHtml(name)}!</h1><p><a href="${safeLink}">Verifica Email</a></p>`,
   });
 }
 
@@ -222,6 +232,7 @@ export async function sendEventReminderEmail(params: {
   eventTime?: string | null; // es. "15:30"
   location?: string | null;
   kind: 'event_tomorrow' | 'event_today';
+  appPath?: string;
 }) {
   const when = params.kind === 'event_today' ? 'è OGGI' : 'è DOMANI';
 
@@ -235,7 +246,12 @@ export async function sendEventReminderEmail(params: {
   const eventDate = escapeHtml(params.eventDate);
   const time = params.eventTime ? escapeHtml(params.eventTime) : '';
   const location = params.location ? escapeHtml(params.location) : '';
-  const appLink = clientBaseUrl();
+  const baseUrl = clientBaseUrl();
+  const safePath =
+    params.appPath?.startsWith('/') && !params.appPath.startsWith('//')
+      ? params.appPath
+      : '';
+  const appLink = baseUrl ? escapeHtml(`${baseUrl}${safePath}`) : '';
 
   await sendEmail({
     to: params.to,

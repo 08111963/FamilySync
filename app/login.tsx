@@ -9,6 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 import { loginWithGoogle, loginWithApple, isAppleLoginAvailable, completeOauth, claimLoginCode, isSignupPending } from '@/lib/social-login';
+import { firstStringParam, safeReturnTo } from '@/lib/safe-return-to';
 
 function validatePassword(pw: string): string | null {
   if (pw.length < 8) return 'La password deve avere almeno 8 caratteri';
@@ -22,7 +23,16 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { login, signup, applySession } = useAuth();
-  const { redirect, loginCode, signupToken, suggestedName } = useLocalSearchParams<{ redirect?: string; loginCode?: string; signupToken?: string; suggestedName?: string }>();
+  const { redirect, returnTo, loginCode, signupToken, suggestedName } = useLocalSearchParams<{
+    redirect?: string | string[];
+    returnTo?: string | string[];
+    loginCode?: string;
+    signupToken?: string;
+    suggestedName?: string;
+  }>();
+  const destination = safeReturnTo(
+    firstStringParam(returnTo) || firstStringParam(redirect),
+  );
 
   const [isSignup, setIsSignup] = useState(false);
   const [name, setName] = useState('');
@@ -52,9 +62,13 @@ export default function LoginScreen() {
     signupHandled.current = true;
     router.replace({
       pathname: '/social-complete',
-      params: { signupToken, suggestedName: suggestedName || '' },
+      params: {
+        signupToken,
+        suggestedName: suggestedName || '',
+        ...(destination ? { returnTo: destination } : {}),
+      },
     } as any);
-  }, [signupToken]);
+  }, [destination, signupToken, suggestedName]);
 
   const oauthHandled = useRef(false);
   useEffect(() => {
@@ -69,15 +83,19 @@ export default function LoginScreen() {
       .then(async (session) => {
         await applySession(session.user, session.accessToken, session.refreshToken);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.replace((redirect as any) || '/');
+        router.replace((destination || '/') as any);
       })
       .catch((err: any) => {
         setError(err?.message || 'Accesso non riuscito. Riprova.');
         // Pulisce il codice (monouso) dall'URL per evitare nuovi tentativi falliti.
-        router.replace('/login');
+        router.replace(
+          destination
+            ? ({ pathname: '/login', params: { returnTo: destination } } as any)
+            : '/login',
+        );
       })
       .finally(() => setSocialSubmitting(null));
-  }, [loginCode]);
+  }, [applySession, destination, loginCode]);
 
   const handleSocialLogin = async (provider: 'google' | 'apple') => {
     if (isSubmitting || socialSubmitting) return;
@@ -91,7 +109,10 @@ export default function LoginScreen() {
       typeof window !== 'undefined' &&
       window.self !== window.top
     ) {
-      window.open(window.location.origin + '/login', '_blank');
+      const loginPath = destination
+        ? `/login?returnTo=${encodeURIComponent(destination)}`
+        : '/login';
+      window.open(window.location.origin + loginPath, '_blank');
       setError(
         "L'accesso con Google non funziona nella finestra di anteprima: ti abbiamo aperto l'app in una nuova scheda, completa lì l'accesso.",
       );
@@ -99,21 +120,25 @@ export default function LoginScreen() {
     }
     setSocialSubmitting(provider);
     try {
-      const result = provider === 'google' ? await loginWithGoogle() : await loginWithApple();
+      const result = provider === 'google' ? await loginWithGoogle(destination) : await loginWithApple();
       if (!result) return; // utente ha annullato
       if (isSignupPending(result)) {
         // Nuovo utente: nessun account creato finché non completa la registrazione.
         router.push({
           pathname: '/social-complete',
-          params: { signupToken: result.signupToken, suggestedName: result.suggestedName || '' },
+          params: {
+            signupToken: result.signupToken,
+            suggestedName: result.suggestedName || '',
+            ...(destination ? { returnTo: destination } : {}),
+          },
         } as any);
         return;
       }
       const session = result;
       await applySession(session.user, session.accessToken, session.refreshToken);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      if (redirect) {
-        router.replace(redirect as any);
+      if (destination) {
+        router.replace(destination as any);
       }
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -162,13 +187,21 @@ export default function LoginScreen() {
     setIsSubmitting(true);
     try {
       if (isSignup) {
-        await signup(email.trim(), password, name.trim(), acceptedTerms, ageBand === 'under14' ? undefined : (ageBand ?? undefined), aiConsent);
+        await signup(
+          email.trim(),
+          password,
+          name.trim(),
+          acceptedTerms,
+          ageBand === 'under14' ? undefined : (ageBand ?? undefined),
+          aiConsent,
+          destination,
+        );
       } else {
         await login(email.trim(), password);
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      if (redirect) {
-        router.replace(redirect as any);
+      if (destination) {
+        router.replace(destination as any);
         return;
       }
     } catch (err: any) {

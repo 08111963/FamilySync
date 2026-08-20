@@ -8,6 +8,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 import { completeSocialSignup } from '@/lib/social-login';
+import { firstStringParam, safeReturnTo } from '@/lib/safe-return-to';
 
 const AGE_OPTIONS: { value: 'under14' | '14_17' | 'adult'; label: string }[] = [
   { value: 'under14', label: 'Meno di 14' },
@@ -19,7 +20,12 @@ export default function SocialCompleteScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { applySession } = useAuth();
-  const { signupToken, suggestedName } = useLocalSearchParams<{ signupToken?: string; suggestedName?: string }>();
+  const { signupToken, suggestedName, returnTo } = useLocalSearchParams<{
+    signupToken?: string;
+    suggestedName?: string;
+    returnTo?: string | string[];
+  }>();
+  const destination = safeReturnTo(firstStringParam(returnTo));
 
   const [name, setName] = useState((suggestedName as string) || '');
   const [ageBand, setAgeBand] = useState<'under14' | '14_17' | 'adult' | null>(null);
@@ -62,7 +68,7 @@ export default function SocialCompleteScreen() {
       });
       await applySession(session.user, session.accessToken, session.refreshToken);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/');
+      router.replace((destination || '/') as any);
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const msg = err?.message || '';

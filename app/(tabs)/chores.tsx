@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 
 import { useTheme } from "@/hooks/useTheme";
@@ -54,16 +54,40 @@ const localDateFromIso = (iso: string) => {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, m - 1, d);
 };
+const isValidIsoDate = (iso: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+  const parsed = localDateFromIso(iso);
+  return !Number.isNaN(parsed.getTime()) && toLocalIso(parsed) === iso;
+};
 const shiftIso = (iso: string, days: number) => {
   const d = localDateFromIso(iso);
   d.setDate(d.getDate() + days);
   return toLocalIso(d);
 };
+const firstParam = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
 
 export default function ChoresScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { data, currentFamily, completeChore, deleteChore } = useFamily();
+  const {
+    data,
+    currentFamily,
+    families,
+    isFamiliesLoading,
+    isChoresLoading,
+    switchFamily,
+    completeChore,
+    deleteChore,
+  } = useFamily();
+  const params = useLocalSearchParams<{
+    familyId?: string | string[];
+    date?: string | string[];
+    choreId?: string | string[];
+  }>();
+  const requestedFamilyId = firstParam(params.familyId);
+  const requestedDate = firstParam(params.date);
+  const requestedChoreId = firstParam(params.choreId);
   const [filter, setFilter] = useState<FilterType>("all");
   const [memberFilter, setMemberFilter] = useState<string | null>(null);
 
@@ -71,6 +95,31 @@ export default function ChoresScreen() {
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
 
   const familyId = currentFamily?.id || "";
+  const requestedFamilyIsAvailable =
+    !!requestedFamilyId && families.some((family) => family.id === requestedFamilyId);
+
+  // I promemoria includono la famiglia della faccenda: selezionala soltanto
+  // se l'utente ne fa davvero parte (la lista `families` è già autenticata).
+  useEffect(() => {
+    if (
+      requestedFamilyId &&
+      requestedFamilyId !== familyId &&
+      requestedFamilyIsAvailable
+    ) {
+      switchFamily(requestedFamilyId);
+    }
+  }, [familyId, requestedFamilyId, requestedFamilyIsAvailable, switchFamily]);
+
+  // Un link di promemoria deve rendere visibile la faccenda anche se la tab
+  // conservava un altro giorno o un filtro membro/stato precedente.
+  useEffect(() => {
+    if (!requestedFamilyId && !requestedDate && !requestedChoreId) return;
+    if (requestedDate && isValidIsoDate(requestedDate)) {
+      setSelectedDate(requestedDate);
+    }
+    setMemberFilter(null);
+    setFilter("all");
+  }, [requestedChoreId, requestedDate, requestedFamilyId]);
 
   // Il filtro membro è legato alla famiglia attiva: se si cambia famiglia
   // va azzerato, altrimenti un ID "stantio" nasconderebbe tutte le faccende.
@@ -330,6 +379,12 @@ export default function ChoresScreen() {
   );
 
   const nothingToShow = overdue.length === 0 && dayChores.length === 0 && undated.length === 0;
+  const waitingForRequestedFamily =
+    requestedFamilyIsAvailable && familyId !== requestedFamilyId;
+  const waitingForChores =
+    (isFamiliesLoading && families.length === 0) ||
+    waitingForRequestedFamily ||
+    (isChoresLoading && data.chores.length === 0);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -512,7 +567,12 @@ export default function ChoresScreen() {
           </View>
         )}
 
-        {nothingToShow ? (
+        {waitingForChores ? (
+          <View style={{ alignItems: "center", paddingVertical: 48, gap: 12 }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={{ color: colors.textSecondary }}>Caricamento faccende…</Text>
+          </View>
+        ) : nothingToShow ? (
           <EmptyState
             icon="checkmark-circle-outline"
             title={

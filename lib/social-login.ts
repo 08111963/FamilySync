@@ -4,6 +4,7 @@ import * as Linking from "expo-linking";
 import * as AppleAuthentication from "expo-apple-authentication";
 
 import { getApiUrl } from "@/lib/query-client";
+import { safeReturnTo } from "@/lib/safe-return-to";
 
 // Chiude il popup di autenticazione quando il browser torna sull'app (solo web).
 WebBrowser.maybeCompleteAuthSession();
@@ -67,11 +68,15 @@ export async function completeOauth(loginCode: string): Promise<SocialSession> {
  * browser sicura; al ritorno l'URL contiene un codice di login monouso che
  * viene scambiato con i token di sessione.
  */
-export async function loginWithGoogle(): Promise<SocialLoginResult | null> {
+export async function loginWithGoogle(returnTo?: string): Promise<SocialLoginResult | null> {
   // In Expo Go tramite tunnel HTTPS (ngrok) il deep link di ritorno deve usare
   // lo schema sicuro exps://, altrimenti Expo Go non riesce a ricaricare il
   // progetto ("Something went wrong") quando il browser rimanda all'app.
-  let returnUrl = Linking.createURL("login");
+  const destination = safeReturnTo(returnTo);
+  let returnUrl = Linking.createURL(
+    "login",
+    destination ? { queryParams: { returnTo: destination } } : undefined,
+  );
   if (returnUrl.startsWith("exp://") && returnUrl.includes("ngrok")) {
     returnUrl = returnUrl.replace(/^exp:\/\//, "exps://");
   }

@@ -21,6 +21,7 @@ import {
   isPushSupported,
   registerForPushNotifications,
 } from "@/lib/push-notifications";
+import { firstStringParam, safeReturnTo } from "@/lib/safe-return-to";
 
 // Registra il token push quando l'utente è autenticato e gestisce il tap
 // sulla notifica navigando alla schermata indicata in data.route.
@@ -90,20 +91,41 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   // NB: nel layout radice serve useGlobalSearchParams: useLocalSearchParams
   // non vede i parametri della schermata attiva (returnTo arriverebbe vuoto).
-  const params = useGlobalSearchParams<{ returnTo?: string }>();
+  const params = useGlobalSearchParams<{
+    returnTo?: string | string[];
+    familyId?: string | string[];
+    date?: string | string[];
+    choreId?: string | string[];
+  }>();
 
   useEffect(() => {
     if (isLoading) return;
 
     const root = segments[0];
-    // Se l'utente stava aprendo un link d'invito ma deve prima verificare
-    // l'email o completare l'onboarding, ricordiamo la destinazione (returnTo)
-    // per riportarlo all'invito alla fine, invece di lasciarlo sulla home
-    // "Crea la tua famiglia". Accettiamo SOLO percorsi interni /join*.
-    const rawReturnTo = typeof params.returnTo === "string" ? params.returnTo : undefined;
-    const safeReturnTo = rawReturnTo && /^\/join(-link)?\/[A-Za-z0-9_-]+$/.test(rawReturnTo) ? rawReturnTo : undefined;
-    const inviteReturnTo = (root === "join" || root === "join-link") && pathname ? pathname : safeReturnTo;
-    const withReturnTo = (base: string) => (inviteReturnTo ? `${base}?returnTo=${encodeURIComponent(inviteReturnTo)}` : base);
+    // Inviti e promemoria faccende devono sopravvivere a login, verifica email
+    // e onboarding. L'helper accetta soltanto destinazioni interne allow-listed.
+    const directInviteReturnTo =
+      (root === "join" || root === "join-link") && pathname
+        ? safeReturnTo(pathname)
+        : undefined;
+    const directChoreReturnTo =
+      pathname === "/chores"
+        ? safeReturnTo(
+            `/chores?${new URLSearchParams({
+              familyId: firstStringParam(params.familyId) || "",
+              date: firstStringParam(params.date) || "",
+              choreId: firstStringParam(params.choreId) || "",
+            }).toString()}`,
+          )
+        : undefined;
+    const pendingReturnTo =
+      directInviteReturnTo ||
+      directChoreReturnTo ||
+      safeReturnTo(firstStringParam(params.returnTo));
+    const withReturnTo = (base: string) =>
+      pendingReturnTo
+        ? `${base}?returnTo=${encodeURIComponent(pendingReturnTo)}`
+        : base;
     // "social-complete" è pubblica: il nuovo utente Google/Apple arriva qui
     // NON ancora autenticato (ha solo il signupToken) per completare la
     // registrazione; senza questa eccezione verrebbe rimbalzato su /welcome.
@@ -122,7 +144,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const verificationAllowed = inVerifyScreen || root === "legal" || root === "help" || root === "delete-account" || root === "join" || root === "join-link";
 
     if (!isAuthenticated && !inPublicGroup && !inVerifyScreen) {
-      router.replace("/welcome");
+      router.replace(withReturnTo("/welcome") as any);
     } else if (needsVerification && !verificationAllowed) {
       router.replace(withReturnTo("/verify-email") as any);
     } else if (needsOnboarding && !needsVerification && !onboardingAllowed) {
@@ -132,10 +154,20 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       // si verifica l'email, poi si completa l'onboarding.
       router.replace(withReturnTo("/onboarding") as any);
     } else if (isAuthenticated && !needsVerification && !needsOnboarding && (inVerifyScreen || inOnboardingScreen || (inPublicGroup && root !== "join" && root !== "join-link" && root !== "legal" && root !== "help" && root !== "forgot-password" && root !== "reset-password"))) {
-      // Se c'era un invito in sospeso, torna lì invece che alla home.
-      router.replace((safeReturnTo || "/") as any);
+      router.replace((pendingReturnTo || "/") as any);
     }
-  }, [isAuthenticated, isLoading, user, segments, pathname, params.returnTo]);
+  }, [
+    isAuthenticated,
+    isLoading,
+    user,
+    segments,
+    pathname,
+    params.returnTo,
+    params.familyId,
+    params.date,
+    params.choreId,
+    router,
+  ]);
 
   return <>{children}</>;
 }

@@ -9,7 +9,7 @@ import {
   calendarEvents,
   eventReminderLog,
 } from "../../shared/schema";
-import { runEventRemindersOnce } from "../lib/event-reminders";
+import { buildChoreReminderPath, runEventRemindersOnce } from "../lib/event-reminders";
 
 /**
  * Test di INTEGRAZIONE contro il DB reale: verifica claim atomico e dedup dei
@@ -18,6 +18,17 @@ import { runEventRemindersOnce } from "../lib/event-reminders";
  * false ⇒ solo log dev), e la famiglia non ha token push registrati.
  */
 const hasDb = !!process.env.DATABASE_URL;
+
+test("il link del promemoria faccenda conserva famiglia, giorno e faccenda", () => {
+  assert.equal(
+    buildChoreReminderPath({
+      familyId: "family-1",
+      date: "2026-08-20",
+      choreId: "chore-1",
+    }),
+    "/chores?familyId=family-1&date=2026-08-20&choreId=chore-1",
+  );
+});
 
 describe("event reminders (DB)", { skip: hasDb ? false : "DATABASE_URL non impostata" }, () => {
   let familyId: string;

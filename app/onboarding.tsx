@@ -8,6 +8,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 import { apiRequest } from '@/lib/query-client';
+import { firstStringParam, safeReturnTo } from '@/lib/safe-return-to';
 
 const AGE_OPTIONS: { value: 'under14' | '14_17' | 'adult'; label: string }[] = [
   { value: 'under14', label: 'Meno di 14' },
@@ -20,8 +21,8 @@ export default function OnboardingScreen() {
   const { colors, isDark } = useTheme();
   const { refreshUser, logout } = useAuth();
   // Se l'utente stava aprendo un link d'invito, dopo l'onboarding torna lì.
-  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
-  const safeReturnTo = typeof returnTo === 'string' && /^\/join(-link)?\/[A-Za-z0-9_-]+$/.test(returnTo) ? returnTo : null;
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string | string[] }>();
+  const destination = safeReturnTo(firstStringParam(returnTo));
 
   const [ageBand, setAgeBand] = useState<'under14' | '14_17' | 'adult' | null>(null);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -53,7 +54,7 @@ export default function OnboardingScreen() {
       });
       await refreshUser();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace((safeReturnTo || '/') as any);
+      router.replace((destination || '/') as any);
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setError(err?.message || 'Salvataggio non riuscito. Riprova.');
