@@ -198,6 +198,24 @@ function matchedTermIsSafe(text: string, rule: FoodRule, term: string): boolean 
   return (rule.safeMarkers || []).some((marker) => hasTerm(text, marker));
 }
 
+function safeIngredientCanBeReferredToAs(
+  ingredientText: string,
+  rule: FoodRule,
+  term: string,
+): boolean {
+  if (hasTerm(ingredientText, term) && matchedTermIsSafe(ingredientText, rule, term)) {
+    return true;
+  }
+  // "Bevanda di riso/cocco/soia" è il nome in lista ingredienti di un latte
+  // vegetale. Nei passaggi è naturale abbreviare in "latte"; l'equivalenza è
+  // sicura soltanto per quel riferimento, non per panna, burro o formaggi.
+  return rule.code === "lactose" &&
+    term === "latte" &&
+    hasTerm(ingredientText, "bevanda") &&
+    ["vegetale", "di soia", "di mandorla", "di avena", "di cocco", "di riso"]
+      .some((marker) => hasTerm(ingredientText, marker));
+}
+
 function addRule(target: FoodRule[], rule: FoodRule): void {
   if (!target.some((existing) => existing.code === rule.code)) target.push(rule);
 }
@@ -420,10 +438,28 @@ export function validateMealPlanConstraints(
       continue;
     }
     const segments = itemSegments(item);
+    // Le istruzioni di una ricetta nominano spesso in forma abbreviata un
+    // ingrediente già dichiarato nella lista (es. "scalda il latte" dopo
+    // "latte di riso"). Il controllo deve mantenere il contesto della singola
+    // ricetta: rifiutare quella frase isolata renderebbe impossibile generare
+    // un piano senza lattosio pur avendo tutti gli ingredienti compatibili.
+    // Questa eccezione vale soltanto per un riferimento generico a un
+    // ingrediente dichiarato esplicitamente sicuro; non rende sicuri altri
+    // latticini (es. panna o burro) né l'allergene "lattosio" stesso.
+    const ingredientSegments = item.ingredients
+      .map((ingredient) => normalize(ingredient?.name || ""))
+      .filter(Boolean);
     for (const rule of rules) {
       for (const segment of segments) {
         const matchedTerms = rule.terms.filter((term) => hasTerm(segment, term));
-        const unsafeMatch = matchedTerms.find((term) => !matchedTermIsSafe(segment, rule, term));
+        const unsafeMatch = matchedTerms.find((term) => {
+          if (matchedTermIsSafe(segment, rule, term)) return false;
+          if (term === rule.label) return true;
+          const isIngredientDeclaration = ingredientSegments.includes(segment);
+          if (isIngredientDeclaration) return true;
+          return !ingredientSegments.some((ingredientSegment) =>
+            safeIngredientCanBeReferredToAs(ingredientSegment, rule, term));
+        });
         if (unsafeMatch) {
           violations.push({
             code: rule.code,

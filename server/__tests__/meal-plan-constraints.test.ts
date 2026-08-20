@@ -92,6 +92,46 @@ test("dieta vegana: sostituti vegetali espliciti vengono accettati", () => {
   assert.deepEqual(violations, []);
 });
 
+test("intolleranza al lattosio: i passaggi possono riferirsi alla bevanda vegetale già dichiarata", () => {
+  const violations = validateMealPlanConstraints(
+    [{
+      title: "Porridge al latte caldo",
+      ingredients: [
+        ingredient("Latte di riso"),
+        ingredient("Avena"),
+        ingredient("Banana"),
+      ],
+      steps: [
+        "Scalda il latte in un pentolino a fuoco basso.",
+        "Unisci l'avena e mescola per cinque minuti.",
+        "Completa con la banana a fettine e servi.",
+      ],
+    }],
+    { allergies: "Lattosio" },
+  );
+  assert.deepEqual(violations, []);
+});
+
+test("intolleranza al lattosio: un latticino diverso e non dichiarato sicuro resta bloccato", () => {
+  const violations = validateMealPlanConstraints(
+    [{
+      title: "Pasta con panna",
+      ingredients: [
+        ingredient("Latte di riso"),
+        ingredient("Pasta"),
+        ingredient("Zucchine"),
+      ],
+      steps: [
+        "Cuoci la pasta in acqua bollente.",
+        "Aggiungi la panna alle zucchine in padella.",
+        "Unisci la pasta e manteca per un minuto.",
+      ],
+    }],
+    { allergies: "Lattosio" },
+  );
+  assert.ok(violations.some((violation) => violation.code === "lactose" && violation.matched === "panna"));
+});
+
 test("allergie personalizzate: il nome inserito resta un divieto", () => {
   const violations = validateMealPlanConstraints(
     [{

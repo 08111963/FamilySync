@@ -243,6 +243,47 @@ test("con lattosio: la lista sicura esclude latticini ma consente la pasta", asy
   assert.ok(plan.items.some((item) => item.ingredients?.some((ingredient) => ingredient.name === "pasta")));
 });
 
+test("con lattosio: i passaggi dettagliati usano il contesto dell'ingrediente vegetale sicuro", async (t) => {
+  const { client } = createFakeClient((request) => request.dates.flatMap((date, index) =>
+    request.mealTypes.map((mealType) => {
+      if (mealType === "breakfast") {
+        const meal = makeMeal(date, mealType, `Porridge ${index}`, [
+          { name: "bevanda di riso", quantity: "200", unit: "ml" },
+          { name: "banana", quantity: "1", unit: "pezzo" },
+        ]);
+        meal.steps = [
+          "Scalda la bevanda di riso in un pentolino.",
+          "Versa il latte caldo sulla banana a rondelle.",
+          "Mescola e servi la colazione.",
+        ];
+        return meal;
+      }
+      return makeMeal(date, mealType, `${mealType} ${index}`, mealType === "lunch"
+        ? [
+            { name: "pasta", quantity: "80", unit: "g" },
+            { name: "ceci", quantity: "100", unit: "g" },
+            { name: "pomodori", quantity: "120", unit: "g" },
+          ]
+        : [
+            { name: "pollo", quantity: "120", unit: "g" },
+            { name: "patate", quantity: "180", unit: "g" },
+            { name: "spinaci", quantity: "150", unit: "g" },
+          ]);
+    }),
+  ));
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { allergies: "Lattosio" },
+  });
+
+  assertCompleteWeek(plan.items, 3);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+});
+
 test("gli elenchi strutturati rispettano anche allergeni diversi", async (t) => {
   for (const allergy of ["Uova", "Pesce", "Arachidi", "Frutta a guscio", "Soia", "Fragole"]) {
     const { client, calls } = createFakeClient((request) => request.dates.flatMap((date, index) =>
