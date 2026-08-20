@@ -396,7 +396,7 @@ export const mealPlans = pgTable("meal_plans", {
   createdByUserId: uuid("created_by_user_id").notNull().references(() => users.id),
   weekStartDate: date("week_start_date").notNull(),
   title: text("title"),
-  preferences: jsonb("preferences").$type<{ diet?: string; allergies?: string; maxTimeMinutes?: number; mealsPerDay?: number }>(),
+  preferences: jsonb("preferences").$type<{ diet?: string; allergies?: string; notes?: string; maxTimeMinutes?: number; mealsPerDay?: number }>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   unique("meal_plans_family_week").on(table.familyId, table.weekStartDate),

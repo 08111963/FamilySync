@@ -156,6 +156,58 @@ test("tutte le ondate fallite: propaga un errore tipizzato invece di piano vuoto
   );
 });
 
+test("vincolo glutine: un piano incompatibile viene rifiutato senza emettere progressi", async (t) => {
+  const { client } = makeFakeClient({
+    itemsForDate: (date) => [{
+      ...meal(date, "lunch", "Penne al tonno"),
+      ingredients: [
+        { name: "Penne di semola", quantity: "80", unit: "g" },
+        { name: "Tonno", quantity: "60", unit: "g" },
+      ],
+    }],
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const progress: Meal[][] = [];
+  await assert.rejects(
+    generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      preferences: { allergies: "Glutine", mealsPerDay: 2 },
+      onProgress: (items) => progress.push(items as Meal[]),
+    }),
+    (error: unknown) => {
+      assert.equal((error as { code?: string }).code, "AI_CONSTRAINT_VIOLATION");
+      return true;
+    },
+  );
+  assert.equal(progress.length, 0, "nessun chunk incompatibile deve raggiungere il client");
+});
+
+test("allergia espressa nelle note: l'alimento viene estratto e il piano viene rifiutato", async (t) => {
+  const { client } = makeFakeClient({
+    itemsForDate: (date) => [{
+      ...meal(date, "lunch", "Macedonia di fragole"),
+      ingredients: [{ name: "Fragole", quantity: "150", unit: "g" }],
+    }],
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  await assert.rejects(
+    generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      preferences: { notes: "Non posso mangiare fragole", mealsPerDay: 2 },
+    }),
+    (error: unknown) => {
+      assert.equal((error as { code?: string }).code, "AI_CONSTRAINT_VIOLATION");
+      return true;
+    },
+  );
+});
+
 test("ripassata anti-doppioni: il doppione intra-ondata viene sostituito", async (t) => {
   // Giorno 0 e giorno 1 (stessa ondata) propongono lo stesso pranzo.
   const { client, calls } = makeFakeClient({

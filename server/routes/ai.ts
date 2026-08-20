@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
+import { z } from 'zod';
 import { getParam } from '../lib/http-params';
 import { isRealIsoDate } from '../../shared/chore-recurrence';
 import type { Request, Response } from 'express';
@@ -20,9 +21,15 @@ import { recipes, recipeIngredients } from '../../shared/schema';
 import { reserveAiSlot, finalizeAiUsage, withAiUsage } from '../lib/ai-usage';
 import type { Plan } from '../lib/entitlements';
 import { resolveMealPlanVariants } from '../lib/ai-policy';
-import { isAiError } from '../lib/ai-errors';
+import { AiError, isAiError } from '../lib/ai-errors';
 import { recipeImageCacheKey, createRecipeImagePrewarm } from '../lib/recipe-image-prewarm';
 import { isObjectStorageMode, persistUploadedFile, uploadObjectExists } from '../lib/upload-storage';
+import {
+  type MealPlanConstraintPreferences,
+  mealPlanPreferencesContainHealthData,
+  unsupportedMealPlanHealthNote,
+  unsupportedMealPlanDiet,
+} from '../lib/meal-plan-constraints';
 
 const router = Router();
 
@@ -45,15 +52,61 @@ async function userHasAiHealthConsent(userId: string): Promise<boolean> {
   }
 }
 
-/** Rimuove le allergie dalle preferenze pasti se manca il consenso ai_health. */
-async function stripHealthDataIfNoConsent<T extends { allergies?: unknown } | undefined>(
+const mealPlanPreferencesSchema = z.object({
+  diet: z.string().trim().max(300).optional(),
+  allergies: z.string().trim().max(300).optional(),
+  notes: z.string().trim().max(600).optional(),
+  maxTimeMinutes: z.number().int().positive().max(1440).optional(),
+  mealsPerDay: z.number().int().min(2).max(4).optional(),
+}).strict().optional();
+
+type PreparedMealPlanPreferences =
+  | { ok: true; preferences: MealPlanConstraintPreferences & { maxTimeMinutes?: number; mealsPerDay?: number } | undefined }
+  | { ok: false; status: number; body: { error: { code: string; message: string } } };
+
+/**
+ * Le allergie sono dati sanitari: se presenti senza consenso la generazione
+ * si blocca. Non vengono più eliminate silenziosamente, perché produrre un
+ * piano che sembra sicuro senza poter usare il vincolo sarebbe pericoloso.
+ */
+async function prepareMealPlanPreferences(
   userId: string,
-  preferences: T,
-): Promise<T> {
-  if (!preferences || preferences.allergies == null) return preferences;
-  if (await userHasAiHealthConsent(userId)) return preferences;
-  const { allergies: _omitted, ...rest } = preferences as Record<string, unknown>;
-  return rest as T;
+  raw: unknown,
+): Promise<PreparedMealPlanPreferences> {
+  const parsed = mealPlanPreferencesSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: { code: "VALIDATION_ERROR", message: "Preferenze del piano pasti non valide" } },
+    };
+  }
+  const preferences = parsed.data;
+  const unsupportedHealthNote = unsupportedMealPlanHealthNote(preferences);
+  if (unsupportedHealthNote) {
+    return {
+      ok: false,
+      status: 422,
+      body: { error: { code: "UNSUPPORTED_ALLERGY_NOTE", message: unsupportedHealthNote } },
+    };
+  }
+  const unsupportedDiet = unsupportedMealPlanDiet(preferences);
+  if (unsupportedDiet) {
+    return {
+      ok: false,
+      status: 422,
+      body: { error: { code: "UNSUPPORTED_DIET", message: unsupportedDiet } },
+    };
+  }
+  if (mealPlanPreferencesContainHealthData(preferences) && !(await userHasAiHealthConsent(userId))) {
+    const error = new AiError("AI_HEALTH_CONSENT_REQUIRED");
+    return {
+      ok: false,
+      status: error.httpStatus,
+      body: { error: { code: error.code, message: error.userMessage } },
+    };
+  }
+  return { ok: true, preferences };
 }
 
 function sendAiError(res: Response, error: unknown, fallbackMsg: string) {
@@ -854,11 +907,15 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
     if (!weekStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate)) {
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "weekStartDate è obbligatorio (YYYY-MM-DD)" } });
     }
+    const preparedPreferences = await prepareMealPlanPreferences(userId, preferences);
+    if (!preparedPreferences.ok) {
+      return res.status(preparedPreferences.status).json(preparedPreferences.body);
+    }
 
     const context = {
       familySize: members.length || 1,
       weekStartDate,
-      preferences: await stripHealthDataIfNoConsent(userId, preferences),
+      preferences: preparedPreferences.preferences,
     };
 
     const run = await withAiUsage(
@@ -924,6 +981,10 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
 
   try {
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
+    const preparedPreferences = await prepareMealPlanPreferences(userId, preferences);
+    if (!preparedPreferences.ok) {
+      return res.status(preparedPreferences.status).json(preparedPreferences.body);
+    }
 
     // Prenotazione quota PRIMA di aprire lo stream: così su 429/503 possiamo
     // ancora rispondere con uno status HTTP (headers non ancora inviati).
@@ -938,24 +999,22 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     // Lo slot prenotato viene marcato "failed" dal finally.
     if (clientClosed) return;
 
-    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders();
-
     const plan = await generateWeeklyMealPlan({
       familySize: members.length || 1,
       weekStartDate,
-      preferences: await stripHealthDataIfNoConsent(userId, preferences),
+      preferences: preparedPreferences.preferences,
       planVariant,
-      onProgress: (items) => {
-        if (clientClosed) return;
-        res.write(JSON.stringify({ type: 'items', items }) + '\n');
-      },
     });
     await finalizeUsageOnce(true);
 
     if (clientClosed) return;
+
+    // Il piano viene bufferizzato e validato interamente PRIMA di aprire lo
+    // stream: nessun pasto incompatibile può comparire come anteprima parziale.
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
 
     const durationMs = Date.now() - startTime;
     console.log(JSON.stringify({
@@ -965,6 +1024,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       itemsCount: plan.items.length,
     }));
 
+    res.write(JSON.stringify({ type: 'items', items: plan.items }) + '\n');
     res.write(JSON.stringify({
       type: 'done',
       title: plan.title || "Piano Settimanale",

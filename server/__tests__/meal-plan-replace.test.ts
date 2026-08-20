@@ -2,9 +2,17 @@ import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
 import type { Server } from "node:http";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { users, families, familyMembers, mealPlans, mealPlanItems } from "../../shared/schema";
+import {
+  users,
+  families,
+  familyMembers,
+  mealPlans,
+  mealPlanItems,
+  recipes,
+  recipeIngredients,
+} from "../../shared/schema";
 import { registerRoutes } from "../routes";
 import { generateAccessToken } from "../lib/jwt";
 
@@ -77,6 +85,9 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
       name: "Meal Tester",
       emailVerified: true,
       termsAcceptedAt: new Date(),
+      aiFeaturesEnabled: true,
+      aiHealthConsent: false,
+      ageBand: "adult",
     }).returning();
     created.users.push(u.id);
     userId = u.id;
@@ -102,6 +113,21 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
   });
 
   let firstPlanId: string;
+
+  test("0) allergie senza consenso salute: generazione bloccata prima della chiamata AI", async () => {
+    for (const preferences of [
+      { allergies: "Glutine", mealsPerDay: 2 },
+      { notes: "Non posso mangiare arachidi", mealsPerDay: 2 },
+    ]) {
+      const res = await request("POST", `/api/ai/${familyId}/weekly-meal-plan/stream`, {
+        weekStartDate: WEEK,
+        preferences,
+      });
+      assert.equal(res.status, 403);
+      const body = await res.json();
+      assert.equal(body.error.code, "AI_HEALTH_CONSENT_REQUIRED");
+    }
+  });
 
   test("1) salvataggio normale: 201 e piano con items", async () => {
     const res = await savePlan({});
@@ -149,6 +175,30 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     assert.equal(items.length, validItems.length, "gli items del vecchio piano devono essere intatti");
   });
 
+  test("3c) replace incompatibile con le allergie: 422 e vecchio piano intatto", async () => {
+    const res = await savePlan({
+      replace: true,
+      preferences: { allergies: "Glutine" },
+      items: [{
+        date: "2030-03-04",
+        mealType: "lunch",
+        titleOverride: "Penne al tonno",
+        ingredients: [
+          { name: "Penne di semola", quantity: "80", unit: "g" },
+          { name: "Tonno", quantity: "60", unit: "g" },
+        ],
+      }],
+    });
+    assert.equal(res.status, 422);
+    const body = await res.json();
+    assert.equal(body.error.code, "MEAL_PLAN_CONSTRAINT_VIOLATION");
+    const rows = await plansForWeek();
+    assert.equal(rows.length, 1, "il vecchio piano NON deve essere stato eliminato");
+    assert.equal(rows[0].id, firstPlanId);
+    const items = await db.select().from(mealPlanItems).where(eq(mealPlanItems.mealPlanId, firstPlanId));
+    assert.equal(items.length, validItems.length);
+  });
+
   test("4) replace=true: sostituzione atomica con nuovo id e items", async () => {
     const res = await savePlan({ replace: true, title: "Piano Sostituito" });
     assert.equal(res.status, 201);
@@ -163,5 +213,105 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     // Gli items del vecchio piano non devono più esistere.
     const oldItems = await db.select().from(mealPlanItems).where(eq(mealPlanItems.mealPlanId, firstPlanId));
     assert.equal(oldItems.length, 0);
+  });
+
+  let constrainedPlanId: string;
+  let constrainedItemId: string;
+
+  test("5) crea un piano vincolato compatibile", async () => {
+    const res = await request("POST", `/api/meal-plans/${familyId}/meal-plans`, {
+      title: "Piano senza glutine",
+      weekStartDate: "2030-03-11",
+      preferences: { allergies: "Glutine" },
+      items: [{
+        date: "2030-03-11",
+        mealType: "lunch",
+        titleOverride: "Penne senza glutine al pomodoro",
+        ingredients: [
+          { name: "Penne di mais senza glutine", quantity: "80", unit: "g" },
+          { name: "Pomodoro", quantity: "100", unit: "g" },
+        ],
+      }],
+    });
+    assert.equal(res.status, 201);
+    const body = await res.json();
+    constrainedPlanId = body.id;
+    constrainedItemId = body.items[0].id;
+  });
+
+  test("6) aggiunte, modifiche e ricette incompatibili non aggirano i vincoli salvati", async () => {
+    const before = await db.select().from(mealPlanItems)
+      .where(eq(mealPlanItems.mealPlanId, constrainedPlanId));
+
+    const addRes = await request(
+      "POST",
+      `/api/meal-plans/${familyId}/meal-plans/${constrainedPlanId}/items`,
+      {
+        date: "2030-03-12",
+        mealType: "dinner",
+        titleOverride: "Pane tostato",
+        ingredients: [{ name: "Pane comune", quantity: "2", unit: "pz" }],
+      },
+    );
+    assert.equal(addRes.status, 422);
+
+    const updateRes = await request(
+      "PUT",
+      `/api/meal-plans/${familyId}/meal-plans/${constrainedPlanId}/items/${constrainedItemId}`,
+      {
+        titleOverride: "Pasta di semola",
+        ingredients: [{ name: "Pasta di semola", quantity: "80", unit: "g" }],
+      },
+    );
+    assert.equal(updateRes.status, 422);
+
+    const [unsafeRecipe] = await db.insert(recipes).values({
+      familyId,
+      createdByUserId: userId,
+      title: "Pasta comune al pomodoro",
+      steps: ["Cuoci la pasta"],
+    }).returning();
+    await db.insert(recipeIngredients).values({
+      recipeId: unsafeRecipe.id,
+      name: "Pasta di semola",
+      quantity: "80",
+      unit: "g",
+      normalizedName: "pasta",
+    });
+    const recipeRes = await request(
+      "POST",
+      `/api/meal-plans/${familyId}/meal-plans/${constrainedPlanId}/items`,
+      {
+        date: "2030-03-13",
+        mealType: "lunch",
+        recipeId: unsafeRecipe.id,
+      },
+    );
+    assert.equal(recipeRes.status, 422);
+
+    const after = await db.select().from(mealPlanItems)
+      .where(eq(mealPlanItems.mealPlanId, constrainedPlanId));
+    assert.equal(after.length, before.length);
+    assert.equal(after[0]?.titleOverride, before[0]?.titleOverride);
+  });
+
+  test("7) una dieta non verificabile non viene salvata", async () => {
+    const res = await request("POST", `/api/meal-plans/${familyId}/meal-plans`, {
+      title: "Piano non verificabile",
+      weekStartDate: "2030-03-18",
+      preferences: { diet: "Solo cibi della mia infanzia" },
+      items: [{
+        date: "2030-03-18",
+        mealType: "lunch",
+        titleOverride: "Pasto generico",
+        ingredients: [{ name: "Ingrediente generico", quantity: "1", unit: "pz" }],
+      }],
+    });
+    assert.equal(res.status, 422);
+    const rows = await db.select().from(mealPlans).where(and(
+      eq(mealPlans.familyId, familyId),
+      eq(mealPlans.weekStartDate, "2030-03-18"),
+    ));
+    assert.equal(rows.length, 0);
   });
 });

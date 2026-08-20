@@ -2,6 +2,12 @@ import OpenAI, { toFile } from 'openai';
 import { z } from 'zod';
 import { normalizeItemName } from './normalize';
 import { AiError, assertAiConfigured, mapOpenAiError, resolveOpenAiConfig } from './ai-errors';
+import {
+  buildMealPlanConstraintPrompt,
+  hasMealPlanConstraints,
+  mealPlanRequiresGlutenFree,
+  validateMealPlanConstraints,
+} from './meal-plan-constraints';
 
 // Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
 // SDK lancia se la chiave manca, e ciò impedirebbe l'avvio del server.
@@ -588,11 +594,15 @@ export async function generateWeeklyMealPlan(context: {
   const prefText = context.preferences
     ? `${context.preferences.diet ? ` Dieta: ${context.preferences.diet}.` : ''}${context.preferences.allergies ? ` Allergie: ${context.preferences.allergies}.` : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}${rawNotes ? ` Preferenze della famiglia (dettate a voce, seguile con attenzione): ${rawNotes}.` : ''}`
     : '';
+  const constraintRule = buildMealPlanConstraintPrompt(context.preferences);
+  const deferProgressUntilValidated = hasMealPlanConstraints(context.preferences);
 
   // Piatti tradizionali: il modello tende a "salutizzare" tutto proponendo
   // pasta/pane integrali ovunque. Niente varianti integrali salvo richiesta.
   const wantsWholegrain = dietLower.includes('integral') || rawNotes.toLowerCase().includes('integral');
-  const wholegrainRule = wantsWholegrain
+  const wholegrainRule = mealPlanRequiresGlutenFree(context.preferences)
+    ? `\n- GLUTINE: pasta, pane, farine, cereali, biscotti e prodotti da forno sono ammessi SOLO se dichiarati esplicitamente "senza glutine" sia nel titolo sia nell'ingrediente. Mai semola, frumento, farro, orzo o pane comune.`
+    : wantsWholegrain
     ? ''
     : `\n- Pasta, riso e pane: usa quelli CLASSICI (pasta di semola, riso bianco, pane comune). NON proporre varianti "integrali" a meno che l'utente non le chieda espressamente.`;
 
@@ -683,7 +693,7 @@ REGOLE:
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   - A pranzo il primo deve includere una fonte proteica (es. pasta con legumi/pesce/ragù bianco/uova/formaggio come tonno, ceci, sgombro, ricotta) oppure va aggiunto un secondo leggero: MAI solo pasta al pomodoro senza proteine.
   - A cena, accanto alla fonte proteica, includi SEMPRE una porzione di carboidrati (pane, patate, farro, orzo o riso): MAI solo proteine e verdure.
-- Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}
+ - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${constraintRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno.${excludeRule}
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questi giorni ${themeHint}.` : ''}${breakfastHint && mealTypes.includes('breakfast') ? `\n- Per la colazione di questi giorni proponi: ${breakfastHint}. NON ripetere la stessa colazione in giorni diversi.` : ''}
 - Rispondi SOLO con JSON: {"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
@@ -742,7 +752,7 @@ REGOLE:
       for (const it of items) {
         if (it.title) usedTitles.push(it.title);
       }
-      if (context.onProgress) {
+      if (context.onProgress && !deferProgressUntilValidated) {
         const dayItems = items
           .filter((it) => validDates.has(it.date))
           .sort((a, b) => {
@@ -830,6 +840,28 @@ REGOLE:
   // Se non è stato generato nessun pasto valido e c'è stato un errore, propagalo tipizzato.
   if (filtered.length === 0 && firstReason !== null) {
     throw mapOpenAiError(firstReason);
+  }
+
+  const constraintViolations = validateMealPlanConstraints(filtered, context.preferences);
+  if (constraintViolations.length > 0) {
+    console.error(JSON.stringify({
+      tag: "AI_MEAL_PLAN_CONSTRAINT_REJECTED",
+      variant,
+      violations: constraintViolations.map((violation) => violation.code),
+    }));
+    throw new AiError(
+      "AI_CONSTRAINT_VIOLATION",
+      `Piano pasti rifiutato: ${constraintViolations.map((violation) => violation.code).join(",")}`,
+    );
+  }
+
+  if (context.onProgress && deferProgressUntilValidated) {
+    for (const date of dates) {
+      const dayItems = filtered.filter((item) => item.date === date);
+      if (dayItems.length > 0) {
+        try { context.onProgress(dayItems); } catch {}
+      }
+    }
   }
 
   return { title: 'Piano Settimanale', items: filtered };

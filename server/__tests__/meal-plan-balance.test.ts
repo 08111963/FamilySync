@@ -214,7 +214,14 @@ test("senza dieta mediterranea la regola dedicata NON viene aggiunta al prompt",
           const date = m![1]!.split(",")[0]!.trim();
           return {
             choices: [{
-              message: { content: JSON.stringify({ items: [meal(date, "lunch", `Pranzo ${date}`)] }) },
+              message: {
+                content: JSON.stringify({
+                  items: [{
+                    ...meal(date, "lunch", `Pranzo vegetariano ${date}`),
+                    ingredients: [{ name: "Lenticchie", quantity: "150", unit: "g" }],
+                  }],
+                }),
+              },
               finish_reason: "stop",
             }],
           };

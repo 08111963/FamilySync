@@ -13,6 +13,14 @@ import { normalizeItemName } from '../lib/normalize';
 import { isUniqueViolation } from '../lib/db-errors';
 import { toShoppingQuantity } from '../lib/shopping-quantity';
 import { consolidateIngredients, canonicalIngredientKey, type IngredientEntry } from '../lib/consolidate-ingredients';
+import {
+  hasMealPlanConstraints,
+  unsupportedMealPlanDiet,
+  unsupportedMealPlanHealthNote,
+  validateMealPlanConstraints,
+  type MealPlanConstraintItem,
+  type MealPlanConstraintPreferences,
+} from '../lib/meal-plan-constraints';
 
 const router = Router();
 
@@ -27,6 +35,7 @@ const createMealPlanSchema = z.object({
     allergies: z.string().optional(),
     maxTimeMinutes: z.number().optional(),
     mealsPerDay: z.number().optional(),
+    notes: z.string().optional(),
   }).optional(),
   items: z.array(z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -43,6 +52,64 @@ const createMealPlanSchema = z.object({
   })),
 });
 
+interface ConstraintItemInput {
+  recipeId?: string | null;
+  titleOverride?: string | null;
+  notes?: string | null;
+  ingredients?: Array<{ name: string; quantity?: string; unit?: string }> | null;
+}
+
+async function resolveConstraintItem(
+  familyId: string,
+  input: ConstraintItemInput,
+): Promise<MealPlanConstraintItem> {
+  if (!input.recipeId) {
+    return {
+      title: input.titleOverride,
+      notes: input.notes,
+      ingredients: input.ingredients,
+    };
+  }
+
+  const [recipe] = await db.select({
+    title: recipes.title,
+    description: recipes.description,
+    steps: recipes.steps,
+  })
+    .from(recipes)
+    .where(and(eq(recipes.id, input.recipeId), eq(recipes.familyId, familyId)))
+    .limit(1);
+
+  if (!recipe) {
+    return {
+      title: input.titleOverride,
+      notes: input.notes,
+      ingredients: input.ingredients,
+    };
+  }
+
+  const ingredients = input.ingredients ?? await db.select({ name: recipeIngredients.name })
+    .from(recipeIngredients)
+    .where(eq(recipeIngredients.recipeId, input.recipeId));
+
+  return {
+    title: input.titleOverride?.trim() || recipe.title,
+    description: recipe.description,
+    notes: input.notes,
+    ingredients,
+    steps: recipe.steps,
+  };
+}
+
+function constraintErrorResponse(message = "Il pasto è incompatibile con la dieta o le allergie del piano.") {
+  return {
+    error: {
+      code: "MEAL_PLAN_CONSTRAINT_VIOLATION",
+      message,
+    },
+  };
+}
+
 router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
   try {
     const familyId = getParam(req, 'familyId');
@@ -55,6 +122,30 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
     }
 
     const { items, replace, ...planData } = parsed.data;
+    const unsupportedHealthNote = unsupportedMealPlanHealthNote(planData.preferences);
+    if (unsupportedHealthNote) {
+      return res.status(422).json(constraintErrorResponse(unsupportedHealthNote));
+    }
+    const unsupportedDiet = unsupportedMealPlanDiet(planData.preferences);
+    if (unsupportedDiet) {
+      return res.status(422).json(constraintErrorResponse(unsupportedDiet));
+    }
+    const resolvedItems = hasMealPlanConstraints(planData.preferences)
+      ? await Promise.all(items.map((item) => resolveConstraintItem(familyId, item)))
+      : items.map((item) => ({
+          title: item.titleOverride,
+          notes: item.notes,
+          ingredients: item.ingredients,
+        }));
+    const constraintViolations = validateMealPlanConstraints(
+      resolvedItems,
+      planData.preferences,
+    );
+    if (constraintViolations.length > 0) {
+      return res.status(422).json(constraintErrorResponse(
+        "Il piano contiene pasti incompatibili con la dieta o le allergie indicate.",
+      ));
+    }
 
     if (!replace) {
       // Una sola settimana per famiglia: se esiste già un piano per quella data, 409.
@@ -299,6 +390,23 @@ router.post('/:familyId/meal-plans/:planId/items', authenticate, requireFamilyMe
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Ricetta non trovata" } });
     }
 
+    const planPreferences = plan.preferences as MealPlanConstraintPreferences | null;
+    const unsupportedHealthNote = unsupportedMealPlanHealthNote(planPreferences || undefined);
+    if (unsupportedHealthNote) {
+      return res.status(422).json(constraintErrorResponse(unsupportedHealthNote));
+    }
+    const unsupportedDiet = unsupportedMealPlanDiet(planPreferences || undefined);
+    if (unsupportedDiet) {
+      return res.status(422).json(constraintErrorResponse(unsupportedDiet));
+    }
+    if (hasMealPlanConstraints(planPreferences || undefined)) {
+      const constraintItem = await resolveConstraintItem(familyId, parsed.data);
+      const violations = validateMealPlanConstraints([constraintItem], planPreferences || undefined);
+      if (violations.length > 0) {
+        return res.status(422).json(constraintErrorResponse());
+      }
+    }
+
     const [item] = await db.insert(mealPlanItems).values({
       mealPlanId: planId,
       date: parsed.data.date,
@@ -354,6 +462,28 @@ router.put('/:familyId/meal-plans/:planId/items/:itemId', authenticate, requireF
     const nextTitle = parsed.data.titleOverride !== undefined ? parsed.data.titleOverride : existingItem.titleOverride;
     if (!nextRecipeId && !nextTitle?.trim()) {
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Indica una ricetta o il nome del pasto" } });
+    }
+
+    const planPreferences = plan.preferences as MealPlanConstraintPreferences | null;
+    const unsupportedHealthNote = unsupportedMealPlanHealthNote(planPreferences || undefined);
+    if (unsupportedHealthNote) {
+      return res.status(422).json(constraintErrorResponse(unsupportedHealthNote));
+    }
+    const unsupportedDiet = unsupportedMealPlanDiet(planPreferences || undefined);
+    if (unsupportedDiet) {
+      return res.status(422).json(constraintErrorResponse(unsupportedDiet));
+    }
+    if (hasMealPlanConstraints(planPreferences || undefined)) {
+      const constraintItem = await resolveConstraintItem(familyId, {
+        recipeId: nextRecipeId,
+        titleOverride: nextTitle,
+        notes: parsed.data.notes !== undefined ? parsed.data.notes : existingItem.notes,
+        ingredients: parsed.data.ingredients !== undefined ? parsed.data.ingredients : existingItem.ingredients,
+      });
+      const violations = validateMealPlanConstraints([constraintItem], planPreferences || undefined);
+      if (violations.length > 0) {
+        return res.status(422).json(constraintErrorResponse());
+      }
     }
 
     const updates: Record<string, unknown> = {};

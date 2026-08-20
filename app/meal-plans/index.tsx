@@ -59,6 +59,11 @@ interface AiMealPlanResponse {
   title: string;
   weekStartDate: string;
   items: MealPlanItem[];
+  preferences?: {
+    diet?: string;
+    allergies?: string;
+    notes?: string;
+  };
 }
 
 type TabKey = "plans" | "generate";
@@ -516,11 +521,21 @@ export default function MealPlansScreen() {
             collectedItems.push(...(obj.items as MealPlanItem[]));
             if (!started) {
               started = true;
-              setAiPlans([{ title: "Piano Settimanale", weekStartDate: weekStart, items: obj.items }]);
+              setAiPlans([{
+                title: "Piano Settimanale",
+                weekStartDate: weekStart,
+                items: obj.items,
+                preferences,
+              }]);
             } else {
               setAiPlans((prev) => {
                 if (prev.length === 0) {
-                  return [{ title: "Piano Settimanale", weekStartDate: weekStart, items: obj.items }];
+                  return [{
+                    title: "Piano Settimanale",
+                    weekStartDate: weekStart,
+                    items: obj.items,
+                    preferences,
+                  }];
                 }
                 const first = prev[0]!;
                 return [{ ...first, items: [...first.items, ...obj.items] }, ...prev.slice(1)];
@@ -536,7 +551,16 @@ export default function MealPlansScreen() {
               collectedItems.push(...finalItems);
             }
             setAiPlans((prev) => {
-              if (prev.length === 0) return prev;
+               if (prev.length === 0) {
+                 return finalItems
+                   ? [{
+                       title: obj.title || doneTitle,
+                       weekStartDate: obj.weekStartDate || weekStart,
+                       items: finalItems,
+                       preferences,
+                     }]
+                   : prev;
+               }
               const first = prev[0]!;
               return [
                 {
@@ -617,6 +641,7 @@ export default function MealPlansScreen() {
                   title: "Piano B - Creativo",
                   weekStartDate: weekStart,
                   items: obj.items as MealPlanItem[],
+                  preferences,
                 };
                 return planA ? [planA, planB] : [planB];
               });
@@ -698,6 +723,7 @@ export default function MealPlansScreen() {
         title: chosenPlan.title,
         weekStartDate: chosenPlan.weekStartDate ?? weekStart,
         replace,
+        preferences: chosenPlan.preferences,
         items: chosenPlan.items.map((i) => ({
           date: i.date,
           mealType: i.mealType,
