@@ -290,55 +290,6 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
               description: { type: 'string' },
               ingredients: {
                 type: 'array',
-                items: {
-                  type: 'object',
-                  additionalProperties: false,
-                  properties: {
-                    name: { type: 'string' },
-                    quantity: { type: 'string' },
-                    unit: { type: 'string' },
-                  },
-                  required: ['name', 'quantity', 'unit'],
-                },
-              },
-              steps: { type: 'array', items: { type: 'string' } },
-            },
-            required: ['date', 'mealType', 'title', 'description', 'ingredients', 'steps'],
-          },
-        },
-      },
-      required: ['items'],
-    },
-  },
-};
-
-/**
- * Il piano standard non deve pagare il costo di una ricetta completa per
- * ciascun pasto: ingredienti, una descrizione breve e due micro-passaggi
- * preservano l'anteprima della ricetta senza pagare il costo di istruzioni
- * dettagliate. I percorsi con vincoli mantengono la ricetta completa.
- */
-const MEAL_PLAN_COMPACT_RESPONSE_FORMAT = {
-  type: 'json_schema' as const,
-  json_schema: {
-    name: 'compact_weekly_meal_plan_response',
-    strict: true,
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        items: {
-          type: 'array',
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              date: { type: 'string' },
-              mealType: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
-              title: { type: 'string' },
-              description: { type: 'string' },
-              ingredients: {
-                type: 'array',
                 minItems: 1,
                 items: {
                   type: 'object',
@@ -353,8 +304,7 @@ const MEAL_PLAN_COMPACT_RESPONSE_FORMAT = {
               },
               steps: {
                 type: 'array',
-                minItems: 2,
-                maxItems: 2,
+                minItems: 3,
                 items: { type: 'string' },
               },
             },
@@ -380,20 +330,16 @@ function mealPlanResponseFormat(
     mealTypes: string[];
     itemCount: number;
     ingredientNames?: string[];
-    compact?: boolean;
   },
 ) {
   if (!options) return MEAL_PLAN_RESPONSE_FORMAT;
 
-  const baseFormat = options.compact
-    ? MEAL_PLAN_COMPACT_RESPONSE_FORMAT
-    : MEAL_PLAN_RESPONSE_FORMAT;
   const ingredientNames = options.ingredientNames || (
     requiresAllergenSafeRendering(preferences)
       ? compatibleMealIngredients(preferences, options.mealTypes.includes("breakfast") && options.mealTypes.length === 1 ? "breakfast" : "main")
       : undefined
   );
-  const schema = baseFormat.json_schema.schema;
+  const schema = MEAL_PLAN_RESPONSE_FORMAT.json_schema.schema;
   const itemSchema = schema.properties.items.items;
   const ingredientSchema = itemSchema.properties.ingredients.items;
   const itemCount = options?.itemCount || 3;
@@ -403,12 +349,10 @@ function mealPlanResponseFormat(
   return {
     type: "json_schema" as const,
     json_schema: {
-      ...baseFormat.json_schema,
+      ...MEAL_PLAN_RESPONSE_FORMAT.json_schema,
       name: ingredientNames
         ? "allergen_safe_meal_plan_response"
-        : options.compact
-          ? "compact_weekly_meal_plan_response"
-          : "weekly_meal_plan_response",
+        : "weekly_meal_plan_response",
       schema: {
         ...schema,
         properties: {
@@ -1145,27 +1089,18 @@ async function generateWeeklyMealPlanAttempt(
     label: string;
   };
   const allergenSafePlan = requiresAllergenSafeRendering(context.preferences);
-  const compactStandardPlan = !constrainedPlan;
-  // Nel caso normale una risposta compatta può contenere tutta la settimana:
-  // una sola richiesta elimina due attese indipendenti senza compromettere il
-  // controllo finale di slot, colazioni, completezza e varietà. I vincoli
-  // restano invece separati per tipo di pasto, così ogni risposta può usare
-  // l'elenco chiuso di ingredienti compatibili.
-  const weeklyRequests: WeeklyMealRequest[] = compactStandardPlan
-    ? [{
-        dates,
-        mealTypes,
-        ingredientNames: undefined,
-        label: "weekly",
-      }]
-    : mealTypes.map((mealType) => ({
-        dates,
-        mealTypes: [mealType],
-        ingredientNames: mealType === "breakfast" || allergenSafePlan
-          ? compatibleMealIngredients(context.preferences, mealType === "breakfast" ? "breakfast" : "main")
-          : undefined,
-        label: mealType,
-      }));
+  const standardPlan = !constrainedPlan;
+  // Una risposta per ciascun tipo di pasto mantiene tre output piccoli in
+  // parallelo. Una sola risposta da 21 ricette diventa seriale e più lenta,
+  // oltre a costringere il modello a comprimere le istruzioni di cucina.
+  const weeklyRequests: WeeklyMealRequest[] = mealTypes.map((mealType) => ({
+    dates,
+    mealTypes: [mealType],
+    ingredientNames: mealType === "breakfast" || allergenSafePlan
+      ? compatibleMealIngredients(context.preferences, mealType === "breakfast" ? "breakfast" : "main")
+      : undefined,
+    label: mealType,
+  }));
 
   async function fetchChunk(request: WeeklyMealRequest, themeHint?: string, breakfastHint?: string): Promise<MealPlanSuggestion['items']> {
     const chunkDates = request.dates;
@@ -1196,15 +1131,9 @@ async function generateWeeklyMealPlanAttempt(
     const snackMealRule = constrainedPlan
       ? `- snack (spuntino): piccolo e leggero, composto esclusivamente da ingredienti compatibili con TUTTI i vincoli.`
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
-    const itemContract = compactStandardPlan
-      ? `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano), description (una frase breve con la preparazione), ingredients (array completo), steps (array di 2 micro-passaggi).`
-      : `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array), steps (array).`;
-    const preparationContract = compactStandardPlan
-      ? `- Mantieni la risposta compatta: description in una sola frase, solo gli ingredienti realmente necessari con quantità e unità, e steps con ESATTAMENTE 2 micro-passaggi pratici di massimo 8 parole ciascuno.`
-      : `- steps è la RICETTA passo-passo: da 3 a 6 passaggi brevi e chiari in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale).`;
-    const responseContract = compactStandardPlan
-      ? `{"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio breve 1","passaggio breve 2"]}]}`
-      : `{"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
+    const itemContract = `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array), steps (array).`;
+    const preparationContract = `- steps è la RICETTA passo-passo: da 3 a 6 passaggi brevi e chiari in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale).`;
+    const responseContract = `{"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
 - Questa richiesta riguarda SOLO questi tipi di pasto: ${requestMealTypes.join(', ')}. Per ogni giorno genera esattamente ${mealsForRequest} pasti: ${requestMealTypes.join(', ')}.
@@ -1250,9 +1179,8 @@ ${constraintRule}${constraintCorrection}
         mealTypes: requestMealTypes,
         itemCount: chunkDates.length * mealsForRequest,
         ingredientNames: request.ingredientNames,
-        compact: compactStandardPlan,
       }),
-      max_completion_tokens: compactStandardPlan ? 3000 : 4000,
+      max_completion_tokens: 4000,
     });
 
     const content = response.choices[0].message.content || '{"items":[]}';
@@ -1299,7 +1227,7 @@ ${constraintRule}${constraintCorrection}
   const aiDurationMs = Date.now() - aiStartTime;
   if (!context.suppressInternalLogs) {
     recordMealPlanLatency({
-      mode: compactStandardPlan ? 'standard' : 'constrained',
+      mode: standardPlan ? 'standard' : 'constrained',
       durationMs: aiDurationMs,
       modelCalls: modelCallsStarted,
       modelCallBudget: weeklyRequests.length,
@@ -1307,7 +1235,7 @@ ${constraintRule}${constraintCorrection}
     console.log(JSON.stringify({
       tag: "AI_MEAL_PLAN_CALL",
       variant,
-      mode: compactStandardPlan ? "standard" : "constrained",
+      mode: standardPlan ? "standard" : "constrained",
       generationAttempt: context.generationAttempt,
       aiDurationMs,
       modelCalls: modelCallsStarted,
@@ -1326,13 +1254,6 @@ ${constraintRule}${constraintCorrection}
     throw new AiError(
       "AI_BAD_RESPONSE",
       `Piano pasti incompleto: ricevuti ${filtered.length} pasti, attesi ${expectedMeals}`,
-    );
-  }
-  const uniqueTitles = new Set(filtered.map((item) => normalizeItemName(item.title)));
-  if (compactStandardPlan && uniqueTitles.size !== expectedMeals) {
-    throw new AiError(
-      "AI_BAD_RESPONSE",
-      "La risposta AI non contiene pasti abbastanza vari",
     );
   }
   const unsuitableBreakfast = filtered.find((item) => {

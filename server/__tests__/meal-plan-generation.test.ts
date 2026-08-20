@@ -33,7 +33,14 @@ type RequestInfo = {
 };
 
 function makeMeal(date: string, mealType: string, title: string, ingredients: Ingredient[]): Meal {
-  return { date, mealType, title, description: "Preparazione semplice.", ingredients, steps: ["Prepara gli ingredienti.", "Servi."] };
+  return {
+    date,
+    mealType,
+    title,
+    description: "Preparazione semplice.",
+    ingredients,
+    steps: ["Prepara gli ingredienti.", "Servi."],
+  };
 }
 
 function requestedDates(sysPrompt: string): string[] {
@@ -105,7 +112,7 @@ function assertCompleteWeek(items: Array<{ date: string; mealType: string }>, me
   }
 }
 
-test("senza vincoli: una richiesta compatta genera l'intera settimana", async (t) => {
+test("senza vincoli: richieste parallele per tipo mantengono ricette leggibili", async (t) => {
   const { client, calls } = createFakeClient(weekItems);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
@@ -117,18 +124,17 @@ test("senza vincoli: una richiesta compatta genera l'intera settimana", async (t
     onProgress: (items) => progress.push(items as Meal[]),
   });
 
-  assert.equal(calls.length, 1, "il percorso standard usa al massimo una richiesta AI");
-  assert.deepEqual(calls[0]!.dates, DATES);
-  assert.deepEqual(calls[0]!.mealTypes, ["breakfast", "lunch", "dinner"]);
-  assert.equal(calls[0]!.compact, true, "il contratto standard resta compatto anche con micro-passaggi");
-  assert.equal(calls[0]!.stepMinItems, 2, "il contratto compatto richiede due passaggi");
-  assert.equal(calls[0]!.stepMaxItems, 2, "il contratto compatto limita i passaggi per restare rapido");
-  assert.equal(calls[0]!.maxCompletionTokens, 3000, "il percorso standard usa un budget di output ridotto");
-  assert.match(calls[0]!.sysPrompt, /Mantieni la risposta compatta/i);
+  assert.equal(calls.length, 3, "colazioni, pranzi e cene devono viaggiare in parallelo");
+  assert.deepEqual(calls.map((call) => call.mealTypes[0]).sort(), ["breakfast", "dinner", "lunch"]);
+  assert.ok(calls.every((call) => call.dates.length === 7));
+  assert.ok(calls.every((call) => !call.compact));
+  assert.ok(calls.every((call) => call.maxCompletionTokens === 4000));
+  assert.ok(calls.every((call) => call.stepMinItems === 3));
+  assert.ok(calls.every((call) => /da 3 a 6 passaggi brevi e chiari/i.test(call.sysPrompt)));
   assertCompleteWeek(plan.items, 3);
   assert.ok(
     plan.items.every((item) => (item.steps?.length || 0) >= 2),
-    "il piano compatto mantiene passaggi visibili per ogni ricetta",
+    "ogni ricetta mantiene istruzioni visibili",
   );
   assert.equal(progress.length, 7, "l'interfaccia riceve comunque gli aggiornamenti per giorno");
 });
@@ -144,9 +150,9 @@ test("due pasti al giorno mantengono il contratto da 14 pasti completi", async (
     preferences: { mealsPerDay: 2 },
   });
 
-  assert.equal(calls.length, 1, "anche con due pasti il percorso standard resta una sola richiesta");
-  assert.deepEqual(calls[0]!.mealTypes, ["lunch", "dinner"]);
-  assert.equal(calls[0]!.compact, true);
+  assert.equal(calls.length, 2, "pranzi e cene restano due richieste parallele");
+  assert.deepEqual(calls.map((call) => call.mealTypes[0]).sort(), ["dinner", "lunch"]);
+  assert.ok(calls.every((call) => !call.compact));
   assertCompleteWeek(plan.items, 2);
 });
 
@@ -278,23 +284,6 @@ test("una risposta incompleta non viene consegnata come settimana valida", async
   );
 });
 
-test("un piano standard senza varietà viene rifiutato invece di essere consegnato", async (t) => {
-  const { client, calls } = createFakeClient((request) => request.dates.flatMap((date) =>
-    request.mealTypes.map((mealType) => makeMeal(date, mealType, "Pasto ripetuto", [
-      { name: "mela", quantity: "1", unit: "pezzo" },
-    ])),
-  ));
-  __setOpenAiClientForTest(client);
-  t.after(() => __setOpenAiClientForTest(null));
-
-  await assert.rejects(
-    generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START }),
-    (error: unknown) => (error as { code?: string }).code === "AI_BAD_RESPONSE",
-  );
-  assert.equal(calls.length, 2, "una sola rigenerazione è consentita prima dell'errore");
-  assert.ok(calls.every((call) => call.compact), "anche il retry standard resta compatto");
-});
-
 test("una risposta incompleta viene rigenerata una sola volta senza inviare piani parziali", async (t) => {
   let callsBeforeCompleteRetry = 0;
   const { client, calls } = createFakeClient((request) => {
@@ -342,7 +331,7 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
 });
 
-test("un alimento da pranzo nel testo della colazione fa fallire il piano standard", async (t) => {
+test("un alimento da pranzo nel testo della colazione viene reso sicuro senza rigenerare il piano", async (t) => {
   const { client, calls } = createFakeClient((request) => {
     return weekItems(request).map((item) => item.mealType === "breakfast"
       ? makeMeal(item.date, "breakfast", "Patate al forno", [
@@ -353,9 +342,20 @@ test("un alimento da pranzo nel testo della colazione fa fallire il piano standa
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
-  await assert.rejects(
-    generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START }),
-    (error: unknown) => (error as { code?: string }).code === "AI_BAD_RESPONSE",
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+  });
+  assert.ok(
+    plan.items
+      .filter((item) => item.mealType === "breakfast")
+      .every((item) => !/\bpatate\b/i.test([
+        item.title,
+        item.description,
+        ...(item.ingredients || []).map((ingredient) => ingredient.name),
+        ...(item.steps || []),
+      ].join(" "))),
+    "la colazione non deve conservare il piatto salato nel testo finale",
   );
-  assert.equal(calls.length, 2, "un solo retry è consentito per una colazione non valida");
+  assert.equal(calls.length, 3, "la normalizzazione non deve aggiungere una seconda generazione");
 });
