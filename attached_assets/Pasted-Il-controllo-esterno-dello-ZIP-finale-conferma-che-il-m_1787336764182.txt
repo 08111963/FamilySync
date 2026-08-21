@@ -1,0 +1,76 @@
+Il controllo esterno dello ZIP finale conferma che:
+
+- il menu Dieta è ora correttamente un dropdown;
+- il campo Allergie/intolleranze è rimosso;
+- dietProfile è corretto;
+- gluten-free/lactose-free restano profili chiusi;
+- budget 28 invariato;
+- ZIP/manifest coerenti.
+
+NON modificare nulla di quanto sopra.
+
+Resta una sola omissione.
+
+Per il profilo:
+
+dietProfile = "mediterranean"
+
+il prompt dice correttamente:
+
+"includi almeno un pasto principale con carne rossa nella settimana,
+preferibilmente uno"
+
+ma questo requisito non risulta verificato deterministicamente.
+
+Aggiungi quindi un controllo locale sulla settimana completa:
+
+red_meat >= 1
+
+considerando insieme pranzo + cena.
+
+Il controllo deve essere applicato SOLO ai profili mediterranei per i quali la carne è consentita.
+
+NON applicarlo a:
+- vegetarian
+- vegetarian_gluten_free
+- vegan
+- altri profili che escludono la carne.
+
+Classifica almeno:
+- manzo
+- vitello
+- maiale, se già classificato dal progetto come carne rossa
+- altre carni rosse già presenti nel catalogo.
+
+Non inventare nuovi ingredienti.
+
+Aggiungi test:
+
+1. Mediterranea con almeno una carne rossa → PASS.
+2. Mediterranea con zero carne rossa → advisory/fix deterministico.
+3. Mediterranea senza glutine con carne rossa → PASS.
+4. Vegetariana → nessun requisito red_meat.
+5. Vegana → nessun requisito red_meat.
+
+IMPORTANTE:
+questa regola non deve causare una rigenerazione completa della settimana.
+
+Deve essere integrata nel blueprint proteico prima della generazione, in modo che almeno uno dei 14 pasti principali abbia target protein = red_meat.
+
+Nessuna nuova chiamata OpenAI.
+
+MAX_MEAL_PLAN_MODEL_CALLS deve restare 28.
+
+Riesegui:
+npm run typecheck
+npx tsx server/__tests__/meal-plan-diet-profiles.test.ts
+npx tsx server/__tests__/meal-plan-variety.test.ts
+npx tsx server/__tests__/meal-plan-model-budget.test.ts
+npx tsx --test e2e/meal-plan-diet-selector.test.ts
+
+NON fare deploy.
+
+Genera:
+familysync-meal-plan-diet-profiles-refactor-final2-20260821.zip
+
+ZIP minimale e manifest esatto.
