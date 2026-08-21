@@ -1,0 +1,1040 @@
+Abbiamo deciso di semplificare strutturalmente il Piano Pasti di FamilySync.
+
+La gestione libera di:
+
+```text
+Allergie / intolleranze
+```
+
+deve essere rimossa completamente dal Piano Pasti.
+
+Al suo posto voglio un unico campo:
+
+```text
+Dieta
+```
+
+con menu a tendina e profili predefiniti/testabili.
+
+L’obiettivo è eliminare la complessità e le regressioni generate dalla combinazione libera di allergeni, mantenendo però due esigenze alimentari importanti come profili dieta espliciti:
+
+* senza glutine;
+* senza lattosio.
+
+NON fare deploy.
+
+# 1. NUOVO MODELLO FUNZIONALE
+
+Il Piano Pasti deve avere un solo selettore principale:
+
+```text
+Dieta
+```
+
+Non deve più esistere un campo separato:
+
+```text
+Allergie / intolleranze
+```
+
+Il menu a tendina deve contenere almeno questi profili:
+
+```text
+Mediterranea
+Mediterranea senza glutine
+Mediterranea senza lattosio
+Vegetariana
+Vegetariana senza glutine
+Vegana
+```
+
+Se nel progetto esistono già altre diete generali stabili e supportate, elencale nel report prima di decidere se mantenerle.
+
+Non introdurre nuove combinazioni libere.
+
+# 2. NIENTE PIÙ CAMPO LIBERO ALLERGENI
+
+Rimuovi completamente dalla UI:
+
+```text
+Allergie / intolleranze (opzionale)
+```
+
+e tutto ciò che lo supporta:
+
+* input;
+* placeholder;
+* icona;
+* stato React;
+* form binding;
+* validation;
+* parsing;
+* submit;
+* reset;
+* salvataggio;
+* precompilazione;
+* voice parsing specifico allergeni.
+
+Nessun utente deve poter inserire:
+
+```text
+glutine
+lattosio
+uova
+frutta a guscio
+pesce
+soia
+...
+```
+
+in un campo separato.
+
+# 3. WEB + MOBILE
+
+Applica la stessa modifica a:
+
+* web;
+* Expo/mobile;
+* componenti condivisi;
+* eventuali modali;
+* Genera alternativa;
+* modifica piano;
+* piani salvati;
+* eventuali schermate di onboarding o preferenze.
+
+Non lasciare il campo allergeni in una piattaforma e rimuoverlo solo nell’altra.
+
+# 4. PROFILI DIETA CANONICI
+
+Crea identificatori interni stabili, per esempio:
+
+```ts
+mediterranean
+mediterranean_gluten_free
+mediterranean_lactose_free
+vegetarian
+vegetarian_gluten_free
+vegan
+```
+
+I label mostrati all’utente devono essere localizzati.
+
+Esempio IT:
+
+```text
+Mediterranea
+Mediterranea senza glutine
+Mediterranea senza lattosio
+Vegetariana
+Vegetariana senza glutine
+Vegana
+```
+
+Non usare il testo UI come unica logica di business.
+
+# 5. NIENTE COMBINAZIONI LIBERE
+
+NON creare una struttura del tipo:
+
+```text
+diet = mediterranea
+modifier = gluten_free
+modifier = lactose_free
+```
+
+se questo permette nuovamente combinazioni arbitrarie non testate.
+
+Ogni voce del menu deve rappresentare un profilo completo e predefinito.
+
+Esempio:
+
+```text
+Mediterranea senza glutine
+```
+
+deve essere un profilo autonomo e testato end-to-end.
+
+# 6. PROFILO MEDITERRANEA
+
+Il profilo:
+
+```text
+Mediterranea
+```
+
+deve poter utilizzare normalmente:
+
+* pasta;
+* pane;
+* riso;
+* cereali;
+* patate;
+* polenta;
+* carne bianca;
+* carne rossa;
+* pesce;
+* uova;
+* formaggi;
+* latticini;
+* legumi;
+* frutta;
+* verdura;
+* olio EVO.
+
+Mantieni una rotazione varia tra pranzo e cena.
+
+# 7. CARNE ROSSA NELLA MEDITERRANEA
+
+Per:
+
+```text
+Mediterranea
+```
+
+in una settimana di 7 giorni deve esserci:
+
+```text
+almeno 1 pasto principale con carne rossa
+```
+
+a pranzo oppure a cena.
+
+Il requisito vale quando non esistono altri vincoli del profilo che lo impediscano.
+
+La carne rossa non deve diventare dominante.
+
+Mantieni una rotazione tra:
+
+* pesce;
+* carne bianca;
+* carne rossa;
+* uova;
+* legumi.
+
+# 8. PROFILO MEDITERRANEA SENZA GLUTINE
+
+Questo profilo NON deve funzionare come:
+
+```text
+elimina pasta
+elimina pane
+elimina prodotti da forno
+```
+
+Deve funzionare come:
+
+```text
+mantieni le famiglie alimentari mediterranee
++
+sostituisci i prodotti contenenti glutine con equivalenti esplicitamente senza glutine
+```
+
+Esempi:
+
+```text
+pasta → pasta senza glutine
+pane → pane senza glutine
+biscotti → biscotti senza glutine
+crackers → crackers senza glutine
+gnocchi → gnocchi senza glutine
+pangrattato → pangrattato senza glutine
+couscous → variante esplicitamente senza glutine, se supportata
+farine → farine senza glutine compatibili
+```
+
+Mantieni anche alimenti naturalmente senza glutine:
+
+* riso;
+* mais/polenta;
+* patate;
+* quinoa;
+* carne;
+* pesce;
+* uova;
+* formaggi;
+* legumi;
+* frutta;
+* verdura.
+
+Il risultato deve restare riconoscibile come dieta mediterranea.
+
+# 9. GLUTEN-FREE: NIENTE FILTRO TROPPO RESTRITTIVO
+
+Non ricreare il vecchio problema in cui:
+
+```text
+senza glutine
+```
+
+porta quasi esclusivamente a:
+
+* riso;
+* patate;
+* quinoa;
+* polenta.
+
+Il profilo deve mantenere una vera varietà culinaria.
+
+Deve poter produrre anche:
+
+* pasta senza glutine;
+* pane senza glutine;
+* gnocchi senza glutine;
+* prodotti da forno GF esplicitamente compatibili;
+* altri sostituti previsti dal catalogo.
+
+# 10. PROFILO MEDITERRANEA SENZA LATTOSIO
+
+Questo profilo deve distinguere chiaramente:
+
+```text
+senza lattosio
+```
+
+da:
+
+```text
+senza latte
+```
+
+Non trattarlo come allergia alle proteine del latte.
+
+Il profilo può utilizzare, se già supportati:
+
+* latte senza lattosio;
+* yogurt senza lattosio;
+* formaggi/latticini esplicitamente senza lattosio;
+* altri prodotti compatibili.
+
+Deve continuare a poter utilizzare normalmente:
+
+* pasta;
+* pane;
+* riso;
+* carne;
+* pesce;
+* uova;
+* legumi;
+* frutta;
+* verdura.
+
+Non deve collassare su pochi piatti ripetitivi.
+
+# 11. PROFILO VEGETARIANA
+
+Mantieni:
+
+```text
+Vegetariana
+```
+
+come dieta generale.
+
+Deve escludere carne e pesce secondo la policy già esistente.
+
+Può includere, se previsto:
+
+* uova;
+* latte;
+* formaggi;
+* legumi;
+* cereali;
+* pasta;
+* pane;
+* verdure;
+* frutta.
+
+# 12. PROFILO VEGETARIANA SENZA GLUTINE
+
+Questo profilo deve applicare contemporaneamente:
+
+```text
+vegetarian
++
+gluten-free substitutions
+```
+
+ma non tramite combinazioni libere dell’utente.
+
+È un profilo fisso e testato.
+
+Deve poter usare:
+
+* pasta senza glutine;
+* pane senza glutine;
+* riso;
+* quinoa;
+* polenta;
+* patate;
+* legumi;
+* uova;
+* formaggi;
+* latticini;
+* verdure;
+* frutta;
+
+se coerenti con il profilo.
+
+# 13. PROFILO VEGANA
+
+Mantieni la dieta:
+
+```text
+Vegana
+```
+
+secondo la policy già esistente.
+
+Non introdurre carne, pesce, uova, latte o derivati.
+
+In questo mandato NON creare automaticamente:
+
+```text
+Vegana senza glutine
+Vegana senza lattosio
+```
+
+a meno che siano già profili realmente esistenti e testati.
+
+Evita di ricominciare con una matrice combinatoria di diete.
+
+# 14. ARCHITETTURA: PROFILO → CATALOGO COMPATIBILE
+
+La nuova pipeline deve essere concettualmente:
+
+```text
+profilo dieta selezionato
+        ↓
+catalogo ingredienti/famiglie compatibili
+        ↓
+blueprint settimanale
+        ↓
+OpenAI
+        ↓
+validazione finale
+```
+
+Non:
+
+```text
+utente scrive allergeni liberamente
+        ↓
+OpenAI interpreta
+        ↓
+validator tenta di correggere
+        ↓
+retry
+```
+
+# 15. OPENAI NON DEVE DECIDERE LA COMPATIBILITÀ
+
+Per i profili:
+
+```text
+Mediterranea senza glutine
+Mediterranea senza lattosio
+Vegetariana senza glutine
+```
+
+il backend deve predisporre prima un pool compatibile.
+
+OpenAI deve generare ricette coerenti con quel pool.
+
+Non affidare al modello la decisione se:
+
+```text
+pasta
+pane
+formaggio
+couscous
+```
+
+siano compatibili.
+
+Il profilo deve già stabilire quale variante utilizzare.
+
+# 16. SOSTITUZIONI ESPLICITE
+
+Crea una mappa deterministica delle sostituzioni.
+
+Esempio concettuale:
+
+```ts
+glutenFreeSubstitutions = {
+  pasta: ["pasta senza glutine", "pasta di mais/riso senza glutine"],
+  bread: ["pane senza glutine"],
+  breadcrumbs: ["pangrattato senza glutine"],
+  gnocchi: ["gnocchi senza glutine"],
+  biscuits: ["biscotti senza glutine"]
+}
+```
+
+e per lactose-free:
+
+```ts
+lactoseFreeSubstitutions = {
+  milk: ["latte senza lattosio"],
+  yogurt: ["yogurt senza lattosio"],
+  dairy: ["prodotti esplicitamente senza lattosio già supportati"]
+}
+```
+
+Non inventare prodotti non presenti nel catalogo senza documentarlo.
+
+# 17. VALIDAZIONE FINALE
+
+Mantieni una validazione finale, ma semplificata e specifica per il profilo.
+
+Per:
+
+```text
+Mediterranea senza glutine
+```
+
+verifica che eventuali prodotti normalmente contenenti glutine siano esplicitamente qualificati come gluten-free.
+
+Per:
+
+```text
+Mediterranea senza lattosio
+```
+
+verifica che eventuali prodotti lattiero-caseari siano compatibili con il profilo.
+
+La validazione è una barriera finale, non il meccanismo principale.
+
+# 18. RIMUOVI I 15 ALLERGENI GENERICI
+
+Dal Piano Pasti rimuovi la gestione generica di:
+
+```text
+gluten
+lactose
+milk
+egg
+peanut
+nuts
+fish
+soy
+sesame
+celery
+mustard
+lupin
+sulfites
+shellfish
+molluscs
+```
+
+come allergeni combinabili liberamente.
+
+Attenzione:
+
+`gluten` e `lactose` restano solo come logica interna dei profili dieta specifici:
+
+```text
+mediterranean_gluten_free
+mediterranean_lactose_free
+vegetarian_gluten_free
+```
+
+Non devono più essere opzioni inseribili dall’utente in un campo allergie.
+
+# 19. REQUEST/API
+
+Rimuovi:
+
+```ts
+preferences.allergies
+```
+
+o equivalente dalla request del Piano Pasti.
+
+La request deve inviare principalmente:
+
+```ts
+{
+  dietProfile: "mediterranean_gluten_free",
+  ...
+}
+```
+
+o struttura equivalente.
+
+Aggiorna:
+
+* Zod;
+* tipi;
+* schema;
+* route;
+* request body;
+* frontend;
+* mobile;
+* test.
+
+# 20. COMPATIBILITÀ TEMPORANEA CON VECCHI CLIENT
+
+Se esiste il rischio che una vecchia versione mobile/web continui temporaneamente a inviare:
+
+```text
+allergies
+```
+
+NON usarlo per la generazione.
+
+Puoi ignorarlo in modo backward-compatible per un periodo transitorio, se necessario.
+
+Documenta la scelta.
+
+Non lasciare però che quel campo continui a influenzare il Piano Pasti.
+
+# 21. PIANI SALVATI
+
+I vecchi piani possono contenere metadata:
+
+```text
+allergies
+```
+
+Non fare migration distruttiva in questo mandato.
+
+Devono essere:
+
+* ignorati per nuove generazioni;
+* non mostrati nella nuova UI;
+* non propagati a Genera alternativa.
+
+# 22. GENERA ALTERNATIVA
+
+`Genera alternativa` deve mantenere il:
+
+```text
+dietProfile
+```
+
+scelto.
+
+Esempio:
+
+```text
+Mediterranea senza glutine
+```
+
+deve generare un’altra settimana dello stesso profilo.
+
+Non deve recuperare vecchi allergeni.
+
+# 23. DETTA E GENERA
+
+Aggiorna:
+
+```text
+Detta e genera
+```
+
+Il voice parser deve poter riconoscere almeno:
+
+```text
+dieta mediterranea
+mediterranea senza glutine
+mediterranea senza lattosio
+vegetariana
+vegetariana senza glutine
+vegana
+```
+
+Non deve più estrarre allergeni generici.
+
+Se l’utente dice:
+
+```text
+sono allergico alle noci
+```
+
+non promettere di applicare automaticamente quel vincolo al Piano Pasti.
+
+# 24. VARIETÀ DEI PRANZI
+
+Mantieni le correzioni già introdotte per evitare:
+
+```text
+pasta 6 volte su 7
+```
+
+Il blueprint deve continuare a ruotare:
+
+* pasta;
+* riso/risotto;
+* legumi;
+* altri cereali compatibili;
+* patate/polenta;
+* quinoa;
+* altre famiglie disponibili.
+
+Per i profili gluten-free usa le relative varianti GF.
+
+# 25. DUPLICATI SEMANTICI
+
+Mantieni il controllo contro casi tipo:
+
+```text
+Risotto al limone con salmone
+Riso al limone con salmone
+```
+
+nella stessa settimana.
+
+Non considerare sufficientemente diversi due piatti solo perché cambia:
+
+* contorno;
+* erba aromatica;
+* formato di pasta;
+* riso ↔ risotto;
+
+quando struttura, proteina e preparazione principale sono equivalenti.
+
+# 26. ROTAZIONE PROTEICA
+
+Per dieta mediterranea mantieni una rotazione tra:
+
+* pesce;
+* carne bianca;
+* carne rossa;
+* uova;
+* legumi.
+
+Requisito:
+
+```text
+red_meat >= 1 pasto principale / settimana
+```
+
+a pranzo oppure cena.
+
+Non forzare carne rossa nei profili vegetariani/vegani.
+
+# 27. BUDGET OPENAI
+
+La rimozione dei 15 allergeni combinabili dovrebbe semplificare notevolmente i retry.
+
+NON aumentare:
+
+```ts
+MAX_MEAL_PLAN_MODEL_CALLS = 28
+```
+
+Misura però il nuovo comportamento.
+
+Verifica quante chiamate richiedono:
+
+* Mediterranea;
+* Mediterranea senza glutine;
+* Mediterranea senza lattosio;
+* Vegetariana;
+* Vegetariana senza glutine;
+* Vegana.
+
+Riporta nel report se il nuovo motore permette successivamente di abbassare il cap.
+
+Non ridurre il cap in questo mandato se ciò introduce rischio.
+
+# 28. GUIDA UTENTE
+
+Aggiorna completamente la guida utente.
+
+Rimuovi ogni riferimento a:
+
+```text
+Allergie / intolleranze
+```
+
+e alla possibilità di inserire allergeni liberamente.
+
+La guida deve spiegare il nuovo menu:
+
+```text
+Dieta
+```
+
+con i profili disponibili.
+
+Descrivi in particolare:
+
+### Mediterranea senza glutine
+
+Il piano mantiene le principali famiglie alimentari della dieta mediterranea utilizzando, quando necessario, versioni esplicitamente senza glutine come pasta e pane senza glutine.
+
+### Mediterranea senza lattosio
+
+Il piano utilizza, quando previsto, prodotti esplicitamente senza lattosio e non equivale a una dieta senza latte/proteine del latte.
+
+Inserisci anche una nota chiara:
+
+```text
+I profili alimentari non sostituiscono il parere di un medico o dietista e non garantiscono l'assenza di contaminazioni crociate nei prodotti reali. Verificare sempre le etichette.
+```
+
+# 29. FAQ / HELP / TOOLTIP
+
+Aggiorna:
+
+* FAQ;
+* help;
+* info icon;
+* onboarding;
+* tooltip;
+* documentazione in-app.
+
+Nessun testo deve più dire:
+
+```text
+Inserisci allergie o intolleranze
+```
+
+# 30. I18N
+
+Aggiorna le traduzioni per tutti i profili dieta.
+
+Esempio IT:
+
+```text
+Mediterranea
+Mediterranea senza glutine
+Mediterranea senza lattosio
+Vegetariana
+Vegetariana senza glutine
+Vegana
+```
+
+Aggiorna anche EN o altre lingue presenti.
+
+Rimuovi le chiavi allergeni non più utilizzate dal Piano Pasti.
+
+# 31. TEST DEI PROFILI
+
+Crea test parametrizzati per ogni profilo.
+
+## Mediterranea
+
+Verifica:
+
+* 7 giorni;
+* varietà;
+* pasta/pane consentiti;
+* carne bianca;
+* carne rossa >= 1;
+* pesce;
+* uova/legumi;
+* formaggi possibili.
+
+## Mediterranea senza glutine
+
+Verifica:
+
+* piano completo;
+* pasta senza glutine possibile/presente nella rotazione;
+* pane senza glutine possibile;
+* prodotti GF non rifiutati per falso positivo;
+* nessun prodotto generico contenente glutine;
+* carne/pesce/uova/formaggi normalmente disponibili;
+* varietà >= profilo atteso.
+
+## Mediterranea senza lattosio
+
+Verifica:
+
+* piano completo;
+* latte/yogurt senza lattosio ammessi;
+* prodotti lattiero-caseari normali non qualificati correttamente gestiti;
+* carne/pesce/pasta/pane non esclusi;
+* varietà.
+
+## Vegetariana
+
+Verifica policy esistente.
+
+## Vegetariana senza glutine
+
+Verifica contemporaneamente:
+
+* vegetarian;
+* sostituzioni gluten-free.
+
+## Vegana
+
+Verifica policy esistente.
+
+# 32. NESSUN TEST DEI 15 ALLERGENI COME FUNZIONE UTENTE
+
+Rimuovi/archivia i test che servivano esclusivamente a verificare combinazioni tipo:
+
+```text
+gluten + lactose + nuts
+milk + egg
+fish + peanut
+...
+```
+
+Non sono più casi supportati dal nuovo prodotto.
+
+Mantieni solo i test interni necessari ai profili:
+
+* gluten-free;
+* lactose-free.
+
+# 33. TEST DI ASSENZA DEL VECCHIO CAMPO
+
+Aggiungi test che verifichino:
+
+* UI senza campo allergie;
+* request senza `allergies`;
+* prompt senza allergeni generici;
+* voice parser senza allergeni generici;
+* Genera alternativa senza allergeni legacy;
+* vecchi metadata ignorati;
+* help/guida senza riferimenti obsoleti.
+
+# 34. RICERCA GLOBALE
+
+Esegui una ricerca globale nel repository per:
+
+```text
+allerg
+intoller
+intoler
+glutine
+gluten
+lattos
+lactose
+```
+
+Per ogni occorrenza rimasta, indica:
+
+* file;
+* motivo.
+
+Le occorrenze relative ai nuovi profili:
+
+```text
+gluten-free
+lactose-free
+```
+
+sono ovviamente ammesse.
+
+Le occorrenze relative al vecchio campo generico allergeni devono essere rimosse o giustificate.
+
+# 35. REPORT
+
+Crea:
+
+`MEAL_PLAN_DIET_PROFILES_REFACTOR_REPORT.md`
+
+Deve riportare:
+
+* vecchia architettura;
+* nuova architettura;
+* profili disponibili;
+* vecchio campo allergeni rimosso;
+* API prima/dopo;
+* prompt prima/dopo;
+* sostituzioni gluten-free;
+* sostituzioni lactose-free;
+* test;
+* guida aggiornata;
+* i18n;
+* model calls per profilo;
+* eventuali occorrenze legacy rimaste.
+
+Tabella obbligatoria:
+
+| Funzione               | Prima                  | Dopo                      |
+| ---------------------- | ---------------------- | ------------------------- |
+| Campo dieta            | testo/libero           | menu profili              |
+| Allergie/intolleranze  | campo separato         | rimosso                   |
+| Gluten-free            | allergene combinabile  | profilo dieta predefinito |
+| Lactose-free           | allergene combinabile  | profilo dieta predefinito |
+| Combinazioni allergeni | libere                 | rimosse                   |
+| Pasta GF               | gestita come eccezione | sostituzione esplicita    |
+| Pane GF                | gestito come eccezione | sostituzione esplicita    |
+| Varietà                | presente               | mantenuta                 |
+| Semantic duplicates    | presente               | mantenuti                 |
+| Budget                 | 28                     | non aumentato             |
+
+# 36. TEST COMPLETI
+
+Esegui:
+
+```bash
+npm run typecheck
+npm run test:ai
+```
+
+più:
+
+* test Piano Pasti;
+* test profili dieta;
+* test frontend;
+* test voice parsing;
+* test Genera alternativa;
+* test documentazione se disponibili.
+
+Riporta:
+
+* test totali;
+* passed;
+* failed;
+* skipped;
+* exit code;
+* model calls per ogni profilo;
+* hard cap.
+
+# 37. NON FARE DEPLOY
+
+NON fare deploy.
+
+NON modificare database salvo necessità documentata.
+
+NON modificare pagamenti o altri moduli FamilySync.
+
+# 38. ZIP FINALE
+
+Genera:
+
+`familysync-meal-plan-diet-profiles-refactor-20260821.zip`
+
+Lo ZIP deve essere minimale.
+
+Includi soltanto:
+
+* file realmente modificati;
+* UI web/mobile coinvolta;
+* backend Piano Pasti;
+* tipi/schema;
+* helper profili dieta;
+* test;
+* guida utente;
+* i18n;
+* report;
+* manifest esatto.
+
+Escludi:
+
+* `.env`;
+* secrets;
+* token;
+* database dump;
+* node_modules;
+* build;
+* APK/AAB;
+* ZIP precedenti;
+* repository completo.
+
+Esegui:
+
+* secret scan;
+* confronto manifest/ZIP;
+* SHA-256.
+
+Fermati dopo lo ZIP e attendi il controllo esterno.
+
+Non fare deploy.
