@@ -592,7 +592,7 @@ test("con lattosio: un riferimento libero a un latticino rigenera il piano natur
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
 });
 
-test("con lattosio: formato, allergene e varietà usano retry indipendenti e cumulativi", async (t) => {
+test("con lattosio: formato e allergene usano il budget prima della varietà best effort", async (t) => {
   let responseNumber = 0;
   const { client, calls } = createFakeClient((request) => {
     const attempt = Math.floor(responseNumber++ / CONSTRAINED_WEEK_REQUESTS);
@@ -640,12 +640,12 @@ test("con lattosio: formato, allergene e varietà usano retry indipendenti e cum
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
-  assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 5);
+  assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 4);
   assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   const finalAttemptPrompts = calls.slice(CONSTRAINED_WEEK_REQUESTS * 4);
-  assert.ok(finalAttemptPrompts.every((call) => /almeno un ingrediente/i.test(call.sysPrompt)));
-  assert.ok(finalAttemptPrompts.every((call) => /VINCOLO LATTOSIO/i.test(call.sysPrompt)));
-  assert.ok(finalAttemptPrompts.every((call) => /CORREZIONE VARIETÀ OBBLIGATORIA/i.test(call.sysPrompt)));
+  assert.equal(finalAttemptPrompts.length, 0, "nessuna quinta settimana viene avviata per soli doppioni");
+  assert.ok(calls.slice(CONSTRAINED_WEEK_REQUESTS * 3).every((call) => /VINCOLO LATTOSIO/i.test(call.sysPrompt)));
+  assert.ok(calls.every((call) => !/CORREZIONE VARIETÀ OBBLIGATORIA/i.test(call.sysPrompt)));
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
 });
@@ -726,7 +726,7 @@ test("gli elenchi strutturati rispettano anche allergeni diversi", async (t) => 
   t.diagnostic("Ogni allergene usa lo stesso validatore anche per l'enum degli ingredienti.");
 });
 
-test("i pasti ripetuti in giorni diversi vengono rigenerati prima della consegna", async (t) => {
+test("un piano sicuro ma con molti doppioni non avvia una settimana aggiuntiva", async (t) => {
   let responseNumber = 0;
   const { client, calls } = createFakeClient((request) => {
     const repeatedAttempt = responseNumber++ < THREE_MEAL_WEEK_REQUESTS;
@@ -778,17 +778,18 @@ test("i pasti ripetuti in giorni diversi vengono rigenerati prima della consegna
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+    maxModelCalls: THREE_MEAL_WEEK_REQUESTS,
   });
 
-  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2, "una sola rigenerazione completa per eliminare i doppioni");
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, "la varietà non avvia una seconda settimana completa");
   assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
-  assert.ok(calls.slice(THREE_MEAL_WEEK_REQUESTS).every((call) => /CORREZIONE VARIETÀ OBBLIGATORIA/.test(call.sysPrompt)));
   assertCompleteWeek(plan.items, 3);
-  for (const mealType of ["breakfast", "lunch", "dinner"]) {
-    const titles = plan.items.filter((item) => item.mealType === mealType).map((item) => item.title);
-    assert.equal(new Set(titles).size, 7, `${mealType}: tutti i giorni devono avere un piatto diverso`);
-  }
+  assert.deepEqual(validateMealPlanConstraints(plan.items), []);
+  assert.equal(
+    new Set(plan.items.filter((item) => item.mealType === "lunch").map((item) => item.title)).size,
+    1,
+    "il doppione resta osservabile: non viene mascherato né corretto con costi non essenziali",
+  );
 });
 
 test("un solo doppione viene riparato localmente senza rigenerare l'intera settimana", async (t) => {
@@ -834,8 +835,94 @@ test("un solo doppione viene riparato localmente senza rigenerare l'intera setti
   assert.equal(new Set(plan.items.filter((item) => item.mealType === "dinner").map((item) => item.title)).size, 7);
 });
 
+test("un retry allergene seguito da un repair locale resta nello stesso budget", async (t) => {
+  const { client, calls } = createFakeClient((request) => {
+    if (request.mealTypes.length === 1 && request.mealTypes[0] === "dinner") {
+      return [makeMeal(request.dates[0]!, "dinner", "Cena locale senza lattosio", [
+        { name: "salmone", quantity: "150", unit: "g" },
+        { name: "riso", quantity: "80", unit: "g" },
+        { name: "zucchine", quantity: "150", unit: "g" },
+      ])];
+    }
+
+    const firstAttempt = calls.length < CONSTRAINED_WEEK_REQUESTS;
+    return lactoseSafeWeekItems(request).map((item) => {
+      if (firstAttempt && item.mealType === "lunch") {
+        return makeMeal(item.date, item.mealType, "Pranzo con ricotta", [
+          { name: "ricotta", quantity: "100", unit: "g" },
+          { name: "pasta", quantity: "80", unit: "g" },
+          { name: "zucchine", quantity: "150", unit: "g" },
+        ]);
+      }
+      if (
+        !firstAttempt
+        && item.mealType === "dinner"
+        && (item.date === DATES[0] || item.date === DATES[6])
+      ) {
+        return makeMeal(item.date, item.mealType, "Pollo ripetuto senza lattosio", [
+          { name: "pollo", quantity: "120", unit: "g" },
+          { name: "patate", quantity: "180", unit: "g" },
+          { name: "spinaci", quantity: "150", unit: "g" },
+        ]);
+      }
+      return item;
+    });
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { allergies: "lattosio" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
+
+  assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 2 + 1);
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
+  assert.ok(calls.at(-1)?.sysPrompt.includes("CORREZIONE VARIETÀ LOCALE OBBLIGATORIA"));
+  assertCompleteWeek(plan.items, 3);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "lattosio" }), []);
+});
+
+test("al massimo tre doppioni usano repair locali e restano sotto il cap cumulativo", async (t) => {
+  const repeatedDinnerDates = new Set([DATES[0], DATES[4], DATES[5], DATES[6]]);
+  const { client, calls } = createFakeClient((request) => {
+    if (request.mealTypes.length === 1 && request.mealTypes[0] === "dinner") {
+      const index = DATES.indexOf(request.dates[0]!);
+      return [makeMeal(request.dates[0]!, "dinner", `Cena locale ${index + 1}`, [
+        { name: "salmone", quantity: "150", unit: "g" },
+        { name: "riso", quantity: "80", unit: "g" },
+        { name: "zucchine", quantity: "150", unit: "g" },
+      ])];
+    }
+    return weekItems(request).map((item) =>
+      item.mealType === "dinner" && repeatedDinnerDates.has(item.date)
+        ? makeMeal(item.date, item.mealType, "Cena ripetuta", [
+            { name: "pollo", quantity: "120", unit: "g" },
+            { name: "patate", quantity: "180", unit: "g" },
+            { name: "spinaci", quantity: "150", unit: "g" },
+          ])
+        : item,
+    );
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS + 3);
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
+  assertCompleteWeek(plan.items, 3);
+  assert.equal(new Set(plan.items.filter((item) => item.mealType === "dinner").map((item) => item.title)).size, 7);
+});
+
 test("una risposta incompleta non viene consegnata come settimana valida", async (t) => {
-  const { client } = createFakeClient((request) => request.dates.slice(0, 0).flatMap((date) =>
+  const { client, calls } = createFakeClient((request) => request.dates.slice(0, 0).flatMap((date) =>
     request.mealTypes.map((mealType) => makeMeal(date, mealType, "Pasto", [{ name: "mela", quantity: "1", unit: "pezzo" }])),
   ));
   __setOpenAiClientForTest(client);
@@ -843,8 +930,9 @@ test("una risposta incompleta non viene consegnata come settimana valida", async
 
   await assert.rejects(
     generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START }),
-    (error: unknown) => (error as { code?: string }).code === "AI_BAD_RESPONSE",
+    (error: unknown) => (error as { code?: string }).code === "AI_MODEL_CALL_BUDGET_EXHAUSTED",
   );
+  assert.equal(calls.length, MAX_MEAL_PLAN_MODEL_CALLS);
 });
 
 test("una risposta incompleta viene rigenerata una sola volta senza inviare piani parziali", async (t) => {
@@ -940,6 +1028,28 @@ test("il budget esaurito non avvia nuove chiamate e non consegna un piano parzia
       familySize: 4,
       weekStartDate: WEEK_START,
       preferences: { allergies: "Lattosio" },
+      maxModelCalls: CONSTRAINED_WEEK_REQUESTS,
+    }),
+    (error: unknown) => (error as { code?: string }).code === "AI_MODEL_CALL_BUDGET_EXHAUSTED",
+  );
+  assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS);
+  assert.ok(calls.length <= CONSTRAINED_WEEK_REQUESTS);
+});
+
+test("una violazione allergene a budget esaurito non consegna mai il piano", async (t) => {
+  const { client, calls } = createFakeClient((request) => request.dates.flatMap((date) =>
+    request.mealTypes.map((mealType) => makeMeal(date, mealType, "Pasto con latticino", [
+      { name: "ricotta", quantity: "100", unit: "g" },
+    ])),
+  ));
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  await assert.rejects(
+    generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      preferences: { allergies: "lattosio" },
       maxModelCalls: CONSTRAINED_WEEK_REQUESTS,
     }),
     (error: unknown) => (error as { code?: string }).code === "AI_MODEL_CALL_BUDGET_EXHAUSTED",

@@ -65,10 +65,10 @@ test('sentinella: avvisa solo dopo la regressione confermata da tutti i tentativ
 
   assert.deepEqual(result, {
     outcome: 'regression_confirmed',
-    attempts: 3,
+    attempts: 2,
     violationCodes: ['peanut'],
   });
-  assert.deepEqual(notifications, [{ attempts: 3, violationCodes: ['peanut'] }]);
+  assert.deepEqual(notifications, [{ attempts: 2, violationCodes: ['peanut'] }]);
 });
 
 test('sentinella: errori del provider non sono regressioni e non inviano alert', async () => {
@@ -100,7 +100,7 @@ test('sentinella: un errore di vincolo diverso dall’allergene sintetico non al
 
   assert.deepEqual(result, {
     outcome: 'unavailable',
-    attempts: 3,
+    attempts: 2,
     violationCodes: ['ingredients-missing'],
   });
   assert.equal(notifications, 0);
@@ -113,15 +113,15 @@ test('sentinella: resta opt-in e ha un budget massimo rigido documentato', () =>
     assert.equal(isAllergenMonitorEnabled(), false);
     process.env.MEAL_PLAN_ALLERGEN_MONITOR = ' TRUE ';
     assert.equal(isAllergenMonitorEnabled(), true);
-    assert.equal(ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS, 3);
-    assert.equal(ALLERGEN_MONITOR_MAX_MODEL_CALLS, 24);
+    assert.equal(ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS, 2);
+    assert.equal(ALLERGEN_MONITOR_MAX_MODEL_CALLS, 14);
   } finally {
     if (previous === undefined) delete process.env.MEAL_PLAN_ALLERGEN_MONITOR;
     else process.env.MEAL_PLAN_ALLERGEN_MONITOR = previous;
   }
 });
 
-test('sentinella integrata: validatore reale, 24 chiamate e un solo log minimale', async (t) => {
+test('sentinella integrata: validatore reale, 14 chiamate e un solo log minimale', async (t) => {
   let modelCalls = 0;
   const fakeClient = {
     chat: {
@@ -131,14 +131,18 @@ test('sentinella integrata: validatore reale, 24 chiamate e un solo log minimale
           const systemPrompt = request.messages.find((message) => message.role === 'system')?.content || '';
           const datesText = systemPrompt.match(/SOLO per questi giorni: ([0-9,\- ]+)\./)?.[1] || '';
           const dates = datesText.split(',').map((date) => date.trim()).filter(Boolean);
-          const items = dates.map((date) => ({
+          const items = dates.flatMap((date) => ['lunch', 'dinner'].map((mealType) => ({
             date,
-            mealType: 'lunch',
-            title: 'Piatto sintetico con arachidi',
-            description: '',
+            mealType,
+            title: `Piatto sintetico con arachidi ${mealType}`,
+            description: 'Ricetta sintetica completa per la sentinella.',
             ingredients: [{ name: 'Arachidi', quantity: '20', unit: 'g' }],
-            steps: ['Servi il piatto sintetico'],
-          }));
+            steps: [
+              'Prepara gli ingredienti indicati.',
+              'Cuoci il piatto con cura.',
+              'Servi il pasto caldo.',
+            ],
+          })));
           return {
             choices: [{
               message: { content: JSON.stringify({ items }) },
@@ -177,11 +181,12 @@ test('sentinella integrata: validatore reale, 24 chiamate e un solo log minimale
 
   assert.deepEqual(result, {
     outcome: 'regression_confirmed',
-    attempts: 3,
+    attempts: 2,
     violationCodes: ['peanut'],
   });
-  assert.equal(modelCalls, ALLERGEN_MONITOR_MAX_MODEL_CALLS);
-  assert.deepEqual(notifications, [{ attempts: 3, violationCodes: ['peanut'] }]);
+  assert.equal(modelCalls, ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS * 7);
+  assert.ok(modelCalls <= ALLERGEN_MONITOR_MAX_MODEL_CALLS);
+  assert.deepEqual(notifications, [{ attempts: 2, violationCodes: ['peanut'] }]);
   assert.equal(emitted.length, 1, 'nessun log interno del generatore deve uscire');
   assert.equal(emitted[0]?.level, 'warn');
   const message = String(emitted[0]?.args[0] || '');
@@ -195,7 +200,7 @@ test('sentinella integrata: validatore reale, 24 chiamate e un solo log minimale
   assert.deepEqual(metadata, {
     tag: 'MEAL_PLAN_ALLERGEN_MONITOR',
     outcome: 'regression_confirmed',
-    attempts: 3,
+    attempts: 2,
     violationCodes: ['peanut'],
   });
 });

@@ -16,7 +16,7 @@ supportati dal codice. Non sono stati aggiunti nuovi allergeni o nuove diete.
 | Validazione semantica | Verificata su titolo, descrizione, note, ingredienti e passaggi |
 | Varietà | Verificata senza rilassare la sicurezza |
 | Combinazioni | Verificate con mock e piano completo |
-| Budget | Invariato: `MAX_MEAL_PLAN_MODEL_CALLS = 42` |
+| Budget | Ridotto e verificato: `MAX_MEAL_PLAN_MODEL_CALLS = 28` |
 | Chiamate OpenAI reali | 0 |
 
 ## Perimetro effettivo
@@ -159,16 +159,19 @@ coperti da test di non regressione.
 
 ## Budget cumulativo
 
-Il limite resta:
+Il limite finale è:
 
-`MAX_MEAL_PLAN_MODEL_CALLS = 42`
+`MAX_MEAL_PLAN_MODEL_CALLS = 28`
 
 | Percorso | Chiamate simulate attese | Note |
 | --- | ---: | --- |
 | scenario standard senza retry | 14 | generazione ordinaria |
 | scenario solo lactose | 7 | colazioni deterministiche |
 | gluten, milk o altro allergene standard | 14 | stesso percorso ordinario |
-| retry malformed/constraint/varietà | cumulativo | non può superare 42 |
+| retry completo malformed o constraint | 28 | due settimane standard complete |
+| retry lactose + un repair locale | 15 | stesso contatore condiviso |
+| repair locali di varietà | fino a 3 | solo dopo piano completo e sicuro |
+| varietà molto bassa | nessuna settimana completa aggiuntiva | esito best effort, sicurezza invariata |
 | budget esaurito | nessuna nuova chiamata | errore `AI_MODEL_CALL_BUDGET_EXHAUSTED`, nessun piano parziale |
 
 I test usano un client OpenAI mockato. Il conteggio è asserito per ogni
@@ -199,12 +202,12 @@ segreti prima della consegna.
 
 ## Consegna
 
-L’archivio consegnato è:
+L’archivio finale consegnato è:
 
-`familysync-meal-plan-allergens-audit-fixed-20260821.zip`
+`familysync-meal-plan-final-review-20260821.zip`
 
 Contiene esclusivamente i file elencati in
-`MEAL_PLAN_ALLERGEN_AUDIT_MANIFEST.txt`, senza `attached_assets`, build,
+`FINAL_REVIEW_MANIFEST.txt`, senza `attached_assets`, build,
 upload, file di ambiente, chiavi, credenziali o archivi annidati.
 
 Non è stato eseguito alcun deploy.

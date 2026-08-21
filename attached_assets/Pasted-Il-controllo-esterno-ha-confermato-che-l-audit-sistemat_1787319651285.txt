@@ -1,0 +1,614 @@
+Il controllo esterno ha confermato che l’audit sistematico degli allergeni è valido nel contenuto, ma restano due attività da chiudere prima del deploy:
+
+1. **ottimizzare il budget OpenAI del Piano Pasti**, riducendo l’hard cap attuale di 42 chiamate;
+2. produrre alla fine **un unico ZIP finale pulito**, contenente soltanto i file realmente modificati e i report, non centinaia di file del progetto.
+
+NON fare deploy.
+
+# 1. STATO ATTUALE DA MANTENERE
+
+Sono già state verificate e NON devono essere riscritte o indebolite le correzioni relative a:
+
+* normalizzazione canonica dei vincoli;
+* `gluten`;
+* `lactose`;
+* `milk`;
+* `egg`;
+* `peanut`;
+* `nuts`;
+* `fish`;
+* `soy`;
+* `sesame`;
+* `celery`;
+* `mustard`;
+* `lupin`;
+* `sulfites`;
+* `shellfish`;
+* `molluscs`;
+* closed allowlist;
+* controllo semantico degli ingredienti;
+* distinzione `lactose != milk`;
+* prodotti esplicitamente senza glutine;
+* semantic duplicate detection;
+* memoria inter-giorno;
+* varietà glutine;
+* varietà lattosio;
+* JSON Schema;
+* Zod;
+* test allergeni già presenti.
+
+Il mandato attuale riguarda principalmente:
+
+* model-call budget;
+* retry;
+* repair;
+* comportamento a budget residuo;
+* confezionamento ZIP finale.
+
+# 2. PROBLEMA DA RISOLVERE
+
+Attualmente risulta:
+
+```ts
+MAX_MEAL_PLAN_MODEL_CALLS = 42;
+```
+
+mentre i percorsi normali osservati sono circa:
+
+* Piano standard: 14 model calls;
+* Piano `lactose`: 7 model calls.
+
+42 è quindi troppo permissivo.
+
+L’obiettivo non è soltanto avere un limite tecnico, ma avere un **hard cap economicamente sensato**.
+
+# 3. RICOSTRUISCI ESATTAMENTE IL COSTO DELLA PIPELINE
+
+Prima di cambiare il valore, calcola con test/mock quante chiamate richiede ciascun percorso.
+
+Produci una tabella:
+
+| Scenario                       | Model calls |
+| ------------------------------ | ----------: |
+| Standard normale               |         ... |
+| Lactose normale                |         ... |
+| Gluten normale                 |         ... |
+| + 1 malformed response retry   |         ... |
+| + 1 constraint retry           |         ... |
+| + 1 local variety repair       |         ... |
+| + massimo local variety repair |         ... |
+| Full variety retry             |         ... |
+| Worst case oggi consentito     |         ... |
+
+Distingui chiaramente:
+
+### Obbligatorie
+
+* generazione base;
+* recupero di risposta strutturalmente invalida;
+* constraint/allergen retry indispensabile.
+
+### Best effort
+
+* local variety repair;
+* full variety retry;
+* altre operazioni dedicate esclusivamente alla varietà.
+
+# 4. PRIORITÀ DEL BUDGET
+
+L’ordine deve essere:
+
+1. sicurezza allergeni;
+2. risposta strutturalmente valida;
+3. completamento del piano;
+4. varietà.
+
+La varietà NON può giustificare il raddoppio o triplicamento del costo.
+
+Se un piano è:
+
+* completo;
+* strutturalmente valido;
+* compatibile con tutti gli allergeni;
+
+ma leggermente meno vario, preferisci quel piano a una nuova generazione completa.
+
+# 5. RIDUCI `MAX_MEAL_PLAN_MODEL_CALLS`
+
+Il valore 42 deve essere ridotto significativamente.
+
+Non impostare un nuovo valore arbitrariamente.
+
+Calcola il **minimo hard cap sostenibile** sulla base dei test.
+
+Come ordine di grandezza, se il percorso standard richiede realmente circa 14 chiamate, un valore nell’area:
+
+```text
+16–18
+```
+
+sarebbe molto più coerente.
+
+Ma scegli il valore finale sulla base dei percorsi reali.
+
+Documenta esattamente perché quel valore è sufficiente.
+
+# 6. UNICO BUDGET CUMULATIVO PER RICHIESTA
+
+Ogni singola azione dell’utente:
+
+* Genera Piano;
+* Genera alternativa;
+
+deve avere un unico budget.
+
+Tutte le chiamate OpenAI devono consumare lo stesso contatore:
+
+* generazione;
+* malformed response retry;
+* format retry;
+* constraint retry;
+* local repair;
+* variety retry.
+
+Nessuna funzione deve creare un nuovo budget interno per aggirare il cap.
+
+Deve valere sempre:
+
+```ts
+modelCalls <= MAX_MEAL_PLAN_MODEL_CALLS
+```
+
+# 7. TUTTI I CHIAMANTI DEVONO USARE LO STESSO HARD CAP
+
+Cerca nel repository tutti i call site di:
+
+```ts
+generateWeeklyMealPlan(...)
+```
+
+e qualsiasi altro helper che possa effettuare model calls per il Piano Pasti.
+
+Verifica almeno:
+
+* route standard;
+* route streaming;
+* Genera alternativa;
+* eventuali helper;
+* eventuali job.
+
+Tutti devono passare/utilizzare il budget centralizzato.
+
+Aggiungi un test o controllo statico che impedisca di aggiungere in futuro un nuovo call site senza budget.
+
+# 8. CONTROLLA IL BUDGET PRIMA DELLA MODEL CALL
+
+Prima di ogni chiamata OpenAI:
+
+1. calcola il residuo;
+2. verifica che l’operazione sia consentita;
+3. incrementa/riserva la chiamata;
+4. invoca OpenAI.
+
+Mai:
+
+```text
+OpenAI
+→ incremento successivo
+```
+
+# 9. NON AVVIARE OPERAZIONI CHE NON POSSONO COMPLETARSI
+
+Aggiungi una logica esplicita equivalente a:
+
+```ts
+remainingModelCalls()
+canAffordModelCalls(requiredCalls)
+```
+
+Se un’operazione richiede più chiamate del residuo disponibile, non iniziarla.
+
+Esempio:
+
+```text
+budget residuo = 3
+rigenerazione completa = 14
+
+=> NON iniziare la rigenerazione
+```
+
+# 10. VARIETÀ = BEST EFFORT
+
+Rivedi:
+
+```ts
+MAX_LOCAL_VARIETY_REPAIRS
+```
+
+e:
+
+```ts
+MAX_VARIETY_GENERATION_RETRIES
+```
+
+I local repair possono essere mantenuti soltanto se:
+
+* consumano il budget globale;
+* sono limitati;
+* non sottraggono margine necessario alla sicurezza.
+
+Per il full variety retry:
+
+* preferibilmente eliminarlo;
+* oppure consentirlo soltanto quando il budget residuo permette di completarlo integralmente.
+
+Non rigenerare una settimana intera soltanto per migliorare una lieve ripetizione.
+
+# 11. NON SACRIFICARE LA SICUREZZA
+
+Se il budget è quasi esaurito e viene rilevata una violazione allergene:
+
+* NON restituire il piano;
+* NON disattivare il constraint;
+* NON trasformare l’allergene in best effort.
+
+Se invece:
+
+* il piano è sicuro;
+* è completo;
+* è strutturalmente valido;
+* presenta soltanto qualche ripetizione;
+
+può essere restituito senza ulteriori chiamate di varietà.
+
+# 12. ERRORE A BUDGET ESAURITO
+
+Mantieni o usa un errore tipizzato come:
+
+```text
+AI_MODEL_CALL_BUDGET_EXHAUSTED
+```
+
+Il frontend deve ricevere un messaggio comprensibile, per esempio:
+
+```text
+Non è stato possibile completare il piano in modo affidabile. Riprova.
+```
+
+Non mostrare:
+
+* 16/18 chiamate;
+* token;
+* stack trace;
+* dettagli OpenAI.
+
+# 13. NON MODIFICARE LE QUOTE GIORNALIERE
+
+Non cambiare:
+
+```text
+AI_DAILY_LIMITS
+```
+
+o il numero di Piano Pasti che una famiglia può generare al giorno.
+
+Questo mandato riguarda soltanto il costo di **una singola richiesta**.
+
+# 14. TEST BUDGET OBBLIGATORI
+
+Usa OpenAI mock/fake.
+
+Testa almeno:
+
+## A
+
+Piano standard normale.
+
+## B
+
+Piano lactose normale.
+
+## C
+
+Piano gluten normale.
+
+## D
+
+Un local variety repair.
+
+## E
+
+Massimo numero consentito di local repair.
+
+## F
+
+Malformed response retry.
+
+## G
+
+Constraint/allergen retry.
+
+## H
+
+Constraint retry + local repair.
+
+## I
+
+Budget quasi terminato prima di full retry.
+
+Il full retry non deve iniziare.
+
+## L
+
+Piano sicuro ma poco vario, budget esaurito.
+
+Il piano deve poter essere restituito.
+
+## M
+
+Violazione allergene e budget esaurito.
+
+Il piano NON deve essere restituito.
+
+## N
+
+Worst case.
+
+Verifica esplicitamente:
+
+```ts
+assert.ok(modelCalls <= MAX_MEAL_PLAN_MODEL_CALLS);
+```
+
+# 15. RIESGUI L’AUDIT DEGLI ALLERGENI
+
+La riduzione del budget non deve introdurre regressioni.
+
+Riesegui test su tutti i 15 vincoli:
+
+* gluten;
+* lactose;
+* milk;
+* egg;
+* peanut;
+* nuts;
+* fish;
+* soy;
+* sesame;
+* celery;
+* mustard;
+* lupin;
+* sulfites;
+* shellfish;
+* molluscs.
+
+Riesegui anche tutte le combinazioni già presenti nell’audit.
+
+# 16. RIESGUI I TEST VARIETÀ
+
+Verifica nuovamente:
+
+* gluten variety;
+* lactose variety;
+* semantic duplicate detection;
+* memoria inter-giorno;
+* variety checker.
+
+Non aumentare il budget per far passare questi test.
+
+# 17. REPORT BUDGET
+
+Crea:
+
+`MEAL_PLAN_MODEL_CALL_BUDGET_REPORT.md`
+
+Deve indicare:
+
+### Prima
+
+```text
+MAX_MEAL_PLAN_MODEL_CALLS = 42
+```
+
+### Dopo
+
+```text
+MAX_MEAL_PLAN_MODEL_CALLS = <valore finale>
+```
+
+e riportare:
+
+| Scenario              | Calls tipiche | Hard cap |
+| --------------------- | ------------: | -------: |
+| Standard              |           ... |      ... |
+| Lactose               |           ... |      ... |
+| Gluten                |           ... |      ... |
+| Malformed retry       |           ... |      ... |
+| Constraint retry      |           ... |      ... |
+| Local repair          |           ... |      ... |
+| Worst case consentito |           ... |      ... |
+
+Spiega anche:
+
+* margine residuo;
+* perché il valore è sufficiente;
+* quali retry vengono sacrificati prima;
+* perché sicurezza e allergeni non vengono sacrificati.
+
+# 18. AGGIORNA IL REPORT ALLERGENI
+
+Mantieni:
+
+`MEAL_PLAN_ALLERGEN_AUDIT_REPORT.md`
+
+oppure il report equivalente già prodotto.
+
+Aggiornalo soltanto se necessario per riportare:
+
+* hard cap finale;
+* regressioni: 0;
+* test finali;
+* conferma che i 15 allergeni restano coperti.
+
+Non riscrivere inutilmente tutto l’audit.
+
+# 19. VERIFICA COMPLETA
+
+Esegui:
+
+```bash
+npm run typecheck
+npm run test:ai
+npm run test:meal-plan-allergens
+```
+
+e tutti gli altri test Piano Pasti disponibili.
+
+Riporta nel report:
+
+* suite;
+* numero totale test;
+* passed;
+* failed;
+* skipped;
+* exit code;
+* hard cap finale;
+* massimo numero model calls osservato.
+
+# 20. NESSUNA OPENAI CALL REALE
+
+Non usare OpenAI reale per i test se i mock sono sufficienti.
+
+Non consumare credito API per verifiche che possono essere deterministiche.
+
+# 21. NESSUN DEPLOY
+
+NON fare:
+
+* deploy;
+* publish;
+* modifica database;
+* migration;
+* modifiche pagamenti;
+* modifiche mobile estranee;
+* refactoring generale.
+
+# 22. CREA UN UNICO ZIP FINALE PULITO
+
+Questo punto è obbligatorio.
+
+Il precedente ZIP allergeni conteneva centinaia di elementi pur dichiarando un manifest molto più piccolo.
+
+NON deve succedere di nuovo.
+
+Genera:
+
+`familysync-meal-plan-final-review-20260821.zip`
+
+Lo ZIP deve contenere **soltanto i file realmente modificati o indispensabili alla revisione**.
+
+NON inserire l’intero repository.
+
+# 23. CONTENUTO MINIMO DELLO ZIP
+
+Includi soltanto se effettivamente coinvolti:
+
+* `server/routes/ai.ts`;
+* `server/lib/openai.ts`;
+* helper budget;
+* helper constraints;
+* helper variety;
+* eventuali tipi/schema modificati;
+* test budget;
+* test allergeni;
+* test variety;
+* package.json;
+* package-lock.json;
+* `MEAL_PLAN_MODEL_CALL_BUDGET_REPORT.md`;
+* `MEAL_PLAN_ALLERGEN_AUDIT_REPORT.md`;
+* manifest finale.
+
+Se un file non è stato modificato e non è indispensabile alla revisione, non inserirlo.
+
+# 24. MANIFEST REALE
+
+Crea:
+
+`FINAL_REVIEW_MANIFEST.txt`
+
+Il manifest deve elencare esattamente tutti e soli i file presenti nello ZIP.
+
+Dopo la creazione dell’archivio:
+
+1. riapri lo ZIP;
+2. conta le entry reali;
+3. confrontale con il manifest;
+4. verifica che:
+
+```text
+numero file manifest = numero file ZIP
+```
+
+Escludendo soltanto directory entry tecniche, se presenti.
+
+Non dichiarare che coincidono senza averlo verificato.
+
+# 25. ESCLUSIONI OBBLIGATORIE
+
+Lo ZIP NON deve contenere:
+
+* `.env`;
+* `.env.*`;
+* API key;
+* token;
+* secret;
+* certificati;
+* keystore;
+* database dump;
+* log contenenti credenziali;
+* `node_modules`;
+* build;
+* dist;
+* APK;
+* AAB;
+* ZIP precedenti;
+* backup;
+* file temporanei;
+* `.git`.
+
+Esegui scansione dei segreti prima della consegna.
+
+# 26. VERIFICA DELLO ZIP IN DIRECTORY PULITA
+
+Dopo aver creato lo ZIP:
+
+1. estrailo in una nuova directory temporanea;
+2. verifica l’elenco file;
+3. verifica manifest;
+4. esegui i test possibili sul contenuto estratto;
+5. verifica che nessun secret sia presente;
+6. calcola SHA-256.
+
+# 27. REPORT FINALE DI CONSEGNA
+
+Alla fine comunica soltanto:
+
+* nuovo `MAX_MEAL_PLAN_MODEL_CALLS`;
+* numero model calls standard;
+* numero model calls lactose;
+* massimo osservato nei test;
+* test passed/failed;
+* allergeni verificati: 15;
+* numero reale di file nello ZIP;
+* numero file nel manifest;
+* secret scan: PASS/FAIL;
+* SHA-256;
+* nome ZIP.
+
+Il nome deve essere:
+
+`familysync-meal-plan-final-review-20260821.zip`
+
+NON fare deploy.
+
+Fermati dopo la creazione dello ZIP e attendi il controllo esterno.

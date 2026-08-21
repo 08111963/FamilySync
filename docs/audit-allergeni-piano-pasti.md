@@ -65,7 +65,9 @@ La matrice ha dimostrato e bloccato quattro bypass lessicali del perimetro già 
 3. la regola `fish` non riconosceva alcune specie comuni (`sogliola`, `dentice`, `nasello`, `rana pescatrice`); ora le rifiuta per il vincolo pesce.
 4. un marker `senza glutine` associato a un prodotto poteva rendere sicuro un secondo prodotto oppure una seconda occorrenza non dichiarata nella stessa frase; ora il marker deve qualificare la singola occorrenza intercettata.
 
-Non sono state rilevate regressioni P0. Nessuna correzione modifica il budget, le chiamate esterne, lo schema dati o la varietà come regola di sicurezza.
+Non sono state rilevate regressioni P0. Le correzioni allergeni non modificano
+lo schema dati né la varietà come regola di sicurezza; il cap generale delle
+chiamate viene invece ridotto e documentato separatamente.
 
 ## Costi e budget
 
@@ -73,11 +75,12 @@ Tutte le generazioni di audit usano `__setOpenAiClientForTest`: non viene inviat
 
 | Percorso mock senza retry | Chiamate simulate asserite | Limite assoluto |
 | --- | ---: | ---: |
-| allergene standard, tre pasti/giorno | 14 | 42 |
-| solo lattosio, colazioni deterministicamente sicure | 7 | 42 |
-| qualunque retry/variante | conteggiato cumulativamente | 42 |
+| allergene standard, tre pasti/giorno | 14 | 28 |
+| solo lattosio, colazioni deterministicamente sicure | 7 | 28 |
+| retry completo di formato o vincoli | fino a 28 | 28 |
+| repair locali di varietà | conteggiato cumulativamente | 28 |
 
-Il test asserisce 14 chiamate per gli scenari standard e 7 per gli scenari con colazioni deterministiche senza lattosio, oltre a `calls.length <= MAX_MEAL_PLAN_MODEL_CALLS`; il valore centralizzato resta `42`. Un budget insufficiente restituisce `AI_MODEL_CALL_BUDGET_EXHAUSTED` e non consegna un piano parziale.
+Il test asserisce 14 chiamate per gli scenari standard e 7 per gli scenari con colazioni deterministiche senza lattosio, oltre a `calls.length <= MAX_MEAL_PLAN_MODEL_CALLS`; il valore centralizzato è `28`. Un budget insufficiente restituisce `AI_MODEL_CALL_BUDGET_EXHAUSTED` e non consegna un piano parziale. La varietà non avvia una settimana completa aggiuntiva.
 
 ## Comandi e risultati esatti
 

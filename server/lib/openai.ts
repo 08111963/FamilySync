@@ -697,9 +697,50 @@ interface MealPlanModelCallBudget {
   maxCalls: number;
   usedCalls: number;
 }
+
+function remainingMealPlanModelCalls(budget: MealPlanModelCallBudget): number {
+  return Math.max(0, budget.maxCalls - budget.usedCalls);
+}
+
+function canAffordMealPlanModelCalls(
+  budget: MealPlanModelCallBudget,
+  requiredCalls: number,
+): boolean {
+  return Number.isInteger(requiredCalls)
+    && requiredCalls > 0
+    && remainingMealPlanModelCalls(budget) >= requiredCalls;
+}
+
+function modelCallBudgetExhaustedError(budget: MealPlanModelCallBudget): AiError {
+  return new AiError(
+    "AI_MODEL_CALL_BUDGET_EXHAUSTED",
+    `Budget interno chiamate piano pasti esaurito (${budget.maxCalls})`,
+  );
+}
+
+function reserveMealPlanModelCall(budget?: MealPlanModelCallBudget): void {
+  if (!budget) return;
+  if (!canAffordMealPlanModelCalls(budget, 1)) {
+    throw modelCallBudgetExhaustedError(budget);
+  }
+  // L'incremento avviene prima del primo await: anche le chiamate avviate
+  // in parallelo non possono oltrepassare il tetto condiviso.
+  budget.usedCalls++;
+}
+
+function mealPlanAttemptModelCallCost(context: MealPlanGenerationContext): number {
+  const mealsPerDay = context.preferences?.mealsPerDay || 3;
+  const includesBreakfast = mealsPerDay >= 3;
+  const hasMainRequest = mealsPerDay >= 2;
+  const usesDeterministicLactoseBreakfasts = includesBreakfast
+    && mealPlanHasExclusion(context.preferences, "lactose")
+    && !mealPlanRequiresGlutenFree(context.preferences);
+  const requestsPerDay = (includesBreakfast && !usesDeterministicLactoseBreakfasts ? 1 : 0)
+    + (hasMainRequest ? 1 : 0);
+  return requestsPerDay * 7;
+}
 interface MealPlanGenerationAttemptContext extends MealPlanGenerationContext {
   constraintCorrection?: string;
-  varietyCorrection?: string;
   qualityCorrection?: string;
   generationAttempt: number;
   modelCallBudget?: MealPlanModelCallBudget;
@@ -709,13 +750,6 @@ class MealPlanConstraintRetryError extends Error {
   constructor(readonly violations: MealPlanConstraintViolation[]) {
     super("Il tentativo di generazione non rispetta i vincoli alimentari");
     this.name = "MealPlanConstraintRetryError";
-  }
-}
-
-class MealPlanVarietyRetryError extends Error {
-  constructor(readonly repeatedConcepts: string[]) {
-    super("Il piano contiene pasti ripetuti in giorni diversi");
-    this.name = "MealPlanVarietyRetryError";
   }
 }
 
@@ -865,14 +899,6 @@ function disambiguateMealTitles(
   });
 }
 
-function buildMealPlanVarietyCorrection(repeatedConcepts: string[], nextAttempt: number): string {
-  return `
-- CORREZIONE VARIETÀ OBBLIGATORIA (tentativo ${nextAttempt}): il piano precedente conteneva pasti ripetuti in giorni diversi.
-- Crea un menu realmente diverso per ogni giorno: non ripetere titolo, pesce/proteina principale, primo, contorno o combinazione di ingredienti dello stesso tipo di pasto.
-- Non riutilizzare questi concetti già ripetuti: ${repeatedConcepts.join("; ")}.
-- Verifica la varietà dell'intera settimana prima di rispondere.`;
-}
-
 // Un piano con vincoli sanitari può richiedere UNA sola rigenerazione completa
 // dopo una risposta semanticamente incompatibile. Il primo output non viene
 // mai mostrato, quindi l'utente riceve solo il piano verificato e non deve
@@ -880,18 +906,17 @@ function buildMealPlanVarietyCorrection(repeatedConcepts: string[], nextAttempt:
 // quota diventano sproporzionati.
 const MAX_CONSTRAINT_GENERATION_ATTEMPTS = 2;
 const MAX_MALFORMED_RESPONSE_RETRIES = 2;
-// La varietà viene controllata dopo formato e vincoli. Deve quindi avere un
-// retry proprio: altrimenti un doppione nell'ultimo piano già corretto per
-// un'allergia consuma retroattivamente il tentativo sanitario e il client
-// riceve un generico "risposta non valida".
-const MAX_VARIETY_GENERATION_RETRIES = 1;
+// La varietà è best effort: le riparazioni locali non possono avviare una
+// seconda settimana completa né sottrarre chiamate alla sicurezza.
 const MAX_LOCAL_VARIETY_REPAIRS = 3;
 /**
  * Tetto cumulativo per una generazione utente: include blocchi giornalieri,
- * retry di formato/vincolo/varietà e riparazioni locali. È l'unico massimo
- * assoluto esposto alle route reali; chiamanti sintetici possono solo ridurlo.
+ * retry obbligatori di formato/vincolo e riparazioni locali. 28 è il minimo
+ * sostenibile: una settimana standard richiede 14 chiamate e deve poter
+ * completare una seconda settimana intera quando formato o sicurezza falliscono.
+ * La varietà non può consumare una rigenerazione completa aggiuntiva.
  */
-export const MAX_MEAL_PLAN_MODEL_CALLS = 42;
+export const MAX_MEAL_PLAN_MODEL_CALLS = 28;
 const SAFE_MAIN_INGREDIENTS = [
   "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
   "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
@@ -1314,7 +1339,6 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     : '';
   const constraintRule = buildMealPlanConstraintPrompt(context.preferences);
   const constraintCorrection = context.constraintCorrection || "";
-  const varietyCorrection = context.varietyCorrection || "";
   const qualityCorrection = context.qualityCorrection || "";
 
   // Piatti tradizionali: il modello tende a "salutizzare" tutto proponendo
@@ -1551,21 +1575,11 @@ ${constrainedRecipeReferenceRule}
    - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno realizza questa combinazione concreta e non sostituirla con una colazione generica: ${breakfastHint}.` : ''}
- ${constraintRule}${priorVarietyContext}${constraintCorrection}${varietyCorrection}${qualityCorrection}${localCorrection}
+ ${constraintRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}
 - Rispondi SOLO con JSON: ${responseContract}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
-    if (context.modelCallBudget) {
-      if (context.modelCallBudget.usedCalls >= context.modelCallBudget.maxCalls) {
-        throw new AiError(
-          "AI_MODEL_CALL_BUDGET_EXHAUSTED",
-          `Budget interno chiamate piano pasti esaurito (${context.modelCallBudget.maxCalls})`,
-        );
-      }
-      // L'incremento avviene prima del primo await: anche le chiamate avviate
-      // in parallelo non possono oltrepassare il tetto condiviso.
-      context.modelCallBudget.usedCalls++;
-    }
+    reserveMealPlanModelCall(context.modelCallBudget);
     modelCallsStarted++;
     const response = await getOpenAiClient().chat.completions.create({
       model: 'gpt-5-mini',
@@ -1790,6 +1804,13 @@ ${constrainedRecipeReferenceRule}
     let localRepairFailed = false;
 
     for (const slot of repeatedSlots) {
+      if (context.modelCallBudget && !canAffordMealPlanModelCalls(context.modelCallBudget, 1)) {
+        // Sicurezza e completezza sono già state verificate. Non iniziare una
+        // correzione cosmetica quando non c'è più budget: il piano sicuro può
+        // essere consegnato con l'avviso di varietà, senza costi aggiuntivi.
+        localRepairFailed = true;
+        break;
+      }
       const dayIndex = dates.indexOf(slot.date);
       const forbiddenTitles = locallyRepaired
         .filter((item) =>
@@ -1870,12 +1891,11 @@ ${constrainedRecipeReferenceRule}
   if (repeatedConcepts.length > 0) {
     if (!context.suppressInternalLogs) {
       console.warn(JSON.stringify({
-        tag: "AI_MEAL_PLAN_VARIETY_RETRY",
+        tag: "AI_MEAL_PLAN_VARIETY_BEST_EFFORT",
         variant,
         repeatedCount: repeatedConcepts.length,
       }));
     }
-    throw new MealPlanVarietyRetryError(repeatedConcepts);
   }
   const varietyEvaluation = evaluateMealPlanVariety(finalItems);
   if (varietyEvaluation.issues.length > 0 && !context.suppressInternalLogs) {
@@ -1923,14 +1943,19 @@ export async function generateWeeklyMealPlan(
     maxCalls: Math.max(1, Math.min(MAX_MEAL_PLAN_MODEL_CALLS, requestedModelCalls)),
     usedCalls: 0,
   };
+  const fullAttemptCallCost = mealPlanAttemptModelCallCost(context);
   let constraintCorrection: string | undefined;
-  let varietyCorrection: string | undefined;
   let qualityCorrection: string | undefined;
 
   let constraintAttempt = 1;
   let malformedResponseRetries = 0;
-  let varietyRetries = 0;
   while (constraintAttempt <= attempts) {
+    // Non iniziare mai una settimana se non rimane spazio per completare
+    // tutte le sue chiamate: evita un tentativo parziale che sprecherebbe
+    // budget senza poter produrre un piano consegnabile.
+    if (!canAffordMealPlanModelCalls(modelCallBudget, fullAttemptCallCost)) {
+      throw modelCallBudgetExhaustedError(modelCallBudget);
+    }
     try {
       context.onStatus?.(
         attempts === 1
@@ -1943,7 +1968,6 @@ export async function generateWeeklyMealPlan(
         ...context,
         generationAttempt: constraintAttempt + malformedResponseRetries,
         constraintCorrection,
-        varietyCorrection,
         qualityCorrection,
         modelCallBudget,
       });
@@ -1965,32 +1989,6 @@ export async function generateWeeklyMealPlan(
         // Non esporre un ciclo di tentativi nell'interfaccia: il client riceve
         // esclusivamente il piano già completo e validato.
         context.onStatus?.("Completo il piano pasti verificato.");
-        continue;
-      }
-      if (error instanceof MealPlanVarietyRetryError) {
-        if (varietyRetries >= MAX_VARIETY_GENERATION_RETRIES) {
-          throw new AiError(
-            "AI_BAD_RESPONSE",
-            "Il piano contiene pasti ripetuti anche dopo la rigenerazione automatica",
-          );
-        }
-        if (!context.suppressInternalLogs) {
-          console.warn(JSON.stringify({
-            tag: "AI_MEAL_PLAN_VARIETY_REGENERATE",
-            variant: context.planVariant || 1,
-            failedAttempt: constraintAttempt,
-            nextAttempt: constraintAttempt + 1,
-            repeatedCount: error.repeatedConcepts.length,
-          }));
-        }
-        varietyRetries++;
-        varietyCorrection = appendMealPlanCorrection(
-          varietyCorrection,
-          buildMealPlanVarietyCorrection(error.repeatedConcepts, varietyRetries + 1),
-        );
-        // Il doppione viene rilevato soltanto DOPO che il risultato è già
-        // sicuro rispetto ai vincoli. Non deve quindi consumare il budget
-        // dedicato alla correzione dell'allergia.
         continue;
       }
       if (!(error instanceof MealPlanConstraintRetryError)) throw error;

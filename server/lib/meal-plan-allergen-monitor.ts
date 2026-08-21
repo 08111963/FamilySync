@@ -29,12 +29,13 @@ const FIRST_RUN_DELAY_MS = 5 * 60 * 1000;
 export const ALLERGEN_MONITOR_SYNTHETIC_ALLERGEN = 'Arachidi';
 export const ALLERGEN_MONITOR_EXPECTED_VIOLATION_CODE = 'peanut';
 /** Massimo tentativi completi del generatore; non configurabile da env. */
-export const ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS = 3;
+export const ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS = 2;
 /**
- * Il generatore effettua al massimo 7 chiamate giornaliere + 1 ripassata
- * anti-doppioni per tentativo. 3 × 8 è un budget massimo verificabile.
+ * Il monitor usa due pasti giornalieri, quindi ogni tentativo completo usa
+ * 7 chiamate. La rigenerazione completa per sola varietà non esiste:
+ * 2 × 7 = 14, esattamente il cap settimanale difensivo.
  */
-export const ALLERGEN_MONITOR_MAX_MODEL_CALLS = 24;
+export const ALLERGEN_MONITOR_MAX_MODEL_CALLS = 14;
 export const ALLERGEN_MONITOR_JOB_NAME = 'meal_plan_allergen_weekly';
 
 export type MealPlanAllergenMonitorOutcome =
