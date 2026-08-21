@@ -286,8 +286,8 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
             properties: {
               date: { type: 'string' },
               mealType: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
-              title: { type: 'string' },
-              description: { type: 'string' },
+              title: { type: 'string', minLength: 1 },
+              description: { type: 'string', minLength: 1 },
               ingredients: {
                 type: 'array',
                 minItems: 1,
@@ -295,9 +295,9 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
                   type: 'object',
                   additionalProperties: false,
                   properties: {
-                    name: { type: 'string' },
-                    quantity: { type: 'string' },
-                    unit: { type: 'string' },
+                    name: { type: 'string', minLength: 1 },
+                    quantity: { type: 'string', minLength: 1 },
+                    unit: { type: 'string', minLength: 1 },
                   },
                   required: ['name', 'quantity', 'unit'],
                 },
@@ -306,7 +306,7 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
                 type: 'array',
                 minItems: 3,
                 maxItems: 6,
-                items: { type: 'string' },
+                items: { type: 'string', minLength: 1 },
               },
             },
             required: ['date', 'mealType', 'title', 'description', 'ingredients', 'steps'],
@@ -614,18 +614,18 @@ export interface MealPlanSuggestion {
 }
 
 const mealPlanIngredientSchema = z.object({
-  name: z.coerce.string(),
-  quantity: z.coerce.string().optional(),
-  unit: z.coerce.string().optional(),
+  name: z.coerce.string().trim().min(1),
+  quantity: z.coerce.string().trim().min(1).optional(),
+  unit: z.coerce.string().trim().min(1).optional(),
 }).catchall(z.unknown());
 
 const mealItemSchema = z.object({
   date: z.coerce.string(),
   mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
-  title: z.coerce.string(),
-  description: z.coerce.string().optional(),
+  title: z.coerce.string().trim().min(1),
+  description: z.coerce.string().trim().min(1).optional(),
   ingredients: z.array(mealPlanIngredientSchema).optional().catch([]),
-  steps: z.array(z.coerce.string()).optional().catch([]),
+  steps: z.array(z.coerce.string().trim().min(1)).optional().catch([]),
 }).catchall(z.unknown());
 
 export function parseMealItems(raw: unknown): MealPlanSuggestion['items'] {
@@ -1190,7 +1190,7 @@ async function generateWeeklyMealPlanAttempt(
     const snackMealRule = constrainedPlan
       ? `- snack (spuntino): piccolo e leggero, composto esclusivamente da ingredienti compatibili con TUTTI i vincoli.`
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
-    const itemContract = `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano), description (breve), ingredients (array), steps (array).`;
+    const itemContract = `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano, non vuoto), description (breve, non vuota), ingredients (array), steps (array).`;
     const preparationContract = `- steps è la RICETTA completa, passo-passo: da 3 a 6 istruzioni concrete e chiare in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale). Indica operazioni reali come lavare, tagliare, cuocere e assemblare, usando ingredienti e tempi quando utili. NON usare frasi generiche come "cuoci e condisci con cura" o "servi subito" come unico dettaglio della ricetta.`;
     const constrainedRecipeReferenceRule = constrainedPlan
       ? `- VINCOLI NELLA RICETTA: per ogni ingrediente soggetto a un vincolo usa, nel titolo, descrizione e in OGNI passaggio, il nome completo e compatibile scritto nell'array ingredients. Non abbreviare né sostituire con parole generiche un ingrediente sensibile (per esempio non scrivere "latte", "yogurt" o "formaggio" se nell'array è presente un sostituto vegetale o senza lattosio).`
@@ -1200,7 +1200,7 @@ async function generateWeeklyMealPlanAttempt(
 REGOLE:
 - Questa richiesta riguarda SOLO questi tipi di pasto: ${requestMealTypes.join(', ')}. Per ogni giorno genera esattamente ${mealsForRequest} pasti: ${requestMealTypes.join(', ')}.
 ${itemContract}
-- Ogni ingrediente ha: name (italiano), quantity (stringa, es. "200"), unit (es. "g", "ml", "pezzi").
+- Ogni ingrediente ha name, quantity e unit NON VUOTI. quantity deve essere concreta (es. "200", "1") e unit deve essere presente (es. "g", "ml", "pezzi"); per una quantità realmente non misurabile scrivi quantity "q.b." e unit "per condire", mai una stringa vuota.
 ${preparationContract}
 ${constrainedRecipeReferenceRule}
 - IMPORTANTE: ogni piatto DEVE essere adatto al suo tipo di pasto secondo le abitudini italiane:
@@ -1343,6 +1343,23 @@ ${constraintRule}${constraintCorrection}${varietyCorrection}
     item.ingredients.some((ingredient) =>
       !ingredient.name?.trim() || !ingredient.quantity?.trim() || !ingredient.unit?.trim()));
   if (incompleteMeal) {
+    const incompleteFields = [
+      !incompleteMeal.title.trim() && "title",
+      !incompleteMeal.description?.trim() && "description",
+      !incompleteMeal.ingredients?.length && "ingredients",
+      (!incompleteMeal.steps?.length || incompleteMeal.steps.length < 3 || incompleteMeal.steps.length > 6) && "steps_count",
+      incompleteMeal.steps?.some((step) => !step?.trim()) && "step_text",
+      incompleteMeal.ingredients?.some((ingredient) => !ingredient.name?.trim()) && "ingredient_name",
+      incompleteMeal.ingredients?.some((ingredient) => !ingredient.quantity?.trim()) && "ingredient_quantity",
+      incompleteMeal.ingredients?.some((ingredient) => !ingredient.unit?.trim()) && "ingredient_unit",
+    ].filter(Boolean);
+    if (!context.suppressInternalLogs) {
+      console.error(JSON.stringify({
+        tag: "AI_MEAL_PLAN_INCOMPLETE_REJECTED",
+        variant,
+        fields: incompleteFields,
+      }));
+    }
     throw new AiError(
       "AI_BAD_RESPONSE",
       "La risposta AI contiene un pasto incompleto",

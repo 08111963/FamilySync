@@ -28,6 +28,10 @@ type RequestInfo = {
   ingredientNames?: string[];
   sysPrompt: string;
   compact: boolean;
+  titleMinLength: number | undefined;
+  descriptionMinLength: number | undefined;
+  ingredientTextMinLength: number | undefined;
+  stepTextMinLength: number | undefined;
   stepMinItems: number | undefined;
   stepMaxItems: number | undefined;
   maxCompletionTokens: number | undefined;
@@ -69,6 +73,10 @@ function createFakeClient(buildItems: (request: RequestInfo) => Meal[]) {
             ingredientNames: itemSchema.properties.ingredients.items.properties.name.enum,
             sysPrompt,
             compact: request.response_format.json_schema.name === "compact_weekly_meal_plan_response",
+            titleMinLength: itemSchema.properties.title?.minLength,
+            descriptionMinLength: itemSchema.properties.description?.minLength,
+            ingredientTextMinLength: itemSchema.properties.ingredients.items.properties.quantity?.minLength,
+            stepTextMinLength: itemSchema.properties.steps.items?.minLength,
             stepMinItems: itemSchema.properties.steps?.minItems,
             stepMaxItems: itemSchema.properties.steps?.maxItems,
             maxCompletionTokens: request.max_completion_tokens,
@@ -164,6 +172,31 @@ test("due pasti al giorno mantengono il contratto da 14 pasti completi", async (
   assert.ok(calls.every((call) => JSON.stringify(call.mealTypes) === JSON.stringify(["lunch", "dinner"])));
   assert.ok(calls.every((call) => !call.compact));
   assertCompleteWeek(plan.items, 2);
+});
+
+test("campi vuoti in una ricetta vengono bloccati dallo schema e rigenerati", async (t) => {
+  let malformedResponse = true;
+  const { client, calls } = createFakeClient((request) => {
+    const items = weekItems(request);
+    if (malformedResponse) {
+      malformedResponse = false;
+      items[0]!.ingredients[0]!.quantity = "";
+    }
+    return items;
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2, "una risposta con quantità vuota non deve essere consegnata");
+  assert.ok(calls.every((call) =>
+    call.titleMinLength === 1 &&
+    call.descriptionMinLength === 1 &&
+    call.ingredientTextMinLength === 1 &&
+    call.stepTextMinLength === 1,
+  ), "lo schema strutturato deve vietare tutti i testi vuoti");
+  assertCompleteWeek(plan.items, 3);
 });
 
 test("con glutine: richieste giornaliere mirate mantengono colazioni dolci e pasti completi", async (t) => {
