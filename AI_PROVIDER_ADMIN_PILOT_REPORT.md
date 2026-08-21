@@ -1,23 +1,28 @@
-# Pilot provider AI per admin — Fase 1
+# Pilot provider AI per allowlist utente — Fase 1
 
 ## Esito
 
 Completata la Fase 1 del pilot: la selezione del provider AI avviene sul
-server, per singola operazione, usando il ruolo affidabile della membership
-familiare. Non sono stati modificati Secrets, database, UI mobile, prompt,
-modelli, pagamenti, profili dieta o logica allergeni.
+server, per singola operazione, usando esclusivamente una allowlist di user ID
+interni configurata con `OPENAI_DIRECT_PILOT_USER_IDS`. Il ruolo nella famiglia
+non partecipa mai alla scelta del provider. Non sono stati modificati Secrets,
+database, UI mobile, prompt, modelli, pagamenti, profili dieta o logica
+allergeni.
 
 ## Regole applicate
 
 | Contesto | Provider |
 | --- | --- |
-| Utente autenticato con ruolo familiare `admin` e `OPENAI_API_KEY` presente | OpenAI diretto |
-| Admin senza chiave diretta | Replit Managed AI |
-| Adulto, teen o child | Replit Managed AI |
+| User ID autenticato presente in `OPENAI_DIRECT_PILOT_USER_IDS` e `OPENAI_API_KEY` presente | OpenAI diretto |
+| User ID in allowlist senza chiave diretta | Replit Managed AI |
+| User ID non in allowlist, incluso un family admin | Replit Managed AI |
+| Allowlist assente o vuota | Replit Managed AI per tutti |
 | Job o lavoro in background | Replit Managed AI |
 
-Il ruolo non viene mai letto dal client: viene preso da
-`requireFamilyMember()` e dalla membership caricata dal database.
+La allowlist accetta esclusivamente user ID interni separati da virgola, è
+letta solo sul server e non viene mai restituita né scritta nei log. I ruoli
+familiari (admin, adult, teen e child) servono ancora alle autorizzazioni delle
+route, ma non hanno alcun effetto sul provider AI.
 
 ## Implementazione
 
@@ -29,7 +34,7 @@ Il ruolo non viene mai letto dal client: viene preso da
   nessun retry, repair o chiamata aggiuntiva è stato introdotto.
 - Il monitor del Piano Pasti e il prewarm delle immagini usano
   esplicitamente/restituiscono di default Replit Managed AI.
-- I log di diagnosi sono allow-listed: `provider`, `operation` e `userRole`.
+- I log di diagnosi sono allow-listed: `provider`, `operation` e `pilot`.
   Non includono chiavi, base URL completi, prompt, testi utente, identificativi
   o dati personali.
 
@@ -43,16 +48,18 @@ Il ruolo non viene mai letto dal client: viene preso da
 6. `npx tsx server/__tests__/meal-plan-balance.test.ts`
 7. `npx tsx server/__tests__/transcribe-short-clip.test.ts`
 8. `git diff --check`
-9. `bash scripts/export-consegna.sh familysync-ai-provider-admin-pilot-20260821.zip`
-   con controllo `unzip -t` e scansione anti-segreti sullo ZIP finale.
+9. Creazione dell'archivio minimale
+   `familysync-ai-provider-admin-pilot-final-20260822.zip`, con controllo
+   `unzip -t` e scansione anti-segreti sullo ZIP finale.
 
 Copertura specifica del pilot:
 
-- admin con chiave diretta;
-- utente non admin e job su Replit;
-- fallback admin quando la chiave diretta manca;
+- user ID in allowlist con chiave diretta;
+- family admin e adult non in allowlist su Replit;
+- fallback dell'utente in allowlist quando la chiave diretta manca;
+- allowlist assente o vuota su Replit per tutti;
 - configurazione diretta senza base URL Replit;
-- due richieste concorrenti con client distinti;
+- due richieste concorrenti (pilot e family admin normale) con client distinti;
 - job di bilanciamento che fissa esplicitamente Replit;
 - regressione del budget Piano Pasti di 28 chiamate.
 

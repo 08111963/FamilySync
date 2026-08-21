@@ -24,7 +24,8 @@ import { resolveMealPlanVariants } from '../lib/ai-policy';
 import {
   AiError,
   isAiError,
-  resolveAiProviderForUserRole,
+  isOpenAiDirectPilotUser,
+  resolveAiProviderForUserId,
   type AiProvider,
 } from '../lib/ai-errors';
 import { recipeImageCacheKey, createRecipeImagePrewarm } from '../lib/recipe-image-prewarm';
@@ -44,25 +45,27 @@ const router = Router();
 
 type AiRequestContext = {
   provider: AiProvider;
-  userRole: "admin" | "user";
+  pilot: boolean;
 };
 
 /**
- * Il ruolo arriva esclusivamente da requireFamilyMember() (DB), mai dal body.
+ * requireFamilyMember() protegge le route familiari, ma il provider non
+ * dipende dal ruolo: il pilot considera soltanto l'user ID autenticato e la
+ * allowlist server-side.
  * Il log usa solo campi allow-listed per diagnosticare il pilot senza
  * trattenere prompt, chiavi, identificatori o dati familiari.
  */
 function resolveAiRequestContext(req: Request, operation: string): AiRequestContext {
-  const membership = (req as Request & { membership?: { role?: string } }).membership;
-  const userRole = membership?.role === "admin" ? "admin" : "user";
-  const provider = resolveAiProviderForUserRole(membership?.role);
+  const userId = req.user?.userId;
+  const pilot = isOpenAiDirectPilotUser(userId);
+  const provider = resolveAiProviderForUserId(userId);
   logger.info("AI provider selected", {
     event: "ai_provider_selected",
     provider,
     operation,
-    userRole,
+    pilot,
   });
-  return { provider, userRole };
+  return { provider, pilot };
 }
 
 /** Mappa un AiError sul suo HTTP status + messaggio utente; altrimenti 500 generico. */
@@ -1510,7 +1513,8 @@ function startRecipeImageGeneration(params: {
   familyId: string;
   /** Omitted by prewarm/background callers, which must remain on Replit. */
   provider?: AiProvider;
-  userRole?: AiRequestContext["userRole"] | "background";
+  /** Omitted by prewarm/background callers, which are never in the pilot. */
+  pilot?: boolean;
 }): { run: Promise<RecipeImageRun>; isLeader: boolean } {
   const { key, filePath, title, description, userId, familyId } = params;
   const provider = params.provider ?? "replit_managed";
@@ -1524,7 +1528,7 @@ function startRecipeImageGeneration(params: {
       event: "ai_provider_selected",
       provider,
       operation: "recipe-image",
-      userRole: params.userRole ?? "background",
+      pilot: params.pilot ?? false,
     });
     task = (async () => {
       const run = await withAiUsage(
@@ -1639,7 +1643,7 @@ router.post('/:familyId/recipe-image', authenticate, requireAiEnabled, requireFa
     // esito reale del leader, senza consumare quota.
     const { run: task, isLeader } = startRecipeImageGeneration({
       key, filePath, title, description, userId, familyId,
-      provider: ai.provider, userRole: ai.userRole,
+      provider: ai.provider, pilot: ai.pilot,
     });
 
     const run = await task;

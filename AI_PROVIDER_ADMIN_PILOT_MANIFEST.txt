@@ -1,14 +1,20 @@
-FamilySync — AI Provider Admin Pilot / Fase 1
+FamilySync — AI Provider Allowlist Pilot / Fase 1
 
-Contenuto di consegna:
-- Implementazione provider per ruolo admin sul server
-- Client OpenAI separati per provider
-- Quote e budget Piano Pasti invariati (massimo 28 chiamate)
-- Test mock del pilot e del job background
+Archivio: familysync-ai-provider-admin-pilot-final-20260822.zip
+Contenuto esatto (10 file):
+- AI_PROVIDER_ADMIN_PILOT_MANIFEST.txt
 - AI_PROVIDER_ADMIN_PILOT_REPORT.md
+- scripts/export-consegna.sh
+- server/__tests__/ai-provider-admin-pilot.test.ts
+- server/__tests__/meal-plan-balance-monitor.test.ts
+- server/lib/ai-errors.ts
+- server/lib/ai-usage.ts
+- server/lib/meal-plan-balance-monitor.ts
+- server/lib/openai.ts
+- server/routes/ai.ts
 
 Esclusioni deliberate:
-- Nessuna modifica a Secrets o variabili d'ambiente
+- Nessun Secret o valore di environment incluso o modificato
 - Nessuna migrazione database
 - Nessuna modifica UI/mobile, prompt, modelli, pagamenti o diete
 - Nessun deploy

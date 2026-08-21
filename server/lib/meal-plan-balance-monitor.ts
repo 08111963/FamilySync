@@ -83,7 +83,7 @@ export async function runMealPlanBalanceEvalOnce(options?: {
       event: 'ai_provider_selected',
       provider: 'replit_managed',
       operation: 'meal-plan-balance-monitor',
-      userRole: 'background',
+      pilot: false,
     });
     const plan: MealPlanSuggestion = await generate({
       familySize: 4,

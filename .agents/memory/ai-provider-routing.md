@@ -1,20 +1,21 @@
 ---
 name: AI provider routing
-description: Policy for selecting the OpenAI provider by authenticated family role and execution context.
+description: Policy for selecting the OpenAI provider by authenticated user-ID allowlist and execution context.
 ---
 
-Direct OpenAI is an admin-only, server-side per-request pilot. Resolve the role
-from the trusted family membership, never from client input: an `admin` uses
-direct OpenAI only when the personal key is configured; every other role and
-all background work use Replit Managed AI. An admin missing the personal key
-must fall back to Replit Managed AI.
+Direct OpenAI is a server-side, per-request pilot selected only through
+`OPENAI_DIRECT_PILOT_USER_IDS`, a comma-separated allowlist of internal user
+IDs. The authenticated user ID must appear in that allowlist and the direct
+key must be configured; otherwise every interactive request uses Replit
+Managed AI. Family roles never influence provider selection, and all background
+work always uses Replit Managed AI.
 
-**Why:** this lets an administrator validate direct-provider billing without
-moving ordinary family data or unattended jobs away from the existing managed
-provider, and avoids accidental cross-request credential selection.
+**Why:** a family `admin` is not necessarily the app owner. Restricting direct
+provider access by membership role could expose the owner's personal provider
+key to unrelated family administrators.
 
 **How to apply:** pass a provider explicitly into AI operations and quota
 reservation; keep separate clients per provider. Default any call without a
-trusted interactive user to Replit Managed AI. Logs may record only provider,
-operation, and coarse role—never credentials, prompts, base URLs, IDs, or
-family data.
+trusted allowlisted user to Replit Managed AI. Logs may record only provider,
+operation, and a boolean pilot flag—never credentials, prompts, base URLs,
+IDs, or family data.

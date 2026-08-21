@@ -1,0 +1,117 @@
+Il controllo esterno ha individuato un problema bloccante nel pilot.
+
+NON fare deploy.
+
+La selezione attuale:
+
+role === "admin" → OpenAI diretto
+
+NON corrisponde alla richiesta “Fase 1 — solo il mio account”.
+
+Nel progetto `admin` è il ruolo della membership nella singola famiglia.
+Quindi qualsiasi utente amministratore della propria famiglia potrebbe essere instradato verso la mia OPENAI_API_KEY.
+
+Questo non è accettabile.
+
+CORREGGI ESCLUSIVAMENTE IL CRITERIO DI PILOT.
+
+1. NON usare familyMembers.role === "admin" come criterio per OpenAI diretto.
+
+2. Introduci una allowlist server-side configurabile tramite environment variable/Secret, per esempio:
+
+OPENAI_DIRECT_PILOT_USER_IDS
+
+Formato:
+lista di user ID interni separati da virgola.
+
+Esempio concettuale:
+user-id-1,user-id-2
+
+NON inserire email, nomi o user ID reali nel codice.
+
+3. Il routing deve diventare:
+
+se req.user.userId è presente in OPENAI_DIRECT_PILOT_USER_IDS
+e OPENAI_API_KEY è configurata
+→ provider = openai_direct
+
+altrimenti
+→ provider = replit_managed
+
+4. Il ruolo familiare admin/adult/teen/child NON deve influenzare la scelta del provider.
+
+Un utente non presente nella allowlist deve usare Replit Managed AI anche se è admin della propria famiglia.
+
+5. Mantieni:
+- client separati;
+- OPENAI_API_KEY solo backend;
+- Replit baseURL solo per replit_managed;
+- background job sempre Replit;
+- budget Piano Pasti = 28;
+- quote applicative;
+- nessuna modifica prompt/modelli/UI/database.
+
+6. Se OPENAI_DIRECT_PILOT_USER_IDS è assente o vuota:
+→ tutti gli utenti devono usare Replit Managed AI.
+
+7. Se un user ID è nella allowlist ma OPENAI_API_KEY manca:
+→ fallback a Replit Managed AI.
+
+8. Aggiungi test obbligatori:
+
+A. user ID nella allowlist + OPENAI_API_KEY presente
+→ openai_direct.
+
+B. family admin NON nella allowlist
+→ replit_managed.
+
+C. adult NON nella allowlist
+→ replit_managed.
+
+D. user nella allowlist ma OPENAI_API_KEY assente
+→ replit_managed.
+
+E. allowlist vuota
+→ tutti Replit.
+
+F. due richieste concorrenti:
+- pilot user
+- family admin normale
+→ rispettivamente direct / managed.
+
+G. background job
+→ Replit Managed AI.
+
+9. I log possono indicare:
+provider
+operation
+pilot=true/false
+
+NON loggare user ID, email o secret.
+
+10. Aggiorna:
+AI_PROVIDER_ADMIN_PILOT_REPORT.md
+
+specificando chiaramente che il pilot è basato su allowlist di user ID e NON sul ruolo familiare.
+
+11. Lo ZIP precedente conteneva 505 elementi.
+
+Questa volta genera uno ZIP realmente minimale:
+
+familysync-ai-provider-admin-pilot-final-20260822.zip
+
+con SOLO:
+- file realmente modificati;
+- test del pilot;
+- report;
+- manifest esatto;
+- package.json/lockfile solo se realmente necessari.
+
+Il manifest deve elencare esattamente ogni file presente nello ZIP.
+
+NON includere il repository completo.
+NON modificare Secrets.
+NON effettuare chiamate AI reali.
+NON fare deploy.
+
+Fermati dopo lo ZIP.

@@ -56,9 +56,31 @@ export function isAiError(err: unknown): err is AiError {
   return err instanceof AiError;
 }
 
-/** Il pilot consente l'API diretta solo a una membership familiare admin. */
-export function resolveAiProviderForUserRole(role: string | undefined): AiProvider {
-  return role === "admin" && Boolean(process.env.OPENAI_API_KEY?.trim())
+/**
+ * Elenca gli account autorizzati al pilot. Gli ID arrivano solo da una
+ * variabile server-side e non devono mai essere scritti nel codice o nei log.
+ */
+function getOpenAiDirectPilotUserIds(): Set<string> {
+  return new Set(
+    (process.env.OPENAI_DIRECT_PILOT_USER_IDS || "")
+      .split(",")
+      .map((userId) => userId.trim())
+      .filter(Boolean),
+  );
+}
+
+/** Indica se l'utente autenticato è incluso nel pilot configurato lato server. */
+export function isOpenAiDirectPilotUser(userId: string | undefined): boolean {
+  return Boolean(userId && getOpenAiDirectPilotUserIds().has(userId));
+}
+
+/**
+ * Il pilot usa esclusivamente una allowlist di user ID, mai il ruolo nella
+ * famiglia. In assenza di allowlist o chiave diretta ogni richiesta resta sul
+ * provider Replit Managed AI.
+ */
+export function resolveAiProviderForUserId(userId: string | undefined): AiProvider {
+  return isOpenAiDirectPilotUser(userId) && Boolean(process.env.OPENAI_API_KEY?.trim())
     ? "openai_direct"
     : "replit_managed";
 }
@@ -66,8 +88,8 @@ export function resolveAiProviderForUserRole(role: string | undefined): AiProvid
 /**
  * Risolve una configurazione per provider esplicito. Non esiste alcun fallback
  * globale: l'assenza della chiave diretta non può spostare utenti o job verso
- * OpenAI personale. I chiamanti admin ricevono già il fallback Replit tramite
- * resolveAiProviderForUserRole().
+ * OpenAI personale. I chiamanti non presenti nella allowlist ricevono già il
+ * fallback Replit tramite resolveAiProviderForUserId().
  */
 export function resolveOpenAiConfig(provider: AiProvider = "replit_managed"): { apiKey: string | undefined; baseURL: string | undefined } {
   if (provider === "openai_direct") {
