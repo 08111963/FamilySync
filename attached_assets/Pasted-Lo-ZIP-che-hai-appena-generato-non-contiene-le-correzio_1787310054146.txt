@@ -1,0 +1,100 @@
+Lo ZIP che hai appena generato non contiene le correzioni richieste.
+
+Hai restituito ancora:
+
+`familysync-meal-plan-diagnostic-20260821`
+
+con `MEAL_PLAN_DIAGNOSTIC_REPORT.md`, che dichiara esplicitamente che il codice non è stato modificato.
+
+NON generare un altro archivio diagnostico.
+
+Devi ora IMPLEMENTARE realmente le correzioni già richieste.
+
+Controllo esterno effettuato sullo ZIP appena ricevuto:
+
+1. `normalizeMealPlanConstraints()` NON esiste.
+2. `mealPlanPreferencesContainHealthData()` continua a non considerare `preferences.diet`.
+3. `compatibleMealIngredients()` continua a fare:
+   `diet + allergies + notes → split in parole → esclusione generica`.
+4. `SAFE_MAIN_INGREDIENTS` continua a non contenere alternative principali adeguate come:
+
+   * pasta senza glutine;
+   * pasta di mais senza glutine;
+   * pasta di riso senza glutine;
+   * pane senza glutine.
+5. Mancano i test equivalenti:
+
+   * `{ diet: "senza glutine" }`;
+   * `{ diet: "senza lattosio" }`.
+6. `npm run test:ai` non include ancora i test Piano Pasti richiesti.
+7. Non esiste `MEAL_PLAN_CONSTRAINT_FIX_REPORT.md`.
+
+Procedi quindi con l'IMPLEMENTAZIONE.
+
+Requisiti obbligatori:
+
+* creare una normalizzazione canonica unica dei vincoli;
+* far convergere:
+
+  * `diet: "senza glutine"` e `allergies: "glutine"` → exclusion `gluten`;
+  * `diet: "senza lattosio"` e `allergies: "lattosio"` → exclusion `lactose`;
+* separare dietary patterns da exclusions;
+* eliminare la blacklist costruita facendo split di tutte le parole delle preferenze;
+* filtrare la allowlist tramite vincoli canonici;
+* aggiungere alternative gluten-free adeguate anche per pranzo e cena;
+* mantenere distinta allergia al latte da intolleranza al lattosio;
+* non aumentare `MAX_CONSTRAINT_GENERATION_ATTEMPTS`;
+* non aumentare il numero di chiamate OpenAI per nascondere il problema.
+
+Aggiungi obbligatoriamente test per:
+
+* diet = senza glutine;
+* allergies = glutine;
+* diet = senza lattosio;
+* allergies = lattosio;
+* equivalenza dei vincoli alimentari tra i due percorsi;
+* mediterranea + senza glutine;
+* mediterranea + senza lattosio;
+* mediterranea + senza glutine + senza lattosio;
+* vegetariana + senza glutine;
+* vegana + senza glutine;
+* allergia al latte distinta da lattosio;
+* prodotti esplicitamente senza glutine ammessi;
+* prodotti normali con glutine rifiutati.
+
+Aggiungi questi test alla suite ufficiale.
+
+Esegui:
+
+`npm run typecheck`
+`npm run test:ai`
+`npx tsx server/__tests__/meal-plan-constraints.test.ts`
+`npx tsx server/__tests__/meal-plan-generation.test.ts`
+`npx tsx server/__tests__/meal-plan-replace.test.ts`
+
+Poi genera, e questa volta usa ESATTAMENTE questo nome:
+
+`familysync-meal-plan-constraints-fixed-20260821.zip`
+
+Deve contenere:
+
+`MEAL_PLAN_CONSTRAINT_FIX_REPORT.md`
+
+e NON deve essere chiamato diagnostic.
+
+Nel report indica:
+
+* file realmente modificati;
+* test aggiunti;
+* totale test;
+* numero massimo di chiamate OpenAI per piano;
+* confronto prima/dopo per:
+
+  * senza glutine in Dieta;
+  * glutine in Allergie;
+  * senza lattosio in Dieta;
+  * lattosio in Allergie.
+
+NON fare deploy.
+
+Fermati dopo la creazione dello ZIP corretto.

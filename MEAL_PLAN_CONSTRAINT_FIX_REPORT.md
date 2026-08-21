@@ -31,6 +31,24 @@ poteva escludere impropriamente un ingrediente dichiarato sicuro, come
 - Le etichette dell'interfaccia chiariscono la separazione tra dieta e
   allergie/intolleranze.
 
+## File realmente modificati
+
+- `app/meal-plans/index.tsx`
+- `package.json`
+- `server/lib/meal-plan-constraints.ts`
+- `server/lib/openai.ts`
+- `server/routes/ai.ts`
+- `server/__tests__/meal-plan-constraints.test.ts`
+- `server/__tests__/meal-plan-generation.test.ts`
+- `server/__tests__/meal-plan-request-body.test.ts`
+- `MEAL_PLAN_CONSTRAINT_FIX_REPORT.md`
+- `MEAL_PLAN_CONSTRAINT_FIX_MANIFEST.txt`
+
+Nell'archivio sono inclusi anche `server/routes/meal-plans.ts` e
+`shared/schema.ts` come sorgenti pertinenti al percorso di persistenza, oltre a
+`package.json` e `package-lock.json`; questi ultimi due sono stati inclusi per
+riprodurre l'ambiente di test.
+
 ## Consenso salute
 
 Una scelta esplicita come `diet: "senza glutine"` o
@@ -63,9 +81,26 @@ npx tsx server/__tests__/meal-plan-replace.test.ts
 git diff --check
 ```
 
-Risultati rilevanti: 24 test vincoli, 18 test generatore e 11 test HTTP/DB
-superati. I test di generazione usano un client OpenAI fittizio: non sono state
-effettuate chiamate OpenAI aggiuntive durante questa correzione.
+`npm run test:ai` include ora anche i test dei vincoli, del generatore e del
+body della route. Risultati rilevanti: 24 test vincoli, 18 test generatore,
+3 test body route e 11 test HTTP/DB superati. I test di generazione usano un
+client OpenAI fittizio: non sono state effettuate chiamate OpenAI aggiuntive
+durante questa correzione. Il totale della copertura specifica Piano Pasti
+eseguita è **56 test**.
+
+## Confronto prima/dopo
+
+| Percorso | Prima | Dopo |
+|---|---|---|
+| `diet: "senza glutine"` | La dieta poteva essere ignorata dalla health detection e i token liberi potevano filtrare ingredienti in modo incoerente. | Normalizzata a esclusione `gluten`, applicata a consenso, prompt, schema, allowlist e validatore; prodotti trasformati ammessi solo con dicitura esplicita. |
+| `allergies: "glutine"` | Vincolo gestito separatamente dalla dieta e con allowlist incompleta. | Converge sulla stessa esclusione `gluten` del percorso Dieta, con validazione e alternative gluten-free equivalenti. |
+| `diet: "senza lattosio"` | Il percorso dieta poteva non attivare la protezione deterministica del lattosio. | Normalizzata a esclusione `lactose`; colazioni naturalmente prive di latticini e pasta con glutine ancora ammessa. |
+| `allergies: "lattosio"` | Vincolo funzionante ma non garantito equivalente al percorso Dieta. | Converge sulla stessa esclusione `lactose`; resta distinta da `milk` e dai prodotti solo “senza lattosio”. |
+
+Il numero massimo di chiamate OpenAI per un piano resta **14** per il percorso
+settimanale standard a tre pasti e **7** per il percorso a due pasti/colazioni
+lattosio deterministiche. `MAX_CONSTRAINT_GENERATION_ATTEMPTS` e i budget
+esistenti non sono stati aumentati.
 
 ## Esclusioni deliberate
 

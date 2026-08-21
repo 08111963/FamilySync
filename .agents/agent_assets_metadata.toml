@@ -297,5 +297,5 @@ description = "Archivio diagnostico per audit esterno: sorgenti, schemi, API, te
 id = "hr2dsqw_k5K_BymcwQTeG"
 uri = "file://familysync-meal-plan-constraints-fixed-20260821.zip"
 type = "unspecified"
-title = "ZIP correzione vincoli Piano Pasti"
-description = "Archivio verificato con sorgenti, test, package.json, package-lock.json e report della correzione; nessun segreto, build o node_modules inclusi."
+title = "ZIP finale — correzione vincoli Piano Pasti"
+description = "Archivio definitivo verificato: implementazione, test inclusi nella suite ufficiale, report con confronto prima/dopo, package-lock e nessun segreto o build."
