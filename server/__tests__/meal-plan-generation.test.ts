@@ -11,6 +11,7 @@ const DATES = Array.from({ length: 7 }, (_, i) => {
   d.setDate(d.getDate() + i);
   return d.toISOString().split("T")[0]!;
 });
+const THREE_MEAL_WEEK_REQUESTS = 14;
 
 type Ingredient = { name: string; quantity: string; unit: string };
 type Meal = {
@@ -116,7 +117,7 @@ function assertCompleteWeek(items: Array<{ date: string; mealType: string }>, me
   }
 }
 
-test("senza vincoli: richieste parallele per tipo mantengono ricette leggibili", async (t) => {
+test("senza vincoli: richieste giornaliere piccole mantengono ricette leggibili", async (t) => {
   const { client, calls } = createFakeClient(weekItems);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
@@ -128,9 +129,14 @@ test("senza vincoli: richieste parallele per tipo mantengono ricette leggibili",
     onProgress: (items) => progress.push(items as Meal[]),
   });
 
-  assert.equal(calls.length, 3, "colazioni, pranzi e cene devono viaggiare in parallelo");
-  assert.deepEqual(calls.map((call) => call.mealTypes[0]).sort(), ["breakfast", "dinner", "lunch"]);
-  assert.ok(calls.every((call) => call.dates.length === 7));
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, "una colazione e un blocco pranzo/cena per ogni giorno");
+  assert.equal(calls.filter((call) => call.mealTypes[0] === "breakfast").length, 7);
+  assert.equal(calls.filter((call) => call.mealTypes.includes("lunch")).length, 7);
+  assert.ok(calls.every((call) => call.dates.length === 1));
+  assert.ok(calls.every((call) =>
+    call.mealTypes[0] === "breakfast"
+      ? call.mealTypes.length === 1
+      : JSON.stringify(call.mealTypes) === JSON.stringify(["lunch", "dinner"])));
   assert.ok(calls.every((call) => !call.compact));
   assert.ok(calls.every((call) => call.maxCompletionTokens === 4000));
   assert.ok(calls.every((call) => call.stepMinItems === 3));
@@ -153,13 +159,13 @@ test("due pasti al giorno mantengono il contratto da 14 pasti completi", async (
     preferences: { mealsPerDay: 2 },
   });
 
-  assert.equal(calls.length, 2, "pranzi e cene restano due richieste parallele");
-  assert.deepEqual(calls.map((call) => call.mealTypes[0]).sort(), ["dinner", "lunch"]);
+  assert.equal(calls.length, 7, "un blocco pranzo/cena per ogni giorno");
+  assert.ok(calls.every((call) => JSON.stringify(call.mealTypes) === JSON.stringify(["lunch", "dinner"])));
   assert.ok(calls.every((call) => !call.compact));
   assertCompleteWeek(plan.items, 2);
 });
 
-test("con glutine: tre richieste mirate mantengono colazioni dolci e pasti completi", async (t) => {
+test("con glutine: richieste giornaliere mirate mantengono colazioni dolci e pasti completi", async (t) => {
   const { client, calls } = createFakeClient((request) => request.dates.flatMap((date, index) =>
     request.mealTypes.map((mealType) => {
       if (mealType === "breakfast") {
@@ -190,7 +196,7 @@ test("con glutine: tre richieste mirate mantengono colazioni dolci e pasti compl
     preferences: { allergies: "Glutine" },
   });
 
-  assert.equal(calls.length, 3, "colazioni, pranzi e cene viaggiano in parallelo");
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS);
   const breakfastCall = calls.find((call) => call.mealTypes.length === 1 && call.mealTypes[0] === "breakfast")!;
   assert.ok(breakfastCall.ingredientNames);
   for (const invalidBreakfastIngredient of ["riso", "polenta di mais", "zucchine", "melanzane", "pomodori", "ceci"]) {
@@ -287,7 +293,7 @@ test("con lattosio: i passaggi dettagliati usano il contesto dell'ingrediente ve
 test("un piano incompatibile viene rigenerato automaticamente una sola volta", async (t) => {
   let callNumber = 0;
   const { client, calls } = createFakeClient((request) => {
-    const incompatibleAttempt = callNumber++ < 3;
+    const incompatibleAttempt = callNumber++ < THREE_MEAL_WEEK_REQUESTS;
     return request.dates.flatMap((date, index) =>
       request.mealTypes.map((mealType) => {
         if (incompatibleAttempt) {
@@ -324,7 +330,7 @@ test("un piano incompatibile viene rigenerato automaticamente una sola volta", a
     preferences: { allergies: "Lattosio" },
   });
 
-  assert.equal(calls.length, 6, "tre richieste iniziali e una sola rigenerazione completa");
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2, "una sola rigenerazione completa");
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
 });
@@ -361,7 +367,7 @@ test("gli elenchi strutturati rispettano anche allergeni diversi", async (t) => 
 });
 
 test("una risposta incompleta non viene consegnata come settimana valida", async (t) => {
-  const { client } = createFakeClient((request) => request.dates.slice(0, 6).flatMap((date) =>
+  const { client } = createFakeClient((request) => request.dates.slice(0, 0).flatMap((date) =>
     request.mealTypes.map((mealType) => makeMeal(date, mealType, "Pasto", [{ name: "mela", quantity: "1", unit: "pezzo" }])),
   ));
   __setOpenAiClientForTest(client);
@@ -377,12 +383,11 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
   let callsBeforeCompleteRetry = 0;
   const { client, calls } = createFakeClient((request) => {
     callsBeforeCompleteRetry++;
-    if (callsBeforeCompleteRetry <= 3) {
-      return request.dates.slice(0, 6).map((date) =>
+    if (callsBeforeCompleteRetry <= THREE_MEAL_WEEK_REQUESTS) {
+      return request.dates.slice(0, 0).map((date) =>
         makeMeal(date, request.mealTypes[0]!, "Pasto incompleto", [{ name: "mela", quantity: "1", unit: "pezzo" }]));
     }
-    return request.dates.map((date, index) => {
-      const mealType = request.mealTypes[0]!;
+    return request.dates.flatMap((date, index) => request.mealTypes.map((mealType) => {
       if (mealType === "breakfast") {
         return makeMeal(date, mealType, `Colazione ${index}`, [
           { name: "banana", quantity: "1", unit: "pezzo" },
@@ -401,7 +406,7 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
         { name: "patate", quantity: "180", unit: "g" },
         { name: "spinaci", quantity: "150", unit: "g" },
       ]);
-    });
+    }));
   });
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
@@ -414,7 +419,7 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
     onProgress: (items) => progress.push(items as Meal[]),
   });
 
-  assert.equal(calls.length, 6, "tre richieste iniziali e una sola rigenerazione completa");
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2, "una sola rigenerazione completa");
   assertCompleteWeek(plan.items, 3);
   assert.equal(progress.length, 7, "nessun giorno parziale raggiunge il client");
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
@@ -423,7 +428,7 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
 test("un alimento da pranzo nel testo della colazione viene rigenerato senza appiattire la ricetta", async (t) => {
   let responseNumber = 0;
   const { client, calls } = createFakeClient((request) => {
-    const firstAttempt = responseNumber++ < 3;
+    const firstAttempt = responseNumber++ < THREE_MEAL_WEEK_REQUESTS;
     return weekItems(request).map((item) => firstAttempt && item.mealType === "breakfast"
       ? makeMeal(item.date, "breakfast", "Patate al forno", [
           { name: "banana", quantity: "1", unit: "pezzo" },
@@ -448,7 +453,7 @@ test("un alimento da pranzo nel testo della colazione viene rigenerato senza app
       ].join(" "))),
     "la colazione finale non deve conservare il piatto salato",
   );
-  assert.equal(calls.length, 6, "una colazione non valida richiede una sola rigenerazione completa");
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2, "una colazione non valida richiede una sola rigenerazione completa");
   assert.ok(
     plan.items.every((item) => (item.steps?.length || 0) >= 3 && (item.steps?.length || 0) <= 6),
     "la rigenerazione deve mantenere una ricetta completa",

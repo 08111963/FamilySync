@@ -1044,20 +1044,42 @@ async function generateWeeklyMealPlanAttempt(
     mealTypes: string[];
     ingredientNames?: string[];
     label: string;
+    themeHint?: string;
+    breakfastHint?: string;
   };
   const allergenSafePlan = usesMealPlanIngredientAllowlist(context.preferences);
   const standardPlan = !constrainedPlan;
-  // Una risposta per ciascun tipo di pasto mantiene tre output piccoli in
-  // parallelo. Una sola risposta da 21 ricette diventa seriale e più lenta,
-  // oltre a costringere il modello a comprimere le istruzioni di cucina.
-  const weeklyRequests: WeeklyMealRequest[] = mealTypes.map((mealType) => ({
-    dates,
-    mealTypes: [mealType],
-    ingredientNames: mealType === "breakfast" || allergenSafePlan
-      ? compatibleMealIngredients(context.preferences, mealType === "breakfast" ? "breakfast" : "main")
-      : undefined,
-    label: mealType,
-  }));
+  // Una risposta settimanale da sette ricette dettagliate viene talvolta
+  // troncata dal provider: il risultato sembra JSON valido ma contiene solo
+  // una parte del piano. Dividiamo quindi la settimana in richieste GIORNALIERE
+  // piccole. La colazione resta separata da pranzo/cena per mantenere la sua
+  // allow-list specifica anche in presenza di allergie.
+  const weeklyRequests: WeeklyMealRequest[] = dates.flatMap((date, dayIndex) => {
+    const requests: WeeklyMealRequest[] = [];
+    if (mealTypes.includes("breakfast")) {
+      requests.push({
+        dates: [date],
+        mealTypes: ["breakfast"],
+        ingredientNames: compatibleMealIngredients(context.preferences, "breakfast"),
+        label: `${date}-breakfast`,
+        breakfastHint: activeBreakfastThemes[dayIndex],
+      });
+    }
+
+    const mainMealTypes = mealTypes.filter((mealType) => mealType !== "breakfast");
+    if (mainMealTypes.length > 0) {
+      requests.push({
+        dates: [date],
+        mealTypes: mainMealTypes,
+        ingredientNames: allergenSafePlan
+          ? compatibleMealIngredients(context.preferences, "main")
+          : undefined,
+        label: `${date}-main`,
+        themeHint: activeDayThemes[dayIndex],
+      });
+    }
+    return requests;
+  });
 
   async function fetchChunk(request: WeeklyMealRequest, themeHint?: string, breakfastHint?: string): Promise<MealPlanSuggestion['items']> {
     const chunkDates = request.dates;
@@ -1068,7 +1090,7 @@ async function generateWeeklyMealPlanAttempt(
 - Se il nome di un ingrediente contiene pane, fette biscottate, biscotti, avena o altri prodotti a rischio glutine, deve includere esplicitamente la dicitura "senza glutine".`
       : "";
     const lactosePastaRule = lactoseAllowsGluten && requestMealTypes.includes("lunch")
-      ? "\n- Il vincolo lattosio/latte NON richiede di evitare il glutine: includi pasta di semola classica in almeno due pranzi della settimana, sempre senza latte o derivati incompatibili."
+      ? "\n- Il vincolo lattosio/latte NON richiede di evitare il glutine: pasta di semola classica e gli altri cereali con glutine restano compatibili, purché non contengano latte o derivati incompatibili."
       : "";
     const breakfastMealRule = constrainedPlan
       ? `- breakfast (colazione): SOLO una colazione leggera composta esclusivamente da ingredienti compatibili con TUTTI i vincoli.${glutenFreeRequired ? ' Se usi un prodotto a base di cereali o farina, deve essere dichiarato esplicitamente senza glutine in titolo, ingredienti e passaggi.' : ''} Non usare esempi standard né sostituti impliciti.`
@@ -1110,8 +1132,8 @@ ${constrainedRecipeReferenceRule}
   ${completeLunchRule}
   ${completeDinnerRule}
    - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}
-- Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto nello stesso giorno né in giorni diversi della settimana.
-- ${variantHint}${themeHint ? `\n- Per pranzo e cena distribuisci nella settimana questi orientamenti, senza ripeterli: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per le colazioni distribuisci nella settimana queste idee, una diversa per giorno: ${breakfastHint}.` : ''}
+- Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
+- ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno segui questa idea: ${breakfastHint}.` : ''}
 ${constraintRule}${constraintCorrection}
 - Rispondi SOLO con JSON: ${responseContract}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
@@ -1160,8 +1182,8 @@ ${constraintRule}${constraintCorrection}
   const results = await Promise.allSettled(
     weeklyRequests.map((request) => fetchChunk(
       request,
-      request.mealTypes.some((type) => type !== "breakfast") ? activeDayThemes.join(" | ") : undefined,
-      request.mealTypes.includes("breakfast") ? activeBreakfastThemes.join(" | ") : undefined,
+      request.themeHint,
+      request.breakfastHint,
     )),
   );
   for (const result of results) {
