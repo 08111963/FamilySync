@@ -1,0 +1,14 @@
+MEAL_PLAN_LACTOSE_VARIETY_FIX_REPORT.md
+MEAL_PLAN_LACTOSE_VARIETY_FIX_MANIFEST.txt
+server/lib/openai.ts
+server/lib/meal-plan-constraints.ts
+server/lib/meal-plan-variety.ts
+server/routes/ai.ts
+server/__tests__/meal-plan-constraints.test.ts
+server/__tests__/meal-plan-variety.test.ts
+server/__tests__/meal-plan-lactose-variety.test.ts
+server/__tests__/meal-plan-generation.test.ts
+server/__tests__/meal-plan-request-body.test.ts
+server/__tests__/meal-plan-replace.test.ts
+package-lock.json
+package.json

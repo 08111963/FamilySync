@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 process.env.AI_INTEGRATIONS_OPENAI_API_KEY = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "test-key";
 import { generateWeeklyMealPlan, __setOpenAiClientForTest } from "../lib/openai";
 import { validateMealPlanConstraints } from "../lib/meal-plan-constraints";
+import { evaluateMealPlanVariety } from "../lib/meal-plan-variety";
 
 const WEEK_START = "2026-08-03";
 const DATES = Array.from({ length: 7 }, (_, i) => {
@@ -406,11 +407,57 @@ test("con lattosio: la lista sicura esclude latticini ma consente la pasta", asy
   assert.ok(!mainCall.ingredientNames?.includes("latte"));
   assert.ok(!mainCall.ingredientNames?.includes("pane senza glutine"));
   assert.match(mainCall.sysPrompt, /NON richiede di evitare il glutine/i);
-  assert.match(mainCall.sysPrompt, /Non etichettare i piatti come "senza lattosio"/i);
-  assert.doesNotMatch(mainCall.sysPrompt, /Se usi un sostituto compatibile/i);
+  assert.match(mainCall.sysPrompt, /prodotto della lista chiusa.*senza lattosio/i);
+  assert.match(mainCall.sysPrompt, /PRANZI, VARIETÀ DI STRUTTURA/i);
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
   assert.ok(plan.items.some((item) => item.ingredients?.some((ingredient) => ingredient.name === "pasta")));
+});
+
+test("solo lattosio usa quattro famiglie di pranzo e passa firme ai giorni successivi senza chiamate aggiuntive", async (t) => {
+  const lunches: Array<{ title: string; ingredients: Ingredient[] }> = [
+    { title: "Pasta al pomodoro e tonno", ingredients: [{ name: "pasta", quantity: "80", unit: "g" }, { name: "pomodori", quantity: "120", unit: "g" }, { name: "tonno", quantity: "100", unit: "g" }] },
+    { title: "Risotto con zucchine e pollo", ingredients: [{ name: "riso", quantity: "80", unit: "g" }, { name: "zucchine", quantity: "150", unit: "g" }, { name: "pollo", quantity: "120", unit: "g" }] },
+    { title: "Couscous con ceci e peperoni", ingredients: [{ name: "couscous", quantity: "80", unit: "g" }, { name: "ceci", quantity: "100", unit: "g" }, { name: "peperoni", quantity: "150", unit: "g" }] },
+    { title: "Zuppa di lenticchie con pane", ingredients: [{ name: "lenticchie", quantity: "100", unit: "g" }, { name: "pane", quantity: "60", unit: "g" }, { name: "carote", quantity: "120", unit: "g" }] },
+    { title: "Farro con merluzzo e melanzane", ingredients: [{ name: "farro", quantity: "80", unit: "g" }, { name: "merluzzo", quantity: "120", unit: "g" }, { name: "melanzane", quantity: "150", unit: "g" }] },
+    { title: "Patate con uova e spinaci", ingredients: [{ name: "patate", quantity: "180", unit: "g" }, { name: "uova", quantity: "2", unit: "pezzi" }, { name: "spinaci", quantity: "150", unit: "g" }] },
+    { title: "Insalata di cereali con tacchino", ingredients: [{ name: "cereali", quantity: "80", unit: "g" }, { name: "tacchino", quantity: "120", unit: "g" }, { name: "cetrioli", quantity: "120", unit: "g" }] },
+  ];
+  const { client, calls } = createFakeClient((request) => request.dates.flatMap((date) => {
+    const index = DATES.indexOf(date);
+    return request.mealTypes.map((mealType) => {
+      if (mealType === "lunch") {
+        const entry = lunches[index]!;
+        return makeMeal(date, mealType, entry.title, entry.ingredients);
+      }
+      return makeMeal(date, mealType, `Cena ${index + 1}`, [
+        { name: ["merluzzo", "tacchino", "uova", "ceci", "salmone", "pollo", "lenticchie"][index]!, quantity: "120", unit: "g" },
+        { name: index % 2 === 0 ? "patate" : "riso", quantity: "180", unit: "g" },
+        { name: "broccoli", quantity: "150", unit: "g" },
+      ]);
+    });
+  }));
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { allergies: "lattosio" },
+  });
+
+  assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS);
+  assert.ok(calls.every((call) => call.ingredientNames?.includes("couscous")));
+  assert.ok(calls.every((call) => call.ingredientNames?.includes("farro")));
+  assert.ok(calls.every((call) => call.ingredientNames?.includes("ricotta senza lattosio")));
+  assert.match(calls[0]!.sysPrompt, /stesso schema.*massimo 2 volte/i);
+  assert.ok(calls.slice(1).every((call) => /PRANZI GIÀ USATI/i.test(call.sysPrompt)));
+  assert.ok(calls.slice(1).some((call) => /pasta \+ pomodoro \+ tonno/i.test(call.sysPrompt)));
+  const evaluation = evaluateMealPlanVariety(plan.items);
+  assert.ok(Object.keys(evaluation.lunchFamilyCounts).length >= 4);
+  assert.ok(!evaluation.issues.some((issue) => issue.code === "low_lunch_family_variety"));
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "lattosio" }), []);
 });
 
 test("con vincoli: le colazioni al lattosio sono determinate e le cene mantengono la rotazione", async (t) => {
@@ -527,7 +574,7 @@ test("con lattosio: un riferimento libero a un latticino rigenera il piano natur
   });
 
   assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 2);
-  assert.ok(calls.every((call) => /PIANO NATURALMENTE PRIVO DI LATTICINI/i.test(call.sysPrompt)));
+  assert.ok(calls.every((call) => /PIANO SENZA LATTOSIO/i.test(call.sysPrompt)));
   assert.ok(calls.slice(CONSTRAINED_WEEK_REQUESTS).every((call) =>
     /VINCOLO LATTOSIO: ricrea il piano con ingredienti naturalmente privi di latticini/i.test(call.sysPrompt)));
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);

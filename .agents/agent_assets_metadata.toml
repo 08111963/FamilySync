@@ -306,3 +306,10 @@ uri = "file://familysync-meal-plan-variety-fixed-20260821.zip"
 type = "unspecified"
 title = "ZIP finale — varietà Piani Pasti"
 description = "Correzione verificata di prompt, varietà tra blocchi e helper deterministico; include test, report e lockfile, senza segreti, build o archivi precedenti."
+
+[[outputs]]
+id = "JWlCeVMo_wqCf1WsK1k3Q"
+uri = "file://familysync-meal-plan-lactose-variety-fixed-20260821.zip"
+type = "unspecified"
+title = "ZIP finale — varietà pranzi senza lattosio"
+description = "Correzione verificata di firma concettuale, memoria tra blocchi, closed allowlist lactose/milk e test completi; include report e lockfile, senza segreti o build."

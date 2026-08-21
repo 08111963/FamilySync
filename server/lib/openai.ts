@@ -905,6 +905,14 @@ const SAFE_GLUTEN_FREE_MAIN_INGREDIENTS = [
   "couscous di mais senza glutine", "gnocchi senza glutine",
 ];
 
+// Questi alimenti sono compatibili SOLTANTO con l'intolleranza al lattosio
+// quando riportano la dicitura esplicita. Non entrano mai nel pool in caso di
+// allergia alle proteine del latte.
+const SAFE_LACTOSE_FREE_DAIRY_INGREDIENTS = [
+  "latte senza lattosio", "yogurt senza lattosio", "ricotta senza lattosio",
+  "mozzarella senza lattosio", "formaggio senza lattosio",
+];
+
 const SAFE_BREAKFAST_INGREDIENTS = [
   "mela", "banana", "pera", "arancia", "mandarino", "pesca", "albicocca",
   "fragole", "mirtilli", "lamponi", "uva", "kiwi",
@@ -961,7 +969,7 @@ export function compatibleMealIngredients(
       ? [...SAFE_MAIN_INGREDIENTS, ...SAFE_GLUTEN_FREE_MAIN_INGREDIENTS]
       : SAFE_MAIN_INGREDIENTS;
 
-  return base
+  return [...base, ...(avoidsLactose && !avoidsMilk ? SAFE_LACTOSE_FREE_DAIRY_INGREDIENTS : [])]
     .filter((ingredient) => {
       const normalizedIngredient = ingredient
         .normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -969,7 +977,7 @@ export function compatibleMealIngredients(
       // lessicale: pasta/pane/biscotti esplicitamente compatibili devono
       // restare disponibili quando il vincolo canonico è glutine.
       if (isGlutenFree && /\b(?:pane|fette biscottate|biscotti|cornetto|pancake|avena|granola)\b/.test(normalizedIngredient) && !normalizedIngredient.includes("senza glutine")) return false;
-      if ((avoidsLactose || avoidsMilk) && /\b(?:latte|yogurt|biscotti|fette biscottate)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso|senza glutine)\b/.test(normalizedIngredient)) return false;
+       if ((avoidsLactose || avoidsMilk) && /\b(?:latte|yogurt|biscotti|fette biscottate)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso|senza glutine|senza lattosio|delattosat)\b/.test(normalizedIngredient)) return false;
       if (avoidsEgg && /\buova?\b/.test(normalizedIngredient)) return false;
       if (avoidsFish && /\b(?:tonno|salmone|merluzzo)\b/.test(normalizedIngredient)) return false;
       if (vegetarian && /\b(?:pollo|tacchino)\b/.test(normalizedIngredient)) return false;
@@ -1287,6 +1295,11 @@ async function generateWeeklyMealPlanAttempt(
 - VARIETÀ SETTIMANALE (best effort, mai in contrasto con i vincoli): sui pranzi e sulle cene cerca almeno 4 fonti di carboidrati diverse nella settimana e non usare la stessa più di 3 volte quando sono disponibili alternative compatibili.
 - Alterna le proteine principali: evita la stessa proteina specifica più di 2 volte quando possibile; il pesce può comparire più volte, ma non ripetere sempre lo stesso tipo.
 ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea senza glutine includi normalmente almeno un pranzo con pasta senza glutine, se non è esclusa da altri vincoli. Non rendere obbligatori prodotti trasformati negli altri pasti.` : ""}`;
+  const lactoseLunchVarietyRule = lactoseFreeRequired
+    ? `
+- PRANZI, VARIETÀ DI STRUTTURA (dopo la sicurezza): non ripetere lo stesso schema “carboidrato + base + proteina” in due giorni consecutivi; usalo al massimo 2 volte nella settimana. Una pasta al pomodoro e tonno con contorni, olio o erbe diversi resta lo stesso schema.
+- Con almeno 6 pranzi, usa quando compatibile almeno 4 famiglie diverse (per esempio pasta, risotto/riso, couscous, cereale in chicco, piatto di legumi, zuppa, patate/polenta, insalata di cereali o pane/piadina). Non forzare la pasta.`
+    : "";
   const glutenFreeTitleRule = glutenFreeRequired
     ? `\n- Nei titoli non aggiungere meccanicamente “senza glutine” a piatti naturalmente privi di glutine. Mantieni la dicitura soltanto quando identifica davvero un prodotto sostitutivo, per esempio pasta o pane senza glutine.`
     : "";
@@ -1488,7 +1501,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
       ? "\n- Il vincolo lattosio/latte NON richiede di evitare il glutine: pasta di semola classica e gli altri cereali con glutine restano compatibili, purché non contengano latte o derivati incompatibili."
       : "";
     const lactoseFreeOutputRule = lactoseFreeRequired
-      ? `\n- PIANO NATURALMENTE PRIVO DI LATTICINI: in TUTTI i campi dell'output non scrivere lattosio, latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone, nemmeno con diciture "senza lattosio". Usa ricette che non richiedono alcun sostituto lattiero-caseario. A colazione scegli bevanda di riso o di cocco, frutta, pane o gallette e marmellata; negli altri pasti usa solo gli ingredienti compatibili della lista chiusa.`
+      ? `\n- PIANO SENZA LATTOSIO: in TUTTI i campi dell'output non scrivere né usare lattosio, latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone, salvo un prodotto della lista chiusa che riporti esplicitamente “senza lattosio”. Non usare mai un prodotto lattiero-caseario implicito. A colazione scegli bevanda vegetale, frutta, pane o gallette e marmellata, oppure un prodotto esplicitamente senza lattosio della lista; negli altri pasti usa solo gli ingredienti compatibili della lista chiusa.`
       : "";
     const breakfastMealRule = constrainedPlan
       ? `- breakfast (colazione): SOLO una colazione leggera composta esclusivamente da ingredienti compatibili con TUTTI i vincoli.${glutenFreeRequired ? ' Se usi un prodotto a base di cereali o farina, deve essere dichiarato esplicitamente senza glutine in titolo, ingredienti e passaggi.' : ''} Non usare esempi standard né sostituti impliciti.`
@@ -1529,7 +1542,7 @@ ${constrainedRecipeReferenceRule}
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}
-   - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
+   - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno realizza questa combinazione concreta e non sostituirla con una colazione generica: ${breakfastHint}.` : ''}
  ${constraintRule}${priorVarietyContext}${constraintCorrection}${varietyCorrection}${qualityCorrection}${localCorrection}

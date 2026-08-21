@@ -1,0 +1,435 @@
+Il precedente mandato sulla varietà generale del Piano Pasti è già stato eseguito.
+
+Dopo il deploy ho effettuato una prova reale con:
+
+* Dieta: nessuna
+* Allergie / intolleranze: lattosio
+
+Il vincolo senza lattosio viene rispettato, ma il piano generato presenta un grave problema di ripetitività dei pranzi.
+
+Nel piano reale ottenuto, i 7 pranzi sono quasi tutti varianti dello stesso piatto:
+
+* pasta al pomodoro e tonno;
+* pasta al pomodoro e tonno;
+* pasta al pomodoro con pollo;
+* pasta al pomodoro con tonno;
+* pasta al pomodoro con tonno;
+* pasta al pomodoro con tonno;
+* pasta al pomodoro con tonno.
+
+Le aggiunte di insalata, olio, aglio o basilico non costituiscono un vero cambio di piatto.
+
+Questa volta NON intervenire sui vincoli `lactose`, sulla normalizzazione o sulla sicurezza alimentare, che risultano funzionanti.
+
+L'obiettivo di questo mandato è capire e correggere perché, con il solo vincolo senza lattosio, il motore genera continuamente lo stesso pranzo.
+
+# 1. ANALIZZA IL FLUSSO SPECIFICO `lactose`
+
+Verifica il percorso completo di:
+
+```ts
+preferences = {
+  allergies: "lattosio"
+}
+```
+
+o equivalente canonico:
+
+```ts
+exclusions = ["lactose"]
+```
+
+Controlla:
+
+* `normalizeMealPlanConstraints()`;
+* `compatibleMealIngredients()`;
+* pool ingredienti disponibile;
+* prompt effettivo;
+* contesto passato fra i blocchi;
+* generazione di ogni giorno;
+* eventuale funzione di variety tracking;
+* validazione finale;
+* retry.
+
+Non modificare il comportamento prima di aver identificato la causa della ripetizione.
+
+# 2. VERIFICA SE LA CLOSED ALLOWLIST PER `lactose` È TROPPO RESTRITTIVA
+
+Controlla esattamente quali ingredienti vengono passati a OpenAI quando l'unico vincolo è:
+
+```text
+lactose
+```
+
+Produci nel report l'elenco reale, diviso almeno per:
+
+* colazione;
+* pranzo;
+* cena.
+
+Il solo vincolo senza lattosio NON dovrebbe ridurre i pranzi quasi esclusivamente a:
+
+* pasta;
+* pomodoro;
+* tonno;
+* pollo;
+* riso;
+* patate.
+
+Devono restare disponibili, se coerenti con le altre regole dell'app, molte famiglie di piatti, per esempio:
+
+* pasta con condimenti diversi;
+* risotti;
+* riso;
+* couscous;
+* farro;
+* orzo;
+* patate;
+* polenta;
+* legumi;
+* uova;
+* carne bianca;
+* pesce diverso dal tonno;
+* verdure;
+* zuppe;
+* insalate di cereali;
+* piatti unici;
+* pane/piadine compatibili;
+* prodotti vegetali;
+* eventuali latticini esplicitamente senza lattosio se la policy li considera compatibili.
+
+Non ampliare la lista in modo casuale: verifica prima quali ingredienti sono già sicuri ma vengono esclusi erroneamente.
+
+# 3. DISTINGUI “SENZA LATTOSIO” DA “NO LATTICINI”
+
+Verifica che il vincolo:
+
+```text
+lactose
+```
+
+non venga interpretato implicitamente come:
+
+```text
+escludi tutti i prodotti lattiero-caseari
+```
+
+Se la policy attuale consente prodotti esplicitamente senza lattosio, questi devono restare utilizzabili per il vincolo `lactose`.
+
+Mantieni invece separato:
+
+```text
+milk
+```
+
+per allergia alle proteine del latte.
+
+Non indebolire questa distinzione.
+
+# 4. IDENTIFICA LE FAMIGLIE DI PIATTI, NON SOLO I TITOLI
+
+Aggiungi o migliora una classificazione deterministica del pasto.
+
+Questi piatti devono essere considerati sostanzialmente duplicati:
+
+* pasta al pomodoro e tonno;
+* pasta al pomodoro con tonno e insalata;
+* pasta al pomodoro con tonno, pomodori, olio e aglio;
+* pasta al pomodoro con tonno e basilico.
+
+Non confrontare soltanto la stringa completa del titolo.
+
+Crea una firma concettuale, per esempio:
+
+```text
+carboidrato principale + preparazione/base + proteina principale
+```
+
+Esempio:
+
+```text
+pasta + pomodoro + tonno
+```
+
+I condimenti secondari non devono far sembrare nuovo lo stesso pasto.
+
+# 5. REGOLE SPECIFICHE PER I PRANZI
+
+Per una settimana di 7 giorni con il solo vincolo `lactose`, applica come best effort:
+
+* stesso pattern di pranzo: massimo 2 volte/settimana;
+* mai lo stesso pattern in due giorni consecutivi;
+* stessa fonte di carboidrati principale: massimo 3 volte, salvo vincoli più restrittivi;
+* stessa proteina principale: massimo 2 volte, quando possibile;
+* almeno 4 famiglie di pranzo differenti nella settimana.
+
+Esempio di famiglie:
+
+* pasta;
+* risotto/riso;
+* couscous;
+* cereale in chicco;
+* piatto di legumi;
+* zuppa;
+* patate/polenta;
+* piatto unico;
+* insalata di cereali;
+* panino/piadina compatibile.
+
+Queste sono regole di varietà culinaria, non prescrizioni nutrizionali.
+
+# 6. PASSA MEMORIA STRUTTURATA AI BLOCCHI SUCCESSIVI
+
+Il problema reale suggerisce che ogni chiamata OpenAI successiva non sappia abbastanza cosa è già stato generato.
+
+Senza aumentare il numero di chiamate, passa ai blocchi successivi un riepilogo compatto, per esempio:
+
+```text
+PRANZI GIÀ USATI:
+- pasta + pomodoro + tonno
+- pasta + pomodoro + pollo
+
+CARBOIDRATI PRANZO:
+- pasta: 2
+
+PROTEINE PRANZO:
+- tonno: 1
+- pollo: 1
+
+FAMIGLIE PRANZO GIÀ USATE:
+- pasta: 2
+
+EVITA:
+- altra pasta al pomodoro
+- altro tonno al prossimo pranzo
+```
+
+Non inviare tutto il piano precedente se non necessario.
+
+Il riepilogo deve essere:
+
+* compatto;
+* deterministico;
+* non sensibile;
+* sufficiente a ridurre le ripetizioni.
+
+# 7. IL PROMPT DEVE DARE PRIORITÀ ALLA VARIETÀ DOPO LA SICUREZZA
+
+L'ordine deve essere:
+
+1. sicurezza/intolleranze;
+2. compatibilità con dieta;
+3. varietà settimanale;
+4. semplicità e praticità.
+
+Non permettere che “scegli sempre l'opzione più sicura” porti il modello a usare pasta al pomodoro e tonno ogni giorno.
+
+Nel prompt specifica chiaramente:
+
+* non ripetere la stessa base di pranzo con piccole variazioni;
+* varia struttura del piatto, non soltanto contorni e condimenti;
+* usa il riepilogo dei pasti precedenti;
+* considera una piccola variazione di erbe/olio/verdure come lo stesso pattern principale.
+
+# 8. NON FORZARE SEMPRE LA PASTA
+
+Nel precedente piano il problema è l'opposto del caso gluten-free.
+
+Con il solo `lactose`, non introdurre regole del tipo:
+
+```text
+almeno una pasta
+```
+
+perché la pasta è già sovrarappresentata.
+
+Il motore deve poter scegliere liberamente tra diverse famiglie.
+
+# 9. TEST SPECIFICI `lactose`
+
+Aggiungi test senza chiamate OpenAI reali.
+
+## Allowlist
+
+Per:
+
+```ts
+{ allergies: "lattosio" }
+```
+
+verifica che il pool di pranzo contenga almeno più famiglie di carboidrati e piatti, non soltanto pasta/riso/patate.
+
+## Duplicati semantici
+
+Questi devono essere classificati come duplicati:
+
+```text
+Pasta al pomodoro e tonno
+Pasta al pomodoro con tonno e insalata
+Pasta al pomodoro con tonno, olio e basilico
+```
+
+## Non duplicati
+
+Questi devono essere diversi:
+
+```text
+Pasta al pomodoro e tonno
+Risotto con zucchine e pollo
+Couscous con ceci e verdure
+Zuppa di lenticchie con pane compatibile
+```
+
+## Fixture del caso reale
+
+Usa una settimana equivalente a quella osservata:
+
+```text
+Lun: pasta pomodoro tonno
+Mar: pasta pomodoro tonno
+Mer: pasta pomodoro pollo
+Gio: pasta pomodoro tonno
+Ven: pasta pomodoro tonno
+Sab: pasta pomodoro tonno
+Dom: pasta pomodoro tonno
+```
+
+Il variety checker deve segnalarla chiaramente come troppo ripetitiva.
+
+# 10. TESTA UN PIANO CON IL SOLO LATTOSIO
+
+Con fake OpenAI/mock genera o simula una settimana che includa almeno 4 famiglie diverse di pranzo.
+
+Esempio accettabile:
+
+* pasta;
+* risotto;
+* couscous;
+* zuppa di legumi;
+* riso;
+* piatto con patate;
+* insalata di cereali.
+
+Non è necessario ottenere esattamente questi sette.
+
+Deve però dimostrare che il sistema consente realmente varietà.
+
+# 11. NON AUMENTARE I COSTI OPENAI
+
+Non aumentare:
+
+`MAX_CONSTRAINT_GENERATION_ATTEMPTS`
+
+Non aggiungere chiamate dedicate alla varietà.
+
+Non aggiungere una chiamata finale “riscrivi il piano”.
+
+La correzione deve avvenire usando:
+
+* contesto precedente;
+* prompt;
+* pool ingredienti;
+* controllo deterministico.
+
+Riporta nel report il numero massimo di chiamate OpenAI prima e dopo.
+
+Deve essere invariato o inferiore.
+
+# 12. NON ROMPERE GLI ALTRI VINCOLI
+
+Riesegui anche i test per:
+
+* senza glutine;
+* senza lattosio;
+* glutine + lattosio;
+* vegana;
+* vegetariana;
+* allergia al latte.
+
+La correzione della varietà per `lactose` non deve indebolire nessuna delle protezioni precedenti.
+
+# 13. REPORT
+
+Crea:
+
+`MEAL_PLAN_LACTOSE_VARIETY_FIX_REPORT.md`
+
+Indica:
+
+* causa precisa della ripetizione;
+* allowlist reale prima/dopo;
+* modifiche al prompt;
+* modifiche al contesto inter-blocco;
+* algoritmo/firma per riconoscere pasti duplicati;
+* test aggiunti;
+* numero chiamate OpenAI invariato.
+
+Inserisci una tabella:
+
+| Controllo             | Prima          | Dopo                      |
+| --------------------- | -------------- | ------------------------- |
+| Pasta a pranzo        | fino a 7/7     | best effort max 3         |
+| Stesso pattern pranzo | fino a 6/7     | max 2                     |
+| Stessa proteina       | molto ripetuta | best effort max 2         |
+| Famiglie pranzo       | 1-2            | almeno 4 quando possibile |
+| Sicurezza lattosio    | attiva         | invariata                 |
+| Chiamate OpenAI       | attuali        | non aumentate             |
+
+# 14. VERIFICA
+
+Esegui:
+
+`npm run typecheck`
+`npm run test:ai`
+
+e tutti i test Piano Pasti già esistenti, inclusi:
+
+* constraints;
+* generation;
+* request-body;
+* replace;
+* variety;
+* nuovi test lactose variety.
+
+Riporta:
+
+* numero totale test;
+* passati;
+* falliti;
+* typecheck;
+* numero massimo chiamate OpenAI;
+* conferma che il vincolo `lactose` resta invariato.
+
+# 15. NON FARE DEPLOY
+
+Non fare deploy.
+
+Genera:
+
+`familysync-meal-plan-lactose-variety-fixed-20260821.zip`
+
+Escludi:
+
+* `.env`;
+* API key;
+* token;
+* segreti;
+* node_modules;
+* build;
+* database dump;
+* APK;
+* ZIP precedenti.
+
+Includi:
+
+* file modificati;
+* openai.ts;
+* constraint helper;
+* variety helper;
+* route AI;
+* test;
+* package.json;
+* lockfile;
+* `MEAL_PLAN_LACTOSE_VARIETY_FIX_REPORT.md`.
+
+Fermati dopo la generazione dello ZIP e attendi il controllo esterno.
