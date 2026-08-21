@@ -34,7 +34,11 @@ function meal(
     title,
     description: "",
     ingredients: ingredients.map((name) => ({ name, quantity: "1", unit: "pz" })),
-    steps: ["fai"],
+    steps: [
+      "Lava e prepara gli ingredienti.",
+      "Cuoci il piatto fino a completa cottura.",
+      "Impiatta e servi caldo.",
+    ],
   };
 }
 
