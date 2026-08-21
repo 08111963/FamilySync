@@ -46,3 +46,23 @@ Le occorrenze residue di `allergies` sono limitate a: compatibilità input espli
 - `git diff --check`
 
 Nessun deploy, pubblicazione o migrazione database è stato eseguito.
+
+## Correzione dopo controllo esterno
+
+- Il controllo **Dieta** è ora un singolo selettore: mostra il solo valore
+  scelto e apre un menu cross-platform con i nove profili fissi.
+- Il test E2E verifica il valore iniziale Mediterranea, apertura del menu,
+  presenza delle opzioni, selezione di `vegetarian_gluten_free`, chiusura del
+  menu e body AI privo di `allergies`.
+- Per la dieta mediterranea il prompt richiede almeno un pasto principale con
+  carne rossa nella settimana, preferibilmente uno: non impone più
+  rigidamente un solo pasto.
+
+### Verifiche finali
+
+- `npm run typecheck`
+- `npx tsx server/__tests__/meal-plan-diet-profiles.test.ts`
+- `npx tsx server/__tests__/meal-plan-variety.test.ts`
+- `npx tsx server/__tests__/meal-plan-model-budget.test.ts`
+- `npx tsx --test e2e/meal-plan-diet-selector.test.ts`
+- `git diff --check`

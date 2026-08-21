@@ -1,0 +1,184 @@
+Il controllo esterno di `familysync-meal-plan-diet-profiles-refactor-20260821.zip` conferma che il refactor generale è corretto.
+
+NON riscrivere l'architettura e NON modificare:
+
+* `dietProfile`;
+* profili dieta;
+* sostituzioni gluten-free;
+* sostituzioni lactose-free;
+* rimozione del campo Allergie/intolleranze;
+* API;
+* budget OpenAI;
+* validatori;
+* voice parsing;
+* guida;
+* gestione legacy.
+
+Restano soltanto due correzioni.
+
+# 1. DIETA DEVE ESSERE UN MENU A TENDINA
+
+La richiesta funzionale era:
+
+```text
+Dieta
+[ menu a tendina ]
+```
+
+ma attualmente `app/meal-plans/index.tsx` renderizza tutti i profili come:
+
+```text
+radiogroup
+radio
+```
+
+Questa non è la UI richiesta.
+
+Sostituisci i radio button con un vero selettore/dropdown compatibile con web ed Expo/mobile.
+
+La schermata deve mostrare una sola riga, per esempio:
+
+```text
+Dieta
+
+Mediterranea                         ▼
+```
+
+Al click/tap si apre la lista:
+
+* Mediterranea
+* Mediterranea senza glutine
+* Mediterranea senza lattosio
+* Vegetariana
+* Vegetariana senza glutine
+* Vegana
+* Pescetariana
+* Low carb
+* Halal
+
+Dopo la selezione deve rimanere visibile soltanto il profilo scelto.
+
+Mantieni:
+
+```ts
+dietProfile
+```
+
+come valore canonico inviato al backend.
+
+Non trasformare il dropdown in testo libero.
+
+# 2. AGGIORNA IL TEST E2E
+
+Il test:
+
+`e2e/meal-plan-diet-selector.test.ts`
+
+attualmente verifica esplicitamente:
+
+```text
+radio
+radiogroup
+nove radio
+```
+
+Aggiornalo per testare il dropdown reale.
+
+Verifica:
+
+1. campo Dieta presente;
+2. valore iniziale Mediterranea;
+3. apertura menu;
+4. presenza dei profili;
+5. selezione `Vegetariana senza glutine`;
+6. chiusura menu;
+7. nuovo valore visualizzato;
+8. request AI:
+
+```json
+{
+  "preferences": {
+    "dietProfile": "vegetarian_gluten_free"
+  }
+}
+```
+
+9. nessun campo `allergies`.
+
+# 3. CARNE ROSSA
+
+Attualmente il prompt contiene una regola equivalente a:
+
+```text
+ESATTAMENTE un pasto con carne rossa magra nella settimana
+```
+
+La richiesta funzionale è invece:
+
+```text
+almeno 1 pasto principale con carne rossa alla settimana
+```
+
+a pranzo oppure cena.
+
+Non renderla dominante.
+
+Usa una regola del tipo:
+
+```text
+includi almeno un pasto principale con carne rossa nella settimana,
+preferibilmente uno, mantenendo la varietà delle fonti proteiche
+```
+
+Il checker deve considerare valido:
+
+```text
+red_meat >= 1
+```
+
+e non richiedere rigidamente:
+
+```text
+red_meat == 1
+```
+
+# 4. NON MODIFICARE ALTRO
+
+Non modificare:
+
+* gluten-free;
+* lactose-free;
+* vegetarian;
+* vegan;
+* allergeni legacy ignorati;
+* budget 28;
+* semantic duplicate detection;
+* varietà;
+* database.
+
+# 5. TEST
+
+Esegui:
+
+```bash
+npm run typecheck
+npx tsx server/__tests__/meal-plan-diet-profiles.test.ts
+npx tsx --test e2e/meal-plan-diet-selector.test.ts
+```
+
+più i test Piano Pasti già previsti.
+
+# 6. NON FARE DEPLOY
+
+Genera:
+
+`familysync-meal-plan-diet-profiles-refactor-final-20260821.zip`
+
+ZIP minimale con:
+
+* soli file modificati;
+* test aggiornati;
+* report aggiornato;
+* manifest esatto.
+
+Fermati dopo lo ZIP per il controllo esterno.

@@ -2,8 +2,8 @@
  * Test UI (Playwright, viewport mobile) del selettore Dieta nel Piano Pasti.
  *
  * Verifica end-to-end sulla web-build reale che una sessione demo autenticata:
- * - visualizzi i nove profili chiusi e nessun campo Allergie/intolleranze;
- * - aggiorni il radio attivo al cambio profilo;
+ * - visualizzi un dropdown chiuso e nessun campo Allergie/intolleranze;
+ * - apra il menu e aggiorni il valore scelto;
  * - invii il profilo scelto allo stream AI, senza raggiungere il backend;
  * - non salvi alcun piano e non consumi AI reale.
  *
@@ -118,6 +118,15 @@ async function waitForAiRequest() {
   assert.equal(aiRequestBodies.length, 1, "deve partire esattamente uno stream AI intercettato");
 }
 
+async function dismissWebUpdateBanner(pg: Page) {
+  for (const testId of ["web-stale-dismiss", "web-update-dismiss"]) {
+    const dismiss = pg.getByTestId(testId);
+    if (await dismiss.count()) {
+      await dismiss.tap();
+    }
+  }
+}
+
 describe("Selettore Dieta nel Piano Pasti", () => {
   before(async () => {
     const response = await fetch(BASE_URL).catch(() => null);
@@ -126,7 +135,7 @@ describe("Selettore Dieta nel Piano Pasti", () => {
     }
 
     // Evita un falso verde se il backend sta ancora servendo un export web
-    // precedente, privo dei radio che questo test deve esercitare.
+    // precedente, privo del selettore Dieta che questo test deve esercitare.
     const html = await response.text();
     const bundleMatch = html.match(/_expo\/static\/js\/web\/[^"']+\.js/);
     assert.ok(bundleMatch, "bundle Expo non trovato nella pagina servita");
@@ -168,8 +177,9 @@ describe("Selettore Dieta nel Piano Pasti", () => {
 
     await page.goto(`${BASE_URL}/meal-plans`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.getByText("I Miei Piani").first().waitFor({ timeout: 60_000 });
+    await dismissWebUpdateBanner(page);
     await page.getByText("Genera con AI").first().tap();
-    await page.getByText("Dieta").first().waitFor({ timeout: 15_000 });
+    await page.getByTestId("mealplan-diet-selector").waitFor({ state: "visible", timeout: 15_000 });
   });
 
   after(async () => {
@@ -177,18 +187,19 @@ describe("Selettore Dieta nel Piano Pasti", () => {
     await browser?.close();
   });
 
-  test("mostra esattamente i nove profili chiusi, senza Allergie/intolleranze", async () => {
-    for (const profile of MEAL_PLAN_DIET_PROFILES) {
-      const radio = page.getByTestId(`mealplan-diet-${profile}`);
-      assert.equal(await radio.count(), 1, `il radio ${profile} deve comparire una sola volta`);
-      assert.ok(
-        (await radio.innerText()).includes(mealPlanDietProfileLabel(profile)),
-        `etichetta corretta per ${profile}`,
-      );
-    }
-
-    const radios = page.getByRole("radio");
-    assert.equal(await radios.count(), MEAL_PLAN_DIET_PROFILES.length, "devono comparire solo nove radio Dieta");
+  test("mostra il dropdown Dieta chiuso, inizialmente Mediterranea e senza Allergie/intolleranze", async () => {
+    const selector = page.getByTestId("mealplan-diet-selector");
+    assert.equal(await selector.count(), 1, "il campo Dieta deve comparire una sola volta");
+    assert.equal(
+      await page.getByTestId("mealplan-diet-selected-value").innerText(),
+      mealPlanDietProfileLabel("mediterranean"),
+      "Mediterranea deve essere il valore iniziale",
+    );
+    assert.equal(
+      await page.getByTestId(`mealplan-diet-option-${SELECTED_PROFILE}`).count(),
+      0,
+      "il menu deve restare chiuso finché non viene toccato",
+    );
     assert.equal(
       await page.getByText(/allergie|intolleranze/i).count(),
       0,
@@ -196,17 +207,24 @@ describe("Selettore Dieta nel Piano Pasti", () => {
     );
   });
 
-  test("cambia profilo, aggiorna il radio attivo e invia solo dietProfile allo stream intercettato", async () => {
-    const defaultRadio = page.getByTestId("mealplan-diet-mediterranean");
-    const selectedRadio = page.getByTestId(`mealplan-diet-${SELECTED_PROFILE}`);
+  test("apre il dropdown, seleziona Vegetariana senza glutine e invia solo dietProfile allo stream intercettato", async () => {
+    await page.getByTestId("mealplan-diet-selector").tap();
+    for (const profile of MEAL_PLAN_DIET_PROFILES) {
+      const option = page.getByTestId(`mealplan-diet-option-${profile}`);
+      assert.equal(await option.count(), 1, `l'opzione ${profile} deve comparire nel menu`);
+      assert.ok(
+        (await option.innerText()).includes(mealPlanDietProfileLabel(profile)),
+        `etichetta corretta per ${profile}`,
+      );
+    }
 
-    assert.equal(await defaultRadio.getAttribute("aria-checked"), "true", "Mediterranea è il default attivo");
-    assert.equal(await selectedRadio.getAttribute("aria-checked"), "false", "il nuovo profilo parte inattivo");
-
-    await selectedRadio.tap();
-
-    assert.equal(await defaultRadio.getAttribute("aria-checked"), "false", "il profilo precedente deve diventare inattivo");
-    assert.equal(await selectedRadio.getAttribute("aria-checked"), "true", "il radio selezionato deve risultare attivo");
+    await page.getByTestId(`mealplan-diet-option-${SELECTED_PROFILE}`).tap();
+    await page.getByTestId(`mealplan-diet-option-${SELECTED_PROFILE}`).waitFor({ state: "detached" });
+    assert.equal(
+      await page.getByTestId("mealplan-diet-selected-value").innerText(),
+      mealPlanDietProfileLabel(SELECTED_PROFILE),
+      "il valore scelto deve restare visibile dopo la chiusura del menu",
+    );
 
     await page.getByText("Genera Piano").first().tap();
     await waitForAiRequest();

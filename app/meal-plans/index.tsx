@@ -410,6 +410,7 @@ export default function MealPlansScreen() {
     setWeekStartInput(isoToDisplay(iso));
   };
   const [dietProfile, setDietProfile] = useState<MealPlanDietProfile>("mediterranean");
+  const [showDietProfilePicker, setShowDietProfilePicker] = useState(false);
   // Preferenze passate dall'assistente AI della Home (es. "mediterraneo"):
   // precompilano le note, la generazione parte solo col pulsante "Genera Piano".
   const { notes: notesParam, assistant: assistantParam } = useLocalSearchParams<{ notes?: string; assistant?: string }>();
@@ -998,28 +999,64 @@ export default function MealPlansScreen() {
           </Pressable>
 
           <Text style={[styles.sectionLabel, { color: colors.text }]}>Dieta</Text>
-          <View style={styles.dietProfiles} accessibilityRole="radiogroup">
-            {MEAL_PLAN_DIET_PROFILES.map((profile) => {
-              const selected = dietProfile === profile;
-              return (
-                <Pressable
-                  key={profile}
-                  onPress={() => setDietProfile(profile)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                  aria-checked={selected}
-                  testID={`mealplan-diet-${profile}`}
-                  style={[
-                    styles.dietProfileOption,
-                    { backgroundColor: colors.surface, borderColor: selected ? colors.primary : colors.border },
-                  ]}
-                >
-                  <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={19} color={selected ? colors.primary : colors.textSecondary} />
-                  <Text style={[styles.dietProfileText, { color: colors.text }]}>{mealPlanDietProfileLabel(profile)}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <Pressable
+            onPress={() => setShowDietProfilePicker(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Scegli dieta"
+            testID="mealplan-diet-selector"
+            style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
+            <Ionicons name="leaf-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
+            <Text style={[styles.textInput, styles.dateValueText, { color: colors.text }]} testID="mealplan-diet-selected-value">
+              {mealPlanDietProfileLabel(dietProfile)}
+            </Text>
+            <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
+          </Pressable>
+          <Modal
+            visible={showDietProfilePicker}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowDietProfilePicker(false)}
+          >
+            <Pressable
+              style={styles.dietPickerBackdrop}
+              onPress={() => setShowDietProfilePicker(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Chiudi selettore dieta"
+            >
+              <Pressable
+                style={[styles.dietPickerSheet, { backgroundColor: colors.surface }]}
+                accessibilityRole="menu"
+                onPress={(event) => event.stopPropagation()}
+              >
+                <Text style={[styles.dietPickerTitle, { color: colors.text }]}>Scegli la dieta</Text>
+                <ScrollView style={styles.dietPickerList} showsVerticalScrollIndicator={false}>
+                  {MEAL_PLAN_DIET_PROFILES.map((profile) => {
+                    const selected = dietProfile === profile;
+                    return (
+                      <Pressable
+                        key={profile}
+                        onPress={() => {
+                          setDietProfile(profile);
+                          setShowDietProfilePicker(false);
+                        }}
+                        accessibilityRole="menuitem"
+                        accessibilityState={{ selected }}
+                        testID={`mealplan-diet-option-${profile}`}
+                        style={[
+                          styles.dietProfileOption,
+                          { backgroundColor: selected ? colors.primary + "12" : "transparent" },
+                        ]}
+                      >
+                        <Text style={[styles.dietProfileText, { color: colors.text }]}>{mealPlanDietProfileLabel(profile)}</Text>
+                        {selected ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </Pressable>
+            </Pressable>
+          </Modal>
 
           {currentFamily ? (
             <View style={[styles.voiceCard, { backgroundColor: colors.primary + "10", borderColor: colors.primary + "30" }]}>
@@ -1642,22 +1679,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 48,
   },
-  dietProfiles: {
-    gap: 8,
-  },
   dietProfileOption: {
-    minHeight: 44,
+    minHeight: 48,
     paddingHorizontal: 14,
     paddingVertical: 11,
-    borderWidth: 1,
-    borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    justifyContent: "space-between",
   },
   dietProfileText: {
     fontSize: 15,
     fontFamily: "Inter_500Medium",
+  },
+  dietPickerBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.42)",
+    justifyContent: "flex-end",
+  },
+  dietPickerSheet: {
+    maxHeight: "72%",
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingTop: 18,
+    paddingBottom: 28,
+  },
+  dietPickerTitle: {
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  dietPickerList: {
+    paddingHorizontal: 8,
   },
   inputIcon: {
     marginRight: 10,

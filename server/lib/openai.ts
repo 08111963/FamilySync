@@ -1345,7 +1345,7 @@ async function generateWeeklyMealPlanAttempt(
     : mediterraneanDiet && constrainedPlan
       ? `\n- DIETA MEDITERRANEA CON VINCOLI: verdure in OGNI pranzo e cena, olio extravergine d'oliva e frutta; scegli ogni componente soltanto tra quelli compatibili con tutti i vincoli indicati.`
     : mediterraneanDiet
-      ? `\n- DIETA MEDITERRANEA VERA: alterna a pranzo pasta, riso/risotti, cereali in chicco, legumi, patate o polenta secondo la famiglia-obiettivo del giorno; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; inserisci ESATTAMENTE un pasto con carne rossa magra nella settimana; olio extravergine d'oliva e frutta.`
+      ? `\n- DIETA MEDITERRANEA VERA: alterna a pranzo pasta, riso/risotti, cereali in chicco, legumi, patate o polenta secondo la famiglia-obiettivo del giorno; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; includi almeno un pasto principale con carne rossa nella settimana, preferibilmente uno, mantenendo la varietà delle fonti proteiche; olio extravergine d'oliva e frutta.`
       : '';
   const weeklyVarietyRule = `
 - VARIETÀ SETTIMANALE (best effort, mai in contrasto con i vincoli): sui pranzi e sulle cene cerca almeno 4 fonti di carboidrati diverse nella settimana e non usare la stessa più di 3 volte quando sono disponibili alternative compatibili.
