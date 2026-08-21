@@ -1,0 +1,259 @@
+Implementa esclusivamente la FASE 1 del passaggio graduale da Replit Managed AI a OpenAI API diretta.
+
+OBIETTIVO:
+- SOLO l’account Amministratore deve usare OPENAI_API_KEY diretta.
+- Tutti gli altri utenti devono continuare a usare Replit Managed AI.
+- Non modificare ancora il provider predefinito globale.
+- Non fare deploy.
+
+IMPORTANTE:
+Attualmente resolveOpenAiConfig()/getOpenAiClient() scelgono OPENAI_API_KEY globalmente se presente.
+Questo comportamento NON è adatto alla Fase 1, perché sposterebbe tutti gli utenti su OpenAI diretto.
+
+# 1. ROUTING PER UTENTE
+
+Introduci una selezione esplicita del provider AI basata sull’utente autenticato.
+
+Comportamento:
+
+ADMIN PILOT
+→ OpenAI API diretta tramite OPENAI_API_KEY
+
+TUTTI GLI ALTRI
+→ Replit Managed AI tramite:
+AI_INTEGRATIONS_OPENAI_API_KEY
+AI_INTEGRATIONS_OPENAI_BASE_URL
+
+Non usare email hardcoded nel codice se esiste già un ruolo amministratore affidabile.
+
+Preferenza:
+- usare role/admin flag già presente nel database/sessione;
+- se il progetto non dispone di un identificatore amministratore affidabile, documentalo prima di introdurre una allowlist.
+
+# 2. NON RENDERE OPENAI_API_KEY GLOBALE
+
+La presenza di:
+
+OPENAI_API_KEY
+
+non deve più significare automaticamente:
+
+“tutti gli utenti usano OpenAI diretto”.
+
+Il provider deve essere scelto per richiesta/utente.
+
+# 3. CLIENT SEPARATI
+
+Crea due configurazioni/client chiaramente distinti, per esempio concettualmente:
+
+getDirectOpenAiClient()
+getReplitManagedOpenAiClient()
+
+e un resolver:
+
+getAiClientForUser(user)
+
+o equivalente.
+
+Evita singleton globali che possano riutilizzare accidentalmente il client di un utente per un altro.
+
+Il provider deve essere determinato in modo sicuro per ogni richiesta.
+
+# 4. TUTTE LE FUNZIONI AI
+
+Il routing deve valere per tutte le funzioni AI runtime, non solo Piano Pasti:
+
+- generateShoppingSuggestions
+- optimizeChoreSchedule
+- generateRecipeSuggestions
+- searchRecipesByQuery
+- generateWeeklyMealPlan
+- generateFamilyInsights
+- generateBudgetInsights
+- transcribeAudio
+- generateRecipeImage
+- parseEventFromText
+- parseChoreFromText
+- parseExpenseFromText
+- parseAssistantActionsFromText
+
+Verifica tutti i call site.
+
+# 5. BACKGROUND JOB / MONITOR
+
+Per chiamate senza utente interattivo, come eventuali monitor/job:
+
+NON usare automaticamente OPENAI_API_KEY.
+
+Mantieni Replit Managed AI come provider di default, salvo configurazione esplicita.
+
+Questo evita che job automatici consumino il budget OpenAI personale durante la Fase 1.
+
+# 6. SECRET
+
+NON creare o modificare Secrets.
+
+Il codice deve essere pronto a usare:
+
+OPENAI_API_KEY
+
+solo per l’amministratore.
+
+Se OPENAI_API_KEY non è presente:
+- l’amministratore deve avere fallback controllato a Replit Managed AI oppure errore tipizzato, scegliendo l’opzione più coerente con l’architettura attuale;
+- documenta il comportamento.
+
+NON mostrare mai il valore della chiave.
+
+# 7. LOGGING PROVIDER
+
+Aggiungi logging diagnostico sicuro, senza dati sensibili.
+
+Per ogni operazione AI registra soltanto informazioni tipo:
+
+provider = openai_direct
+oppure
+provider = replit_managed
+
+ai_operation = weekly_meal_plan
+
+user_role = admin / user
+
+NON loggare:
+- API key
+- baseURL completo se sensibile
+- prompt completi
+- contenuto personale.
+
+# 8. USAGE / COST TRACKING
+
+Mantieni le quote applicative già esistenti.
+
+Aggiungi, se possibile senza refactor ampio, il provider al record/log di utilizzo AI:
+
+openai_direct
+replit_managed
+
+In questo modo durante il pilot possiamo misurare quante operazioni dell’amministratore passano davvero dalla API diretta.
+
+Non introdurre fatturazione nuova.
+
+# 9. PIANO PASTI
+
+Mantieni invariati:
+
+MAX_MEAL_PLAN_MODEL_CALLS = 28
+
+e tutti i limiti già presenti.
+
+Il passaggio a OpenAI diretto NON deve aumentare:
+- retry;
+- model calls;
+- quote giornaliere.
+
+# 10. SICUREZZA
+
+OPENAI_API_KEY deve rimanere:
+- solo backend;
+- mai frontend;
+- mai Expo/mobile;
+- mai response API;
+- mai log;
+- mai ZIP.
+
+Verifica che nessun endpoint esponga configurazione/provider secrets.
+
+# 11. TEST OBBLIGATORI
+
+Usa mock, nessuna chiamata AI reale.
+
+Testa almeno:
+
+A. Admin + OPENAI_API_KEY presente
+→ provider = openai_direct
+→ baseURL Replit non usato.
+
+B. Utente normale + OPENAI_API_KEY presente
+→ provider = replit_managed
+→ OPENAI_API_KEY non usata.
+
+C. Admin senza OPENAI_API_KEY
+→ comportamento fallback/errore previsto.
+
+D. Utente normale senza OPENAI_API_KEY
+→ Replit Managed AI invariato.
+
+E. Due richieste concorrenti:
+- admin
+- user normale
+
+→ ciascuna deve usare il provider corretto, senza contaminazione del client.
+
+F. Background job
+→ Replit Managed AI.
+
+G. Piano Pasti admin
+→ OpenAI diretto + stesso budget massimo 28.
+
+H. Piano Pasti utente normale
+→ Replit Managed AI + stesso budget massimo 28.
+
+# 12. NON MODIFICARE
+
+Non modificare:
+- Piano Pasti/diete;
+- database salvo necessità strettamente documentata;
+- pagamenti;
+- mobile UI;
+- quote utente;
+- limiti AI;
+- modelli OpenAI;
+- prompt;
+- allergeni/profili dieta.
+
+Questo mandato riguarda soltanto il routing del provider AI.
+
+# 13. REPORT
+
+Crea:
+
+AI_PROVIDER_ADMIN_PILOT_REPORT.md
+
+Indica:
+
+- architettura precedente;
+- architettura Fase 1;
+- criterio usato per riconoscere admin;
+- funzioni AI coperte;
+- comportamento job/background;
+- fallback se OPENAI_API_KEY manca;
+- test eseguiti;
+- rischi residui.
+
+Inserisci tabella:
+
+| Soggetto | Provider |
+|---|---|
+| Amministratore | OpenAI API diretta |
+| Utente normale | Replit Managed AI |
+| Background job | Replit Managed AI |
+
+# 14. NON FARE DEPLOY
+
+Non fare deploy.
+
+Non aggiungere OPENAI_API_KEY.
+
+Non effettuare chiamate reali.
+
+Genera:
+
+familysync-ai-provider-admin-pilot-20260821.zip
+
+ZIP minimale con:
+- soli file modificati;
+- test;
+- report;
+- manifest esatto.
+
+Fermati dopo lo ZIP per controllo esterno.
