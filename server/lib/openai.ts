@@ -13,7 +13,11 @@ import {
   type MealPlanConstraintViolation,
 } from './meal-plan-constraints';
 import { recordMealPlanLatency } from './meal-plan-latency-monitor';
-import { buildMealPlanVarietyContext, evaluateMealPlanVariety } from './meal-plan-variety';
+import {
+  buildMealPlanVarietyContext,
+  evaluateMealPlanVariety,
+  planMealPlanLunchFamilies,
+} from './meal-plan-variety';
 
 // Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
 // SDK lancia se la chiave manca, e ciò impedirebbe l'avvio del server.
@@ -1320,11 +1324,12 @@ async function generateWeeklyMealPlanAttempt(
     : mediterraneanDiet && constrainedPlan
       ? `\n- DIETA MEDITERRANEA CON VINCOLI: verdure in OGNI pranzo e cena, olio extravergine d'oliva e frutta; scegli ogni componente soltanto tra quelli compatibili con tutti i vincoli indicati.`
     : mediterraneanDiet
-      ? `\n- DIETA MEDITERRANEA VERA: pasta/riso/cereali come primo quasi ogni giorno a pranzo; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
+      ? `\n- DIETA MEDITERRANEA VERA: alterna a pranzo pasta, riso/risotti, cereali in chicco, legumi, patate o polenta secondo la famiglia-obiettivo del giorno; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
       : '';
   const weeklyVarietyRule = `
 - VARIETÀ SETTIMANALE (best effort, mai in contrasto con i vincoli): sui pranzi e sulle cene cerca almeno 4 fonti di carboidrati diverse nella settimana e non usare la stessa più di 3 volte quando sono disponibili alternative compatibili.
 - Alterna le proteine principali: evita la stessa proteina specifica più di 2 volte quando possibile; il pesce può comparire più volte, ma non ripetere sempre lo stesso tipo.
+- PRANZI, VARIETÀ SEMANTICA: la famiglia (pasta, riso, legumi, zuppa, patate ecc.), la base/preparazione (per esempio al pomodoro) e la firma completa con proteina sono tre livelli distinti. Contorni, olio, erbe e piccole verdure non trasformano un pranzo in un piatto nuovo.
 ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea senza glutine includi normalmente almeno un pranzo con pasta senza glutine, se non è esclusa da altri vincoli. Non rendere obbligatori prodotti trasformati negli altri pasti.` : ""}`;
   const lactoseLunchVarietyRule = lactoseFreeRequired
     ? `
@@ -1374,29 +1379,28 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     'privilegia piatti regionali italiani meno comuni',
   ];
 
-  // Dieta mediterranea: temi generici non bastano (il modello scivola su
-  // legumi/vegetariano). Qui uno schema settimanale ESPLICITO pranzo/cena
-  // che rispecchia la vera piramide mediterranea: pasta quasi ogni pranzo,
-  // verdure sempre, pesce 3x, legumi 2x, carne bianca 1-2x, rossa max 1x.
+  // Dieta mediterranea: i temi supportano la piramide alimentare, mentre la
+  // famiglia concreta del pranzo viene pianificata separatamente più sotto.
+  // Così un tema non può riportare pasta quasi ogni giorno.
   const mediterraneanDayThemes = [
     'a pranzo pasta con ricotta o sugo di pesce e verdure di stagione più contorno; a cena pesce azzurro (es. alla griglia o al forno) con verdure e pane',
-    'a pranzo pasta o riso con sugo di tonno o uova e verdure; a cena una zuppa di legumi con verdure e pane',
-    'a pranzo un primo di pasta con proteine (es. pasta e ceci, pasta con ragù bianco); a cena carne bianca (pollo o tacchino) con verdure e patate o farro',
-    'a pranzo un piatto unico di cereali (farro, orzo) con formaggio o pesce e verdure; a cena pesce con verdure e pane',
-    'a pranzo pasta con sugo di pesce e verdure; a cena uova o formaggio fresco con verdure e pane o patate',
-    'a pranzo un primo di riso con proteine o un minestrone con legumi e crostini; a cena insalata o polpette di legumi con verdure e pane',
-    'a pranzo pasta al forno o lasagne (con proteine) e contorno; a cena pesce oppure una piccola porzione di carne rossa magra con verdure e patate o pane',
+    'a pranzo un risotto o riso con tonno o uova e verdure; a cena una zuppa di legumi con verdure e pane',
+    'a pranzo un piatto di legumi completo con verdure; a cena carne bianca (pollo o tacchino) con verdure e patate o farro',
+    'a pranzo couscous con pesce o proteine compatibili e verdure; a cena pesce con verdure e pane',
+    'a pranzo un cereale in chicco (farro o orzo) con proteine e verdure; a cena uova o formaggio fresco con verdure e pane o patate',
+    'a pranzo patate o polenta con proteine e verdure; a cena insalata o polpette di legumi con verdure e pane',
+    'a pranzo quinoa o una zuppa mediterranea completa; a cena pesce oppure una piccola porzione di carne rossa magra con verdure e patate o pane',
   ];
-  // Piano B mediterraneo: stessa piramide (pasta a pranzo, pesce 3x, legumi 2x…)
-  // ma piatti concreti diversi dal piano A, altrimenti i due piani si somigliano.
+  // Piano B mediterraneo: stessa rotazione strutturale, con combinazioni e
+  // tecniche diverse dal piano A.
   const mediterraneanDayThemesB = [
-    'a pranzo orecchiette o trofie con broccoli/pesto e una fonte proteica; a cena polpo o calamari con patate e verdure',
-    'a pranzo risotto ai frutti di mare o alle verdure con formaggio; a cena minestra di lenticchie con verdure e pane',
-    'a pranzo pasta alla Norma o con melanzane e ricotta salata; a cena tacchino o coniglio in umido con verdure e pane',
-    'a pranzo couscous o orzo con verdure e pesce; a cena pesce spada o salmone alla griglia con verdure e patate',
-    'a pranzo gnocchi o pasta fresca con sugo di pesce o formaggio; a cena parmigiana leggera o uova in purgatorio con pane e verdure',
-    'a pranzo paella-risotto di verdure o minestrone con farro e crostini; a cena burger o polpette di ceci con verdure e pane',
-    'a pranzo cannelloni o gnocchi alla sorrentina; a cena alici al forno oppure una tagliata magra con verdure e patate',
+    'a pranzo riso con verdure e una fonte proteica; a cena polpo o calamari con patate e verdure',
+    'a pranzo legumi in umido con verdure e una fonte di carboidrati; a cena minestra di lenticchie con verdure e pane',
+    'a pranzo couscous con ortaggi e proteine compatibili; a cena tacchino o coniglio in umido con verdure e pane',
+    'a pranzo orzo o farro con verdure e pesce; a cena pesce spada o salmone alla griglia con verdure e patate',
+    'a pranzo patate al forno con proteine e verdure; a cena parmigiana leggera o uova in purgatorio con pane e verdure',
+    'a pranzo quinoa con verdure e una fonte proteica; a cena burger o polpette di ceci con verdure e pane',
+    'a pranzo pasta con condimento diverso dai giorni precedenti; a cena alici al forno oppure una tagliata magra con verdure e patate',
   ];
   // Quando è richiesto il senza glutine, i temi normali diventano istruzioni
   // contraddittorie (pasta, pane, farro, orzo, biscotti). Non basta chiedere
@@ -1478,9 +1482,18 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     label: string;
     themeHint?: string;
     breakfastHint?: string;
+    lunchFamilyTarget?: string;
   };
   const allergenSafePlan = usesMealPlanIngredientAllowlist(context.preferences);
   const standardPlan = !constrainedPlan;
+  const compatibleMainIngredients = compatibleMealIngredients(context.preferences, "main");
+  const lunchFamilyTargets = planMealPlanLunchFamilies(
+    compatibleMainIngredients,
+    dates.length,
+    // Il Piano B parte dal riso: riso → legumi → couscous → cereale →
+    // patate → quinoa → pasta, mantenendo un'alternativa strutturale al Piano A.
+    variant === 2 ? 1 : 0,
+  );
   // Una risposta settimanale da sette ricette dettagliate viene talvolta
   // troncata dal provider: il risultato sembra JSON valido ma contiene solo
   // una parte del piano. Dividiamo quindi la settimana in richieste GIORNALIERE
@@ -1504,10 +1517,13 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
         dates: [date],
         mealTypes: mainMealTypes,
         ingredientNames: allergenSafePlan
-          ? compatibleMealIngredients(context.preferences, "main")
+          ? compatibleMainIngredients
           : undefined,
         label: `${date}-main`,
         themeHint: `${activeDayThemes[dayIndex]} ${activeDinnerThemes[dayIndex]}`,
+        lunchFamilyTarget: mainMealTypes.includes("lunch")
+          ? lunchFamilyTargets[dayIndex]
+          : undefined,
       });
     }
     return requests;
@@ -1529,6 +1545,9 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
       : "";
     const lactosePastaRule = lactoseAllowsGluten && requestMealTypes.includes("lunch")
       ? "\n- Il vincolo lattosio/latte NON richiede di evitare il glutine: pasta di semola classica e gli altri cereali con glutine restano compatibili, purché non contengano latte o derivati incompatibili."
+      : "";
+    const lunchFamilyTargetRule = requestMealTypes.includes("lunch") && request.lunchFamilyTarget
+      ? `\n- OBIETTIVO FAMIGLIA PRANZO DEL GIORNO: ${request.lunchFamilyTarget}. Il pranzo DEVE appartenere a questa famiglia, salvo conflitto con un vincolo di sicurezza. Non sostituirla con pasta o un'altra famiglia solo cambiando condimento, contorno, olio o erbe.`
       : "";
     const lactoseFreeOutputRule = lactoseFreeRequired
       ? `\n- PIANO SENZA LATTOSIO: in TUTTI i campi dell'output non scrivere né usare lattosio, latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone, salvo un prodotto della lista chiusa che riporti esplicitamente “senza lattosio”. Non usare mai un prodotto lattiero-caseario implicito. A colazione scegli bevanda vegetale, frutta, pane o gallette e marmellata, oppure un prodotto esplicitamente senza lattosio della lista; negli altri pasti usa solo gli ingredienti compatibili della lista chiusa.`
@@ -1572,7 +1591,7 @@ ${constrainedRecipeReferenceRule}
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}
-   - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
+    - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno realizza questa combinazione concreta e non sostituirla con una colazione generica: ${breakfastHint}.` : ''}
  ${constraintRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}
@@ -1827,6 +1846,9 @@ ${constrainedRecipeReferenceRule}
             ? compatibleMealIngredients(context.preferences, "main")
             : undefined,
         label: `${slot.date}-${slot.mealType}-variety-repair`,
+        lunchFamilyTarget: slot.mealType === "lunch"
+          ? lunchFamilyTargets[dayIndex]
+          : undefined,
       };
       const localCorrection = `
 - CORREZIONE VARIETÀ LOCALE OBBLIGATORIA: genera un solo ${slot.mealType} per ${slot.date}, completo e compatibile.

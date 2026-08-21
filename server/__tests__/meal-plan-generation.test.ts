@@ -152,6 +152,50 @@ function lactoseSafeWeekItems(request: RequestInfo): Meal[] {
   });
 }
 
+function mediterraneanDiverseWeekItems(request: RequestInfo): Meal[] {
+  const lunches: Array<{ title: string; ingredients: Ingredient[] }> = [
+    { title: "Pasta al pesto con tonno", ingredients: [{ name: "pasta", quantity: "80", unit: "g" }, { name: "tonno", quantity: "100", unit: "g" }, { name: "zucchine", quantity: "150", unit: "g" }] },
+    { title: "Risotto con pollo e peperoni", ingredients: [{ name: "riso", quantity: "80", unit: "g" }, { name: "pollo", quantity: "120", unit: "g" }, { name: "peperoni", quantity: "150", unit: "g" }] },
+    { title: "Ceci in umido con tacchino", ingredients: [{ name: "ceci", quantity: "120", unit: "g" }, { name: "tacchino", quantity: "120", unit: "g" }, { name: "carote", quantity: "150", unit: "g" }] },
+    { title: "Couscous con merluzzo e verdure", ingredients: [{ name: "couscous", quantity: "80", unit: "g" }, { name: "merluzzo", quantity: "120", unit: "g" }, { name: "zucchine", quantity: "150", unit: "g" }] },
+    { title: "Farro con uova e spinaci", ingredients: [{ name: "farro", quantity: "80", unit: "g" }, { name: "uova", quantity: "2", unit: "pezzi" }, { name: "spinaci", quantity: "150", unit: "g" }] },
+    { title: "Patate al forno con salmone e broccoli", ingredients: [{ name: "patate", quantity: "180", unit: "g" }, { name: "salmone", quantity: "120", unit: "g" }, { name: "broccoli", quantity: "150", unit: "g" }] },
+    { title: "Quinoa con lenticchie e melanzane", ingredients: [{ name: "quinoa", quantity: "80", unit: "g" }, { name: "lenticchie", quantity: "120", unit: "g" }, { name: "melanzane", quantity: "150", unit: "g" }] },
+  ];
+  const lunchesByFamily: Record<string, { title: string; ingredients: Ingredient[] }> = {
+    "pasta": lunches[0]!,
+    "risotto/riso": lunches[1]!,
+    "piatto di legumi": lunches[2]!,
+    "couscous": lunches[3]!,
+    "cereale in chicco": lunches[4]!,
+    "patate/polenta": lunches[5]!,
+    "quinoa": lunches[6]!,
+  };
+  const dinnerProteins = ["merluzzo", "pollo", "uova", "ceci", "tonno", "tacchino", "salmone"];
+  return request.dates.flatMap((date) => {
+    const index = DATES.indexOf(date);
+    return request.mealTypes.map((mealType) => {
+      if (mealType === "breakfast") {
+        return makeMeal(date, mealType, `Colazione mediterranea ${index + 1}`, [
+          { name: ["banana", "mela", "pera", "arancia", "kiwi", "mirtilli", "pesca"][index]!, quantity: "1", unit: "pezzo" },
+          { name: "yogurt bianco", quantity: "125", unit: "g" },
+        ]);
+      }
+      if (mealType === "lunch") {
+        const target = request.sysPrompt.match(/OBIETTIVO FAMIGLIA PRANZO DEL GIORNO: ([^.]+)\./)?.[1];
+        const lunch = target ? lunchesByFamily[target] : lunches[index]!;
+        assert.ok(lunch, `la fixture deve coprire la famiglia-obiettivo ${target || "non presente"}`);
+        return makeMeal(date, mealType, lunch.title, lunch.ingredients);
+      }
+      return makeMeal(date, mealType, `Cena mediterranea ${index + 1}`, [
+        { name: dinnerProteins[index]!, quantity: "120", unit: "g" },
+        { name: index % 2 === 0 ? "pane" : "riso", quantity: "80", unit: "g" },
+        { name: "bietole", quantity: "150", unit: "g" },
+      ]);
+    });
+  });
+}
+
 function assertCompleteWeek(items: Array<{ date: string; mealType: string }>, mealsPerDay: number) {
   assert.equal(items.length, 7 * mealsPerDay);
   for (const date of DATES) {
@@ -188,6 +232,70 @@ test("senza vincoli: richieste giornaliere piccole mantengono ricette leggibili"
   assert.ok(plan.items.every((item) => (item.steps?.length || 0) >= 3));
   assert.ok(plan.items.every((item) => (item.steps?.length || 0) <= 6));
   assert.equal(progress.length, 7, "l'interfaccia riceve comunque gli aggiornamenti per giorno");
+});
+
+test("mediterranea senza allergie riceve una famiglia-obiettivo per ogni pranzo senza nuove chiamate", async (t) => {
+  const { client, calls } = createFakeClient(mediterraneanDiverseWeekItems);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { diet: "mediterranea" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS);
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
+  const lunchCalls = calls.filter((call) => call.mealTypes.includes("lunch"));
+  assert.equal(lunchCalls.length, 7);
+  const targets = lunchCalls.map((call) =>
+    call.sysPrompt.match(/OBIETTIVO FAMIGLIA PRANZO DEL GIORNO: ([^.]+)\./)?.[1]);
+  assert.deepEqual(targets, [
+    "pasta", "risotto/riso", "piatto di legumi", "couscous",
+    "cereale in chicco", "patate/polenta", "quinoa",
+  ]);
+  assert.ok(lunchCalls.slice(1).every((call) => /LUNCH FAMILY COUNTS/i.test(call.sysPrompt)));
+  assert.ok(lunchCalls.slice(1).every((call) => /LUNCH BASE COUNTS/i.test(call.sysPrompt)));
+
+  const variety = evaluateMealPlanVariety(plan.items);
+  assert.ok(Object.keys(variety.lunchFamilyCounts).length >= 4);
+  assert.ok(!variety.issues.some((issue) =>
+    ["low_lunch_family_variety", "excessive_lunch_family", "repeated_lunch_base",
+      "repeated_lunch_pattern", "consecutive_lunch_pattern"].includes(issue.code)));
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { diet: "mediterranea" }), []);
+});
+
+test("il Piano B mediterraneo allinea temi e famiglie-obiettivo senza nuove chiamate", async (t) => {
+  const { client, calls } = createFakeClient(mediterraneanDiverseWeekItems);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { diet: "mediterranea" },
+    planVariant: 2,
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS);
+  const lunchCalls = calls.filter((call) => call.mealTypes.includes("lunch"));
+  const targets = lunchCalls.map((call) =>
+    call.sysPrompt.match(/OBIETTIVO FAMIGLIA PRANZO DEL GIORNO: ([^.]+)\./)?.[1]);
+  assert.deepEqual(targets, [
+    "risotto/riso", "piatto di legumi", "couscous", "cereale in chicco",
+    "patate/polenta", "quinoa", "pasta",
+  ]);
+  assert.ok(lunchCalls.every((call) =>
+    !/Per pranzo e cena di questo giorno segui questo orientamento:[^\n]*\ba pranzo\b/i.test(call.sysPrompt),
+  ), "i temi compatibili non devono introdurre una seconda famiglia di pranzo in conflitto");
+  const variety = evaluateMealPlanVariety(plan.items);
+  assert.ok(Object.keys(variety.lunchFamilyCounts).length >= 4);
+  assert.ok(!variety.issues.some((issue) =>
+    ["low_lunch_family_variety", "excessive_lunch_family", "repeated_lunch_base",
+      "repeated_lunch_pattern", "consecutive_lunch_pattern"].includes(issue.code)));
 });
 
 test("due pasti al giorno mantengono il contratto da 14 pasti completi", async (t) => {

@@ -11,7 +11,7 @@ Contorni, olio, erbe e insalata non rendono nuovo un piatto già visto.
 impedisce a un modello di ripetere pasta-pomodoro-tonno cambiando dettagli
 secondari.
 
-**How to apply:** ai blocchi successivi passare solo firme e conteggi dei
-pranzi già usati, famiglie, carboidrati e proteine. Applicare i limiti di
-varietà come best effort dopo la sicurezza; non aumentare chiamate o retry AI
-per correggere monotonia.
+**How to apply:** guidare ogni pranzo verso una famiglia culinaria diversa
+quando esistono alternative sicure; contorni e garnish non cambiano il piatto.
+I vincoli alimentari prevalgono sempre e la varietà non giustifica chiamate o
+retry AI aggiuntivi.

@@ -10,6 +10,8 @@ export type MealPlanVarietyIssueCode =
   | "repeated_carbohydrate"
   | "repeated_protein"
   | "low_lunch_family_variety"
+  | "excessive_lunch_family"
+  | "repeated_lunch_base"
   | "repeated_lunch_pattern"
   | "consecutive_lunch_pattern";
 
@@ -26,6 +28,7 @@ export interface MealPlanVarietyEvaluation {
   distinctCarbohydrateSources: number;
   lunchCount: number;
   lunchFamilyCounts: Record<string, number>;
+  lunchBaseCounts: Record<string, number>;
   lunchSignatureCounts: Record<string, number>;
   lunchCarbohydrateCounts: Record<string, number>;
   lunchProteinCounts: Record<string, number>;
@@ -90,12 +93,6 @@ function proteinSources(item: MealPlanVarietyItem): Set<string> {
   return sources;
 }
 
-function itemText(item: MealPlanVarietyItem): string {
-  return [item.title || "", ...(item.ingredients || []).map((ingredient) => ingredient.name || "")]
-    .map(normalize)
-    .join(" ");
-}
-
 function firstSource(sources: Set<string>): string | undefined {
   return sources.values().next().value;
 }
@@ -123,21 +120,93 @@ export function mealPlanLunchFamily(item: MealPlanVarietyItem): string | undefin
 }
 
 /**
- * Firma concettuale dei pranzi: carboidrato/famiglia + base + proteina.
+ * Base/preparazione del pranzo: famiglia + condimento o tecnica principale.
+ * È deliberatamente distinta dalla firma completa, così "pasta al pomodoro
+ * con tonno" e "pasta al pomodoro con pollo" restano la stessa base.
+ */
+export function mealPlanLunchBase(item: MealPlanVarietyItem): string | undefined {
+  const family = mealPlanLunchFamily(item);
+  if (!family) return undefined;
+  // La base appartiene al piatto dichiarato, non alla lista completa degli
+  // ingredienti: pomodori o insalata come contorno non devono cambiare una
+  // pasta al pesto in una pasta al pomodoro o in un'insalata.
+  const text = normalize(item.title || "");
+  const base = /\b(?:pomodoro|pomodori|passata|sugo)\b/.test(text)
+    ? "pomodoro"
+    : /\b(?:pesto)\b/.test(text)
+      ? "pesto"
+      : /\b(?:zuppa|minestra|minestrone|vellutata)\b/.test(text)
+        ? "zuppa"
+        : /\binsalata\b/.test(text)
+          ? "insalata"
+          : /\b(?:forno|gratina(?:to|ta)?)\b/.test(text)
+            ? "forno"
+            : "preparazione semplice";
+  return `${family} + ${base}`;
+}
+
+/**
+ * Firma concettuale dei pranzi: famiglia + base/preparazione + proteina.
  * Aromi, olio, insalata e verdure di contorno non cambiano la firma.
  */
 export function mealPlanLunchSignature(item: MealPlanVarietyItem): string | undefined {
-  const family = mealPlanLunchFamily(item);
-  if (!family) return undefined;
-  const text = itemText(item);
-  const base = /\b(?:pomodoro|pomodori|passata|sugo)\b/.test(text)
-    ? "pomodoro"
-    : /\b(?:zuppa|minestra|minestrone|vellutata)\b/.test(text)
-      ? "zuppa"
-      : /\binsalata\b/.test(text)
-        ? "insalata"
-        : "preparazione semplice";
-  return `${family} + ${base} + ${firstSource(proteinSources(item)) || "senza proteina identificata"}`;
+  const base = mealPlanLunchBase(item);
+  if (!base) return undefined;
+  return `${base} + ${firstSource(proteinSources(item)) || "senza proteina identificata"}`;
+}
+
+type LunchFamilyDefinition = {
+  family: string;
+  available: (normalizedIngredients: string[]) => boolean;
+};
+
+const LUNCH_FAMILY_ROTATION: LunchFamilyDefinition[] = [
+  { family: "pasta", available: (items) => items.some((item) => /\bpasta\b/.test(item)) },
+  { family: "risotto/riso", available: (items) => items.some((item) => /\briso\b/.test(item)) },
+  { family: "piatto di legumi", available: (items) => items.some((item) => /\b(?:ceci|lenticchie|fagioli|piselli)\b/.test(item)) },
+  { family: "couscous", available: (items) => items.some((item) => /\bcouscous\b/.test(item)) },
+  { family: "cereale in chicco", available: (items) => items.some((item) => /\b(?:farro|orzo|cereali)\b/.test(item)) },
+  { family: "patate/polenta", available: (items) => items.some((item) => /\b(?:patate?|polenta)\b/.test(item)) },
+  { family: "quinoa", available: (items) => items.some((item) => /\bquinoa\b/.test(item)) },
+  { family: "zuppa", available: (items) => items.some((item) => /\b(?:ceci|lenticchie|fagioli|piselli)\b/.test(item)) },
+  { family: "insalata di cereali/piatto freddo", available: (items) =>
+    items.some((item) => /\b(?:riso|cereali|quinoa|couscous)\b/.test(item)) },
+  { family: "pane/piadina", available: (items) => items.some((item) => /\b(?:pane|piadina)\b/.test(item)) },
+];
+
+/**
+ * Pianifica prima le famiglie dei pranzi, senza usare il modello. Le famiglie
+ * provengono solo dal pool già filtrato a monte dagli stessi vincoli alimentari.
+ * Con almeno quattro alternative, la prima rotazione di sette giorni privilegia
+ * famiglie diverse; se il pool è ristretto, ripete in modo bilanciato.
+ */
+export function planMealPlanLunchFamilies(
+  ingredientNames: string[],
+  days = 7,
+  rotationOffset = 0,
+): Array<string | undefined> {
+  const normalizedIngredients = ingredientNames.map(normalize);
+  const available = LUNCH_FAMILY_ROTATION
+    .filter((entry) => entry.available(normalizedIngredients))
+    .map((entry) => entry.family);
+  if (available.length === 0 || days <= 0) return Array.from({ length: Math.max(0, days) });
+
+  // La settimana standard ha sette pranzi: quando il pool offre ulteriori
+  // famiglie opzionali (zuppa, insalata, pane), completa prima una rotazione
+  // delle sette famiglie primarie. Questo mantiene Piano A e Piano B coerenti
+  // pur lasciando il degrado bilanciato ai pool realmente più piccoli.
+  const primaryFamilies = available.slice(0, Math.min(days, available.length));
+  const rotated = primaryFamilies.map((_, index) =>
+    primaryFamilies[(index + rotationOffset) % primaryFamilies.length]!);
+  const counts = new Map<string, number>();
+  const targets: string[] = [];
+  for (let dayIndex = 0; dayIndex < days; dayIndex++) {
+    const minimumCount = Math.min(...rotated.map((family) => counts.get(family) || 0));
+    const target = rotated.find((family) => (counts.get(family) || 0) === minimumCount)!;
+    counts.set(target, (counts.get(target) || 0) + 1);
+    targets.push(target);
+  }
+  return targets;
 }
 
 function countSources(
@@ -174,6 +243,7 @@ export function evaluateMealPlanVariety(
   const proteinCounts = countSources(mainMeals, proteinSources);
   const lunches = items.filter((item) => item.mealType === "lunch");
   const lunchFamilyCounts = countValues(lunches.map(mealPlanLunchFamily));
+  const lunchBaseCounts = countValues(lunches.map(mealPlanLunchBase));
   const lunchSignatureCounts = countValues(lunches.map(mealPlanLunchSignature));
   const lunchCarbohydrateCounts = countSources(lunches, carbohydrateSources);
   const lunchProteinCounts = countSources(lunches, proteinSources);
@@ -208,6 +278,12 @@ export function evaluateMealPlanVariety(
       count: Object.keys(lunchFamilyCounts).length,
     });
   }
+  for (const [source, count] of Object.entries(lunchFamilyCounts)) {
+    if (count > 3) issues.push({ code: "excessive_lunch_family", source, count });
+  }
+  for (const [source, count] of Object.entries(lunchBaseCounts)) {
+    if (count > 2) issues.push({ code: "repeated_lunch_base", source, count });
+  }
   for (const [source, count] of Object.entries(lunchSignatureCounts)) {
     if (count > 2) issues.push({ code: "repeated_lunch_pattern", source, count });
   }
@@ -234,6 +310,7 @@ export function evaluateMealPlanVariety(
     distinctCarbohydrateSources,
     lunchCount: lunches.length,
     lunchFamilyCounts,
+    lunchBaseCounts,
     lunchSignatureCounts,
     lunchCarbohydrateCounts,
     lunchProteinCounts,
@@ -246,6 +323,17 @@ function compactCounts(counts: Record<string, number>): string {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([source, count]) => `${source} (${count})`)
     .join(", ");
+}
+
+function avoidNext(
+  counts: Record<string, number>,
+  limit: number,
+): string {
+  return Object.entries(counts)
+    .filter(([, count]) => count >= limit)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([source]) => source)
+    .join(", ") || "nessuno ancora";
 }
 
 /**
@@ -261,13 +349,17 @@ export function buildMealPlanVarietyContext(
   const carbs = compactCounts(evaluation.carbohydrateCounts) || "nessuna ancora";
   const proteins = compactCounts(evaluation.proteinCounts) || "nessuna ancora";
   const lunchFamilies = compactCounts(evaluation.lunchFamilyCounts) || "nessuna ancora";
+  const lunchBases = compactCounts(evaluation.lunchBaseCounts) || "nessuna ancora";
   const lunchSignatures = compactCounts(evaluation.lunchSignatureCounts) || "nessuno ancora";
   const lunchCarbs = compactCounts(evaluation.lunchCarbohydrateCounts) || "nessuno ancora";
   const lunchProteins = compactCounts(evaluation.lunchProteinCounts) || "nessuna ancora";
   return `
 - CONTESTO VARIETÀ DEI GIORNI GIÀ GENERATI: carboidrati principali usati: ${carbs}; proteine principali usate: ${proteins}.
 - PRANZI GIÀ USATI (firme concettuali): ${lunchSignatures}.
-- FAMIGLIE PRANZO GIÀ USATE: ${lunchFamilies}. Carboidrati pranzo: ${lunchCarbs}. Proteine pranzo: ${lunchProteins}.
+- LUNCH FAMILY COUNTS: ${lunchFamilies}.
+- LUNCH BASE COUNTS: ${lunchBases}.
+- LUNCH PROTEIN COUNTS: ${lunchProteins}. Carboidrati pranzo: ${lunchCarbs}.
+- AVOID NEXT: ${avoidNext(evaluation.lunchFamilyCounts, 3)}, ${avoidNext(evaluation.lunchBaseCounts, 2)}, ${avoidNext(evaluation.lunchProteinCounts, 2)}.
 - EVITA una firma di pranzo già usata, in particolare la stessa base con la stessa proteina: cambiare solo olio, erbe, insalata o un contorno non crea un pranzo nuovo.
 - Per questo giorno, quando compatibile con tutti i vincoli, scegli una fonte di carboidrati e una proteina meno presenti. Non alterare mai gli ingredienti richiesti dai vincoli di sicurezza.`;
 }
