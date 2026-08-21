@@ -8,6 +8,7 @@
 - [Backend testing approach](backend-testing.md) — no test runner configured; run `npx tsx server/__tests__/*.test.ts` with node:test, no package.json edits.
 - [Express 5 + TS params](express5-typescript.md) — req.params/query are string|string[] in @types/express 5; use server/lib/http-params helpers; Drizzle numeric/enum/NOT-NULL insert gotchas
 - [AI hardening conventions](ai-hardening-conventions.md) — OpenAI fns: assertAiConfigured + typed mapOpenAiError; per-family quota counts ALL attempts (reserve/finalize, advisory-lock atomic, fail-closed); frontend lib/ai-error-message.ts
+- [AI provider routing](ai-provider-routing.md) — direct OpenAI is an admin-only per-request pilot; non-admins and background work stay on Replit Managed AI.
 - [Premium / freemium model](premium-gating.md) — isPremium(familyId) from entitlements is the ONLY source of truth (fail-closed); subscriptionStatus is a mirror; AI freemium by per-plan quota; acquisti via RevenueCat (vedi revenuecat-premium.md), Stripe dormant.
 - [Stripe payments conventions](stripe-payments-conventions.md) — subscriptions are family-scoped; never trust client priceId (resolve server-side); webhooks must reconcile the families table; Stripe stays dormant and must NOT unlock mobile premium (entitlements do).
 - [RevenueCat Premium (FamilySync)](revenuecat-premium.md) — Premium store-native via RevenueCat: client non decide, backend sync /api/purchases/sync -> tabella entitlements; ruolo admin; webhook fail-closed in prod.

@@ -2,7 +2,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { aiUsage } from "../../shared/schema";
 import { logger } from "./logger";
-import { assertAiConfigured } from "./ai-errors";
+import { assertAiConfigured, type AiProvider } from "./ai-errors";
 import { getPlanForFamily, isOwnerPremiumFamily, type Plan } from "./entitlements";
 
 export type AiFeature =
@@ -251,8 +251,9 @@ export async function reserveAiSlot(
   userId: string,
   familyId: string,
   feature: AiFeature,
+  provider: AiProvider = "replit_managed",
 ): Promise<ReserveResult> {
-  assertAiConfigured();
+  assertAiConfigured(provider);
   // La quota dipende SOLO dal piano della famiglia (free/premium): il ruolo
   // famiglia (admin incluso) NON modifica mai le quote AI. Eventuali account
   // VIP/tester ottengono quote premium tramite gli entitlements, non dal ruolo.
@@ -285,10 +286,15 @@ export type AiUsageRun<T> =
  * fallback locale senza chiamare OpenAI.
  */
 export async function withAiUsage<T>(
-  ctx: { userId: string; familyId: string; feature: AiFeature },
+  ctx: { userId: string; familyId: string; feature: AiFeature; provider?: AiProvider },
   fn: () => Promise<T>,
 ): Promise<AiUsageRun<T>> {
-  const reservation = await reserveAiSlot(ctx.userId, ctx.familyId, ctx.feature);
+  const reservation = await reserveAiSlot(
+    ctx.userId,
+    ctx.familyId,
+    ctx.feature,
+    ctx.provider,
+  );
   if (reservation.status === "limited") {
     return {
       outcome: "limited",

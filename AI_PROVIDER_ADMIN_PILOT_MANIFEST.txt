@@ -1,0 +1,14 @@
+FamilySync — AI Provider Admin Pilot / Fase 1
+
+Contenuto di consegna:
+- Implementazione provider per ruolo admin sul server
+- Client OpenAI separati per provider
+- Quote e budget Piano Pasti invariati (massimo 28 chiamate)
+- Test mock del pilot e del job background
+- AI_PROVIDER_ADMIN_PILOT_REPORT.md
+
+Esclusioni deliberate:
+- Nessuna modifica a Secrets o variabili d'ambiente
+- Nessuna migrazione database
+- Nessuna modifica UI/mobile, prompt, modelli, pagamenti o diete
+- Nessun deploy

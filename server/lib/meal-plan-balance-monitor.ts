@@ -79,10 +79,17 @@ export async function runMealPlanBalanceEvalOnce(options?: {
   const results: MealPlanBalanceRunResult[] = [];
 
   for (let run = 1; run <= runs; run++) {
+    logger.info('AI provider selected', {
+      event: 'ai_provider_selected',
+      provider: 'replit_managed',
+      operation: 'meal-plan-balance-monitor',
+      userRole: 'background',
+    });
     const plan: MealPlanSuggestion = await generate({
       familySize: 4,
       weekStartDate,
       preferences: { diet: 'Mediterranea', mealsPerDay: 3 },
+      provider: 'replit_managed',
     });
 
     const report = analyzeMediterraneanBalance(plan.items);

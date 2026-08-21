@@ -35,6 +35,7 @@ zip -r "$OUT" . \
   -x "*.private.*" \
   -x "docs/tester-accounts.pdf" \
   -x ".cache/*" -x ".upm/*" -x ".config/*" \
+  -x ".pythonlibs/*" \
   -x ".DS_Store"
 
 # Scansione di sicurezza 1: nomi file sensibili nello ZIP.

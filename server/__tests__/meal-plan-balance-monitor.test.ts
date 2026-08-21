@@ -103,6 +103,18 @@ test("runs viene limitato tra 1 e 5", async () => {
   assert.equal(calls, 1);
 });
 
+test("il job di bilanciamento fissa esplicitamente Replit Managed AI", async () => {
+  let provider: string | undefined;
+  await runMealPlanBalanceEvalOnce({
+    weekStartDate: WEEK_START,
+    generate: async (context) => {
+      provider = context.provider;
+      return balancedPlan() as never;
+    },
+  });
+  assert.equal(provider, "replit_managed");
+});
+
 test("nextMondayIso restituisce sempre un lunedì futuro", () => {
   const iso = nextMondayIso(new Date("2026-08-02T10:00:00Z")); // domenica
   assert.equal(iso, "2026-08-03");

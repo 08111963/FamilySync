@@ -10,6 +10,8 @@ export type AiErrorCode =
   | "AI_MODEL_CALL_BUDGET_EXHAUSTED"
   | "AI_PROVIDER_ERROR";
 
+export type AiProvider = "openai_direct" | "replit_managed";
+
 const USER_MESSAGES: Record<AiErrorCode, string> = {
   AI_NOT_CONFIGURED: "Le funzioni AI non sono al momento disponibili. Riprova più tardi.",
   AI_RATE_LIMITED: "Hai raggiunto il limite giornaliero per questa funzione AI. Riprova domani.",
@@ -54,16 +56,26 @@ export function isAiError(err: unknown): err is AiError {
   return err instanceof AiError;
 }
 
+/** Il pilot consente l'API diretta solo a una membership familiare admin. */
+export function resolveAiProviderForUserRole(role: string | undefined): AiProvider {
+  return role === "admin" && Boolean(process.env.OPENAI_API_KEY?.trim())
+    ? "openai_direct"
+    : "replit_managed";
+}
+
 /**
- * Risolve la chiave OpenAI da usare: preferisce OPENAI_API_KEY (account
- * personale) e ricade sull'integrazione Replit (AI_INTEGRATIONS_*).
- * Ritorna anche il baseURL da usare (solo per l'integrazione Replit).
+ * Risolve una configurazione per provider esplicito. Non esiste alcun fallback
+ * globale: l'assenza della chiave diretta non può spostare utenti o job verso
+ * OpenAI personale. I chiamanti admin ricevono già il fallback Replit tramite
+ * resolveAiProviderForUserRole().
  */
-export function resolveOpenAiConfig(): { apiKey: string | undefined; baseURL: string | undefined } {
-  const personalKey = process.env.OPENAI_API_KEY?.trim();
-  if (personalKey) {
-    // Chiave personale: sempre endpoint ufficiale OpenAI, mai il gateway Replit.
-    return { apiKey: personalKey, baseURL: undefined };
+export function resolveOpenAiConfig(provider: AiProvider = "replit_managed"): { apiKey: string | undefined; baseURL: string | undefined } {
+  if (provider === "openai_direct") {
+    return {
+      apiKey: process.env.OPENAI_API_KEY?.trim() || undefined,
+      // Senza baseURL l'SDK usa esclusivamente l'endpoint ufficiale OpenAI.
+      baseURL: undefined,
+    };
   }
   return {
     apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY?.trim() || undefined,
@@ -71,10 +83,15 @@ export function resolveOpenAiConfig(): { apiKey: string | undefined; baseURL: st
   };
 }
 
-export function assertAiConfigured(): void {
-  const { apiKey } = resolveOpenAiConfig();
+export function assertAiConfigured(provider: AiProvider = "replit_managed"): void {
+  const { apiKey } = resolveOpenAiConfig(provider);
   if (!apiKey) {
-    throw new AiError("AI_NOT_CONFIGURED", "Nessuna chiave OpenAI configurata (OPENAI_API_KEY o AI_INTEGRATIONS_OPENAI_API_KEY)");
+    throw new AiError(
+      "AI_NOT_CONFIGURED",
+      provider === "openai_direct"
+        ? "OPENAI_API_KEY non configurata"
+        : "AI_INTEGRATIONS_OPENAI_API_KEY non configurata",
+    );
   }
 }
 

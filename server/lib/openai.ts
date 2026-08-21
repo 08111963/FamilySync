@@ -1,7 +1,13 @@
 import OpenAI, { toFile } from 'openai';
 import { z } from 'zod';
 import { normalizeItemName } from './normalize';
-import { AiError, assertAiConfigured, mapOpenAiError, resolveOpenAiConfig } from './ai-errors';
+import {
+  AiError,
+  assertAiConfigured,
+  mapOpenAiError,
+  resolveOpenAiConfig,
+  type AiProvider,
+} from './ai-errors';
 import {
   buildMealPlanConstraintPrompt,
   hasMealPlanConstraints,
@@ -25,32 +31,38 @@ import {
 
 // Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
 // SDK lancia se la chiave manca, e ciò impedirebbe l'avvio del server.
-// getOpenAiClient() verifica la presenza della chiave (assertAiConfigured) e
-// crea il client solo quando serve, riusando l'istanza alle chiamate successive.
-let openaiClient: OpenAI | null = null;
+// Ogni provider ha la propria cache: una richiesta admin non può riutilizzare
+// il client Replit di un altro utente (e viceversa). Il provider è passato
+// esplicitamente dalle rotte; il default è Replit per job/background.
+const openaiClients: Partial<Record<AiProvider, OpenAI>> = {};
 
-function getOpenAiClient(): OpenAI {
-  assertAiConfigured();
-  if (!openaiClient) {
-    const { apiKey, baseURL } = resolveOpenAiConfig();
-    openaiClient = new OpenAI({
+function getOpenAiClient(provider: AiProvider = "replit_managed"): OpenAI {
+  assertAiConfigured(provider);
+  if (!openaiClients[provider]) {
+    const { apiKey, baseURL } = resolveOpenAiConfig(provider);
+    openaiClients[provider] = new OpenAI({
       apiKey,
-      // baseURL solo per l'integrazione Replit; con chiave personale si usa
-      // l'endpoint ufficiale OpenAI.
       ...(baseURL ? { baseURL } : {}),
       timeout: 60_000,
       maxRetries: 1,
     });
   }
-  return openaiClient;
+  return openaiClients[provider]!;
 }
 
 /**
  * SOLO PER I TEST: inietta un client fittizio per evitare chiamate reali
  * all'API OpenAI. Passare null per ripristinare il comportamento normale.
  */
-export function __setOpenAiClientForTest(client: unknown): void {
-  openaiClient = client as OpenAI | null;
+export function __setOpenAiClientForTest(
+  client: unknown,
+  provider: AiProvider = "replit_managed",
+): void {
+  if (client) {
+    openaiClients[provider] = client as OpenAI;
+  } else {
+    delete openaiClients[provider];
+  }
 }
 
 export type SuggestionCategory = 'food' | 'household_cleaning' | 'personal_care' | 'other';
@@ -80,6 +92,7 @@ export async function generateShoppingSuggestions(context: {
   completedRecently: string[];
   recentSuggestions: string[];
   pantryItems?: string[];
+  provider?: AiProvider;
 }): Promise<{ items: ShoppingSuggestionItem[] }> {
   const allForbidden = [
     ...context.recentPurchases,
@@ -96,9 +109,9 @@ export async function generateShoppingSuggestions(context: {
 
   const randomSeed = Math.floor(Math.random() * 100000);
 
-  assertAiConfigured();
+  assertAiConfigured(context.provider);
   try {
-    const response = await getOpenAiClient().chat.completions.create({
+    const response = await getOpenAiClient(context.provider).chat.completions.create({
       model: 'gpt-5-mini',
       reasoning_effort: 'minimal',
       messages: [{
@@ -135,10 +148,11 @@ Genera 12 prodotti da supermercato NUOVI e DIVERSI da quelli vietati.`,
 export async function optimizeChoreSchedule(context: {
   members: Array<{ id: string; name: string; points: number; }>;
   chores: Array<{ id: string; title: string; estimatedMinutes: number; }>;
+  provider?: AiProvider;
 }) {
-  assertAiConfigured();
+  assertAiConfigured(context.provider);
   try {
-    const response = await getOpenAiClient().chat.completions.create({
+    const response = await getOpenAiClient(context.provider).chat.completions.create({
       model: 'gpt-5-mini',
       reasoning_effort: 'minimal',
       messages: [{
@@ -409,6 +423,7 @@ export async function generateRecipeSuggestions(context: {
   lastRecipeTitles?: string[];
   count?: number;
   pantryIngredients?: string[];
+  provider?: AiProvider;
 }, onBatch?: (recipes: RecipeSuggestion[]) => void): Promise<{ recipes: RecipeSuggestion[] }> {
   const count = context.count || 8;
   const randomSeed = Math.floor(Math.random() * 100000);
@@ -453,7 +468,7 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
 
     const userMsg = `${seed} ${context.familySize}pers${dietText}${allergyText}${timeText}${cuisineText}${excludeText}${pantryText}${lastTitlesText}`;
 
-    const response = await getOpenAiClient().chat.completions.create({
+    const response = await getOpenAiClient(context.provider).chat.completions.create({
       model: 'gpt-5-mini',
       reasoning_effort: 'minimal',
       messages: [
@@ -477,7 +492,7 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
     return parseRecipesResponse(parsed);
   }
 
-  assertAiConfigured();
+  assertAiConfigured(context.provider);
   try {
     const startTime = Date.now();
     // Primo batch da 1 sola ricetta: l'utente vede il primo risultato in
@@ -536,13 +551,14 @@ Categorie:${catList}. Quantity stringa. INVENTA piatti ORIGINALI e DIVERSI ogni 
 export async function searchRecipesByQuery(query: string, context: {
   familySize: number;
   excludeTitles?: string[];
+  provider?: AiProvider;
 }): Promise<{ recipes: RecipeSuggestion[] }> {
   const randomSeed = Math.floor(Math.random() * 100000);
   const excludeList = (context.excludeTitles || []).slice(-30);
   const excludeLine = excludeList.length > 0
     ? ` Evita di riproporre queste ricette già mostrate: ${excludeList.join(', ')}.`
     : '';
-  assertAiConfigured();
+  assertAiConfigured(context.provider);
   try {
     const startTime = Date.now();
     // 3 chiamate in parallelo da 1 ricetta ciascuna invece di 1 chiamata da 3:
@@ -558,7 +574,7 @@ export async function searchRecipesByQuery(query: string, context: {
       'una versione CREATIVA o regionale insolita, con TECNICA DI COTTURA DIVERSA dalla classica (es. al forno/gratinata, fredda, ripiena, in padella): sorprendi senza uscire dal tema',
     ];
     const fetchOne = async (style: string, seed: number): Promise<RecipeSuggestion[]> => {
-      const response = await getOpenAiClient().chat.completions.create({
+      const response = await getOpenAiClient(context.provider).chat.completions.create({
         model: 'gpt-5-mini',
         reasoning_effort: 'minimal',
         messages: [
@@ -664,6 +680,8 @@ export interface MealPlanConstraintAttemptReport {
 }
 interface MealPlanGenerationContext {
   familySize: number;
+  /** Scelto dalla rotta per l'utente; i job senza utente restano Replit. */
+  provider?: AiProvider;
 
   weekStartDate: string;
 
@@ -1645,7 +1663,7 @@ ${constrainedRecipeReferenceRule}
 
     reserveMealPlanModelCall(context.modelCallBudget);
     modelCallsStarted++;
-    const response = await getOpenAiClient().chat.completions.create({
+    const response = await getOpenAiClient(context.provider).chat.completions.create({
       model: 'gpt-5-mini',
       reasoning_effort: 'minimal',
       messages: [
@@ -1666,7 +1684,7 @@ ${constrainedRecipeReferenceRule}
     return parseMealItems(parsed);
   }
 
-  assertAiConfigured();
+  assertAiConfigured(context.provider);
   const validDates = new Set(dates);
 
   const aiStartTime = Date.now();
@@ -2112,10 +2130,11 @@ export async function generateFamilyInsights(context: {
   pendingChores: number;
   topContributor: string;
   weeklyPoints: number;
+  provider?: AiProvider;
 }) {
-  assertAiConfigured();
+  assertAiConfigured(context.provider);
   try {
-    const response = await getOpenAiClient().chat.completions.create({
+    const response = await getOpenAiClient(context.provider).chat.completions.create({
       model: 'gpt-5-mini',
       reasoning_effort: 'minimal',
       messages: [{
@@ -2145,10 +2164,11 @@ export async function generateBudgetInsights(context: {
   categories: Array<{ category: string; total: number; count: number }>;
   budgets: Array<{ category: string; monthlyLimit: number }>;
   trend: Array<{ month: string; total: number }>;
+  provider?: AiProvider;
 }) {
-  assertAiConfigured();
+  assertAiConfigured(context.provider);
   try {
-    const response = await getOpenAiClient().chat.completions.create({
+    const response = await getOpenAiClient(context.provider).chat.completions.create({
       model: 'gpt-5-mini',
       reasoning_effort: 'minimal',
       messages: [{
@@ -2240,8 +2260,9 @@ export async function transcribeAudio(input: {
   context?: string;
   /** Durata della registrazione in millisecondi, misurata dal client. */
   durationMs?: number;
+  provider?: AiProvider;
 }): Promise<{ text: string }> {
-  assertAiConfigured();
+  assertAiConfigured(input.provider);
   try {
     const file = await toFile(input.buffer, input.filename, { type: input.mimeType });
     // Il prompt orienta il modello sul lessico atteso (italiano, dominio famiglia)
@@ -2268,7 +2289,7 @@ export async function transcribeAudio(input: {
       ? (input.durationMs as number) < SHORT_CLIP_MAX_DURATION_MS
       : input.buffer.length < SHORT_CLIP_MAX_BYTES; // fallback: ~2-3s di voce compressa
     const sentPrompt = isShortClip ? baseHint : (extra ? `${baseHint} ${extra}` : baseHint);
-    const response = await getOpenAiClient().audio.transcriptions.create({
+    const response = await getOpenAiClient(input.provider).audio.transcriptions.create({
       file,
       model: 'gpt-4o-transcribe',
       language: 'it',
@@ -2292,15 +2313,16 @@ export async function transcribeAudio(input: {
 export async function generateRecipeImage(input: {
   title: string;
   description?: string;
+  provider?: AiProvider;
 }): Promise<Buffer> {
-  assertAiConfigured();
+  assertAiConfigured(input.provider);
   try {
     const details = input.description ? ` ${input.description}` : '';
     const prompt =
       `Fotografia food professionale del piatto italiano "${input.title}".${details} ` +
       `Piatto ben impiattato su un tavolo, luce naturale, inquadratura dall'alto leggermente angolata, ` +
       `sfondo semplice e pulito, aspetto appetitoso e realistico. Nessun testo, nessuna scritta, nessuna persona.`;
-    const response = await getOpenAiClient().images.generate({
+    const response = await getOpenAiClient(input.provider).images.generate({
       model: 'gpt-image-1',
       prompt,
       n: 1,
@@ -2346,11 +2368,12 @@ export async function parseEventFromText(input: {
   todayIso: string;
   weekdayName: string;
   memberNames?: string[];
+  provider?: AiProvider;
 }): Promise<ParsedEvent> {
-  assertAiConfigured();
+  assertAiConfigured(input.provider);
   const memberList = (input.memberNames ?? []).slice(0, 20).map((n) => n.slice(0, 60));
   try {
-    const response = await getOpenAiClient().chat.completions.create({
+    const response = await getOpenAiClient(input.provider).chat.completions.create({
       model: 'gpt-5-mini',
       reasoning_effort: 'minimal',
       messages: [{
@@ -2425,11 +2448,12 @@ export async function parseChoreFromText(input: {
   todayIso: string;
   weekdayName: string;
   memberNames?: string[];
+  provider?: AiProvider;
 }): Promise<ParsedChore> {
-  assertAiConfigured();
+  assertAiConfigured(input.provider);
   const memberList = (input.memberNames ?? []).slice(0, 20).map((n) => n.slice(0, 60));
   try {
-    const response = await getOpenAiClient().chat.completions.create({
+    const response = await getOpenAiClient(input.provider).chat.completions.create({
       model: 'gpt-5-mini',
       reasoning_effort: 'minimal',
       messages: [{
@@ -2491,10 +2515,13 @@ const parsedExpenseSchema = z.object({
 
 export type ParsedExpense = z.infer<typeof parsedExpenseSchema>;
 
-export async function parseExpenseFromText(text: string): Promise<ParsedExpense> {
-  assertAiConfigured();
+export async function parseExpenseFromText(
+  text: string,
+  provider: AiProvider = "replit_managed",
+): Promise<ParsedExpense> {
+  assertAiConfigured(provider);
   try {
-    const response = await getOpenAiClient().chat.completions.create({
+    const response = await getOpenAiClient(provider).chat.completions.create({
       model: 'gpt-5-mini',
       reasoning_effort: 'minimal',
       messages: [{
@@ -2580,11 +2607,12 @@ export async function parseAssistantActionsFromText(input: {
   todayIso: string;
   weekdayName: string;
   memberNames?: string[];
+  provider?: AiProvider;
 }): Promise<AssistantActions> {
-  assertAiConfigured();
+  assertAiConfigured(input.provider);
   const memberList = (input.memberNames ?? []).slice(0, 20).map((n) => n.slice(0, 60));
   try {
-    const response = await getOpenAiClient().chat.completions.create({
+    const response = await getOpenAiClient(input.provider).chat.completions.create({
       model: 'gpt-5-mini',
       // 'low' (non 'minimal'): l'assistente smista frasi complesse in più
       // azioni; un minimo di ragionamento riduce molto gli errori di

@@ -21,7 +21,12 @@ import { recipes, recipeIngredients } from '../../shared/schema';
 import { reserveAiSlot, finalizeAiUsage, withAiUsage } from '../lib/ai-usage';
 import type { Plan } from '../lib/entitlements';
 import { resolveMealPlanVariants } from '../lib/ai-policy';
-import { AiError, isAiError } from '../lib/ai-errors';
+import {
+  AiError,
+  isAiError,
+  resolveAiProviderForUserRole,
+  type AiProvider,
+} from '../lib/ai-errors';
 import { recipeImageCacheKey, createRecipeImagePrewarm } from '../lib/recipe-image-prewarm';
 import { isObjectStorageMode, persistUploadedFile, uploadObjectExists } from '../lib/upload-storage';
 import {
@@ -36,6 +41,29 @@ import {
 } from '../../shared/meal-plan-diet-profiles';
 
 const router = Router();
+
+type AiRequestContext = {
+  provider: AiProvider;
+  userRole: "admin" | "user";
+};
+
+/**
+ * Il ruolo arriva esclusivamente da requireFamilyMember() (DB), mai dal body.
+ * Il log usa solo campi allow-listed per diagnosticare il pilot senza
+ * trattenere prompt, chiavi, identificatori o dati familiari.
+ */
+function resolveAiRequestContext(req: Request, operation: string): AiRequestContext {
+  const membership = (req as Request & { membership?: { role?: string } }).membership;
+  const userRole = membership?.role === "admin" ? "admin" : "user";
+  const provider = resolveAiProviderForUserRole(membership?.role);
+  logger.info("AI provider selected", {
+    event: "ai_provider_selected",
+    provider,
+    operation,
+    userRole,
+  });
+  return { provider, userRole };
+}
 
 /** Mappa un AiError sul suo HTTP status + messaggio utente; altrimenti 500 generico. */
 /**
@@ -210,6 +238,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
   try {
     const familyId = getParam(req, 'familyId');
     const userId = req.user!.userId;
+    const ai = resolveAiRequestContext(req, "shopping-suggestions");
 
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
@@ -294,7 +323,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
     //   nessuna chiamata OpenAI (preferenza esplicita: niente costi non tracciabili).
     // - "ok": chiama OpenAI; sia il successo che il fallimento aggiornano il record
     //   (anche un fallimento ha consumato token).
-    const reservation = await reserveAiSlot(userId, familyId, 'shopping-suggestions');
+    const reservation = await reserveAiSlot(userId, familyId, 'shopping-suggestions', ai.provider);
     if (reservation.status === 'limited') {
       return sendRateLimited(res, reservation.max, reservation.window, reservation.plan);
     }
@@ -310,6 +339,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
           completedRecently,
           recentSuggestions,
           pantryItems: pantryNames,
+          provider: ai.provider,
         });
         await finalizeAiUsage(usageId, true);
       } catch (aiErr) {
@@ -507,6 +537,7 @@ router.get('/:familyId/shopping-suggestions', authenticate, requireAiEnabled, re
 router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "chore-optimization");
   try {
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
@@ -522,10 +553,11 @@ router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requ
     // mai i nomi reali dei familiari. L'AI risponde con gli id, quindi il
     // risultato resta corretto senza esporre dati personali.
     const run = await withAiUsage(
-      { userId, familyId, feature: 'chore-optimization' },
+      { userId, familyId, feature: 'chore-optimization', provider: ai.provider },
       () => optimizeChoreSchedule({
         members: members.map((m, i) => ({ id: m.id, name: `Membro ${i + 1}`, points: m.points || 0 })),
         chores: pendingChores.map(c => ({ id: c.id, title: c.title, estimatedMinutes: c.estimatedMinutes || 30 })),
+        provider: ai.provider,
       }),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
@@ -542,6 +574,7 @@ router.get('/:familyId/chore-optimization', authenticate, requireAiEnabled, requ
 router.post('/:familyId/budget-insights', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "budget-insights");
   try {
     const month = typeof req.body?.month === 'string' && /^\d{4}-\d{2}$/.test(req.body.month)
       ? req.body.month
@@ -557,13 +590,14 @@ router.post('/:familyId/budget-insights', authenticate, requireAiEnabled, requir
     }
 
     const run = await withAiUsage(
-      { userId, familyId, feature: 'budget-insights' },
+      { userId, familyId, feature: 'budget-insights', provider: ai.provider },
       () => generateBudgetInsights({
         month: summary.month,
         total: summary.total,
         categories: Object.entries(summary.categories).map(([category, v]) => ({ category, total: v.total, count: v.count })),
         budgets: summary.budgets,
         trend: summary.trend,
+        provider: ai.provider,
       }),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
@@ -596,6 +630,7 @@ router.get('/:familyId/insights', authenticate, requireFamilyMember(), async (re
 router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "family-insights");
   try {
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
@@ -619,13 +654,14 @@ router.post('/:familyId/insights/generate', authenticate, requireAiEnabled, requ
       (m.points || 0) > (top.points || 0) ? m : top, members[0]);
 
     const run = await withAiUsage(
-      { userId, familyId, feature: 'insights' },
+      { userId, familyId, feature: 'insights', provider: ai.provider },
       () => generateFamilyInsights({
         events: events.length,
         completedChores: completedChores.length,
         pendingChores: pendingChores.length,
         topContributor: topMember?.nickname || 'Nessuno',
         weeklyPoints: completedChores.reduce((sum, c) => sum + (c.points || 0), 0),
+        provider: ai.provider,
       }),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
@@ -696,6 +732,7 @@ async function sweepRecipeGenSessions() {
 router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "recipe-suggestions");
   try {
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
@@ -730,6 +767,7 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
       lastRecipeTitles,
       count: Math.min(count || 8, 20),
       pantryIngredients,
+      provider: ai.provider,
     };
 
     // Modalità incrementale: risponde subito con un generationId e genera in
@@ -781,7 +819,7 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
       let errorFields: { errorStatus?: number; errorBody?: unknown } = {};
       try {
         const run = await withAiUsage(
-          { userId, familyId, feature: 'recipe-suggestions' },
+          { userId, familyId, feature: 'recipe-suggestions', provider: ai.provider },
           async () => {
             // Registra la sessione SOLO dopo che la quota è stata prenotata,
             // poi rispondi subito: la generazione prosegue in background.
@@ -808,7 +846,7 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
     }
 
     const run = await withAiUsage(
-      { userId, familyId, feature: 'recipe-suggestions' },
+      { userId, familyId, feature: 'recipe-suggestions', provider: ai.provider },
       () => generateRecipeSuggestions(genContext),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
@@ -907,6 +945,7 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
   const startTime = Date.now();
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "weekly-meal-plan");
   try {
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
@@ -930,11 +969,12 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
     };
 
     const run = await withAiUsage(
-      { userId, familyId, feature: 'weekly-meal-plan' },
+      { userId, familyId, feature: 'weekly-meal-plan', provider: ai.provider },
       () => generateWeeklyMealPlan({
         ...context,
         planVariant: 1,
         maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+        provider: ai.provider,
       }),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
@@ -971,6 +1011,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
   const startTime = Date.now();
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "weekly-meal-plan-stream");
   const { weekStartDate, preferences, planVariant: rawPlanVariant } = req.body || {};
   const planVariant = rawPlanVariant === 2 ? 2 : 1;
 
@@ -1002,7 +1043,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
 
     // Prenotazione quota PRIMA di aprire lo stream: così su 429/503 possiamo
     // ancora rispondere con uno status HTTP (headers non ancora inviati).
-    const reservation = await reserveAiSlot(userId, familyId, 'weekly-meal-plan');
+    const reservation = await reserveAiSlot(userId, familyId, 'weekly-meal-plan', ai.provider);
     if (reservation.status === 'limited') {
       return sendRateLimited(res, reservation.max, reservation.window, reservation.plan);
     }
@@ -1034,6 +1075,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       planVariant,
       maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
       onStatus: writeStatus,
+      provider: ai.provider,
     });
     await finalizeUsageOnce(true);
 
@@ -1089,6 +1131,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
 router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "recipe-search");
   try {
     const { query, excludeTitles } = req.body || {};
 
@@ -1100,10 +1143,11 @@ router.post('/:familyId/recipe-search', authenticate, requireAiEnabled, requireF
     const extraTitles = Array.isArray(excludeTitles) ? excludeTitles.filter((t: unknown): t is string => typeof t === 'string') : [];
 
     const run = await withAiUsage(
-      { userId, familyId, feature: 'recipe-search' },
+      { userId, familyId, feature: 'recipe-search', provider: ai.provider },
       () => searchRecipesByQuery(query.trim(), {
         familySize: members.length || 1,
         excludeTitles: extraTitles,
+        provider: ai.provider,
       }),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
@@ -1197,6 +1241,7 @@ router.post('/:familyId/transcribe', authenticate, requireAiEnabled, requireFami
   audioUpload.single('audio')(req, res, async (uploadErr: unknown) => {
     const familyId = getParam(req, 'familyId');
     const userId = req.user!.userId;
+    const ai = resolveAiRequestContext(req, "voice-transcription");
     try {
       if (uploadErr) {
         const msg = uploadErr instanceof Error && uploadErr.message === 'UNSUPPORTED_AUDIO_TYPE'
@@ -1214,7 +1259,7 @@ router.post('/:familyId/transcribe', authenticate, requireAiEnabled, requireFami
 
       const mime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
       const run = await withAiUsage(
-        { userId, familyId, feature: 'voice-transcription' },
+        { userId, familyId, feature: 'voice-transcription', provider: ai.provider },
         () => transcribeAudio({
           buffer: file.buffer,
           filename: `voice.${audioExtension(mime)}`,
@@ -1225,6 +1270,7 @@ router.post('/:familyId/transcribe', authenticate, requireAiEnabled, requireFami
             const n = typeof raw === 'string' ? Number(raw) : typeof raw === 'number' ? raw : NaN;
             return Number.isFinite(n) && n > 0 && n < 10 * 60_000 ? n : undefined;
           })(),
+          provider: ai.provider,
         }),
       );
       if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
@@ -1243,6 +1289,7 @@ router.post('/:familyId/transcribe', authenticate, requireAiEnabled, requireFami
 router.post('/:familyId/parse-event', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "event-parse");
   try {
     const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
     if (!text) {
@@ -1261,8 +1308,8 @@ router.post('/:familyId/parse-event', authenticate, requireAiEnabled, requireFam
     const memberNames = members.map(m => m.nickname).filter((n): n is string => !!n);
 
     const run = await withAiUsage(
-      { userId, familyId, feature: 'event-parse' },
-      () => parseEventFromText({ text, todayIso, weekdayName, memberNames }),
+      { userId, familyId, feature: 'event-parse', provider: ai.provider },
+      () => parseEventFromText({ text, todayIso, weekdayName, memberNames, provider: ai.provider }),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
@@ -1297,6 +1344,7 @@ router.post('/:familyId/parse-event', authenticate, requireAiEnabled, requireFam
 router.post('/:familyId/assistant-parse', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "assistant-parse");
   try {
     const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
     if (!text) {
@@ -1315,8 +1363,8 @@ router.post('/:familyId/assistant-parse', authenticate, requireAiEnabled, requir
     const memberNames = members.map(m => m.nickname).filter((n): n is string => !!n);
 
     const run = await withAiUsage(
-      { userId, familyId, feature: 'assistant-parse' },
-      () => parseAssistantActionsFromText({ text, todayIso, weekdayName, memberNames }),
+      { userId, familyId, feature: 'assistant-parse', provider: ai.provider },
+      () => parseAssistantActionsFromText({ text, todayIso, weekdayName, memberNames, provider: ai.provider }),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
@@ -1345,6 +1393,7 @@ router.post('/:familyId/assistant-parse', authenticate, requireAiEnabled, requir
 router.post('/:familyId/parse-chore', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "chore-parse");
   try {
     const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
     if (!text) {
@@ -1362,8 +1411,8 @@ router.post('/:familyId/parse-chore', authenticate, requireAiEnabled, requireFam
     const memberNames = members.map(m => m.nickname).filter((n): n is string => !!n);
 
     const run = await withAiUsage(
-      { userId, familyId, feature: 'chore-parse' },
-      () => parseChoreFromText({ text, todayIso, weekdayName, memberNames }),
+      { userId, familyId, feature: 'chore-parse', provider: ai.provider },
+      () => parseChoreFromText({ text, todayIso, weekdayName, memberNames, provider: ai.provider }),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
@@ -1389,6 +1438,7 @@ router.post('/:familyId/parse-chore', authenticate, requireAiEnabled, requireFam
 router.post('/:familyId/parse-expense', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "expense-parse");
   try {
     const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
     if (!text) {
@@ -1399,8 +1449,8 @@ router.post('/:familyId/parse-expense', authenticate, requireAiEnabled, requireF
     }
 
     const run = await withAiUsage(
-      { userId, familyId, feature: 'expense-parse' },
-      () => parseExpenseFromText(text),
+      { userId, familyId, feature: 'expense-parse', provider: ai.provider },
+      () => parseExpenseFromText(text, ai.provider),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
@@ -1458,15 +1508,28 @@ function startRecipeImageGeneration(params: {
   description?: string;
   userId: string;
   familyId: string;
+  /** Omitted by prewarm/background callers, which must remain on Replit. */
+  provider?: AiProvider;
+  userRole?: AiRequestContext["userRole"] | "background";
 }): { run: Promise<RecipeImageRun>; isLeader: boolean } {
   const { key, filePath, title, description, userId, familyId } = params;
-  let task = inFlightRecipeImages.get(key);
+  const provider = params.provider ?? "replit_managed";
+  // Non condividere un run tra provider: un prewarm/job non può ereditare
+  // accidentalmente il client diretto di una richiesta admin.
+  const providerKey = `${provider}:${key}`;
+  let task = inFlightRecipeImages.get(providerKey);
   const isLeader = !task;
   if (!task) {
+    logger.info("AI provider selected", {
+      event: "ai_provider_selected",
+      provider,
+      operation: "recipe-image",
+      userRole: params.userRole ?? "background",
+    });
     task = (async () => {
       const run = await withAiUsage(
-        { userId, familyId, feature: 'recipe-image' as const },
-        () => generateRecipeImage({ title, description }),
+        { userId, familyId, feature: 'recipe-image' as const, provider },
+        () => generateRecipeImage({ title, description, provider }),
       );
       if (run.outcome === 'ok') {
         // Ridimensiona e comprime (1024px PNG ~1.5MB -> 512px WebP ~35KB).
@@ -1495,9 +1558,9 @@ function startRecipeImageGeneration(params: {
       }
       return run;
     })();
-    inFlightRecipeImages.set(key, task);
+    inFlightRecipeImages.set(providerKey, task);
     // Rimuovi la entry quando il run termina (successo o errore).
-    task.catch(() => undefined).finally(() => inFlightRecipeImages.delete(key));
+    task.catch(() => undefined).finally(() => inFlightRecipeImages.delete(providerKey));
   }
   return { run: task, isLeader };
 }
@@ -1553,6 +1616,7 @@ router.post('/:familyId/recipe-images/resolve', authenticate, requireAiEnabled, 
 router.post('/:familyId/recipe-image', authenticate, requireAiEnabled, requireFamilyMember(), async (req: Request, res: Response) => {
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
+  const ai = resolveAiRequestContext(req, "recipe-image");
   try {
     const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
     const description = typeof req.body?.description === 'string' ? req.body.description.trim().slice(0, 300) : undefined;
@@ -1573,7 +1637,10 @@ router.post('/:familyId/recipe-image', authenticate, requireAiEnabled, requireFa
     // Se una generazione per la stessa ricetta è già in corso (anche dal
     // prewarm in background), condividila: i follower ricevono lo stesso
     // esito reale del leader, senza consumare quota.
-    const { run: task, isLeader } = startRecipeImageGeneration({ key, filePath, title, description, userId, familyId });
+    const { run: task, isLeader } = startRecipeImageGeneration({
+      key, filePath, title, description, userId, familyId,
+      provider: ai.provider, userRole: ai.userRole,
+    });
 
     const run = await task;
 
