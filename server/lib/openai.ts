@@ -999,14 +999,18 @@ function buildConstraintCorrection(
     ? `
 - VINCOLO LATTOSIO: ricrea il piano con ingredienti naturalmente privi di latticini. Non scrivere mai lattosio, latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone in titolo, descrizione, ingredienti o passaggi, neppure con formule come "senza lattosio". Per la colazione usa solo bevande vegetali dichiarate (di riso o di cocco), frutta, pane o gallette e marmellata; per pranzo e cena usa pasta di semola, riso, patate, legumi, carne, pesce, uova e verdure compatibili.`
     : "";
+  const hasLactoseViolation = violations.some((violation) => violation.code === "lactose");
   const exactCorrection = `
 - Non scrivere gli alimenti o i termini rilevati come incompatibili in nessun campo del nuovo piano, nemmeno come esempio o descrizione.
 - Sostituisci ogni componente incompatibile con un ingrediente di tipo diverso e compatibile con tutti i vincoli indicati.`;
+  const correctionIngredientRule = hasLactoseViolation
+    ? "- Ricrea TUTTI i pasti da zero con soli ingredienti naturalmente compatibili, senza dichiarazioni o etichette sul lattosio."
+    : "- Ricrea TUTTI i pasti da zero. Non riutilizzare gli alimenti incompatibili; usa soltanto alternative esplicitamente compatibili e dichiarale nel titolo e negli ingredienti.";
 
   return `
 - CORREZIONE AUTOMATICA OBBLIGATORIA (tentativo ${nextAttempt}): il piano precedente è stato scartato perché incompatibile.
 - Incompatibilità rilevate dal controllo: ${detected.join("; ")}.
-- Ricrea TUTTI i pasti da zero. Non riutilizzare gli alimenti incompatibili; usa soltanto alternative esplicitamente compatibili e dichiarale nel titolo e negli ingredienti.${exactCorrection}
+${correctionIngredientRule}${exactCorrection}
 - Prima di rispondere esegui un secondo controllo completo contro dieta e allergie.${glutenCorrection}${lactoseCorrection}`;
 }
 
@@ -1063,7 +1067,7 @@ async function generateWeeklyMealPlanAttempt(
       ? `\n- DIETA MEDITERRANEA VERA: pasta/riso/cereali come primo quasi ogni giorno a pranzo; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
       : '';
   const prefText = context.preferences
-    ? `${context.preferences.diet ? ` Dieta: ${context.preferences.diet}.` : ''}${context.preferences.allergies ? ` Allergie: ${context.preferences.allergies}.` : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}${rawNotes ? ` Preferenze della famiglia (dettate a voce, seguile con attenzione): ${rawNotes}.` : ''}`
+    ? `${context.preferences.diet ? ` Dieta: ${context.preferences.diet}.` : ''}${context.preferences.allergies ? ' Allergie/intolleranze presenti: applica i vincoli di sicurezza già indicati.' : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}${rawNotes ? ` Preferenze della famiglia (dettate a voce, seguile con attenzione): ${rawNotes}.` : ''}`
     : '';
   const constraintRule = buildMealPlanConstraintPrompt(context.preferences);
   const constraintCorrection = context.constraintCorrection || "";
@@ -1270,7 +1274,7 @@ async function generateWeeklyMealPlanAttempt(
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
     const itemContract = `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano, non vuoto), description (breve, non vuota), ingredients (array), steps (array).`;
     const preparationContract = `- steps è la RICETTA completa, passo-passo: da 3 a 6 istruzioni concrete e chiare in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale). Indica operazioni reali come lavare, tagliare, cuocere e assemblare, usando ingredienti e tempi quando utili. NON usare frasi generiche come "cuoci e condisci con cura" o "servi subito" come unico dettaglio della ricetta.`;
-    const constrainedRecipeReferenceRule = constrainedPlan
+    const constrainedRecipeReferenceRule = constrainedPlan && !lactoseFreeRequired
       ? `- VINCOLI NELLA RICETTA: per ogni ingrediente soggetto a un vincolo usa, nel titolo, descrizione e in OGNI passaggio, il nome completo e compatibile scritto nell'array ingredients. Non abbreviare né sostituire con parole generiche un ingrediente sensibile (per esempio non scrivere "latte", "yogurt" o "formaggio" se nell'array è presente un sostituto vegetale o senza lattosio).`
       : "";
     const responseContract = `{"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;

@@ -177,6 +177,11 @@ function matchedTermIsSafe(text: string, rule: FoodRule, term: string): boolean 
     return hasTerm(text, "senza lattosio") ||
       hasTerm(text, "delattosato") ||
       hasTerm(text, "delattosata") ||
+      (term === "lattosio" && [
+        "intolleranza al lattosio",
+        "intollerante al lattosio",
+        "intollerante ai latticini",
+      ].some((label) => hasTerm(text, label))) ||
       plantSubstituteIsExplicit(text, term);
   }
   if (rule.code === "milk") {
@@ -400,11 +405,17 @@ export function buildMealPlanConstraintPrompt(
     preferences?.allergies?.trim(),
     ...extractMealPlanHealthConstraints(preferences),
   ].filter(Boolean).join(", ");
+  const lactoseRequired = /\b(?:lattosio|latte|caseina|proteine del latte)\b/.test(
+    normalize(`${diet || ""} ${allergies}`),
+  );
+  const compatibilityRule = lactoseRequired
+    ? `- Per il vincolo lattosio crea ricette naturalmente prive di latticini. Non usare né nominare lattosio, latte, yogurt, burro, panna, ricotta o formaggi nell'output. Non etichettare i piatti come "senza lattosio": la compatibilità è garantita dagli ingredienti scelti.`
+    : `- Se usi un sostituto compatibile, dichiarane esplicitamente la compatibilità nel titolo E nell'ingrediente. Non lasciare mai implicita la compatibilità e non usare esempi o alternative che possano contraddire un altro vincolo.`;
   return `
 - VINCOLI ALIMENTARI OBBLIGATORI E PRIORITARI: prevalgono su QUALSIASI tema, esempio, regola nutrizionale o richiesta di varietà precedente.
 ${diet ? `- La dieta "${diet}" è un vincolo rigido: nessun pasto può contraddirla.` : ""}
 ${allergies ? `- Le allergie/intolleranze "${allergies}" sono vincoli di sicurezza: non usare gli allergeni né ingredienti che normalmente li contengono.` : ""}
-- Se usi un sostituto compatibile, dichiarane esplicitamente la compatibilità nel titolo E nell'ingrediente. Non lasciare mai implicita la compatibilità e non usare esempi o alternative che possano contraddire un altro vincolo.
+${compatibilityRule}
 - L'array ingredients deve essere completo per ogni pasto: non omettere ingredienti, condimenti o componenti composti.
 - Prima di rispondere ricontrolla ogni titolo, descrizione, ingrediente e passaggio contro dieta e allergie. Se un tema suggerito è incompatibile, sostituiscilo con un piatto compatibile.`;
 }

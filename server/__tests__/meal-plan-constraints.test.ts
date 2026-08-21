@@ -112,6 +112,23 @@ test("intolleranza al lattosio: i passaggi possono riferirsi alla bevanda vegeta
   assert.deepEqual(violations, []);
 });
 
+test("intolleranza al lattosio: un'etichetta descrittiva non invalida ingredienti già sicuri", () => {
+  const violations = validateMealPlanConstraints(
+    [{
+      title: "Pasta con ceci e zucchine",
+      description: "Piatto pensato per intolleranza al lattosio.",
+      ingredients: [{ name: "pasta" }, { name: "ceci" }, { name: "zucchine" }],
+      steps: [
+        "Cuoci la pasta in acqua bollente.",
+        "Scalda ceci e zucchine in padella.",
+        "Unisci gli ingredienti e servi.",
+      ],
+    }],
+    { allergies: "Lattosio" },
+  );
+  assert.deepEqual(violations, []);
+});
+
 test("intolleranza al lattosio: un latticino diverso e non dichiarato sicuro resta bloccato", () => {
   const violations = validateMealPlanConstraints(
     [{

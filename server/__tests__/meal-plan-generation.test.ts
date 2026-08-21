@@ -307,6 +307,8 @@ test("con lattosio: la lista sicura esclude latticini ma consente la pasta", asy
   assert.ok(!mainCall.ingredientNames?.includes("latte"));
   assert.ok(!mainCall.ingredientNames?.includes("pane senza glutine"));
   assert.match(mainCall.sysPrompt, /NON richiede di evitare il glutine/i);
+  assert.match(mainCall.sysPrompt, /Non etichettare i piatti come "senza lattosio"/i);
+  assert.doesNotMatch(mainCall.sysPrompt, /Se usi un sostituto compatibile/i);
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
   assert.ok(plan.items.some((item) => item.ingredients?.some((ingredient) => ingredient.name === "pasta")));
