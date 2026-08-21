@@ -12,6 +12,7 @@ const DATES = Array.from({ length: 7 }, (_, i) => {
   return d.toISOString().split("T")[0]!;
 });
 const THREE_MEAL_WEEK_REQUESTS = 14;
+const CONSTRAINED_WEEK_REQUESTS = 7;
 
 type Ingredient = { name: string; quantity: string; unit: string };
 type Meal = {
@@ -314,12 +315,12 @@ test("con lattosio: la lista sicura esclude latticini ma consente la pasta", asy
   assert.ok(plan.items.some((item) => item.ingredients?.some((ingredient) => ingredient.name === "pasta")));
 });
 
-test("con vincoli: i prompt mantengono prodotti classici e rotazioni concrete per colazione e cena", async (t) => {
+test("con vincoli: le colazioni al lattosio sono determinate e le cene mantengono la rotazione", async (t) => {
   const { client, calls } = createFakeClient(lactoseSafeWeekItems);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
-  await generateWeeklyMealPlan({
+  const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
     preferences: { allergies: "Lattosio" },
@@ -329,12 +330,13 @@ test("con vincoli: i prompt mantengono prodotti classici e rotazioni concrete pe
     calls.every((call) => /NON proporre varianti "integrali"/i.test(call.sysPrompt)),
     "un vincolo come il lattosio non deve trasformare pasta, riso o pane in integrali",
   );
-  const breakfastPrompts = calls
-    .filter((call) => call.mealTypes.length === 1 && call.mealTypes[0] === "breakfast")
-    .map((call) => call.sysPrompt.match(/Per la colazione di questo giorno realizza questa combinazione concreta e non sostituirla con una colazione generica: ([^.]+)\./)?.[1]);
-  assert.equal(breakfastPrompts.length, 7);
-  assert.equal(new Set(breakfastPrompts).size, 7, "ogni giorno deve ricevere una colazione concreta diversa");
-  assert.ok(breakfastPrompts.every((prompt) => prompt && !/^una colazione/i.test(prompt)));
+  assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS, "il lattosio non deve affidare la colazione al modello");
+  assert.ok(calls.every((call) => JSON.stringify(call.mealTypes) === JSON.stringify(["lunch", "dinner"])));
+  const breakfastTitles = plan.items
+    .filter((item) => item.mealType === "breakfast")
+    .map((item) => item.title);
+  assert.equal(breakfastTitles.length, 7);
+  assert.equal(new Set(breakfastTitles).size, 7, "ogni giorno deve avere una colazione deterministica diversa");
 
   const dinnerPrompts = calls
     .filter((call) => call.mealTypes.includes("dinner"))
@@ -374,22 +376,10 @@ test("prodotti integrali non richiesti vengono rigenerati prima della consegna",
   ].join(" "))));
 });
 
-test("con lattosio: i passaggi dettagliati usano il contesto dell'ingrediente vegetale sicuro", async (t) => {
+test("con lattosio: le colazioni sicure non dipendono dal testo libero del modello", async (t) => {
   const { client } = createFakeClient((request) => request.dates.flatMap((date) => {
     const index = DATES.indexOf(date);
     return request.mealTypes.map((mealType) => {
-      if (mealType === "breakfast") {
-        const meal = makeMeal(date, mealType, `Porridge ${index}`, [
-          { name: "bevanda di riso", quantity: "200", unit: "ml" },
-          { name: "banana", quantity: "1", unit: "pezzo" },
-        ]);
-        meal.steps = [
-          "Scalda la bevanda di riso in un pentolino.",
-          "Versa il latte caldo sulla banana a rondelle.",
-          "Mescola e servi la colazione.",
-        ];
-        return meal;
-      }
       return makeMeal(date, mealType, `${mealType} ${index}`, mealType === "lunch"
         ? [
             { name: "pasta", quantity: "80", unit: "g" },
@@ -414,15 +404,16 @@ test("con lattosio: i passaggi dettagliati usano il contesto dell'ingrediente ve
 
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+  assert.equal(plan.items.filter((item) => item.mealType === "breakfast").length, 7);
 });
 
 test("con lattosio: un riferimento libero a un latticino rigenera il piano naturalmente privo di latticini", async (t) => {
   let responseNumber = 0;
   const { client, calls } = createFakeClient((request) => {
-    const firstAttempt = responseNumber++ < THREE_MEAL_WEEK_REQUESTS;
+    const firstAttempt = responseNumber++ < CONSTRAINED_WEEK_REQUESTS;
     const items = lactoseSafeWeekItems(request);
     if (firstAttempt) {
-      for (const item of items.filter((item) => item.mealType === "breakfast")) {
+      for (const item of items.filter((item) => item.mealType === "dinner")) {
         item.steps[1] = "Aggiungi la ricotta e mescola prima di servire.";
       }
     }
@@ -437,9 +428,9 @@ test("con lattosio: un riferimento libero a un latticino rigenera il piano natur
     preferences: { allergies: "Lattosio" },
   });
 
-  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2);
+  assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 2);
   assert.ok(calls.every((call) => /PIANO NATURALMENTE PRIVO DI LATTICINI/i.test(call.sysPrompt)));
-  assert.ok(calls.slice(THREE_MEAL_WEEK_REQUESTS).every((call) =>
+  assert.ok(calls.slice(CONSTRAINED_WEEK_REQUESTS).every((call) =>
     /VINCOLO LATTOSIO: ricrea il piano con ingredienti naturalmente privi di latticini/i.test(call.sysPrompt)));
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
 });
@@ -447,13 +438,14 @@ test("con lattosio: un riferimento libero a un latticino rigenera il piano natur
 test("con lattosio: formato, allergene e varietà usano retry indipendenti e cumulativi", async (t) => {
   let responseNumber = 0;
   const { client, calls } = createFakeClient((request) => {
-    const attempt = Math.floor(responseNumber++ / THREE_MEAL_WEEK_REQUESTS);
+    const attempt = Math.floor(responseNumber++ / CONSTRAINED_WEEK_REQUESTS);
     const items = lactoseSafeWeekItems(request);
 
     if (attempt === 0) {
-      return items.map((item) => item.mealType === "breakfast"
-        ? makeMeal(item.date, item.mealType, "Riso a colazione", [
-            { name: "riso", quantity: "80", unit: "g" },
+      return items.map((item) => item.mealType === "lunch"
+        ? makeMeal(item.date, item.mealType, "Pasta integrale con ceci", [
+            { name: "pasta integrale", quantity: "80", unit: "g" },
+            { name: "ceci", quantity: "100", unit: "g" },
           ])
         : item);
     }
@@ -490,9 +482,8 @@ test("con lattosio: formato, allergene e varietà usano retry indipendenti e cum
     preferences: { allergies: "Lattosio" },
   });
 
-  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 5);
-  const finalAttemptPrompts = calls.slice(THREE_MEAL_WEEK_REQUESTS * 4);
-  assert.ok(finalAttemptPrompts.every((call) => /colazione dolce/i.test(call.sysPrompt)));
+  assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 5);
+  const finalAttemptPrompts = calls.slice(CONSTRAINED_WEEK_REQUESTS * 4);
   assert.ok(finalAttemptPrompts.every((call) => /almeno un ingrediente/i.test(call.sysPrompt)));
   assert.ok(finalAttemptPrompts.every((call) => /VINCOLO LATTOSIO/i.test(call.sysPrompt)));
   assert.ok(finalAttemptPrompts.every((call) => /CORREZIONE VARIETÀ OBBLIGATORIA/i.test(call.sysPrompt)));
@@ -503,7 +494,7 @@ test("con lattosio: formato, allergene e varietà usano retry indipendenti e cum
 test("un piano incompatibile viene rigenerato automaticamente una sola volta", async (t) => {
   let callNumber = 0;
   const { client, calls } = createFakeClient((request) => {
-    const incompatibleAttempt = callNumber++ < THREE_MEAL_WEEK_REQUESTS;
+    const incompatibleAttempt = callNumber++ < CONSTRAINED_WEEK_REQUESTS;
     return request.dates.flatMap((date, index) =>
       request.mealTypes.map((mealType) => {
         if (incompatibleAttempt) {
@@ -540,7 +531,7 @@ test("un piano incompatibile viene rigenerato automaticamente una sola volta", a
     preferences: { allergies: "Lattosio" },
   });
 
-  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2, "una sola rigenerazione completa");
+  assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 2, "una sola rigenerazione completa dei pasti AI");
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
 });
@@ -691,7 +682,7 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
   let callsBeforeCompleteRetry = 0;
   const { client, calls } = createFakeClient((request) => {
     callsBeforeCompleteRetry++;
-    if (callsBeforeCompleteRetry <= THREE_MEAL_WEEK_REQUESTS) {
+    if (callsBeforeCompleteRetry <= CONSTRAINED_WEEK_REQUESTS) {
       return request.dates.slice(0, 0).map((date) =>
         makeMeal(date, request.mealTypes[0]!, "Pasto incompleto", [{ name: "mela", quantity: "1", unit: "pezzo" }]));
     }
@@ -727,7 +718,7 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
     onProgress: (items) => progress.push(items as Meal[]),
   });
 
-  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2, "una sola rigenerazione completa");
+  assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 2, "una sola rigenerazione completa dei pasti AI");
   assertCompleteWeek(plan.items, 3);
   assert.equal(progress.length, 7, "nessun giorno parziale raggiunge il client");
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);

@@ -794,6 +794,75 @@ function findRepeatedMealSlots(items: MealPlanSuggestion["items"]): RepeatedMeal
   return repeated.slice(0, 16);
 }
 
+/**
+ * Le richieste giornaliere possono produrre lo stesso titolo generico
+ * ("Pasta al pomodoro") per ricette che hanno proteine o verdure realmente
+ * diverse. Invece di scartare un piano vario solo per l'etichetta, rendiamo
+ * esplicito nel titolo un ingrediente già presente nella ricetta. Se non
+ * esiste alcun ingrediente distintivo, il doppione resta tale e sarà
+ * rigenerato: non si inventano né si nascondono differenze.
+ */
+function disambiguateMealTitles(
+  items: MealPlanSuggestion["items"],
+): MealPlanSuggestion["items"] {
+  const usedTitles = new Map<string, Set<string>>();
+  const ingredientSignaturesByTitle = new Map<string, Map<string, Set<string>>>();
+
+  return items.map((item) => {
+    const mealTypeTitles = usedTitles.get(item.mealType) || new Set<string>();
+    const baseTitle = item.title.trim();
+    const normalizedBase = normalizeMealPlanConcept(baseTitle);
+    const ingredientSignature = (item.ingredients || [])
+      .map((ingredient) => normalizeMealPlanConcept(ingredient.name))
+      .filter(Boolean)
+      .sort()
+      .join("|");
+    const signaturesForMealType = ingredientSignaturesByTitle.get(item.mealType) || new Map<string, Set<string>>();
+    const existingSignatures = signaturesForMealType.get(normalizedBase) || new Set<string>();
+    if (!mealTypeTitles.has(normalizedBase)) {
+      mealTypeTitles.add(normalizedBase);
+      existingSignatures.add(ingredientSignature);
+      signaturesForMealType.set(normalizedBase, existingSignatures);
+      usedTitles.set(item.mealType, mealTypeTitles);
+      ingredientSignaturesByTitle.set(item.mealType, signaturesForMealType);
+      return item;
+    }
+    // Stesso piatto con gli stessi ingredienti: non alterare il titolo per
+    // mascherare un vero doppione.
+    if (existingSignatures.has(ingredientSignature)) {
+      return item;
+    }
+
+    const normalizedTitleWords = mealConceptTokens(baseTitle);
+    const ingredientNames = (item.ingredients || [])
+      .map((ingredient) => ingredient.name.trim())
+      .filter(Boolean)
+      .filter((name) => {
+        const tokens = mealConceptTokens(name);
+        return tokens.size > 0 && Array.from(tokens).some((token) => !normalizedTitleWords.has(token));
+      });
+
+    for (let count = 1; count <= ingredientNames.length; count++) {
+      const candidate = `${baseTitle} con ${ingredientNames.slice(0, count).join(" e ")}`;
+      const normalizedCandidate = normalizeMealPlanConcept(candidate);
+      if (!mealTypeTitles.has(normalizedCandidate)) {
+        mealTypeTitles.add(normalizedCandidate);
+        existingSignatures.add(ingredientSignature);
+        signaturesForMealType.set(normalizedBase, existingSignatures);
+        usedTitles.set(item.mealType, mealTypeTitles);
+        ingredientSignaturesByTitle.set(item.mealType, signaturesForMealType);
+        return { ...item, title: candidate };
+      }
+    }
+
+    existingSignatures.add(ingredientSignature);
+    signaturesForMealType.set(normalizedBase, existingSignatures);
+    usedTitles.set(item.mealType, mealTypeTitles);
+    ingredientSignaturesByTitle.set(item.mealType, signaturesForMealType);
+    return item;
+  });
+}
+
 function buildMealPlanVarietyCorrection(repeatedConcepts: string[], nextAttempt: number): string {
   return `
 - CORREZIONE VARIETÀ OBBLIGATORIA (tentativo ${nextAttempt}): il piano precedente conteneva pasti ripetuti in giorni diversi.
@@ -943,6 +1012,130 @@ function buildCompatibleBreakfastThemes(
     `${rusk || bread || drink} con ${spread} e ${fruit(5)}`,
     `macedonia di ${fruit(6)} con ${drink} e ${spread}`,
   ];
+}
+
+/**
+ * Per il lattosio le colazioni sono volutamente deterministiche: il modello
+ * continuava a inserire riso da pranzo o latticini nel testo libero malgrado
+ * schema e prompt. Queste sette ricette sono complete, differenti e prive di
+ * latticini senza nominare sostituti ambigui; riducono inoltre sette chiamate
+ * AI e i relativi errori di formato.
+ */
+function buildLactoseSafeBreakfasts(
+  dates: string[],
+  familySize: number,
+): MealPlanSuggestion["items"] {
+  const people = Math.max(1, Math.min(12, Math.floor(familySize) || 1));
+  const fruitPieces = String(people);
+  const breadSlices = String(people * 2);
+  const drinkMl = String(people * 200);
+  const jamG = String(people * 20);
+  const entries = [
+    {
+      title: "Pane tostato con marmellata e mela",
+      description: "Colazione dolce e semplice con pane tostato, marmellata e mela fresca.",
+      ingredients: [
+        { name: "pane", quantity: breadSlices, unit: "fette" },
+        { name: "marmellata", quantity: jamG, unit: "g" },
+        { name: "mela", quantity: fruitPieces, unit: "pezzi" },
+      ],
+      steps: [
+        "Lava le mele e tagliale a spicchi.",
+        "Tosta il pane fino a renderlo leggermente croccante.",
+        "Spalma la marmellata sul pane e servi con gli spicchi di mela.",
+      ],
+    },
+    {
+      title: "Gallette di riso con banana e miele",
+      description: "Colazione leggera con gallette croccanti, banana e miele.",
+      ingredients: [
+        { name: "gallette di riso", quantity: String(people * 3), unit: "pezzi" },
+        { name: "banana", quantity: fruitPieces, unit: "pezzi" },
+        { name: "miele", quantity: String(people * 10), unit: "g" },
+      ],
+      steps: [
+        "Sbuccia le banane e tagliale a rondelle.",
+        "Disponi le gallette nei piatti.",
+        "Aggiungi la banana e completa con un filo di miele.",
+      ],
+    },
+    {
+      title: "Frullato di pera e bevanda di riso",
+      description: "Frullato dolce alla pera con cacao amaro per una colazione fresca.",
+      ingredients: [
+        { name: "pera", quantity: fruitPieces, unit: "pezzi" },
+        { name: "bevanda di riso", quantity: drinkMl, unit: "ml" },
+        { name: "cacao amaro", quantity: String(people * 5), unit: "g" },
+      ],
+      steps: [
+        "Lava le pere, elimina il torsolo e tagliale a pezzi.",
+        "Versa pere e bevanda di riso nel frullatore.",
+        "Frulla con il cacao amaro fino a ottenere una consistenza liscia.",
+      ],
+    },
+    {
+      title: "Macedonia di arancia e kiwi",
+      description: "Macedonia fresca e naturalmente dolce con frutta di stagione.",
+      ingredients: [
+        { name: "arancia", quantity: fruitPieces, unit: "pezzi" },
+        { name: "kiwi", quantity: fruitPieces, unit: "pezzi" },
+        { name: "miele", quantity: String(people * 5), unit: "g" },
+      ],
+      steps: [
+        "Sbuccia arance e kiwi con cura.",
+        "Taglia la frutta a pezzi piccoli e raccoglila in una ciotola.",
+        "Mescola la macedonia e completa con poco miele.",
+      ],
+    },
+    {
+      title: "Pane con marmellata e pesca",
+      description: "Pane morbido con marmellata e pesca fresca per iniziare la giornata.",
+      ingredients: [
+        { name: "pane", quantity: breadSlices, unit: "fette" },
+        { name: "marmellata", quantity: jamG, unit: "g" },
+        { name: "pesca", quantity: fruitPieces, unit: "pezzi" },
+      ],
+      steps: [
+        "Lava le pesche, elimina il nocciolo e affettale.",
+        "Disponi le fette di pane nei piatti.",
+        "Spalma la marmellata e aggiungi le fettine di pesca.",
+      ],
+    },
+    {
+      title: "Gallette di riso con mandarino e marmellata",
+      description: "Colazione croccante con gallette, mandarino e marmellata.",
+      ingredients: [
+        { name: "gallette di riso", quantity: String(people * 3), unit: "pezzi" },
+        { name: "mandarino", quantity: String(people * 2), unit: "pezzi" },
+        { name: "marmellata", quantity: jamG, unit: "g" },
+      ],
+      steps: [
+        "Sbuccia i mandarini e dividi gli spicchi.",
+        "Disponi le gallette nei piatti da portata.",
+        "Spalma la marmellata sulle gallette e servi con i mandarini.",
+      ],
+    },
+    {
+      title: "Bevanda di riso con albicocche e cacao",
+      description: "Colazione fresca con bevanda di riso, albicocche e cacao amaro.",
+      ingredients: [
+        { name: "bevanda di riso", quantity: drinkMl, unit: "ml" },
+        { name: "albicocca", quantity: String(people * 2), unit: "pezzi" },
+        { name: "cacao amaro", quantity: String(people * 5), unit: "g" },
+      ],
+      steps: [
+        "Lava le albicocche, elimina il nocciolo e tagliale a spicchi.",
+        "Versa la bevanda di riso nei bicchieri.",
+        "Aggiungi il cacao amaro alla bevanda e servi con le albicocche.",
+      ],
+    },
+  ];
+
+  return dates.map((date, index) => ({
+    date,
+    mealType: "breakfast" as const,
+    ...entries[index % entries.length]!,
+  }));
 }
 
 function buildDinnerThemes(
@@ -1223,6 +1416,12 @@ async function generateWeeklyMealPlanAttempt(
     : constrainedPlan
       ? compatibleBreakfastThemes
       : breakfastThemes;
+  const usesDeterministicLactoseBreakfasts = lactoseFreeRequired
+    && !glutenFreeRequired
+    && mealTypes.includes("breakfast");
+  const deterministicBreakfasts = usesDeterministicLactoseBreakfasts
+    ? buildLactoseSafeBreakfasts(dates, context.familySize)
+    : [];
 
   type WeeklyMealRequest = {
     dates: string[];
@@ -1241,7 +1440,7 @@ async function generateWeeklyMealPlanAttempt(
   // allow-list specifica anche in presenza di allergie.
   const weeklyRequests: WeeklyMealRequest[] = dates.flatMap((date, dayIndex) => {
     const requests: WeeklyMealRequest[] = [];
-    if (mealTypes.includes("breakfast")) {
+    if (mealTypes.includes("breakfast") && !usesDeterministicLactoseBreakfasts) {
       requests.push({
         dates: [date],
         mealTypes: ["breakfast"],
@@ -1368,7 +1567,7 @@ ${constrainedRecipeReferenceRule}
   const validDates = new Set(dates);
 
   const aiStartTime = Date.now();
-  const allItems: MealPlanSuggestion['items'] = [];
+  const allItems: MealPlanSuggestion['items'] = [...deterministicBreakfasts];
   let failedChunks = 0;
   let firstReason: unknown = null;
   let modelCallsStarted = 0;
@@ -1535,8 +1734,8 @@ ${constrainedRecipeReferenceRule}
     throw new MealPlanConstraintRetryError(constraintViolations);
   }
 
-  const repeatedSlots = findRepeatedMealSlots(filtered);
-  let finalItems = filtered;
+  const repeatedSlots = findRepeatedMealSlots(disambiguateMealTitles(filtered));
+  let finalItems = disambiguateMealTitles(filtered);
   if (repeatedSlots.length > 0 && repeatedSlots.length <= MAX_LOCAL_VARIETY_REPAIRS) {
     const locallyRepaired = [...filtered];
     let localRepairFailed = false;
