@@ -144,7 +144,7 @@ function lactoseSafeWeekItems(request: RequestInfo): Meal[] {
         ]);
       }
       return makeMeal(date, mealType, `Cena ${index}`, [
-        { name: "pollo", quantity: "120", unit: "g" },
+        { name: index === 1 ? "manzo" : "pollo", quantity: "120", unit: "g" },
         { name: "patate", quantity: "180", unit: "g" },
         { name: "spinaci", quantity: "150", unit: "g" },
       ]);
@@ -346,7 +346,7 @@ test("mediterranea senza allergie riceve una famiglia-obiettivo per ogni pranzo 
     ["low_lunch_family_variety", "excessive_lunch_family", "repeated_lunch_base",
       "repeated_lunch_pattern", "repeated_lunch_semantic_signature",
       "repeated_lunch_protein_preparation", "consecutive_lunch_pattern"].includes(issue.code)));
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { diet: "mediterranea" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
   assert.equal(evaluateMealPlanRedMeat(plan.items).hasRedMeat, true);
 });
 
@@ -474,7 +474,7 @@ test("campi vuoti in una ricetta vengono bloccati dallo schema e rigenerati", as
   assertCompleteWeek(plan.items, 3);
 });
 
-test("con glutine: richieste giornaliere mirate mantengono colazioni dolci e pasti completi", async (t) => {
+test("senza glutine: richieste giornaliere mirate mantengono colazioni dolci e pasti completi", async (t) => {
   const { client, calls } = createFakeClient((request) => request.dates.flatMap((date) => {
     const index = DATES.indexOf(date);
     return request.mealTypes.map((mealType) => {
@@ -492,7 +492,7 @@ test("con glutine: richieste giornaliere mirate mantengono colazioni dolci e pas
             { name: "zucchine", quantity: "150", unit: "g" },
           ]
         : [
-            { name: "pollo", quantity: "120", unit: "g" },
+            { name: index === 1 ? "manzo" : "pollo", quantity: "120", unit: "g" },
             { name: "patate", quantity: "180", unit: "g" },
             { name: "spinaci", quantity: "150", unit: "g" },
           ]);
@@ -504,7 +504,7 @@ test("con glutine: richieste giornaliere mirate mantengono colazioni dolci e pas
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { allergies: "Glutine" },
+    preferences: { dietProfile: "mediterranean_gluten_free" },
   });
 
   assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS);
@@ -514,7 +514,7 @@ test("con glutine: richieste giornaliere mirate mantengono colazioni dolci e pas
     assert.ok(!breakfastCall.ingredientNames!.includes(invalidBreakfastIngredient), invalidBreakfastIngredient);
   }
   assertCompleteWeek(plan.items, 3);
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Glutine" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_gluten_free" }), []);
   assert.ok(plan.items.filter((item) => item.mealType === "breakfast").every((item) => !/\b(?:riso|polenta|zucchine|melanzane|pomodori|ceci)\b/i.test(item.title)));
   assert.ok(plan.items.some((item) => item.mealType === "breakfast" && item.title.startsWith("Colazione con yogurt e banana")));
 });
@@ -529,7 +529,7 @@ test("mediterranea senza glutine amplia il prompt e passa il contesto di variet�
     "couscous di mais senza glutine",
     "gnocchi senza glutine",
   ];
-  const dinnerProteins = ["merluzzo", "pollo", "uova", "lenticchie", "tonno", "tacchino", "ceci"];
+  const dinnerProteins = ["merluzzo", "manzo", "uova", "lenticchie", "tonno", "tacchino", "ceci"];
   const { client, calls } = createFakeClient((request) => request.dates.flatMap((date) => {
     const index = DATES.indexOf(date);
     return request.mealTypes.map((mealType) => {
@@ -561,7 +561,7 @@ test("mediterranea senza glutine amplia il prompt e passa il contesto di variet�
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { diet: "mediterranea", allergies: "glutine" },
+    preferences: { dietProfile: "mediterranean_gluten_free" },
   });
 
   assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, "il contesto fra blocchi non crea chiamate aggiuntive");
@@ -579,10 +579,10 @@ test("mediterranea senza glutine amplia il prompt e passa il contesto di variet�
   assert.ok(mainCalls.every((call) => call.ingredientNames?.includes("pane senza glutine")));
   assert.ok(calls.slice(2).every((call) => /CONTESTO VARIETÀ DEI GIORNI GIÀ GENERATI/i.test(call.sysPrompt)));
   assertCompleteWeek(plan.items, 3);
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "glutine" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_gluten_free" }), []);
 });
 
-test("mediterranea + glutine genera un piano completo sicuro con target pranzo gluten-free", async (t) => {
+test("mediterranea senza glutine genera un piano completo sicuro con target pranzo gluten-free", async (t) => {
   const { client, calls } = createFakeClient(mediterraneanGlutenFreeWeekItems);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
@@ -590,14 +590,14 @@ test("mediterranea + glutine genera un piano completo sicuro con target pranzo g
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { diet: "mediterranea", allergies: "glutine" },
+    preferences: { dietProfile: "mediterranean_gluten_free" },
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
   assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, "il percorso mediterraneo+glutine usa le 14 richieste giornaliere previste");
   assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assertCompleteWeek(plan.items, 3);
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { diet: "mediterranea", allergies: "glutine" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_gluten_free" }), []);
 
   const lunchCalls = calls.filter((call) => call.mealTypes.includes("lunch"));
   const safeFamilies: Record<string, string[]> = {
@@ -620,7 +620,7 @@ test("mediterranea + glutine genera un piano completo sicuro con target pranzo g
   }
 });
 
-test("mediterranea + glutine recupera da un primo piano incompatibile restando entro il budget", async (t) => {
+test("mediterranea senza glutine recupera da un primo piano incompatibile restando entro il budget", async (t) => {
   let responseNumber = 0;
   const { client, calls } = createFakeClient((request) => {
     const firstAttempt = responseNumber++ < THREE_MEAL_WEEK_REQUESTS;
@@ -643,7 +643,7 @@ test("mediterranea + glutine recupera da un primo piano incompatibile restando e
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { diet: "mediterranea", allergies: "glutine" },
+    preferences: { dietProfile: "mediterranean_gluten_free" },
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
@@ -651,13 +651,13 @@ test("mediterranea + glutine recupera da un primo piano incompatibile restando e
   assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assert.ok(calls.slice(THREE_MEAL_WEEK_REQUESTS).every((call) => /VINCOLO GLUTINE/i.test(call.sysPrompt)));
   assertCompleteWeek(plan.items, 3);
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { diet: "mediterranea", allergies: "glutine" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_gluten_free" }), []);
 });
 
-test("mediterranea + glutine tratta i duplicati semantici come advisory, senza retry settimanale", async (t) => {
+test("mediterranea senza glutine tratta i duplicati semantici come advisory, senza retry settimanale", async (t) => {
   const { client, calls } = createFakeClient((request) =>
     mediterraneanGlutenFreeWeekItems(request).map((item) =>
-      item.mealType === "lunch"
+      item.mealType === "lunch" && !item.ingredients.some((ingredient) => ingredient.name === "manzo")
         ? makeMeal(item.date, "lunch", "Pasta senza glutine al pomodoro con tonno", [
             { name: "pasta senza glutine", quantity: "80", unit: "g" },
             { name: "tonno", quantity: "100", unit: "g" },
@@ -671,20 +671,20 @@ test("mediterranea + glutine tratta i duplicati semantici come advisory, senza r
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { diet: "mediterranea", allergies: "glutine" },
+    preferences: { dietProfile: "mediterranean_gluten_free" },
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
   assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, "la varietà non avvia una rigenerazione completa");
   assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assertCompleteWeek(plan.items, 3);
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { diet: "mediterranea", allergies: "glutine" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_gluten_free" }), []);
   assert.ok(evaluateMealPlanVariety(plan.items).issues.some((issue) =>
     issue.code === "repeated_lunch_semantic_signature"));
   assert.ok(!calls.some((call) => /VINCOLO GLUTINE: ricrea il piano/i.test(call.sysPrompt)));
 });
 
-test("vincoli nel campo Dieta raggiungono prompt e schema senza aumentare le chiamate", async (t) => {
+test("i profili canonici raggiungono prompt e schema senza aumentare le chiamate", async (t) => {
   const glutenClient = createFakeClient((request) => weekItems(request).map((item) =>
     item.mealType === "lunch"
       ? makeMeal(item.date, item.mealType, item.title, [
@@ -692,27 +692,33 @@ test("vincoli nel campo Dieta raggiungono prompt e schema senza aumentare le chi
           { name: "ceci", quantity: "100", unit: "g" },
           { name: "zucchine", quantity: "150", unit: "g" },
         ])
-      : item,
+      : item.mealType === "dinner" && item.date === DATES[1]
+        ? makeMeal(item.date, item.mealType, item.title, [
+            { name: "manzo", quantity: "120", unit: "g" },
+            { name: "patate", quantity: "180", unit: "g" },
+            { name: "spinaci", quantity: "150", unit: "g" },
+          ])
+        : item,
   ));
   __setOpenAiClientForTest(glutenClient.client);
   const glutenPlan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { diet: "senza glutine" },
+    preferences: { dietProfile: "mediterranean_gluten_free" },
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
   assert.equal(glutenClient.calls.length, THREE_MEAL_WEEK_REQUESTS);
   assert.ok(glutenClient.calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assert.ok(glutenClient.calls.every((call) => /Esclusioni canoniche applicate: gluten/i.test(call.sysPrompt)));
   assert.ok(glutenClient.calls.some((call) => call.ingredientNames?.includes("pasta senza glutine")));
-  assert.deepEqual(validateMealPlanConstraints(glutenPlan.items, { diet: "senza glutine" }), []);
+  assert.deepEqual(validateMealPlanConstraints(glutenPlan.items, { dietProfile: "mediterranean_gluten_free" }), []);
 
   const lactoseClient = createFakeClient(lactoseSafeWeekItems);
   __setOpenAiClientForTest(lactoseClient.client);
   const lactosePlan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { diet: "senza lattosio" },
+    preferences: { dietProfile: "mediterranean_lactose_free" },
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
   t.after(() => __setOpenAiClientForTest(null));
@@ -720,10 +726,10 @@ test("vincoli nel campo Dieta raggiungono prompt e schema senza aumentare le chi
   assert.ok(lactoseClient.calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assert.ok(lactoseClient.calls.every((call) => /Esclusioni canoniche applicate: lactose/i.test(call.sysPrompt)));
   assert.ok(lactoseClient.calls.every((call) => call.ingredientNames?.includes("pasta")));
-  assert.deepEqual(validateMealPlanConstraints(lactosePlan.items, { diet: "senza lattosio" }), []);
+  assert.deepEqual(validateMealPlanConstraints(lactosePlan.items, { dietProfile: "mediterranean_lactose_free" }), []);
 });
 
-test("con lattosio: la lista sicura esclude latticini ma consente la pasta", async (t) => {
+test("senza lattosio: la lista sicura esclude latticini ma consente la pasta", async (t) => {
   const { client, calls } = createFakeClient((request) => request.dates.flatMap((date, index) =>
     request.mealTypes.map((mealType) => {
       if (mealType === "breakfast") {
@@ -739,7 +745,7 @@ test("con lattosio: la lista sicura esclude latticini ma consente la pasta", asy
             { name: "pomodori", quantity: "120", unit: "g" },
           ]
         : [
-            { name: "pollo", quantity: "120", unit: "g" },
+            { name: DATES.indexOf(date) === 1 ? "manzo" : "pollo", quantity: "120", unit: "g" },
             { name: "patate", quantity: "180", unit: "g" },
             { name: "spinaci", quantity: "150", unit: "g" },
           ]);
@@ -751,7 +757,7 @@ test("con lattosio: la lista sicura esclude latticini ma consente la pasta", asy
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { allergies: "Lattosio" },
+    preferences: { dietProfile: "mediterranean_lactose_free" },
   });
 
   const mainCall = calls.find((call) => call.mealTypes.includes("lunch"))!;
@@ -762,14 +768,14 @@ test("con lattosio: la lista sicura esclude latticini ma consente la pasta", asy
   assert.match(mainCall.sysPrompt, /prodotto della lista chiusa.*senza lattosio/i);
   assert.match(mainCall.sysPrompt, /PRANZI, VARIETÀ DI STRUTTURA/i);
   assertCompleteWeek(plan.items, 3);
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_lactose_free" }), []);
   assert.ok(plan.items.some((item) => item.ingredients?.some((ingredient) => ingredient.name === "pasta")));
 });
 
 test("solo lattosio usa quattro famiglie di pranzo e passa firme ai giorni successivi senza chiamate aggiuntive", async (t) => {
   const lunches: Array<{ title: string; ingredients: Ingredient[] }> = [
     { title: "Pasta al pomodoro e tonno", ingredients: [{ name: "pasta", quantity: "80", unit: "g" }, { name: "pomodori", quantity: "120", unit: "g" }, { name: "tonno", quantity: "100", unit: "g" }] },
-    { title: "Risotto con zucchine e pollo", ingredients: [{ name: "riso", quantity: "80", unit: "g" }, { name: "zucchine", quantity: "150", unit: "g" }, { name: "pollo", quantity: "120", unit: "g" }] },
+    { title: "Risotto con zucchine e manzo", ingredients: [{ name: "riso", quantity: "80", unit: "g" }, { name: "zucchine", quantity: "150", unit: "g" }, { name: "manzo", quantity: "120", unit: "g" }] },
     { title: "Couscous con ceci e peperoni", ingredients: [{ name: "couscous", quantity: "80", unit: "g" }, { name: "ceci", quantity: "100", unit: "g" }, { name: "peperoni", quantity: "150", unit: "g" }] },
     { title: "Zuppa di lenticchie con pane", ingredients: [{ name: "lenticchie", quantity: "100", unit: "g" }, { name: "pane", quantity: "60", unit: "g" }, { name: "carote", quantity: "120", unit: "g" }] },
     { title: "Farro con merluzzo e melanzane", ingredients: [{ name: "farro", quantity: "80", unit: "g" }, { name: "merluzzo", quantity: "120", unit: "g" }, { name: "melanzane", quantity: "150", unit: "g" }] },
@@ -796,7 +802,7 @@ test("solo lattosio usa quattro famiglie di pranzo e passa firme ai giorni succe
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { allergies: "lattosio" },
+    preferences: { dietProfile: "mediterranean_lactose_free" },
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
@@ -811,10 +817,10 @@ test("solo lattosio usa quattro famiglie di pranzo e passa firme ai giorni succe
   const evaluation = evaluateMealPlanVariety(plan.items);
   assert.ok(Object.keys(evaluation.lunchFamilyCounts).length >= 4);
   assert.ok(!evaluation.issues.some((issue) => issue.code === "low_lunch_family_variety"));
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "lattosio" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_lactose_free" }), []);
 });
 
-test("con vincoli: le colazioni al lattosio sono determinate e le cene mantengono la rotazione", async (t) => {
+test("senza lattosio: le colazioni sicure sono determinate e le cene mantengono la rotazione", async (t) => {
   const { client, calls } = createFakeClient(lactoseSafeWeekItems);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
@@ -822,7 +828,7 @@ test("con vincoli: le colazioni al lattosio sono determinate e le cene mantengon
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { allergies: "Lattosio" },
+    preferences: { dietProfile: "mediterranean_lactose_free" },
   });
 
   assert.ok(
@@ -875,7 +881,7 @@ test("prodotti integrali non richiesti vengono rigenerati prima della consegna",
   ].join(" "))));
 });
 
-test("con lattosio: le colazioni sicure non dipendono dal testo libero del modello", async (t) => {
+test("senza lattosio: le colazioni sicure non dipendono dal testo libero del modello", async (t) => {
   const { client } = createFakeClient((request) => request.dates.flatMap((date) => {
     const index = DATES.indexOf(date);
     return request.mealTypes.map((mealType) => {
@@ -886,7 +892,7 @@ test("con lattosio: le colazioni sicure non dipendono dal testo libero del model
             { name: "pomodori", quantity: "120", unit: "g" },
           ]
         : [
-            { name: "pollo", quantity: "120", unit: "g" },
+            { name: index === 1 ? "manzo" : "pollo", quantity: "120", unit: "g" },
             { name: "patate", quantity: "180", unit: "g" },
             { name: "spinaci", quantity: "150", unit: "g" },
           ]);
@@ -898,15 +904,15 @@ test("con lattosio: le colazioni sicure non dipendono dal testo libero del model
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { allergies: "Lattosio" },
+    preferences: { dietProfile: "mediterranean_lactose_free" },
   });
 
   assertCompleteWeek(plan.items, 3);
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_lactose_free" }), []);
   assert.equal(plan.items.filter((item) => item.mealType === "breakfast").length, 7);
 });
 
-test("con lattosio: un riferimento libero a un latticino rigenera il piano naturalmente privo di latticini", async (t) => {
+test("senza lattosio: un riferimento libero a un latticino rigenera il piano naturalmente privo di latticini", async (t) => {
   let responseNumber = 0;
   const { client, calls } = createFakeClient((request) => {
     const firstAttempt = responseNumber++ < CONSTRAINED_WEEK_REQUESTS;
@@ -924,7 +930,7 @@ test("con lattosio: un riferimento libero a un latticino rigenera il piano natur
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { allergies: "Lattosio" },
+    preferences: { dietProfile: "mediterranean_lactose_free" },
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
@@ -933,10 +939,10 @@ test("con lattosio: un riferimento libero a un latticino rigenera il piano natur
   assert.ok(calls.every((call) => /PIANO SENZA LATTOSIO/i.test(call.sysPrompt)));
   assert.ok(calls.slice(CONSTRAINED_WEEK_REQUESTS).every((call) =>
     /VINCOLO LATTOSIO: ricrea il piano con ingredienti naturalmente privi di latticini/i.test(call.sysPrompt)));
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_lactose_free" }), []);
 });
 
-test("con lattosio: formato e allergene usano il budget prima della varietà best effort", async (t) => {
+test("senza lattosio: formato e vincolo usano il budget prima della varietà best effort", async (t) => {
   let responseNumber = 0;
   const { client, calls } = createFakeClient((request) => {
     const attempt = Math.floor(responseNumber++ / CONSTRAINED_WEEK_REQUESTS);
@@ -980,7 +986,7 @@ test("con lattosio: formato e allergene usano il budget prima della varietà bes
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { allergies: "Lattosio" },
+    preferences: { dietProfile: "mediterranean_lactose_free" },
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
@@ -991,7 +997,7 @@ test("con lattosio: formato e allergene usano il budget prima della varietà bes
   assert.ok(calls.slice(CONSTRAINED_WEEK_REQUESTS * 3).every((call) => /VINCOLO LATTOSIO/i.test(call.sysPrompt)));
   assert.ok(calls.every((call) => !/CORREZIONE VARIETÀ OBBLIGATORIA/i.test(call.sysPrompt)));
   assertCompleteWeek(plan.items, 3);
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_lactose_free" }), []);
 });
 
 test("un piano incompatibile viene rigenerato automaticamente una sola volta", async (t) => {
@@ -1018,7 +1024,7 @@ test("un piano incompatibile viene rigenerato automaticamente una sola volta", a
               { name: "pomodori", quantity: "120", unit: "g" },
             ]
           : [
-              { name: "pollo", quantity: "120", unit: "g" },
+              { name: DATES.indexOf(date) === 1 ? "manzo" : "pollo", quantity: "120", unit: "g" },
               { name: "patate", quantity: "180", unit: "g" },
               { name: "spinaci", quantity: "150", unit: "g" },
             ]);
@@ -1031,15 +1037,15 @@ test("un piano incompatibile viene rigenerato automaticamente una sola volta", a
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { allergies: "Lattosio" },
+    preferences: { dietProfile: "mediterranean_lactose_free" },
   });
 
   assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 2, "una sola rigenerazione completa dei pasti AI");
   assertCompleteWeek(plan.items, 3);
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_lactose_free" }), []);
 });
 
-test("gli elenchi strutturati rispettano anche allergeni diversi", async (t) => {
+test("il campo allergies legacy non restringe prompt, schema o budget", async (t) => {
   for (const allergy of ["Uova", "Pesce", "Arachidi", "Frutta a guscio", "Soia", "Fragole"]) {
     const { client, calls } = createFakeClient((request) => request.dates.flatMap((date, index) =>
       request.mealTypes.map((mealType) => {
@@ -1049,25 +1055,20 @@ test("gli elenchi strutturati rispettano anche allergeni diversi", async (t) => 
     ));
     __setOpenAiClientForTest(client);
     try {
-      await generateWeeklyMealPlan({
+      const plan = await generateWeeklyMealPlan({
         familySize: 4,
         weekStartDate: WEEK_START,
         preferences: { allergies: allergy },
       });
-      for (const call of calls) {
-        for (const name of call.ingredientNames || []) {
-          assert.deepEqual(
-            validateMealPlanConstraints([{ title: name, ingredients: [{ name }] }], { allergies: allergy }),
-            [],
-            `${allergy}: ${name}`,
-          );
-        }
-      }
+      assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, `${allergy}: usa il percorso senza vincoli`);
+      assert.ok(calls.every((call) => !/VINCOLI ALIMENTARI OBBLIGATORI/i.test(call.sysPrompt)));
+      assert.ok(calls.every((call) => !call.ingredientNames?.includes("pasta senza glutine")));
+      assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: allergy }), []);
     } finally {
       __setOpenAiClientForTest(null);
     }
   }
-  t.diagnostic("Ogni allergene usa lo stesso validatore anche per l'enum degli ingredienti.");
+  t.diagnostic("Il campo legacy allergies non partecipa alla generazione del Piano Pasti.");
 });
 
 test("un piano sicuro ma con molti doppioni non avvia una settimana aggiuntiva", async (t) => {
@@ -1215,7 +1216,7 @@ test("un duplicato semantico riso-limone-salmone usa una sola riparazione locale
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { diet: "mediterranea" },
+    preferences: { dietProfile: "mediterranean" },
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
@@ -1227,7 +1228,7 @@ test("un duplicato semantico riso-limone-salmone usa una sola riparazione locale
     issue.code === "repeated_lunch_semantic_signature"));
 });
 
-test("un retry allergene seguito da un repair locale resta nello stesso budget", async (t) => {
+test("un retry del profilo seguito da un repair locale resta nello stesso budget", async (t) => {
   const { client, calls } = createFakeClient((request) => {
     if (request.mealTypes.length === 1 && request.mealTypes[0] === "dinner") {
       return [makeMeal(request.dates[0]!, "dinner", "Cena locale senza lattosio", [
@@ -1266,7 +1267,7 @@ test("un retry allergene seguito da un repair locale resta nello stesso budget",
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { allergies: "lattosio" },
+    preferences: { dietProfile: "mediterranean_lactose_free" },
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
@@ -1274,7 +1275,7 @@ test("un retry allergene seguito da un repair locale resta nello stesso budget",
   assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assert.ok(calls.at(-1)?.sysPrompt.includes("CORREZIONE VARIETÀ LOCALE OBBLIGATORIA"));
   assertCompleteWeek(plan.items, 3);
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "lattosio" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_lactose_free" }), []);
 });
 
 test("al massimo tre doppioni usano repair locali e restano sotto il cap cumulativo", async (t) => {
@@ -1350,7 +1351,7 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
         ]);
       }
       return makeMeal(date, mealType, `Cena ${index}`, [
-        { name: "pollo", quantity: "120", unit: "g" },
+        { name: DATES.indexOf(date) === 1 ? "manzo" : "pollo", quantity: "120", unit: "g" },
         { name: "patate", quantity: "180", unit: "g" },
         { name: "spinaci", quantity: "150", unit: "g" },
       ]);
@@ -1363,7 +1364,7 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { allergies: "Lattosio" },
+    preferences: { dietProfile: "mediterranean_lactose_free" },
     onProgress: (items) => progress.push(items as Meal[]),
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
@@ -1372,7 +1373,7 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
   assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assertCompleteWeek(plan.items, 3);
   assert.equal(progress.length, 7, "nessun giorno parziale raggiunge il client");
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_lactose_free" }), []);
 });
 
 test("un alimento da pranzo nel testo della colazione viene rigenerato senza appiattire la ricetta", async (t) => {
@@ -1419,7 +1420,7 @@ test("il budget esaurito non avvia nuove chiamate e non consegna un piano parzia
     generateWeeklyMealPlan({
       familySize: 4,
       weekStartDate: WEEK_START,
-      preferences: { allergies: "Lattosio" },
+      preferences: { dietProfile: "mediterranean_lactose_free" },
       maxModelCalls: CONSTRAINED_WEEK_REQUESTS,
     }),
     (error: unknown) => (error as { code?: string }).code === "AI_MODEL_CALL_BUDGET_EXHAUSTED",
@@ -1428,7 +1429,7 @@ test("il budget esaurito non avvia nuove chiamate e non consegna un piano parzia
   assert.ok(calls.length <= CONSTRAINED_WEEK_REQUESTS);
 });
 
-test("una violazione allergene a budget esaurito non consegna mai il piano", async (t) => {
+test("una violazione del profilo a budget esaurito non consegna mai il piano", async (t) => {
   const { client, calls } = createFakeClient((request) => request.dates.flatMap((date) =>
     request.mealTypes.map((mealType) => makeMeal(date, mealType, "Pasto con latticino", [
       { name: "ricotta", quantity: "100", unit: "g" },
@@ -1441,7 +1442,7 @@ test("una violazione allergene a budget esaurito non consegna mai il piano", asy
     generateWeeklyMealPlan({
       familySize: 4,
       weekStartDate: WEEK_START,
-      preferences: { allergies: "lattosio" },
+      preferences: { dietProfile: "mediterranean_lactose_free" },
       maxModelCalls: CONSTRAINED_WEEK_REQUESTS,
     }),
     (error: unknown) => (error as { code?: string }).code === "AI_MODEL_CALL_BUDGET_EXHAUSTED",
