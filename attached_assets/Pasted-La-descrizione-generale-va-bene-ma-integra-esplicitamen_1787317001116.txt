@@ -1,0 +1,63 @@
+La descrizione generale va bene, ma integra esplicitamente il mandato prima di procedere.
+
+Il controllo sistematico NON deve limitarsi alla sola sicurezza/interpretazione degli allergeni.
+
+Deve verificare per OGNI allergene/intolleranza già supportato:
+
+1. normalizzazione e sinonimi;
+2. propagazione completa frontend → API → constraint canonico → prompt → allowlist → validatore → risultato finale;
+3. ingredienti vietati correttamente bloccati;
+4. ingredienti sicuri non esclusi per errore;
+5. distinzione tra vincoli semanticamente diversi, in particolare lactose ≠ milk;
+6. dimensione reale dei pool di colazione, pranzo e cena;
+7. rischio di menu troppo rigido;
+8. varietà settimanale;
+9. duplicati semantici dei pasti;
+10. principali combinazioni di allergeni/intolleranze;
+11. nessun rilassamento silenzioso di un vincolo;
+12. budget cumulativo delle chiamate OpenAI.
+
+Il problema già osservato con lattosio dimostra che “allergene rispettato” NON è sufficiente: il sistema generava quasi sempre pasta al pomodoro e tonno.
+
+Quindi per ogni allergene il report deve indicare separatamente:
+
+- SICUREZZA;
+- FALSE POSITIVE;
+- AMPIEZZA ALLOWLIST;
+- VARIETÀ;
+- RISCHIO RIGIDITÀ;
+- COMBINAZIONI;
+- MODEL CALLS.
+
+Usa test parametrizzati/mock e non chiamate OpenAI reali se non indispensabili.
+
+Classificazione:
+- P0 = possibile violazione di allergene;
+- P1 = interpretazione/normalizzazione errata;
+- P2 = allowlist troppo restrittiva o menu fortemente ripetitivo;
+- P3 = qualità/UX;
+- P4 = documentazione/test.
+
+Correggi automaticamente P0 e P1 dimostrati dai test.
+Correggi P2 soltanto se la modifica è deterministica, non indebolisce la sicurezza e non aumenta il budget OpenAI.
+Documenta gli altri casi.
+
+Mantieni intatte le correzioni già verificate su:
+- gluten;
+- lactose;
+- milk;
+- normalizzazione canonica;
+- semantic duplicate detection;
+- memoria inter-giorno;
+- closed allowlist;
+- validazione semantica.
+
+Non fare deploy.
+
+Il risultato finale deve essere:
+MEAL_PLAN_ALLERGEN_AUDIT_REPORT.md
+
+e:
+familysync-meal-plan-allergens-audit-fixed-20260821.zip
+
+Fermati dopo lo ZIP per il controllo esterno.
