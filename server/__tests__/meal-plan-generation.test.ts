@@ -414,6 +414,34 @@ test("con lattosio: i passaggi dettagliati usano il contesto dell'ingrediente ve
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
 });
 
+test("con lattosio: un riferimento libero a un latticino rigenera il piano naturalmente privo di latticini", async (t) => {
+  let responseNumber = 0;
+  const { client, calls } = createFakeClient((request) => {
+    const firstAttempt = responseNumber++ < THREE_MEAL_WEEK_REQUESTS;
+    const items = lactoseSafeWeekItems(request);
+    if (firstAttempt) {
+      for (const item of items.filter((item) => item.mealType === "breakfast")) {
+        item.steps[1] = "Aggiungi la ricotta e mescola prima di servire.";
+      }
+    }
+    return items;
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { allergies: "Lattosio" },
+  });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2);
+  assert.ok(calls.every((call) => /PIANO NATURALMENTE PRIVO DI LATTICINI/i.test(call.sysPrompt)));
+  assert.ok(calls.slice(THREE_MEAL_WEEK_REQUESTS).every((call) =>
+    /VINCOLO LATTOSIO: ricrea il piano con ingredienti naturalmente privi di latticini/i.test(call.sysPrompt)));
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+});
+
 test("un piano incompatibile viene rigenerato automaticamente una sola volta", async (t) => {
   let callNumber = 0;
   const { client, calls } = createFakeClient((request) => {

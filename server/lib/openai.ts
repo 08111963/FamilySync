@@ -995,6 +995,10 @@ function buildConstraintCorrection(
     ? `
 - VINCOLO GLUTINE: usa solo ingredienti naturalmente privi di glutine o dichiarati esplicitamente "senza glutine". Non scrivere pasta, pane, farina, cereali, biscotti, pizza, farro, orzo o prodotti da forno non dichiarati senza glutine in nessun campo.`
     : "";
+  const lactoseCorrection = violations.some((violation) => violation.code === "lactose")
+    ? `
+- VINCOLO LATTOSIO: ricrea il piano con ingredienti naturalmente privi di latticini. Non scrivere mai lattosio, latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone in titolo, descrizione, ingredienti o passaggi, neppure con formule come "senza lattosio". Per la colazione usa solo bevande vegetali dichiarate (di riso o di cocco), frutta, pane o gallette e marmellata; per pranzo e cena usa pasta di semola, riso, patate, legumi, carne, pesce, uova e verdure compatibili.`
+    : "";
   const exactCorrection = `
 - Non scrivere gli alimenti o i termini rilevati come incompatibili in nessun campo del nuovo piano, nemmeno come esempio o descrizione.
 - Sostituisci ogni componente incompatibile con un ingrediente di tipo diverso e compatibile con tutti i vincoli indicati.`;
@@ -1003,7 +1007,7 @@ function buildConstraintCorrection(
 - CORREZIONE AUTOMATICA OBBLIGATORIA (tentativo ${nextAttempt}): il piano precedente è stato scartato perché incompatibile.
 - Incompatibilità rilevate dal controllo: ${detected.join("; ")}.
 - Ricrea TUTTI i pasti da zero. Non riutilizzare gli alimenti incompatibili; usa soltanto alternative esplicitamente compatibili e dichiarale nel titolo e negli ingredienti.${exactCorrection}
-- Prima di rispondere esegui un secondo controllo completo contro dieta e allergie.${glutenCorrection}`;
+- Prima di rispondere esegui un secondo controllo completo contro dieta e allergie.${glutenCorrection}${lactoseCorrection}`;
 }
 
 function buildMealPlanQualityCorrection(error: AiError, nextAttempt: number): string {
@@ -1048,6 +1052,9 @@ async function generateWeeklyMealPlanAttempt(
   const lactoseAllowsGluten = !glutenFreeRequired &&
     /\b(?:lattosio|latte|caseina|proteine del latte)\b/.test(normalizedMealPlanPreferences(context.preferences)) &&
     !/\b(?:chetogen|keto|low carb|basso contenuto di carboidrati)\b/.test(dietLower);
+  const lactoseFreeRequired = /\b(?:lattosio|latte|caseina|proteine del latte)\b/.test(
+    normalizedMealPlanPreferences(context.preferences),
+  );
   const mediterraneanRule = dietLower.includes('mediterran') && glutenFreeRequired
     ? `\n- DIETA MEDITERRANEA SENZA GLUTINE: riso, quinoa, polenta e patate come fonti di carboidrati; verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte; carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
     : dietLower.includes('mediterran') && constrainedPlan
@@ -1240,6 +1247,9 @@ async function generateWeeklyMealPlanAttempt(
     const lactosePastaRule = lactoseAllowsGluten && requestMealTypes.includes("lunch")
       ? "\n- Il vincolo lattosio/latte NON richiede di evitare il glutine: pasta di semola classica e gli altri cereali con glutine restano compatibili, purché non contengano latte o derivati incompatibili."
       : "";
+    const lactoseFreeOutputRule = lactoseFreeRequired
+      ? `\n- PIANO NATURALMENTE PRIVO DI LATTICINI: in TUTTI i campi dell'output non scrivere lattosio, latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone, nemmeno con diciture "senza lattosio". Usa ricette che non richiedono alcun sostituto lattiero-caseario. A colazione scegli bevanda di riso o di cocco, frutta, pane o gallette e marmellata; negli altri pasti usa solo gli ingredienti compatibili della lista chiusa.`
+      : "";
     const breakfastMealRule = constrainedPlan
       ? `- breakfast (colazione): SOLO una colazione leggera composta esclusivamente da ingredienti compatibili con TUTTI i vincoli.${glutenFreeRequired ? ' Se usi un prodotto a base di cereali o farina, deve essere dichiarato esplicitamente senza glutine in titolo, ingredienti e passaggi.' : ''} Non usare esempi standard né sostituti impliciti.`
       : `- breakfast (colazione): SOLO colazione italiana tipica, dolce e leggera. Es. cappuccino e cornetto, latte e biscotti, fette biscottate con marmellata, yogurt con cereali e frutta, pane con marmellata o miele, crostata, ciambellone, pancake, porridge, spremuta con plumcake. MAI piatti salati come pasta, carne, pesce, verdure cotte o bruschette salate.`;
@@ -1279,7 +1289,7 @@ ${constrainedRecipeReferenceRule}
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}
-   - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}
+   - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno realizza questa combinazione concreta e non sostituirla con una colazione generica: ${breakfastHint}.` : ''}
 ${constraintRule}${constraintCorrection}${varietyCorrection}${qualityCorrection}
@@ -1470,6 +1480,11 @@ ${constraintRule}${constraintCorrection}${varietyCorrection}${qualityCorrection}
         tag: "AI_MEAL_PLAN_CONSTRAINT_REJECTED",
         variant,
         violations: violationCodes,
+        matchedTerms: Array.from(new Set(
+          constraintViolations
+            .map((violation) => violation.matched)
+            .filter((term): term is string => !!term),
+        )).slice(0, 12),
       }));
     }
     // È telemetria server-side best-effort: un observer non deve poter
