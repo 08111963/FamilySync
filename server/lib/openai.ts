@@ -697,6 +697,7 @@ interface MealPlanModelCallBudget {
 }
 interface MealPlanGenerationAttemptContext extends MealPlanGenerationContext {
   constraintCorrection?: string;
+  varietyCorrection?: string;
   generationAttempt: number;
   modelCallBudget?: MealPlanModelCallBudget;
 }
@@ -706,6 +707,85 @@ class MealPlanConstraintRetryError extends Error {
     super("Il tentativo di generazione non rispetta i vincoli alimentari");
     this.name = "MealPlanConstraintRetryError";
   }
+}
+
+class MealPlanVarietyRetryError extends Error {
+  constructor(readonly repeatedConcepts: string[]) {
+    super("Il piano contiene pasti ripetuti in giorni diversi");
+    this.name = "MealPlanVarietyRetryError";
+  }
+}
+
+function normalizeMealPlanConcept(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const MEAL_CONCEPT_STOP_WORDS = new Set([
+  "al", "alla", "alle", "con", "col", "della", "delle", "del", "dei", "di",
+  "e", "il", "la", "le", "lo", "un", "una", "per", "in", "da", "fresco",
+  "fresca", "semplice", "leggera", "italiana", "mediterranea",
+  "colazione", "pranzo", "cena", "pasto", "breakfast", "lunch", "dinner",
+  "diversa", "titolo", "ignorato", "incompleto",
+]);
+
+function mealConceptTokens(value: string): Set<string> {
+  return new Set(
+    normalizeMealPlanConcept(value)
+      .split(" ")
+      .filter((token) => token.length >= 3 && !MEAL_CONCEPT_STOP_WORDS.has(token)),
+  );
+}
+
+function mealConceptsAreTooSimilar(left: string, right: string): boolean {
+  const normalizedLeft = normalizeMealPlanConcept(left);
+  const normalizedRight = normalizeMealPlanConcept(right);
+  const leftTokens = mealConceptTokens(left);
+  const rightTokens = mealConceptTokens(right);
+  // Titoli tecnici come "Colazione 0" non sono ricette e non devono
+  // influire sul controllo di varietà.
+  if (leftTokens.size === 0 || rightTokens.size === 0) return false;
+  if (normalizedLeft === normalizedRight) return true;
+  if (leftTokens.size < 2 || rightTokens.size < 2) return false;
+  let common = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) common++;
+  }
+  const union = new Set([...leftTokens, ...rightTokens]).size;
+  return common >= 2 && common / union >= 0.7;
+}
+
+/**
+ * Rileva piatti uguali o quasi uguali nel medesimo tipo di pasto, purché
+ * appartengano a giorni diversi. Gli ingredienti da soli non bastano: patate
+ * o verdure possono essere un contorno comune a ricette realmente diverse.
+ */
+function findRepeatedMealConcepts(items: MealPlanSuggestion["items"]): string[] {
+  const seenTitles = new Map<string, Array<{ date: string; title: string }>>();
+  const repeated = new Set<string>();
+
+  for (const item of items) {
+    const entries = seenTitles.get(item.mealType) || [];
+    if (entries.some((entry) =>
+      entry.date !== item.date && mealConceptsAreTooSimilar(entry.title, item.title))) {
+      repeated.add(item.title);
+    }
+    entries.push({ date: item.date, title: item.title });
+    seenTitles.set(item.mealType, entries);
+  }
+  return Array.from(repeated).slice(0, 16);
+}
+
+function buildMealPlanVarietyCorrection(repeatedConcepts: string[], nextAttempt: number): string {
+  return `
+- CORREZIONE VARIETÀ OBBLIGATORIA (tentativo ${nextAttempt}): il piano precedente conteneva pasti ripetuti in giorni diversi.
+- Crea un menu realmente diverso per ogni giorno: non ripetere titolo, pesce/proteina principale, primo, contorno o combinazione di ingredienti dello stesso tipo di pasto.
+- Non riutilizzare questi concetti già ripetuti: ${repeatedConcepts.join("; ")}.
+- Verifica la varietà dell'intera settimana prima di rispondere.`;
 }
 
 // Un piano con vincoli sanitari può richiedere UNA sola rigenerazione completa
@@ -902,7 +982,7 @@ async function generateWeeklyMealPlanAttempt(
     : '';
   const constraintRule = buildMealPlanConstraintPrompt(context.preferences);
   const constraintCorrection = context.constraintCorrection || "";
-  const deferProgressUntilValidated = hasMealPlanConstraints(context.preferences);
+  const varietyCorrection = context.varietyCorrection || "";
 
   // Piatti tradizionali: il modello tende a "salutizzare" tutto proponendo
   // pasta/pane integrali ovunque. Niente varianti integrali salvo richiesta.
@@ -1134,7 +1214,7 @@ ${constrainedRecipeReferenceRule}
    - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno segui questa idea: ${breakfastHint}.` : ''}
-${constraintRule}${constraintCorrection}
+${constraintRule}${constraintCorrection}${varietyCorrection}
 - Rispondi SOLO con JSON: ${responseContract}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
@@ -1268,15 +1348,6 @@ ${constraintRule}${constraintCorrection}
       "La risposta AI contiene un pasto incompleto",
     );
   }
-  if (context.onProgress && !deferProgressUntilValidated) {
-    for (const date of dates) {
-      const dayItems = filtered.filter((item) => item.date === date);
-      if (dayItems.length > 0) {
-        try { context.onProgress(dayItems); } catch {}
-      }
-    }
-  }
-
   context.onStatus?.("Controllo che ogni pasto rispetti i vincoli alimentari.");
   const constraintViolations = validateMealPlanConstraints(filtered, context.preferences);
   if (constraintViolations.length > 0) {
@@ -1301,7 +1372,19 @@ ${constraintRule}${constraintCorrection}
     throw new MealPlanConstraintRetryError(constraintViolations);
   }
 
-  if (context.onProgress && deferProgressUntilValidated) {
+  const repeatedConcepts = findRepeatedMealConcepts(filtered);
+  if (repeatedConcepts.length > 0) {
+    if (!context.suppressInternalLogs) {
+      console.warn(JSON.stringify({
+        tag: "AI_MEAL_PLAN_VARIETY_RETRY",
+        variant,
+        repeatedCount: repeatedConcepts.length,
+      }));
+    }
+    throw new MealPlanVarietyRetryError(repeatedConcepts);
+  }
+
+  if (context.onProgress) {
     for (const date of dates) {
       const dayItems = filtered.filter((item) => item.date === date);
       if (dayItems.length > 0) {
@@ -1326,9 +1409,10 @@ export async function generateWeeklyMealPlan(
   const requestedLimit = Number.isFinite(context.maxConstraintAttempts)
     ? Math.floor(context.maxConstraintAttempts!)
     : MAX_CONSTRAINT_GENERATION_ATTEMPTS;
-  const attempts = hasMealPlanConstraints(context.preferences)
-    ? Math.max(1, Math.min(MAX_CONSTRAINT_GENERATION_ATTEMPTS, requestedLimit))
-    : 1;
+  // Anche senza vincoli sanitari il piano deve superare la verifica di
+  // varietà: è consentita una sola rigenerazione interna per eliminare pasti
+  // ripetuti, senza esporre un risultato monotono al client.
+  const attempts = Math.max(1, Math.min(MAX_CONSTRAINT_GENERATION_ATTEMPTS, requestedLimit));
   const requestedModelCalls = Number.isFinite(context.maxModelCalls)
     ? Math.floor(context.maxModelCalls!)
     : undefined;
@@ -1336,6 +1420,7 @@ export async function generateWeeklyMealPlan(
     ? undefined
     : { maxCalls: Math.max(1, requestedModelCalls), usedCalls: 0 };
   let constraintCorrection: string | undefined;
+  let varietyCorrection: string | undefined;
 
   let constraintAttempt = 1;
   let malformedResponseRetries = 0;
@@ -1352,6 +1437,7 @@ export async function generateWeeklyMealPlan(
         ...context,
         generationAttempt: constraintAttempt + malformedResponseRetries,
         constraintCorrection,
+        varietyCorrection,
         modelCallBudget,
       });
     } catch (error) {
@@ -1368,6 +1454,26 @@ export async function generateWeeklyMealPlan(
         // Non esporre un ciclo di tentativi nell'interfaccia: il client riceve
         // esclusivamente il piano già completo e validato.
         context.onStatus?.("Completo il piano pasti verificato.");
+        continue;
+      }
+      if (error instanceof MealPlanVarietyRetryError) {
+        if (constraintAttempt >= attempts) {
+          throw new AiError(
+            "AI_BAD_RESPONSE",
+            "Il piano contiene pasti ripetuti anche dopo la rigenerazione automatica",
+          );
+        }
+        if (!context.suppressInternalLogs) {
+          console.warn(JSON.stringify({
+            tag: "AI_MEAL_PLAN_VARIETY_REGENERATE",
+            variant: context.planVariant || 1,
+            failedAttempt: constraintAttempt,
+            nextAttempt: constraintAttempt + 1,
+            repeatedCount: error.repeatedConcepts.length,
+          }));
+        }
+        varietyCorrection = buildMealPlanVarietyCorrection(error.repeatedConcepts, constraintAttempt + 1);
+        constraintAttempt++;
         continue;
       }
       if (!(error instanceof MealPlanConstraintRetryError)) throw error;

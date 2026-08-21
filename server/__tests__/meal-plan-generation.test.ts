@@ -86,8 +86,9 @@ function createFakeClient(buildItems: (request: RequestInfo) => Meal[]) {
 
 function weekItems(request: RequestInfo): Meal[] {
   const breakfastFruits = ["banana", "mela", "pera", "arancia", "kiwi", "mirtilli", "pesca"];
-  return request.dates.flatMap((date, index) =>
-    request.mealTypes.map((mealType) => {
+  return request.dates.flatMap((date) => {
+    const index = DATES.indexOf(date);
+    return request.mealTypes.map((mealType) => {
       if (mealType === "breakfast") {
         return makeMeal(date, mealType, `Colazione ${index}`, [
           { name: breakfastFruits[index]!, quantity: "1", unit: "pezzo" },
@@ -106,8 +107,8 @@ function weekItems(request: RequestInfo): Meal[] {
         { name: "patate", quantity: "180", unit: "g" },
         { name: "spinaci", quantity: "150", unit: "g" },
       ]);
-    }),
-  );
+    });
+  });
 }
 
 function assertCompleteWeek(items: Array<{ date: string; mealType: string }>, mealsPerDay: number) {
@@ -166,11 +167,13 @@ test("due pasti al giorno mantengono il contratto da 14 pasti completi", async (
 });
 
 test("con glutine: richieste giornaliere mirate mantengono colazioni dolci e pasti completi", async (t) => {
-  const { client, calls } = createFakeClient((request) => request.dates.flatMap((date, index) =>
-    request.mealTypes.map((mealType) => {
+  const { client, calls } = createFakeClient((request) => request.dates.flatMap((date) => {
+    const index = DATES.indexOf(date);
+    return request.mealTypes.map((mealType) => {
       if (mealType === "breakfast") {
-        return makeMeal(date, mealType, "Colazione con yogurt e banana", [
-          { name: "banana", quantity: "1", unit: "pezzo" },
+        const fruit = ["banana", "mela", "pera", "arancia", "kiwi", "mirtilli", "pesca"][index]!;
+        return makeMeal(date, mealType, `Colazione con yogurt e ${fruit}`, [
+          { name: fruit, quantity: "1", unit: "pezzo" },
           { name: "yogurt bianco", quantity: "125", unit: "g" },
         ]);
       }
@@ -185,8 +188,8 @@ test("con glutine: richieste giornaliere mirate mantengono colazioni dolci e pas
             { name: "patate", quantity: "180", unit: "g" },
             { name: "spinaci", quantity: "150", unit: "g" },
           ]);
-    }),
-  ));
+    });
+  }));
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
@@ -205,7 +208,7 @@ test("con glutine: richieste giornaliere mirate mantengono colazioni dolci e pas
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Glutine" }), []);
   assert.ok(plan.items.filter((item) => item.mealType === "breakfast").every((item) => !/\b(?:riso|polenta|zucchine|melanzane|pomodori|ceci)\b/i.test(item.title)));
-  assert.ok(plan.items.some((item) => item.mealType === "breakfast" && item.title === "Colazione con yogurt e banana"));
+  assert.ok(plan.items.some((item) => item.mealType === "breakfast" && item.title.startsWith("Colazione con yogurt e banana")));
 });
 
 test("con lattosio: la lista sicura esclude latticini ma consente la pasta", async (t) => {
@@ -250,8 +253,9 @@ test("con lattosio: la lista sicura esclude latticini ma consente la pasta", asy
 });
 
 test("con lattosio: i passaggi dettagliati usano il contesto dell'ingrediente vegetale sicuro", async (t) => {
-  const { client } = createFakeClient((request) => request.dates.flatMap((date, index) =>
-    request.mealTypes.map((mealType) => {
+  const { client } = createFakeClient((request) => request.dates.flatMap((date) => {
+    const index = DATES.indexOf(date);
+    return request.mealTypes.map((mealType) => {
       if (mealType === "breakfast") {
         const meal = makeMeal(date, mealType, `Porridge ${index}`, [
           { name: "bevanda di riso", quantity: "200", unit: "ml" },
@@ -275,8 +279,8 @@ test("con lattosio: i passaggi dettagliati usano il contesto dell'ingrediente ve
             { name: "patate", quantity: "180", unit: "g" },
             { name: "spinaci", quantity: "150", unit: "g" },
           ]);
-    }),
-  ));
+    });
+  }));
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
@@ -364,6 +368,66 @@ test("gli elenchi strutturati rispettano anche allergeni diversi", async (t) => 
     }
   }
   t.diagnostic("Ogni allergene usa lo stesso validatore anche per l'enum degli ingredienti.");
+});
+
+test("i pasti ripetuti in giorni diversi vengono rigenerati prima della consegna", async (t) => {
+  let responseNumber = 0;
+  const { client, calls } = createFakeClient((request) => {
+    const repeatedAttempt = responseNumber++ < THREE_MEAL_WEEK_REQUESTS;
+    return request.dates.flatMap((date) => {
+      const dayIndex = DATES.indexOf(date);
+      return request.mealTypes.map((mealType) => {
+        if (repeatedAttempt) {
+          if (mealType === "breakfast") {
+            return makeMeal(date, mealType, "Yogurt con frutta fresca", [
+              { name: "yogurt bianco", quantity: "125", unit: "g" },
+              { name: "banana", quantity: "1", unit: "pezzo" },
+            ]);
+          }
+          if (mealType === "lunch") {
+            return makeMeal(date, mealType, "Pasta al pomodoro con tonno", [
+              { name: "pasta", quantity: "80", unit: "g" },
+              { name: "tonno", quantity: "100", unit: "g" },
+              { name: "pomodori", quantity: "120", unit: "g" },
+            ]);
+          }
+          return makeMeal(date, mealType, "Orata al forno con patate", [
+            { name: "orata", quantity: "150", unit: "g" },
+            { name: "patate", quantity: "180", unit: "g" },
+            { name: "zucchine", quantity: "150", unit: "g" },
+          ]);
+        }
+
+        if (mealType === "breakfast") {
+          return makeMeal(date, mealType, `Colazione diversa ${dayIndex + 1}`, [
+            { name: ["banana", "mela", "pera", "arancia", "kiwi", "mirtilli", "pesca"][dayIndex]!, quantity: "1", unit: "pezzo" },
+          ]);
+        }
+        if (mealType === "lunch") {
+          return makeMeal(date, mealType, `Pranzo diverso ${dayIndex + 1}`, [
+            { name: `primo ${dayIndex + 1}`, quantity: "80", unit: "g" },
+            { name: `proteina ${dayIndex + 1}`, quantity: "100", unit: "g" },
+          ]);
+        }
+        return makeMeal(date, mealType, `Cena diversa ${dayIndex + 1}`, [
+          { name: `secondo ${dayIndex + 1}`, quantity: "150", unit: "g" },
+          { name: `contorno ${dayIndex + 1}`, quantity: "150", unit: "g" },
+        ]);
+      });
+    });
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2, "una sola rigenerazione completa per eliminare i doppioni");
+  assert.ok(calls.slice(THREE_MEAL_WEEK_REQUESTS).every((call) => /CORREZIONE VARIETÀ OBBLIGATORIA/.test(call.sysPrompt)));
+  assertCompleteWeek(plan.items, 3);
+  for (const mealType of ["breakfast", "lunch", "dinner"]) {
+    const titles = plan.items.filter((item) => item.mealType === mealType).map((item) => item.title);
+    assert.equal(new Set(titles).size, 7, `${mealType}: tutti i giorni devono avere un piatto diverso`);
+  }
 });
 
 test("una risposta incompleta non viene consegnata come settimana valida", async (t) => {
