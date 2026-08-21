@@ -70,9 +70,10 @@ type PreparedMealPlanPreferences =
  * si blocca. Non vengono più eliminate silenziosamente, perché produrre un
  * piano che sembra sicuro senza poter usare il vincolo sarebbe pericoloso.
  */
-async function prepareMealPlanPreferences(
+export async function prepareMealPlanPreferences(
   userId: string,
   raw: unknown,
+  hasAiHealthConsent: (userId: string) => Promise<boolean> = userHasAiHealthConsent,
 ): Promise<PreparedMealPlanPreferences> {
   const parsed = mealPlanPreferencesSchema.safeParse(raw);
   if (!parsed.success) {
@@ -99,7 +100,7 @@ async function prepareMealPlanPreferences(
       body: { error: { code: "UNSUPPORTED_DIET", message: unsupportedDiet } },
     };
   }
-  if (mealPlanPreferencesContainHealthData(preferences) && !(await userHasAiHealthConsent(userId))) {
+  if (mealPlanPreferencesContainHealthData(preferences) && !(await hasAiHealthConsent(userId))) {
     const error = new AiError("AI_HEALTH_CONSENT_REQUIRED");
     return {
       ok: false,

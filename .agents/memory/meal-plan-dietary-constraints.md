@@ -14,3 +14,9 @@ Le sentinelle periodiche sui vincoli alimentari devono usare soltanto casi sinte
 **Why:** contenuti di pasti e preferenze non servono a rilevare una regressione e aumentano inutilmente il rischio privacy; errori temporanei del provider o un singolo tentativo poi corretto non sono regressioni confermate e non devono creare falsi allarmi o consumi ripetuti.
 
 **How to apply:** rendere il controllo esplicitamente opt-in, usare un claim durevole per limitare la frequenza tra istanze, non rilasciare il budget dopo errori, e notificare solo quando tutti i tentativi fissi violano lo stesso allergene sentinella. I log di richiesta possono includere esclusivamente i termini da un elenco chiuso di allergeni che hanno causato il rifiuto, mai titoli, ricette o preferenze.
+
+La dieta, le allergie e le note devono attraversare una sola normalizzazione canonica che separa pattern alimentari da esclusioni. `gluten` e `lactose` devono avere lo stesso significato indipendentemente dal campo di origine; `milk` resta un'esclusione distinta.
+
+**Why:** inferire regole diverse da ciascun campo, oppure trasformare ogni token libero in blacklist, fa divergere prompt, allowlist e validatore e può rifiutare alimenti dichiarati compatibili.
+
+**How to apply:** usa le esclusioni canoniche per consenso, prompt, schema, allowlist e validazione. I prodotti trasformati a rischio glutine sono ammessi soltanto con dicitura esplicita “senza glutine”; una scelta personale “senza glutine” non è di per sé dato sanitario, mentre celiachia e allergie dichiarate richiedono il consenso salute.

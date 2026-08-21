@@ -1,0 +1,14 @@
+MEAL_PLAN_CONSTRAINT_FIX_REPORT.md
+MEAL_PLAN_CONSTRAINT_FIX_MANIFEST.txt
+app/meal-plans/index.tsx
+server/lib/meal-plan-constraints.ts
+server/lib/openai.ts
+server/routes/ai.ts
+server/routes/meal-plans.ts
+shared/schema.ts
+server/__tests__/meal-plan-constraints.test.ts
+server/__tests__/meal-plan-generation.test.ts
+server/__tests__/meal-plan-request-body.test.ts
+server/__tests__/meal-plan-replace.test.ts
+package.json
+package-lock.json

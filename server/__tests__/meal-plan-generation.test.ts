@@ -272,6 +272,41 @@ test("con glutine: richieste giornaliere mirate mantengono colazioni dolci e pas
   assert.ok(plan.items.some((item) => item.mealType === "breakfast" && item.title.startsWith("Colazione con yogurt e banana")));
 });
 
+test("vincoli nel campo Dieta raggiungono prompt e schema senza aumentare le chiamate", async (t) => {
+  const glutenClient = createFakeClient((request) => weekItems(request).map((item) =>
+    item.mealType === "lunch"
+      ? makeMeal(item.date, item.mealType, item.title, [
+          { name: "riso", quantity: "80", unit: "g" },
+          { name: "ceci", quantity: "100", unit: "g" },
+          { name: "zucchine", quantity: "150", unit: "g" },
+        ])
+      : item,
+  ));
+  __setOpenAiClientForTest(glutenClient.client);
+  const glutenPlan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { diet: "senza glutine" },
+  });
+  assert.equal(glutenClient.calls.length, THREE_MEAL_WEEK_REQUESTS);
+  assert.ok(glutenClient.calls.every((call) => /Esclusioni canoniche applicate: gluten/i.test(call.sysPrompt)));
+  assert.ok(glutenClient.calls.some((call) => call.ingredientNames?.includes("pasta senza glutine")));
+  assert.deepEqual(validateMealPlanConstraints(glutenPlan.items, { diet: "senza glutine" }), []);
+
+  const lactoseClient = createFakeClient(lactoseSafeWeekItems);
+  __setOpenAiClientForTest(lactoseClient.client);
+  const lactosePlan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { diet: "senza lattosio" },
+  });
+  t.after(() => __setOpenAiClientForTest(null));
+  assert.equal(lactoseClient.calls.length, CONSTRAINED_WEEK_REQUESTS);
+  assert.ok(lactoseClient.calls.every((call) => /Esclusioni canoniche applicate: lactose/i.test(call.sysPrompt)));
+  assert.ok(lactoseClient.calls.every((call) => call.ingredientNames?.includes("pasta")));
+  assert.deepEqual(validateMealPlanConstraints(lactosePlan.items, { diet: "senza lattosio" }), []);
+});
+
 test("con lattosio: la lista sicura esclude latticini ma consente la pasta", async (t) => {
   const { client, calls } = createFakeClient((request) => request.dates.flatMap((date, index) =>
     request.mealTypes.map((mealType) => {

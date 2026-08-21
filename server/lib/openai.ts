@@ -5,7 +5,8 @@ import { AiError, assertAiConfigured, mapOpenAiError, resolveOpenAiConfig } from
 import {
   buildMealPlanConstraintPrompt,
   hasMealPlanConstraints,
-  mealPlanPreferencesContainHealthData,
+  mealPlanHasDietaryPattern,
+  mealPlanHasExclusion,
   mealPlanRequiresGlutenFree,
   unsupportedMealPlanHealthNote,
   validateMealPlanConstraints,
@@ -897,6 +898,12 @@ const SAFE_MAIN_INGREDIENTS = [
   "sale", "pepe", "aceto",
 ];
 
+const SAFE_GLUTEN_FREE_MAIN_INGREDIENTS = [
+  "pasta senza glutine", "pasta di mais senza glutine", "pasta di riso senza glutine",
+  "pane senza glutine", "fette biscottate senza glutine", "biscotti senza glutine",
+  "couscous di mais senza glutine", "gnocchi senza glutine",
+];
+
 const SAFE_BREAKFAST_INGREDIENTS = [
   "mela", "banana", "pera", "arancia", "mandarino", "pesca", "albicocca",
   "fragole", "mirtilli", "lamponi", "uva", "kiwi",
@@ -935,47 +942,33 @@ function savoryBreakfastTerm(value: string): string | undefined {
   });
 }
 
-function normalizedMealPlanPreferences(
-  preferences?: MealPlanGenerationContext["preferences"],
-): string {
-  return `${preferences?.diet || ""} ${preferences?.allergies || ""} ${preferences?.notes || ""}`
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function compatibleMealIngredients(
+export function compatibleMealIngredients(
   preferences?: MealPlanGenerationContext["preferences"],
   mealType: "breakfast" | "main" = "main",
 ): string[] {
-  const normalizedPreferences = normalizedMealPlanPreferences(preferences);
-  const declaredAllergies = normalizedPreferences
-    .split(/[^a-z0-9]+/)
-    .filter((word) => word.length >= 3);
-  const excluded = new Set(declaredAllergies.flatMap((word) => {
-    if (word.endsWith("e")) return [word, `${word.slice(0, -1)}a`];
-    if (word.endsWith("i")) return [word, `${word.slice(0, -1)}o`, `${word.slice(0, -1)}e`];
-    return [word];
-  }));
-  const isGlutenFree = mealPlanRequiresGlutenFree(preferences);
-  const avoidsMilk = /\b(?:latte|lattosio|caseina|proteine del latte)\b/.test(normalizedPreferences);
-  const avoidsEgg = /\b(?:uovo|uova|albume|tuorlo)\b/.test(normalizedPreferences);
-  const avoidsFish = /\b(?:pesce|tonno|salmone|merluzzo|sgombro)\b/.test(normalizedPreferences);
-  const vegetarian = /\b(?:vegetarian|vegetariana|vegetariano|vegan|vegana|vegano)\b/.test(normalizedPreferences);
-  const vegan = /\b(?:vegan|vegana|vegano)\b/.test(normalizedPreferences);
-  const base = mealType === "breakfast" ? SAFE_BREAKFAST_INGREDIENTS : SAFE_MAIN_INGREDIENTS;
+  const isGlutenFree = mealPlanHasExclusion(preferences, "gluten");
+  const avoidsLactose = mealPlanHasExclusion(preferences, "lactose");
+  const avoidsMilk = mealPlanHasExclusion(preferences, "milk");
+  const avoidsEgg = mealPlanHasExclusion(preferences, "egg");
+  const avoidsFish = mealPlanHasExclusion(preferences, "fish");
+  const vegetarian = mealPlanHasDietaryPattern(preferences, "vegetarian") ||
+    mealPlanHasDietaryPattern(preferences, "vegan");
+  const vegan = mealPlanHasDietaryPattern(preferences, "vegan");
+  const base = mealType === "breakfast"
+    ? SAFE_BREAKFAST_INGREDIENTS
+    : isGlutenFree
+      ? [...SAFE_MAIN_INGREDIENTS, ...SAFE_GLUTEN_FREE_MAIN_INGREDIENTS]
+      : SAFE_MAIN_INGREDIENTS;
 
   return base
     .filter((ingredient) => {
       const normalizedIngredient = ingredient
         .normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-      const tokens = normalizedIngredient
-        .split(/[^a-z0-9]+/)
-        .filter((word) => word.length >= 3);
-      if (tokens.some((token) => excluded.has(token))) return false;
-      if (!isGlutenFree && normalizedIngredient.includes("senza glutine")) return false;
+      // La dichiarazione "senza glutine" va gestita prima di qualsiasi filtro
+      // lessicale: pasta/pane/biscotti esplicitamente compatibili devono
+      // restare disponibili quando il vincolo canonico è glutine.
       if (isGlutenFree && /\b(?:pane|fette biscottate|biscotti|cornetto|pancake|avena|granola)\b/.test(normalizedIngredient) && !normalizedIngredient.includes("senza glutine")) return false;
-      if (avoidsMilk && /\b(?:latte|yogurt|biscotti|fette biscottate)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso)\b/.test(normalizedIngredient)) return false;
+      if ((avoidsLactose || avoidsMilk) && /\b(?:latte|yogurt|biscotti|fette biscottate)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso|senza glutine)\b/.test(normalizedIngredient)) return false;
       if (avoidsEgg && /\buova?\b/.test(normalizedIngredient)) return false;
       if (avoidsFish && /\b(?:tonno|salmone|merluzzo)\b/.test(normalizedIngredient)) return false;
       if (vegetarian && /\b(?:pollo|tacchino)\b/.test(normalizedIngredient)) return false;
@@ -1024,25 +1017,27 @@ function buildCompatibleBreakfastThemes(
 function buildLactoseSafeBreakfasts(
   dates: string[],
   familySize: number,
+  glutenFree = false,
 ): MealPlanSuggestion["items"] {
   const people = Math.max(1, Math.min(12, Math.floor(familySize) || 1));
   const fruitPieces = String(people);
   const breadSlices = String(people * 2);
   const drinkMl = String(people * 200);
   const jamG = String(people * 20);
+  const bread = glutenFree ? "pane senza glutine" : "pane";
   const entries = [
     {
-      title: "Pane tostato con marmellata e mela",
-      description: "Colazione dolce e semplice con pane tostato, marmellata e mela fresca.",
+      title: `${bread[0]!.toUpperCase()}${bread.slice(1)} tostato con marmellata e mela`,
+      description: `Colazione dolce e semplice con ${bread} tostato, marmellata e mela fresca.`,
       ingredients: [
-        { name: "pane", quantity: breadSlices, unit: "fette" },
+        { name: bread, quantity: breadSlices, unit: "fette" },
         { name: "marmellata", quantity: jamG, unit: "g" },
         { name: "mela", quantity: fruitPieces, unit: "pezzi" },
       ],
       steps: [
         "Lava le mele e tagliale a spicchi.",
-        "Tosta il pane fino a renderlo leggermente croccante.",
-        "Spalma la marmellata sul pane e servi con gli spicchi di mela.",
+        `Tosta il ${bread} fino a renderlo leggermente croccante.`,
+        `Spalma la marmellata sul ${bread} e servi con gli spicchi di mela.`,
       ],
     },
     {
@@ -1088,17 +1083,17 @@ function buildLactoseSafeBreakfasts(
       ],
     },
     {
-      title: "Pane con marmellata e pesca",
-      description: "Pane morbido con marmellata e pesca fresca per iniziare la giornata.",
+      title: `${bread[0]!.toUpperCase()}${bread.slice(1)} con marmellata e pesca`,
+      description: `${bread[0]!.toUpperCase()}${bread.slice(1)} morbido con marmellata e pesca fresca per iniziare la giornata.`,
       ingredients: [
-        { name: "pane", quantity: breadSlices, unit: "fette" },
+        { name: bread, quantity: breadSlices, unit: "fette" },
         { name: "marmellata", quantity: jamG, unit: "g" },
         { name: "pesca", quantity: fruitPieces, unit: "pezzi" },
       ],
       steps: [
         "Lava le pesche, elimina il nocciolo e affettale.",
-        "Disponi le fette di pane nei piatti.",
-        "Spalma la marmellata e aggiungi le fettine di pesca.",
+        `Disponi le fette di ${bread} nei piatti.`,
+        `Spalma la marmellata sul ${bread} e aggiungi le fettine di pesca.`,
       ],
     },
     {
@@ -1185,7 +1180,10 @@ function mealPlanConstraintsHaveViolation(
 function usesMealPlanIngredientAllowlist(
   preferences?: MealPlanGenerationContext["preferences"],
 ): boolean {
-  return mealPlanRequiresGlutenFree(preferences) || mealPlanPreferencesContainHealthData(preferences);
+  return mealPlanHasExclusion(preferences, "gluten") ||
+    mealPlanHasExclusion(preferences, "lactose") ||
+    mealPlanHasExclusion(preferences, "milk") ||
+    hasMealPlanConstraints(preferences);
 }
 
 /**
@@ -1273,11 +1271,9 @@ async function generateWeeklyMealPlanAttempt(
   const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
   const constrainedPlan = hasMealPlanConstraints(context.preferences);
   const lactoseAllowsGluten = !glutenFreeRequired &&
-    /\b(?:lattosio|latte|caseina|proteine del latte)\b/.test(normalizedMealPlanPreferences(context.preferences)) &&
-    !/\b(?:chetogen|keto|low carb|basso contenuto di carboidrati)\b/.test(dietLower);
-  const lactoseFreeRequired = /\b(?:lattosio|latte|caseina|proteine del latte)\b/.test(
-    normalizedMealPlanPreferences(context.preferences),
-  );
+    mealPlanHasExclusion(context.preferences, "lactose") &&
+    !mealPlanHasDietaryPattern(context.preferences, "low-carb");
+  const lactoseFreeRequired = mealPlanHasExclusion(context.preferences, "lactose");
   const mediterraneanRule = dietLower.includes('mediterran') && glutenFreeRequired
     ? `\n- DIETA MEDITERRANEA SENZA GLUTINE: riso, quinoa, polenta e patate come fonti di carboidrati; verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte; carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
     : dietLower.includes('mediterran') && constrainedPlan
@@ -1420,7 +1416,7 @@ async function generateWeeklyMealPlanAttempt(
     && !glutenFreeRequired
     && mealTypes.includes("breakfast");
   const deterministicBreakfasts = usesDeterministicLactoseBreakfasts
-    ? buildLactoseSafeBreakfasts(dates, context.familySize)
+    ? buildLactoseSafeBreakfasts(dates, context.familySize, glutenFreeRequired)
     : [];
 
   type WeeklyMealRequest = {

@@ -1,0 +1,564 @@
+È stato effettuato un audit esterno dello ZIP `familysync-meal-plan-diagnostic-20260821.zip`.
+
+Sono stati individuati problemi concreti nella gestione di “senza glutine” e “senza lattosio”.
+
+Non riscrivere il Piano Pasti e non aumentare il numero di chiamate OpenAI.
+
+Mantieni l'architettura esistente:
+
+* OpenAI;
+* JSON Schema;
+* Zod;
+* validazione semantica;
+* retry;
+* streaming;
+* quota AI;
+* salvataggio esistente.
+
+Correggi soltanto la normalizzazione e l'applicazione dei vincoli alimentari.
+
+# 1. PROBLEMA PRINCIPALE — DIET E ALLERGIES SEGUONO PERCORSI DIVERSI
+
+Attualmente:
+
+`mealPlanPreferencesContainHealthData()`
+
+considera:
+
+* allergies;
+* alcune notes;
+
+ma non `diet`.
+
+Di conseguenza:
+
+`preferences.diet = "senza lattosio"`
+
+e:
+
+`preferences.allergies = "lattosio"`
+
+non ricevono necessariamente le stesse protezioni.
+
+Inoltre:
+
+`usesMealPlanIngredientAllowlist()`
+
+attualmente restituisce true quando:
+
+* è richiesto gluten-free;
+* oppure `mealPlanPreferencesContainHealthData()` restituisce true.
+
+Questo significa che:
+
+* allergies = "Lattosio" → allowlist;
+* diet = "senza lattosio" → può NON avere allowlist;
+* diet = "senza glutine" → allowlist tramite il controllo glutine.
+
+Questa divergenza deve essere eliminata.
+
+# 2. CREA UNA NORMALIZZAZIONE CANONICA DEI VINCOLI
+
+Crea una funzione pura centrale, per esempio:
+
+`normalizeMealPlanConstraints(preferences)`
+
+che trasformi tutti gli input in una struttura canonica.
+
+Esempio concettuale:
+
+```ts
+{
+  dietaryPatterns: [
+    "mediterranean"
+  ],
+
+  exclusions: [
+    "gluten",
+    "lactose"
+  ],
+
+  healthDerived: true | false,
+
+  source: {
+    diet: "...",
+    allergies: "...",
+    notes: "..."
+  }
+}
+```
+
+Non è obbligatorio usare esattamente questa interfaccia, ma deve esistere UNA sola interpretazione centrale.
+
+Normalizza almeno:
+
+## Glutine
+
+Devono convergere allo stesso vincolo:
+
+* senza glutine;
+* gluten free;
+* gluten-free;
+* glutine;
+* celiaco;
+* celiaca.
+
+Vincolo canonico:
+
+`gluten`
+
+## Lattosio
+
+Devono convergere allo stesso vincolo:
+
+* senza lattosio;
+* lattosio;
+* intolleranza al lattosio;
+* intollerante al lattosio.
+
+Vincolo canonico:
+
+`lactose`
+
+Non duplicare questa classificazione in più regex scollegate.
+
+# 3. SEPARA DIETE ED ESCLUSIONI
+
+Le diete devono rappresentare pattern alimentari, per esempio:
+
+* mediterranea;
+* vegetariana;
+* vegana;
+* pescetariana;
+* chetogenica/low carb;
+* halal.
+
+Le esclusioni devono rappresentare alimenti/componenti da evitare:
+
+* glutine;
+* lattosio;
+* latte;
+* uova;
+* arachidi;
+* frutta a guscio;
+* pesce;
+* ecc.
+
+L'utente può continuare a scrivere “senza glutine” o “senza lattosio” nel campo Dieta per compatibilità con la UI attuale, ma internamente deve essere trasformato nel relativo `exclusion`.
+
+Non deve esistere un comportamento differente in base al campo dal quale proviene.
+
+# 4. CORREGGI compatibleMealIngredients()
+
+Attualmente il codice costruisce:
+
+```ts
+const declaredAllergies = normalizedPreferences
+  .split(/[^a-z0-9]+/)
+```
+
+dove `normalizedPreferences` contiene:
+
+* diet;
+* allergies;
+* notes.
+
+Questo è errato.
+
+Non trattare ogni parola delle preferenze come allergene.
+
+Esempio:
+
+`senza glutine`
+
+non deve produrre una blacklist generica delle parole:
+
+* senza;
+* glutine.
+
+In particolare non deve eliminare ingredienti sicuri come:
+
+* pane senza glutine;
+* fette biscottate senza glutine;
+* biscotti senza glutine.
+
+La lista degli ingredienti deve essere filtrata usando i VINCOLI CANONICI, non i token grezzi dell'intera frase.
+
+# 5. SENZA GLUTINE — AMPLIA LA LISTA SICURA
+
+La `SAFE_MAIN_INGREDIENTS` attuale contiene pasta e pane normali ma non equivalenti gluten-free sufficienti.
+
+Aggiungi alternative esplicite e verificabili, per esempio:
+
+* pasta senza glutine;
+* pasta di mais senza glutine;
+* pasta di riso senza glutine;
+* pane senza glutine;
+* couscous di mais senza glutine, solo se la denominazione è considerata sicura dal validatore;
+* gnocchi senza glutine, solo se esplicitamente dichiarati tali.
+
+Mantieni anche:
+
+* riso;
+* quinoa;
+* polenta di mais;
+* patate;
+* legumi.
+
+Non considerare automaticamente sicuro un prodotto trasformato soltanto perché è “di riso” o “di mais” se la policy attuale richiede esplicitamente la dicitura “senza glutine”.
+
+La lista deve restare coerente con `validateMealPlanConstraints()`.
+
+# 6. CORREGGI L'ORDINE DEL FILTRO GLUTEN-FREE
+
+Un ingrediente come:
+
+`pane senza glutine`
+
+deve essere riconosciuto come sicuro PRIMA di applicare eventuali esclusioni lessicali.
+
+Aggiungi test specifici:
+
+```ts
+compatibleMealIngredients({ diet: "senza glutine" }, "breakfast")
+```
+
+deve contenere almeno:
+
+* pane senza glutine;
+* fette biscottate senza glutine;
+* biscotti senza glutine;
+
+salvo incompatibilità con un secondo vincolo.
+
+# 7. SENZA LATTOSIO DEVE USARE LE STESSE PROTEZIONI OVUNQUE
+
+Questi due input:
+
+```ts
+{ diet: "senza lattosio" }
+```
+
+e:
+
+```ts
+{ allergies: "lattosio" }
+```
+
+devono produrre lo stesso vincolo canonico `lactose`.
+
+Entrambi devono attivare:
+
+* prompt obbligatorio;
+* lista ingredienti compatibili;
+* JSON Schema appropriato;
+* validazione semantica;
+* retry;
+* controllo finale.
+
+Non deve essere possibile che uno usi la closed allowlist e l'altro no.
+
+# 8. NON CONFONDERE LATTOSIO E ALLERGIA AL LATTE
+
+Mantieni distinta la semantica:
+
+## Intolleranza al lattosio
+
+Vincolo:
+
+`lactose`
+
+## Allergia alle proteine del latte / caseina / latte
+
+Vincolo:
+
+`milk`
+
+Un prodotto “senza lattosio” NON deve essere considerato automaticamente sicuro per un'allergia alle proteine del latte.
+
+Il validatore già distingue in parte `LACTOSE_RULE` e `MILK_RULE`: preserva e rafforza questa distinzione.
+
+# 9. CONSENSO SALUTE
+
+Verifica la classificazione GDPR.
+
+La stessa informazione sanitaria non deve cambiare trattamento semplicemente perché viene scritta nel campo Dieta invece del campo Allergie.
+
+Esempio:
+
+* “senza glutine” come scelta alimentare personale;
+* “sono celiaco” come informazione sanitaria;
+
+non sono semanticamente identici.
+
+Definisci esplicitamente e testa quando deve essere richiesto `aiHealthConsent`.
+
+Non modificare la policy privacy in modo arbitrario: documenta la decisione adottata.
+
+# 10. UI
+
+Non è necessario ridisegnare la schermata.
+
+Correggi però le etichette per renderle meno ambigue:
+
+`Dieta (opzionale)`
+Esempio:
+`Mediterranea, vegetariana, vegana...`
+
+`Allergie / intolleranze (opzionale)`
+Esempio:
+`Glutine, lattosio, arachidi...`
+
+Se l'utente scrive “senza glutine” o “senza lattosio” nel campo Dieta, continua comunque ad accettarlo e normalizzalo correttamente per retrocompatibilità.
+
+# 11. TEST MANCANTI — OBBLIGATORI
+
+L'audit ha rilevato che i test attuali verificano prevalentemente:
+
+```ts
+preferences: { allergies: "Glutine" }
+```
+
+e:
+
+```ts
+preferences: { allergies: "Lattosio" }
+```
+
+ma NON risultano test equivalenti per:
+
+```ts
+preferences: { diet: "senza glutine" }
+```
+
+e:
+
+```ts
+preferences: { diet: "senza lattosio" }
+```
+
+Aggiungili.
+
+Test minimi obbligatori:
+
+### Singoli vincoli
+
+1. `diet = "senza glutine"`
+2. `allergies = "glutine"`
+3. `diet = "senza lattosio"`
+4. `allergies = "lattosio"`
+
+Verifica che 1 e 2 producano lo stesso vincolo canonico.
+
+Verifica che 3 e 4 producano lo stesso vincolo canonico.
+
+### Combinazioni
+
+5. mediterranea + senza glutine
+6. mediterranea + senza lattosio
+7. mediterranea + senza glutine + senza lattosio
+8. vegetariana + senza glutine
+9. vegana + senza glutine
+10. vegana + senza glutine + allergia frutta a guscio
+
+### Sicurezza glutine
+
+Deve essere rifiutato:
+
+* pasta normale;
+* pane normale;
+* couscous normale;
+* farro;
+* orzo;
+* pangrattato;
+* biscotti normali.
+
+Devono essere ammessi quando esplicitamente compatibili:
+
+* pasta senza glutine;
+* pane senza glutine;
+* fette biscottate senza glutine;
+* biscotti senza glutine;
+* riso;
+* quinoa;
+* polenta di mais;
+* patate.
+
+### Sicurezza lattosio
+
+Devono essere rifiutati:
+
+* latte;
+* panna;
+* burro;
+* ricotta;
+* mozzarella;
+* yogurt normale;
+* formaggi normali.
+
+Devono essere ammessi quando appropriato:
+
+* bevanda di riso;
+* bevanda di cocco;
+* altri sostituti vegetali espliciti ammessi dalla policy.
+
+### Latte vs lattosio
+
+Test obbligatorio:
+
+* `allergies = "latte"` non deve accettare automaticamente un prodotto solo perché “senza lattosio”.
+
+# 12. TEST END-TO-END DEL BODY REALE
+
+Aggiungi test della route usando esattamente i body inviati dall'app.
+
+Esempio:
+
+```json
+{
+  "weekStartDate": "2026-08-24",
+  "preferences": {
+    "diet": "senza glutine"
+  }
+}
+```
+
+e:
+
+```json
+{
+  "weekStartDate": "2026-08-24",
+  "preferences": {
+    "diet": "senza lattosio"
+  }
+}
+```
+
+Verifica l'intero percorso:
+
+frontend payload
+→ prepareMealPlanPreferences
+→ normalizzazione
+→ prompt
+→ schema
+→ validatore.
+
+Non effettuare chiamate OpenAI reali nei test: usa fake client/mocking come nei test esistenti.
+
+# 13. TEST DI EQUIVALENZA
+
+Aggiungi esplicitamente una proprietà/test:
+
+```text
+"senza glutine" in diet
+≈
+"glutine" in allergies
+```
+
+per quanto riguarda le esclusioni applicate al cibo.
+
+E:
+
+```text
+"senza lattosio" in diet
+≈
+"lattosio" in allergies
+```
+
+per quanto riguarda le esclusioni applicate al cibo.
+
+Le differenze relative al consenso sanitario, se previste dalla policy, devono essere testate separatamente e documentate.
+
+# 14. COSTI OPENAI
+
+Non aumentare il numero massimo di tentativi per nascondere il problema.
+
+Prima correggi:
+
+* normalizzazione;
+* allowlist;
+* schema.
+
+L'obiettivo è che il PRIMO tentativo abbia più probabilità di essere corretto.
+
+Mantieni i limiti di quota esistenti.
+
+Registra nel test anche il numero di chiamate simulate, per accertarti che la correzione non raddoppi inutilmente i costi.
+
+# 15. VERIFICA
+
+Esegui almeno:
+
+```bash
+npm run typecheck
+npm run test:ai
+npx tsx server/__tests__/meal-plan-constraints.test.ts
+npx tsx server/__tests__/meal-plan-generation.test.ts
+npx tsx server/__tests__/meal-plan-replace.test.ts
+```
+
+Aggiungi i nuovi test alla suite ufficiale, non lasciarli eseguibili soltanto manualmente.
+
+Riporta:
+
+* test prima;
+* test nuovi;
+* totale;
+* passati;
+* falliti;
+* numero massimo di model call simulate per piano;
+* typecheck.
+
+# 16. NON FARE ANCORA DEPLOY
+
+Dopo la correzione:
+
+NON fare deploy.
+
+Genera prima uno ZIP:
+
+`familysync-meal-plan-constraints-fixed-YYYYMMDD.zip`
+
+Includi:
+
+* file modificati;
+* tutti i file Piano Pasti;
+* `meal-plan-constraints.ts`;
+* `openai.ts`;
+* route AI;
+* frontend Piano Pasti;
+* test;
+* package.json;
+* lockfile;
+* report.
+
+Crea:
+
+`MEAL_PLAN_CONSTRAINT_FIX_REPORT.md`
+
+con tabella:
+
+| Caso | Prima | Dopo | Vincolo canonico | Allowlist | Validazione | Test |
+| ---- | ----- | ---- | ---------------- | --------- | ----------- | ---- |
+
+Includi almeno:
+
+* senza glutine nel campo Dieta;
+* glutine nel campo Allergie;
+* senza lattosio nel campo Dieta;
+* lattosio nel campo Allergie;
+* mediterranea + senza glutine;
+* mediterranea + senza lattosio;
+* mediterranea + senza glutine + senza lattosio.
+
+Non includere:
+
+* `.env`;
+* API key;
+* token;
+* segreti;
+* database dump;
+* APK;
+* node_modules.
+
+Fermati dopo lo ZIP e attendi il controllo esterno.

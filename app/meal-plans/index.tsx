@@ -995,13 +995,13 @@ export default function MealPlansScreen() {
               style={[styles.textInput, { color: colors.text }]}
               value={diet}
               onChangeText={setDiet}
-              placeholder="Es. vegetariana, mediterranea..."
+              placeholder="Es. mediterranea, vegetariana, vegana..."
               placeholderTextColor={colors.textSecondary}
               keyboardAppearance={isDark ? "dark" : "light"}
             />
           </View>
 
-          <Text style={[styles.sectionLabel, { color: colors.text }]}>Allergie (opzionale)</Text>
+          <Text style={[styles.sectionLabel, { color: colors.text }]}>Allergie / intolleranze (opzionale)</Text>
           <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="warning-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput
