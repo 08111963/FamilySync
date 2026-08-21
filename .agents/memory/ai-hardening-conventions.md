@@ -8,6 +8,16 @@ Convenzioni adottate per le funzioni AI (OpenAI) di FamilySync, da rispettare in
 - **Errori sempre tipizzati**: ogni funzione in `server/lib/openai.ts` chiama `assertAiConfigured()` all'inizio e propaga `mapOpenAiError(err)` (mai `return []` silenzioso su parse/validazione/timeout). Codici: AI_NOT_CONFIGURED(503), AI_RATE_LIMITED(429), AI_TIMEOUT(504), AI_BAD_RESPONSE(502), AI_PROVIDER_ERROR(502). `SyntaxError`/`ZodError` → AI_BAD_RESPONSE.
   **Why:** un fallback silenzioso degradava l'UX e nascondeva problemi di config/costi prima della pubblicazione.
 
+- **Credito provider ≠ quota dell'app**: `credit_balance_exhausted`,
+  `insufficient_quota` e `billing_hard_limit_reached` ricevuti dal provider
+  devono diventare `AI_PROVIDER_CREDITS_EXHAUSTED` (503), non
+  `AI_RATE_LIMITED`.
+  **Why:** il provider usa HTTP 429 anche per saldo esaurito; presentarlo come
+  “riprova domani” fa attribuire a una quota familiare un problema di billing
+  esterno.
+  **How to apply:** classificare prima questi codici del 429 generico e inviare
+  un messaggio che indichi il ripristino del credito del servizio AI.
+
 - **Quota per famiglia/giorno**: NON più middleware. La rotta usa `reserveAiSlot(userId, familyId, feature)` PRIMA di OpenAI e `finalizeAiUsage(usageId, success)` dopo; o il wrapper `withAiUsage(ctx, fn)` per le funzioni senza fallback. Tabella `ai_usage` ha colonna `status` enum (`started`|`succeeded`|`failed`), NON più `success` boolean. **La quota conta TUTTI i tentativi del giorno** (started+succeeded+failed): ogni chiamata che raggiunge OpenAI consuma quota, anche fallimento/timeout/JSON malformato/Zod/provider error. Limiti in `AI_DAILY_LIMITS`.
   **Why:** anche le chiamate fallite costano token; contare solo i success permetteva retry infiniti su errori = costo incontrollato.
   **How to apply:** `reserve` esiti = `ok`(record started creato)/`limited`(429)/`unavailable`(DB giù). Fail-closed di default → `unavailable`=503 `AI_USAGE_UNAVAILABLE`. Eccezione `shopping-suggestions`: su `unavailable` usa SOLO fallback locale, MAI OpenAI.

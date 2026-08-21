@@ -8,6 +8,7 @@ type AiErrorLike = {
 
 const FALLBACK_BY_CODE: Record<string, string> = {
   AI_RATE_LIMITED: "Hai raggiunto il limite del tuo piano per questa funzione AI. Riprova più avanti.",
+  AI_PROVIDER_CREDITS_EXHAUSTED: "Le generazioni AI sono temporaneamente sospese perché il credito del servizio AI dell'app è esaurito. Riprova dopo il ripristino del credito.",
   AI_USAGE_UNAVAILABLE: "Impossibile verificare il limite di utilizzo AI in questo momento. Riprova più tardi.",
   AI_NOT_CONFIGURED: "Le funzioni AI non sono al momento disponibili. Riprova più tardi.",
   AI_TIMEOUT: "L'AI ci sta mettendo troppo tempo. Riprova tra poco.",

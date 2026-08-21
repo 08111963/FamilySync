@@ -64,7 +64,8 @@ describe("assertAiConfigured", () => {
 describe("mapOpenAiError", () => {
   const cases: Array<{ name: string; input: unknown; expected: AiErrorCode; status: number }> = [
     { name: "429 rate limit", input: { status: 429 }, expected: "AI_RATE_LIMITED", status: 429 },
-    { name: "insufficient_quota", input: { code: "insufficient_quota" }, expected: "AI_RATE_LIMITED", status: 429 },
+    { name: "credit balance exhausted", input: { status: 429, code: "credit_balance_exhausted" }, expected: "AI_PROVIDER_CREDITS_EXHAUSTED", status: 503 },
+    { name: "insufficient_quota", input: { code: "insufficient_quota" }, expected: "AI_PROVIDER_CREDITS_EXHAUSTED", status: 503 },
     { name: "401 auth", input: { status: 401 }, expected: "AI_NOT_CONFIGURED", status: 503 },
     { name: "403 auth", input: { status: 403 }, expected: "AI_NOT_CONFIGURED", status: 503 },
     { name: "timeout name", input: { name: "APITimeoutError" }, expected: "AI_TIMEOUT", status: 504 },
@@ -109,6 +110,7 @@ describe("mapOpenAiError", () => {
     const codes: AiErrorCode[] = [
       "AI_NOT_CONFIGURED",
       "AI_RATE_LIMITED",
+      "AI_PROVIDER_CREDITS_EXHAUSTED",
       "AI_TIMEOUT",
       "AI_BAD_RESPONSE",
       "AI_PROVIDER_ERROR",

@@ -1,6 +1,7 @@
 export type AiErrorCode =
   | "AI_NOT_CONFIGURED"
   | "AI_RATE_LIMITED"
+  | "AI_PROVIDER_CREDITS_EXHAUSTED"
   | "AI_USAGE_UNAVAILABLE"
   | "AI_TIMEOUT"
   | "AI_BAD_RESPONSE"
@@ -12,6 +13,7 @@ export type AiErrorCode =
 const USER_MESSAGES: Record<AiErrorCode, string> = {
   AI_NOT_CONFIGURED: "Le funzioni AI non sono al momento disponibili. Riprova più tardi.",
   AI_RATE_LIMITED: "Hai raggiunto il limite giornaliero per questa funzione AI. Riprova domani.",
+  AI_PROVIDER_CREDITS_EXHAUSTED: "Le generazioni AI sono temporaneamente sospese perché il credito del servizio AI dell'app è esaurito. Riprova dopo il ripristino del credito.",
   AI_USAGE_UNAVAILABLE: "Impossibile verificare il limite di utilizzo AI in questo momento. Riprova più tardi.",
   AI_TIMEOUT: "L'AI ci sta mettendo troppo tempo. Riprova tra poco.",
   AI_BAD_RESPONSE: "L'AI ha restituito una risposta non valida. Riprova.",
@@ -24,6 +26,7 @@ const USER_MESSAGES: Record<AiErrorCode, string> = {
 const HTTP_STATUS: Record<AiErrorCode, number> = {
   AI_NOT_CONFIGURED: 503,
   AI_RATE_LIMITED: 429,
+  AI_PROVIDER_CREDITS_EXHAUSTED: 503,
   AI_USAGE_UNAVAILABLE: 503,
   AI_TIMEOUT: 504,
   AI_BAD_RESPONSE: 502,
@@ -104,8 +107,23 @@ export function mapOpenAiError(error: unknown): AiError {
     return new AiError("AI_TIMEOUT", `OpenAI timeout (${name || code})`);
   }
 
-  // Rate limit / quota
-  if (status === 429 || code === "rate_limit_exceeded" || code === "insufficient_quota" || type === "insufficient_quota") {
+  // Credito/billing del provider: non è la quota interna dell'app e non deve
+  // mai essere mostrato come “riprova domani”. Viene prima del 429 generico,
+  // perché OpenAI usa 429 anche per credito esaurito.
+  if (
+    code === "credit_balance_exhausted"
+    || code === "insufficient_quota"
+    || type === "insufficient_quota"
+    || code === "billing_hard_limit_reached"
+  ) {
+    return new AiError(
+      "AI_PROVIDER_CREDITS_EXHAUSTED",
+      `OpenAI provider credits exhausted (status ${status}, code ${code || type})`,
+    );
+  }
+
+  // Rate limit temporaneo del provider
+  if (status === 429 || code === "rate_limit_exceeded") {
     return new AiError("AI_RATE_LIMITED", `OpenAI rate limit (status ${status}, code ${code})`);
   }
 
