@@ -1,0 +1,418 @@
+Dopo il deploy della versione finale del Piano Pasti è emerso un nuovo problema reale.
+
+NON riguarda allergeni o intolleranze.
+
+Test effettuato:
+
+* Dieta: `mediterranea`
+* Allergie/intolleranze: nessuna
+* Settimana: 24/08/2026
+
+Il piano prodotto contiene questi pranzi:
+
+```text
+24/08 Pasta al pomodoro con tonno e insalata mista
+25/08 Riso alla mediterranea con salmone, pomodori e rucola
+26/08 Pasta al pomodoro con tonno e insalata mista con pomodori
+27/08 Pasta al pomodoro con tonno e insalata mista con pomodori e olio extravergine di oliva
+28/08 Pasta al forno con pollo, pomodori e zucchine
+29/08 Pasta al pomodoro con pollo alla griglia e insalata mista
+30/08 Pasta al pomodoro con pollo alla griglia e insalata mista con pomodori
+```
+
+Risultato reale:
+
+* pasta: 6 pranzi su 7;
+* pasta + pomodoro: circa 5 su 7;
+* pasta + pomodoro + tonno: ripetuta più volte;
+* pasta + pomodoro + pollo: ripetuta più volte;
+* piccole aggiunte come insalata, pomodori, olio EVO non rappresentano un vero cambio di pasto.
+
+Questo piano NON ha allergeni selezionati.
+
+Quindi il problema è nel sistema generale di varietà settimanale e non nelle closed allowlist degli allergeni.
+
+# 1. NON MODIFICARE
+
+NON modificare:
+
+* allergeni;
+* `normalizeMealPlanConstraints()`;
+* gluten;
+* lactose;
+* milk;
+* gli altri 15 vincoli;
+* closed allowlist;
+* validazione di sicurezza;
+* budget globale OpenAI;
+* `MAX_MEAL_PLAN_MODEL_CALLS = 28`;
+* quote giornaliere;
+* UI;
+* database.
+
+La correzione deve essere esclusivamente sulla varietà culinaria generale.
+
+# 2. RIPRODUCI IL CASO REALE
+
+Crea una fixture esatta o semanticamente equivalente ai 7 pranzi sopra.
+
+Il variety checker deve segnalare almeno:
+
+```text
+excessive_lunch_family
+repeated_lunch_pattern
+consecutive_lunch_pattern
+excessive_lunch_carbohydrate
+```
+
+o codici equivalenti già presenti nel progetto.
+
+Il piano attuale deve risultare NON accettabile dal punto di vista della varietà.
+
+# 3. DISTINGUI TRE LIVELLI DI DUPLICAZIONE
+
+Non limitarti alla firma completa del pasto.
+
+Servono almeno tre livelli.
+
+## A. Famiglia del piatto
+
+Esempi:
+
+```text
+pasta
+riso/risotto
+couscous
+zuppa
+legumi
+patate
+polenta
+piadina/panino
+insalata di cereali
+piatto unico
+```
+
+## B. Base/preparazione
+
+Esempi:
+
+```text
+pasta + pomodoro
+pasta + pesto
+pasta + verdure
+pasta + legumi
+riso + pesce
+riso + verdure
+```
+
+## C. Firma completa
+
+Esempio:
+
+```text
+pasta + pomodoro + tonno
+```
+
+Il sistema deve controllare tutti e tre i livelli.
+
+# 4. LE PICCOLE AGGIUNTE NON CREANO UN NUOVO PASTO
+
+Questi devono essere considerati lo stesso pattern:
+
+```text
+Pasta al pomodoro con tonno
+Pasta al pomodoro con tonno e insalata
+Pasta al pomodoro con tonno, pomodori e olio EVO
+Pasta al pomodoro con tonno e basilico
+```
+
+Analogamente:
+
+```text
+Pasta al pomodoro con pollo
+Pasta al pomodoro con pollo e insalata
+Pasta al pomodoro con pollo, pomodori e olio EVO
+```
+
+Insalata, olio, basilico, aglio, pomodori aggiuntivi e contorni minori non devono azzerare la firma principale.
+
+# 5. REGOLE SETTIMANALI GENERALI PER IL PRANZO
+
+Per un piano standard di 7 giorni senza vincoli fortemente restrittivi, applica come requisito di qualità:
+
+* stessa famiglia principale: massimo 3 volte/settimana;
+* stessa base/preparazione: massimo 2 volte/settimana;
+* stessa firma completa: massimo 2 volte/settimana;
+* stessa firma completa mai in giorni consecutivi;
+* almeno 4 famiglie di pranzo differenti quando il pool lo permette;
+* stessa proteina principale: best effort massimo 2 volte;
+* stessa fonte di carboidrati: best effort massimo 3 volte.
+
+In particolare:
+
+```text
+pasta = 6/7
+```
+
+deve essere rifiutato dal controllo di varietà in un normale piano mediterraneo senza allergeni.
+
+# 6. MIGLIORA LA MEMORIA TRA I GIORNI
+
+Verifica cosa viene realmente passato alle chiamate successive.
+
+Il contesto deve contenere almeno:
+
+```text
+LUNCH FAMILY COUNTS
+pasta: 2
+riso: 1
+
+LUNCH BASE COUNTS
+pasta+pomodoro: 2
+riso+pesce: 1
+
+LUNCH PROTEIN COUNTS
+tonno: 2
+salmone: 1
+
+AVOID NEXT
+- pasta
+- pasta al pomodoro
+- tonno
+```
+
+Non basta comunicare solo i nomi completi dei piatti precedenti.
+
+Il modello deve sapere esplicitamente quali famiglie sono già sovrarappresentate.
+
+# 7. BLOCCA PRIMA, NON RIPARARE DOPO
+
+La varietà deve essere ottenuta principalmente durante la generazione.
+
+Non aumentare:
+
+```text
+MAX_LOCAL_VARIETY_REPAIRS
+```
+
+e NON reintrodurre il full-week variety retry.
+
+Il budget OpenAI finale deve restare:
+
+```ts
+MAX_MEAL_PLAN_MODEL_CALLS = 28;
+```
+
+Nessuna nuova chiamata dedicata esclusivamente a questa correzione.
+
+Usa:
+
+* prompt;
+* memoria inter-giorno;
+* conteggi deterministici;
+* scelta dei temi/famiglie.
+
+# 8. PIANIFICA LE FAMIGLIE PRIMA DELLE RICETTE
+
+Valuta di determinare localmente una rotazione settimanale compatibile prima delle singole chiamate.
+
+Per esempio, per dieta mediterranea senza vincoli:
+
+```text
+Lun: pasta
+Mar: riso/risotto
+Mer: legumi/zuppa
+Gio: couscous/cereale
+Ven: pasta
+Sab: patate/polenta/piatto unico
+Dom: riso/altro cereale
+```
+
+Non devono essere necessariamente queste famiglie.
+
+Il principio è che il modello riceva una famiglia-obiettivo per quel giorno invece di poter scegliere liberamente pasta quasi ogni volta.
+
+Questa pianificazione deve essere deterministica e NON deve richiedere OpenAI.
+
+Deve comunque rispettare eventuali allergeni e diete.
+
+# 9. NON FORZARE INGREDIENTI INCOMPATIBILI
+
+La varietà non deve mai prevalere su:
+
+* allergeni;
+* dieta;
+* sicurezza;
+* disponibilità del pool.
+
+Se vincoli molto restrittivi rendono impossibili 4 famiglie diverse, il sistema può degradare la varietà.
+
+Ma nel caso:
+
+```text
+dieta = mediterranea
+allergeni = nessuno
+```
+
+non esiste una giustificazione per pasta 6 volte su 7.
+
+# 10. TEST OBBLIGATORIO DEL CASO REALE
+
+Usa questo fixture:
+
+```text
+1 pasta pomodoro tonno
+2 riso salmone
+3 pasta pomodoro tonno
+4 pasta pomodoro tonno
+5 pasta forno pollo
+6 pasta pomodoro pollo
+7 pasta pomodoro pollo
+```
+
+Il controllo deve fallire.
+
+Poi crea un fixture corretto, per esempio:
+
+```text
+1 pasta + verdure
+2 risotto + pesce
+3 zuppa di legumi
+4 couscous + pollo
+5 pasta + pesce
+6 patate + uova
+7 riso + legumi
+```
+
+Il controllo deve passare.
+
+I piatti precisi possono variare: ciò che conta sono famiglie e pattern.
+
+# 11. TEST DELLA GENERAZIONE MOCK
+
+Genera con mock una settimana:
+
+```text
+diet = mediterranea
+allergies = none
+```
+
+Verifica:
+
+```text
+max lunch family <= 3
+max lunch base <= 2
+unique lunch families >= 4
+no consecutive identical semantic signature
+```
+
+# 12. NON REGREDIRE GLI ALLERGENI
+
+Riesegui tutti i test sui 15 allergeni già approvati.
+
+In particolare:
+
+* gluten;
+* lactose;
+* milk;
+* egg;
+* peanut;
+* nuts;
+* fish;
+* soy;
+* sesame;
+* celery;
+* mustard;
+* lupin;
+* sulfites;
+* shellfish;
+* molluscs.
+
+La nuova pianificazione delle famiglie non deve aggirare le allowlist.
+
+# 13. NON REGREDIRE IL BUDGET
+
+Riesegui i test del budget.
+
+Deve rimanere:
+
+```ts
+MAX_MEAL_PLAN_MODEL_CALLS = 28;
+```
+
+e:
+
+```text
+modelCalls <= 28
+```
+
+in ogni scenario.
+
+Non aggiungere un full-week retry per risolvere questa anomalia.
+
+# 14. REPORT
+
+Crea:
+
+`MEAL_PLAN_GENERAL_LUNCH_VARIETY_REPORT.md`
+
+Riporta:
+
+* causa precisa;
+* perché il precedente checker non impediva pasta 6/7;
+* modifiche apportate;
+* memoria inter-giorno prima/dopo;
+* eventuale pianificazione deterministica delle famiglie;
+* fixture reale;
+* risultati test.
+
+Tabella obbligatoria:
+
+| Controllo             | Caso reale prima |                   Dopo |
+| --------------------- | ---------------: | ---------------------: |
+| Pasta a pranzo        |              6/7 | max 3 quando possibile |
+| Pasta+pomodoro        |        5/7 circa |                  max 2 |
+| Famiglie pranzo       |          2 circa |               almeno 4 |
+| Duplicati consecutivi |         presenti |                assenti |
+| Hard cap OpenAI       |               28 |                     28 |
+| Sicurezza allergeni   |           attiva |              invariata |
+
+# 15. VERIFICA
+
+Esegui:
+
+```bash
+npm run typecheck
+npm run test:ai
+npm run test:meal-plan-allergens
+```
+
+e tutti i test Piano Pasti.
+
+Riporta:
+
+* test totali;
+* passed;
+* failed;
+* hard cap;
+* massimo model calls osservato.
+
+# 16. NON FARE DEPLOY
+
+NON fare deploy.
+
+Genera unicamente:
+
+`familysync-meal-plan-general-lunch-variety-fixed-20260821.zip`
+
+ZIP minimale, soltanto con:
+
+* file realmente modificati;
+* test coinvolti;
+* report;
+* package.json/lockfile se necessari;
+* manifest esatto.
+
+Non includere l’intero repository.
+
+Fermati dopo lo ZIP per il controllo esterno.
