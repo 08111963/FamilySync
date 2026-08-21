@@ -444,6 +444,62 @@ test("con lattosio: un riferimento libero a un latticino rigenera il piano natur
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
 });
 
+test("con lattosio: formato, allergene e varietà usano retry indipendenti e cumulativi", async (t) => {
+  let responseNumber = 0;
+  const { client, calls } = createFakeClient((request) => {
+    const attempt = Math.floor(responseNumber++ / THREE_MEAL_WEEK_REQUESTS);
+    const items = lactoseSafeWeekItems(request);
+
+    if (attempt === 0) {
+      return items.map((item) => item.mealType === "breakfast"
+        ? makeMeal(item.date, item.mealType, "Riso a colazione", [
+            { name: "riso", quantity: "80", unit: "g" },
+          ])
+        : item);
+    }
+    if (attempt === 1) {
+      return items.map((item) => ({ ...item, steps: item.steps.slice(0, 2) }));
+    }
+    if (attempt === 2) {
+      return items.map((item) => item.mealType === "dinner"
+        ? { ...item, steps: [
+            "Lava e taglia gli ingredienti.",
+            "Sciogli il burro in padella e unisci gli ingredienti.",
+            "Cuoci e servi il piatto.",
+          ] }
+        : item);
+    }
+    if (attempt === 3) {
+      return items.map((item) => ({
+        ...item,
+        title: item.mealType === "breakfast"
+          ? "Colazione ripetuta"
+          : item.mealType === "lunch"
+            ? "Pranzo ripetuto"
+            : "Cena ripetuta",
+      }));
+    }
+    return items;
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { allergies: "Lattosio" },
+  });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 5);
+  const finalAttemptPrompts = calls.slice(THREE_MEAL_WEEK_REQUESTS * 4);
+  assert.ok(finalAttemptPrompts.every((call) => /colazione dolce/i.test(call.sysPrompt)));
+  assert.ok(finalAttemptPrompts.every((call) => /almeno un ingrediente/i.test(call.sysPrompt)));
+  assert.ok(finalAttemptPrompts.every((call) => /VINCOLO LATTOSIO/i.test(call.sysPrompt)));
+  assert.ok(finalAttemptPrompts.every((call) => /CORREZIONE VARIETÀ OBBLIGATORIA/i.test(call.sysPrompt)));
+  assertCompleteWeek(plan.items, 3);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
+});
+
 test("un piano incompatibile viene rigenerato automaticamente una sola volta", async (t) => {
   let callNumber = 0;
   const { client, calls } = createFakeClient((request) => {

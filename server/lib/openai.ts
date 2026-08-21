@@ -793,6 +793,11 @@ function buildMealPlanVarietyCorrection(repeatedConcepts: string[], nextAttempt:
 // quota diventano sproporzionati.
 const MAX_CONSTRAINT_GENERATION_ATTEMPTS = 2;
 const MAX_MALFORMED_RESPONSE_RETRIES = 2;
+// La varietà viene controllata dopo formato e vincoli. Deve quindi avere un
+// retry proprio: altrimenti un doppione nell'ultimo piano già corretto per
+// un'allergia consuma retroattivamente il tentativo sanitario e il client
+// riceve un generico "risposta non valida".
+const MAX_VARIETY_GENERATION_RETRIES = 1;
 const SAFE_MAIN_INGREDIENTS = [
   "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
   "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
@@ -1030,6 +1035,10 @@ function buildMealPlanQualityCorrection(error: AiError, nextAttempt: number): st
   return `
 - CORREZIONE DI QUALITÀ OBBLIGATORIA (tentativo ${nextAttempt}): il risultato precedente non era consegnabile.
 - Restituisci esclusivamente tutti i pasti richiesti, completi e coerenti con il loro tipo.${breakfastCorrection}${wholegrainCorrection}${completenessCorrection}`;
+}
+
+function appendMealPlanCorrection(existing: string | undefined, next: string): string {
+  return existing ? `${existing}\n${next}` : next;
 }
 
 async function generateWeeklyMealPlanAttempt(
@@ -1557,6 +1566,7 @@ export async function generateWeeklyMealPlan(
 
   let constraintAttempt = 1;
   let malformedResponseRetries = 0;
+  let varietyRetries = 0;
   while (constraintAttempt <= attempts) {
     try {
       context.onStatus?.(
@@ -1585,9 +1595,9 @@ export async function generateWeeklyMealPlan(
             retry: malformedResponseRetries,
           }));
         }
-        qualityCorrection = buildMealPlanQualityCorrection(
-          error,
-          malformedResponseRetries + 1,
+        qualityCorrection = appendMealPlanCorrection(
+          qualityCorrection,
+          buildMealPlanQualityCorrection(error, malformedResponseRetries + 1),
         );
         // Non esporre un ciclo di tentativi nell'interfaccia: il client riceve
         // esclusivamente il piano già completo e validato.
@@ -1595,7 +1605,7 @@ export async function generateWeeklyMealPlan(
         continue;
       }
       if (error instanceof MealPlanVarietyRetryError) {
-        if (constraintAttempt >= attempts) {
+        if (varietyRetries >= MAX_VARIETY_GENERATION_RETRIES) {
           throw new AiError(
             "AI_BAD_RESPONSE",
             "Il piano contiene pasti ripetuti anche dopo la rigenerazione automatica",
@@ -1610,8 +1620,14 @@ export async function generateWeeklyMealPlan(
             repeatedCount: error.repeatedConcepts.length,
           }));
         }
-        varietyCorrection = buildMealPlanVarietyCorrection(error.repeatedConcepts, constraintAttempt + 1);
-        constraintAttempt++;
+        varietyRetries++;
+        varietyCorrection = appendMealPlanCorrection(
+          varietyCorrection,
+          buildMealPlanVarietyCorrection(error.repeatedConcepts, varietyRetries + 1),
+        );
+        // Il doppione viene rilevato soltanto DOPO che il risultato è già
+        // sicuro rispetto ai vincoli. Non deve quindi consumare il budget
+        // dedicato alla correzione dell'allergia.
         continue;
       }
       if (!(error instanceof MealPlanConstraintRetryError)) throw error;
