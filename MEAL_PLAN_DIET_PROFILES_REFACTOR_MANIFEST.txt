@@ -1,0 +1,13 @@
+MEAL_PLAN_DIET_PROFILES_REFACTOR_MANIFEST.txt
+MEAL_PLAN_DIET_PROFILES_REFACTOR_REPORT.md
+app/meal-plans/index.tsx
+components/VoiceInput.tsx
+docs/guida-utente.md
+e2e/meal-plan-diet-selector.test.ts
+server/__tests__/meal-plan-diet-profiles.test.ts
+server/lib/meal-plan-constraints.ts
+server/lib/openai.ts
+server/routes/ai.ts
+server/routes/meal-plans.ts
+shared/meal-plan-diet-profiles.ts
+shared/schema.ts
