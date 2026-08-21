@@ -50,6 +50,7 @@ docs/tester-accounts.pdf
 *.zip
 tmp/
 *.log
+.agents/agent_assets_metadata.toml
 
 # chiavi e credenziali (mai nel repository)
 .local/vapid-nuove-chiavi.txt
