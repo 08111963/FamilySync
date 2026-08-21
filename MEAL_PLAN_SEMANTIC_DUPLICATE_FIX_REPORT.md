@@ -88,6 +88,30 @@ La settimana reale fornita dal tester segnala il collegamento tra i pranzi 2 e
 `rice + lemon + salmon + grain_main` usa una sola riparazione locale e non
 rigenera l'intera settimana.
 
+## Regressione mediterranea + glutine
+
+La suite ora copre il percorso reale `diet = "mediterranea"` e
+`allergies = "glutine"` con il pool chiuso gluten-free:
+
+1. **Piano valido al primo tentativo.** Il mock restituisce 21 pasti completi
+   e compatibili; il generatore effettua le 14 chiamate giornaliere previste,
+   non rileva violazioni gluten e il validatore finale restituisce un elenco
+   vuoto.
+2. **Recovery da piano incompatibile.** Il primo tentativo restituisce pasta
+   normale; il validatore gluten lo rifiuta e il generatore avvia un solo
+   recovery completo. Il secondo piano è verificato gluten-safe. Totale:
+   28 chiamate, uguale al cap e mai superiore.
+3. **Duplicato semantico gluten-safe.** Sette pranzi con la stessa firma
+   `pasta + tomato + tuna + pasta_main` restano un advisory di varietà: il
+   piano gluten-safe viene consegnato con 14 chiamate e non avvia alcuna
+   rigenerazione completa per la sola varietà.
+4. **Famiglie-obiettivo compatibili.** Ogni target pranzo emesso dal planner
+   viene confrontato con il pool gluten-free: pasta senza glutine, riso,
+   legumi, couscous di mais senza glutine, patate/polenta, quinoa e zuppa
+   possiedono almeno un ingrediente consentito nel prompt.
+
+Questi test non riducono il validatore gluten e non modificano il budget.
+
 ## Verifica
 
 Comandi eseguiti:
@@ -103,7 +127,7 @@ Risultato:
 
 - Typecheck: superato.
 - Test allergeni: superati, incluso audit parametrico dei 15 allergeni.
-- Suite AI: superata; 27 test di generazione Piano Pasti e tutte le suite
+- Suite AI: superata; 30 test di generazione Piano Pasti e tutte le suite
   collegate senza fallimenti.
 - Test semantici: 8 superati, incluse coppie parametriche e settimana reale.
 - Hard cap invariato: `MAX_MEAL_PLAN_MODEL_CALLS = 28`.

@@ -196,6 +196,63 @@ function mediterraneanDiverseWeekItems(request: RequestInfo): Meal[] {
   });
 }
 
+function mediterraneanGlutenFreeWeekItems(request: RequestInfo): Meal[] {
+  const lunchesByFamily: Record<string, { title: string; ingredients: Ingredient[] }> = {
+    pasta: {
+      title: "Pasta senza glutine al pesto con tonno",
+      ingredients: [{ name: "pasta senza glutine", quantity: "80", unit: "g" }, { name: "tonno", quantity: "100", unit: "g" }, { name: "zucchine", quantity: "150", unit: "g" }],
+    },
+    "risotto/riso": {
+      title: "Riso al limone con pollo e peperoni",
+      ingredients: [{ name: "riso", quantity: "80", unit: "g" }, { name: "pollo", quantity: "120", unit: "g" }, { name: "peperoni", quantity: "150", unit: "g" }],
+    },
+    "piatto di legumi": {
+      title: "Ceci in umido con tacchino",
+      ingredients: [{ name: "ceci", quantity: "120", unit: "g" }, { name: "tacchino", quantity: "120", unit: "g" }, { name: "carote", quantity: "150", unit: "g" }],
+    },
+    couscous: {
+      title: "Cereale di mais al pomodoro con merluzzo",
+      ingredients: [{ name: "couscous di mais senza glutine", quantity: "80", unit: "g" }, { name: "merluzzo", quantity: "120", unit: "g" }, { name: "pomodori", quantity: "150", unit: "g" }],
+    },
+    "patate/polenta": {
+      title: "Patate al forno con salmone e broccoli",
+      ingredients: [{ name: "patate", quantity: "180", unit: "g" }, { name: "salmone", quantity: "120", unit: "g" }, { name: "broccoli", quantity: "150", unit: "g" }],
+    },
+    quinoa: {
+      title: "Quinoa con lenticchie e melanzane",
+      ingredients: [{ name: "quinoa", quantity: "80", unit: "g" }, { name: "lenticchie", quantity: "120", unit: "g" }, { name: "melanzane", quantity: "150", unit: "g" }],
+    },
+    zuppa: {
+      title: "Zuppa di lenticchie con carote e spinaci",
+      ingredients: [{ name: "lenticchie", quantity: "120", unit: "g" }, { name: "carote", quantity: "150", unit: "g" }, { name: "spinaci", quantity: "150", unit: "g" }],
+    },
+  };
+  const breakfastFruits = ["banana", "mela", "pera", "arancia", "kiwi", "mirtilli", "pesca"];
+  const dinnerProteins = ["merluzzo", "pollo", "uova", "ceci", "tonno", "tacchino", "salmone"];
+  return request.dates.flatMap((date) => {
+    const index = DATES.indexOf(date);
+    return request.mealTypes.map((mealType) => {
+      if (mealType === "breakfast") {
+        return makeMeal(date, mealType, `Colazione mediterranea ${index + 1}`, [
+          { name: breakfastFruits[index]!, quantity: "1", unit: "pezzo" },
+          { name: "yogurt bianco", quantity: "125", unit: "g" },
+        ]);
+      }
+      if (mealType === "lunch") {
+        const target = request.sysPrompt.match(/OBIETTIVO FAMIGLIA PRANZO DEL GIORNO: ([^.]+)\./)?.[1];
+        const lunch = target ? lunchesByFamily[target] : undefined;
+        assert.ok(lunch, `il target gluten-free deve usare una famiglia compatibile: ${target || "mancante"}`);
+        return makeMeal(date, mealType, lunch!.title, lunch!.ingredients);
+      }
+      return makeMeal(date, mealType, `Cena mediterranea ${index + 1}`, [
+        { name: dinnerProteins[index]!, quantity: "120", unit: "g" },
+        { name: index % 2 === 0 ? "riso" : "patate", quantity: "180", unit: "g" },
+        { name: "bietole", quantity: "150", unit: "g" },
+      ]);
+    });
+  });
+}
+
 function assertCompleteWeek(items: Array<{ date: string; mealType: string }>, mealsPerDay: number) {
   assert.equal(items.length, 7 * mealsPerDay);
   for (const date of DATES) {
@@ -451,6 +508,108 @@ test("mediterranea senza glutine amplia il prompt e passa il contesto di variet�
   assert.ok(calls.slice(2).every((call) => /CONTESTO VARIETÀ DEI GIORNI GIÀ GENERATI/i.test(call.sysPrompt)));
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "glutine" }), []);
+});
+
+test("mediterranea + glutine genera un piano completo sicuro con target pranzo gluten-free", async (t) => {
+  const { client, calls } = createFakeClient(mediterraneanGlutenFreeWeekItems);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { diet: "mediterranea", allergies: "glutine" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, "il percorso mediterraneo+glutine usa le 14 richieste giornaliere previste");
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
+  assertCompleteWeek(plan.items, 3);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { diet: "mediterranea", allergies: "glutine" }), []);
+
+  const lunchCalls = calls.filter((call) => call.mealTypes.includes("lunch"));
+  const safeFamilies: Record<string, string[]> = {
+    pasta: ["pasta senza glutine", "pasta di mais senza glutine", "pasta di riso senza glutine"],
+    "risotto/riso": ["riso"],
+    "piatto di legumi": ["ceci", "lenticchie", "fagioli"],
+    couscous: ["couscous di mais senza glutine"],
+    "patate/polenta": ["patate", "polenta di mais"],
+    quinoa: ["quinoa"],
+    zuppa: ["ceci", "lenticchie", "fagioli", "piselli"],
+  };
+  assert.equal(lunchCalls.length, 7);
+  for (const call of lunchCalls) {
+    const target = call.sysPrompt.match(/OBIETTIVO FAMIGLIA PRANZO DEL GIORNO: ([^.]+)\./)?.[1];
+    assert.ok(target && target in safeFamilies, `famiglia gluten-free compatibile: ${target || "mancante"}`);
+    assert.ok(
+      safeFamilies[target!]!.some((ingredient) => call.ingredientNames?.includes(ingredient)),
+      `il pool chiuso deve contenere un ingrediente gluten-free per ${target}`,
+    );
+  }
+});
+
+test("mediterranea + glutine recupera da un primo piano incompatibile restando entro il budget", async (t) => {
+  let responseNumber = 0;
+  const { client, calls } = createFakeClient((request) => {
+    const firstAttempt = responseNumber++ < THREE_MEAL_WEEK_REQUESTS;
+    if (!firstAttempt) return mediterraneanGlutenFreeWeekItems(request);
+    return request.dates.flatMap((date) => request.mealTypes.map((mealType) =>
+      mealType === "lunch"
+        ? makeMeal(date, mealType, "Pasta con glutine al pomodoro", [
+            { name: "pasta", quantity: "80", unit: "g" },
+            { name: "tonno", quantity: "100", unit: "g" },
+            { name: "pomodori", quantity: "150", unit: "g" },
+          ])
+        : makeMeal(date, mealType, `Pasto iniziale ${mealType}`, [
+            { name: "banana", quantity: "1", unit: "pezzo" },
+          ]),
+    ));
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { diet: "mediterranea", allergies: "glutine" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2, "un solo recovery completo dopo la violazione gluten");
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
+  assert.ok(calls.slice(THREE_MEAL_WEEK_REQUESTS).every((call) => /VINCOLO GLUTINE/i.test(call.sysPrompt)));
+  assertCompleteWeek(plan.items, 3);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { diet: "mediterranea", allergies: "glutine" }), []);
+});
+
+test("mediterranea + glutine tratta i duplicati semantici come advisory, senza retry settimanale", async (t) => {
+  const { client, calls } = createFakeClient((request) =>
+    mediterraneanGlutenFreeWeekItems(request).map((item) =>
+      item.mealType === "lunch"
+        ? makeMeal(item.date, "lunch", "Pasta senza glutine al pomodoro con tonno", [
+            { name: "pasta senza glutine", quantity: "80", unit: "g" },
+            { name: "tonno", quantity: "100", unit: "g" },
+            { name: "pomodori", quantity: "150", unit: "g" },
+          ])
+        : item,
+    ));
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { diet: "mediterranea", allergies: "glutine" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, "la varietà non avvia una rigenerazione completa");
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
+  assertCompleteWeek(plan.items, 3);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { diet: "mediterranea", allergies: "glutine" }), []);
+  assert.ok(evaluateMealPlanVariety(plan.items).issues.some((issue) =>
+    issue.code === "repeated_lunch_semantic_signature"));
+  assert.ok(!calls.some((call) => /VINCOLO GLUTINE: ricrea il piano/i.test(call.sysPrompt)));
 });
 
 test("vincoli nel campo Dieta raggiungono prompt e schema senza aumentare le chiamate", async (t) => {
