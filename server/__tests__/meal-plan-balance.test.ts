@@ -80,7 +80,8 @@ function balancedWeek(): MealPlanItem[] {
     meal(DATES[3]!, "dinner", "Zuppa di lenticchie e bietole", ["lenticchie", "bietole"]),
     meal(DATES[4]!, "dinner", "Merluzzo con fagiolini", ["merluzzo", "fagiolini"]),
     meal(DATES[5]!, "dinner", "Caprese con verdure grigliate"),
-    meal(DATES[6]!, "dinner", "Tacchino con spinaci"),
+    // Il catalogo mediterraneo richiede anche una porzione settimanale di carne rossa.
+    meal(DATES[6]!, "dinner", "Tagliata di manzo con spinaci"),
   ];
   return [...lunches, ...dinners];
 }
@@ -157,7 +158,7 @@ test("colazioni e spuntini sono ignorati dall'analisi", () => {
   assert.equal(report.balanced, true);
 });
 
-test("con dieta mediterranea il prompt contiene la regola di distribuzione e il piano simulato risulta bilanciato", async (t) => {
+test("con il profilo mediterraneo il prompt contiene la regola di distribuzione e il piano simulato risulta bilanciato", async (t) => {
   // Client simulato: verifica che generateWeeklyMealPlan inoltri la
   // mediterraneanRule nel system prompt e che un piano conforme alla regola
   // passi l'analisi end-to-end (generazione -> conteggio).
@@ -192,7 +193,7 @@ test("con dieta mediterranea il prompt contiene la regola di distribuzione e il 
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { diet: "Mediterranea", mealsPerDay: 2 },
+    preferences: { dietProfile: "mediterranean", mealsPerDay: 2 },
   });
 
   assert.ok(
@@ -209,7 +210,7 @@ test("con dieta mediterranea il prompt contiene la regola di distribuzione e il 
   assert.equal(report.balanced, true, `squilibri: ${report.issues.join(" | ")}`);
 });
 
-test("senza dieta mediterranea la regola dedicata NON viene aggiunta al prompt", async (t) => {
+test("con il profilo vegetariano la regola mediterranea NON viene aggiunta al prompt", async (t) => {
   const sysPrompts: string[] = [];
   const client = {
     chat: {
@@ -244,7 +245,7 @@ test("senza dieta mediterranea la regola dedicata NON viene aggiunta al prompt",
   await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { diet: "Vegetariana", mealsPerDay: 2 },
+    preferences: { dietProfile: "vegetarian", mealsPerDay: 2 },
   });
 
   assert.ok(sysPrompts.length > 0);

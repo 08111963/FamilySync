@@ -41,7 +41,7 @@ test("i profili senza glutine e lattosio applicano solo le loro sostituzioni esp
   ).length, 0);
 });
 
-test("vegetariano e vegano rifiutano carne rossa senza leggere allergies legacy", () => {
+test("compatibilità legacy: diet noto è mappato, allergies resta ignorato con dietProfile", () => {
   const item = [{ title: "Tagliata di manzo", ingredients: [{ name: "manzo" }] }];
   assert.equal(validateMealPlanConstraints(item, { dietProfile: "vegetarian" })[0]?.code, "meat");
   assert.equal(validateMealPlanConstraints(item, { dietProfile: "vegan" })[0]?.code, "meat");
@@ -50,6 +50,7 @@ test("vegetariano e vegano rifiutano carne rossa senza leggere allergies legacy"
     allergies: "glutine, arachidi",
   }).exclusions, []);
   assert.equal(legacyMealPlanDietToProfile("vegetariana"), "vegetarian");
+  assert.equal(legacyMealPlanDietToProfile("Solo cibi della mia infanzia"), undefined);
 });
 
 test("solo i profili mediterranei che consentono carne richiedono la carne rossa settimanale", () => {

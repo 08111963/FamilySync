@@ -15,6 +15,7 @@ import {
 } from "../../shared/schema";
 import { registerRoutes } from "../routes";
 import { generateAccessToken } from "../lib/jwt";
+import { prepareMealPlanPreferences } from "../routes/ai";
 
 /**
  * Test di INTEGRAZIONE della sostituzione del piano pasti (task: verifica che
@@ -114,21 +115,17 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
 
   let firstPlanId: string;
 
-  test("0) allergie senza consenso salute: generazione bloccata prima della chiamata AI", async () => {
-    for (const preferences of [
-      { allergies: "Glutine", mealsPerDay: 2 },
-      { notes: "Non posso mangiare arachidi", mealsPerDay: 2 },
-      { notes: "Sono celiaco", mealsPerDay: 2 },
-      { notes: "Sono celiaca", mealsPerDay: 2 },
-    ]) {
-      const res = await request("POST", `/api/ai/${familyId}/weekly-meal-plan/stream`, {
-        weekStartDate: WEEK,
-        preferences,
-      });
-      assert.equal(res.status, 403);
-      const body = await res.json();
-      assert.equal(body.error.code, "AI_HEALTH_CONSENT_REQUIRED");
-    }
+  test("0) campo allergies legacy: non crea un vincolo e usa il profilo mediterraneo di compatibilità", async () => {
+    const prepared = await prepareMealPlanPreferences(userId, {
+      allergies: "Glutine",
+      mealsPerDay: 2,
+    });
+    assert.equal(prepared.ok, true);
+    if (!prepared.ok) return;
+    assert.deepEqual(prepared.preferences, {
+      dietProfile: "mediterranean",
+      mealsPerDay: 2,
+    });
   });
 
   test("0b) note mediche non verificabili vengono rifiutate prima della chiamata AI", async () => {
@@ -199,10 +196,10 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     assert.equal(items.length, validItems.length, "gli items del vecchio piano devono essere intatti");
   });
 
-  test("3c) replace incompatibile con le allergie: 422 e vecchio piano intatto", async () => {
+  test("3c) replace incompatibile con il profilo senza glutine: 422 e vecchio piano intatto", async () => {
     const res = await savePlan({
       replace: true,
-      preferences: { allergies: "Glutine" },
+      preferences: { dietProfile: "mediterranean_gluten_free" },
       items: [{
         date: "2030-03-04",
         mealType: "lunch",
@@ -246,7 +243,7 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     const res = await request("POST", `/api/meal-plans/${familyId}/meal-plans`, {
       title: "Piano senza glutine",
       weekStartDate: "2030-03-11",
-      preferences: { allergies: "Glutine" },
+      preferences: { dietProfile: "mediterranean_gluten_free" },
       items: [{
         date: "2030-03-11",
         mealType: "lunch",
@@ -319,7 +316,9 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     assert.equal(after[0]?.titleOverride, before[0]?.titleOverride);
   });
 
-  test("7) una dieta non verificabile non viene salvata", async () => {
+  test("7) campo diet legacy non verificabile viene salvato solo come profilo mediterraneo di compatibilità", async () => {
+    // Compatibilità con client precedenti: un valore diet fuori dal catalogo
+    // chiuso non crea un vincolo libero; il piano conserva solo il default chiuso.
     const res = await request("POST", `/api/meal-plans/${familyId}/meal-plans`, {
       title: "Piano non verificabile",
       weekStartDate: "2030-03-18",
@@ -331,11 +330,13 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
         ingredients: [{ name: "Ingrediente generico", quantity: "1", unit: "pz" }],
       }],
     });
-    assert.equal(res.status, 422);
+    assert.equal(res.status, 201);
+    const body = await res.json();
+    assert.deepEqual(body.preferences, { dietProfile: "mediterranean" });
     const rows = await db.select().from(mealPlans).where(and(
       eq(mealPlans.familyId, familyId),
       eq(mealPlans.weekStartDate, "2030-03-18"),
     ));
-    assert.equal(rows.length, 0);
+    assert.equal(rows.length, 1);
   });
 });
