@@ -285,3 +285,10 @@ uri = "file://assets/store/welcome/apple-app-store-welcome.png"
 type = "image"
 title = "Pagina di benvenuto — Apple App Store"
 description = "Schermata reale FamilySync, 1290×2796 PNG, RGB senza trasparenza."
+
+[[outputs]]
+id = "0qpVZbRiOh6v-bXE-a18u"
+uri = "file://familysync-meal-plan-diagnostic-20260821.zip"
+type = "unspecified"
+title = "FamilySync Meal Plan Diagnostic"
+description = "Archivio diagnostico per audit esterno: sorgenti, schemi, API, test, report e manifest; scansione segreti completata."

@@ -1,0 +1,371 @@
+Ho bisogno di una **verifica esterna mirata** sul problema del Piano Pasti di FamilySync, in particolare quando l'utente seleziona o inserisce vincoli come:
+
+* senza glutine;
+* senza lattosio;
+* dieta mediterranea + senza glutine;
+* dieta mediterranea + senza lattosio;
+* dieta vegana + senza glutine;
+* combinazioni di dieta + allergie/intolleranze.
+
+Non correggere ancora il problema e non modificare il comportamento dell'app.
+
+In questa fase devi soltanto preparare uno ZIP completo ma leggero che permetta di verificare esattamente come i dati vengono:
+
+1. inseriti dall'utente;
+2. inviati dal frontend;
+3. ricevuti dalle API;
+4. trasformati nel contesto del Piano Pasti;
+5. inseriti nel prompt OpenAI;
+6. validati dopo la risposta di OpenAI;
+7. salvati nel database;
+8. utilizzati nella generazione delle alternative.
+
+## OBIETTIVO DEL CONTROLLO
+
+Devo capire se il problema relativo a “senza glutine” e “senza lattosio” dipende da:
+
+* frontend;
+* struttura di `preferences`;
+* distinzione dieta / allergie / intolleranze;
+* route API;
+* costruzione del prompt;
+* chiamata OpenAI;
+* `json_schema`;
+* validazione Zod;
+* mancata validazione semantica degli ingredienti;
+* salvataggio del Piano Pasti;
+* generazione alternativa;
+* perdita dei vincoli tra una fase e l'altra.
+
+Non limitarti ai file che ritieni importanti: includi tutti i file direttamente coinvolti nella funzione Piano Pasti e nelle chiamate AI correlate.
+
+# 1. FRONTEND PIANO PASTI
+
+Includi tutti i file web relativi a:
+
+* schermata Piano Pasti;
+* tab “I Miei Piani”;
+* tab “Genera con AI”;
+* selezione della dieta;
+* campo allergie/intolleranze;
+* eventuali checkbox o select;
+* stato React/Form;
+* validazioni frontend;
+* costruzione del body della richiesta;
+* generazione Piano;
+* Genera Alternative;
+* Salva Piano;
+* conversione Piano → Lista Spesa;
+* eventuali helper utilizzati.
+
+Deve essere possibile verificare esattamente cosa viene inviato quando l'utente sceglie:
+
+* mediterranea;
+* vegetariana;
+* vegana;
+* senza glutine;
+* senza lattosio.
+
+Includi anche eventuali file equivalenti della versione mobile se la funzione esiste anche nell'app smartphone.
+
+# 2. API PIANO PASTI
+
+Includi integralmente:
+
+`server/routes/ai.ts`
+
+o i file equivalenti che contengono almeno:
+
+* POST weekly-meal-plan;
+* weekly-meal-plan/stream;
+* generazione alternativa;
+* eventuale endpoint recipe suggestions utilizzato dal Piano Pasti.
+
+Voglio vedere integralmente:
+
+* parsing di `req.body`;
+* `weekStartDate`;
+* `preferences`;
+* eventuale `diet`;
+* eventuale `allergies`;
+* eventuale `intolerances`;
+* costruzione di `context`;
+* eventuali normalizzazioni;
+* default;
+* filtri;
+* trasformazioni;
+* chiamata a `generateWeeklyMealPlan()`.
+
+Non omettere parti con `...`.
+
+# 3. OPENAI
+
+Includi integralmente:
+
+`server/lib/openai.ts`
+
+e qualsiasi helper chiamato da questo file per il Piano Pasti.
+
+Voglio poter verificare:
+
+* funzione `generateWeeklyMealPlan`;
+* system prompt;
+* user prompt;
+* costruzione dinamica del prompt;
+* inserimento di dieta;
+* inserimento di allergie;
+* inserimento di intolleranze;
+* eventuali preferenze;
+* lingua;
+* numero di giorni;
+* pasti giornalieri;
+* ingredienti;
+* `response_format`;
+* `json_schema`;
+* modello OpenAI utilizzato;
+* temperatura, se configurata;
+* timeout;
+* retry;
+* parsing;
+* Zod;
+* mapping errori.
+
+Se il Piano Pasti viene generato in più blocchi/giorni/chiamate, includi tutta la relativa logica.
+
+# 4. SCHEMI E VALIDAZIONE
+
+Includi tutti gli schemi interessati:
+
+* Zod;
+* JSON Schema;
+* TypeScript types;
+* shared schema;
+* tipi MealPlan;
+* tipi Meal;
+* tipi Ingredient;
+* tipi Preferences;
+* Diet;
+* Allergy;
+* Intolerance.
+
+Voglio verificare se lo schema controlla soltanto la struttura JSON oppure anche il rispetto dei vincoli alimentari.
+
+# 5. DATABASE
+
+Includi:
+
+* tabelle Piano Pasti;
+* tabelle pasti;
+* eventuali campi preferences;
+* eventuale JSON salvato;
+* schema Drizzle;
+* migrazioni pertinenti;
+* route `meal-plans.ts`.
+
+Deve essere possibile controllare se “senza glutine” o “senza lattosio” vengono persi durante il salvataggio o il caricamento.
+
+# 6. ALTERNATIVE
+
+Includi integralmente la logica di:
+
+“Genera Alternative”
+
+e verifica se utilizza nuovamente:
+
+* dieta;
+* allergie;
+* intolleranze;
+* preferenze originali.
+
+È importante capire se la prima generazione rispetta i vincoli ma l'alternativa li perde.
+
+# 7. LISTA DELLA SPESA
+
+Includi anche la logica che trasforma il Piano Pasti in Lista della Spesa.
+
+Voglio verificare che non vengano introdotti o sostituiti ingredienti incompatibili in questa fase.
+
+# 8. TEST ESISTENTI
+
+Includi tutti i test riguardanti:
+
+* weekly meal plan;
+* meal plans;
+* OpenAI;
+* ricette;
+* preferences;
+* dieta;
+* allergie;
+* intolleranze;
+* json_schema;
+* Zod;
+* alternative.
+
+Non creare test nuovi in questa fase se richiede modificare il codice applicativo.
+
+Se esistono già test, includili.
+
+# 9. CONFIGURAZIONE OPENAI
+
+Includi i file di configurazione necessari a capire:
+
+* package OpenAI utilizzato;
+* versione SDK;
+* modello;
+* variabili d'ambiente ATTESE per nome.
+
+NON includere:
+
+* valore di `OPENAI_API_KEY`;
+* token;
+* secrets;
+* `.env`.
+
+È sufficiente vedere riferimenti tipo:
+
+`process.env.OPENAI_API_KEY`
+
+senza il valore.
+
+# 10. PACKAGE FILES
+
+Includi:
+
+* `package.json`;
+* lockfile;
+* eventuali package.json del frontend/mobile;
+* tsconfig pertinenti.
+
+# 11. REPORT TECNICO
+
+Crea un file:
+
+`MEAL_PLAN_DIAGNOSTIC_REPORT.md`
+
+che descriva, senza modificare il codice:
+
+## Flusso dati reale
+
+Esempio:
+
+Frontend
+→ request body
+→ route API
+→ context
+→ prompt OpenAI
+→ JSON Schema
+→ Zod
+→ risposta
+→ salvataggio DB
+→ visualizzazione.
+
+Per ogni passaggio indica i file e le funzioni coinvolte.
+
+## Mappatura campi
+
+Crea una tabella:
+
+| Input utente | Campo frontend | Campo API | Campo prompt | Persistito DB |
+| ------------ | -------------- | --------- | ------------ | ------------- |
+
+Inserisci almeno:
+
+* dieta mediterranea;
+* vegetariana;
+* vegana;
+* senza glutine;
+* senza lattosio;
+* allergie;
+* intolleranze.
+
+## Distinzione critica
+
+Indica esplicitamente se attualmente:
+
+* “senza glutine” è trattato come dieta;
+* “glutine” è trattato come allergia/intolleranza;
+* “senza lattosio” è trattato come dieta;
+* “lattosio” può essere inserito anche come allergia/intolleranza.
+
+Indica se questi percorsi arrivano allo stesso prompt oppure vengono trattati diversamente.
+
+# 12. NON FARE CORREZIONI
+
+Per questo mandato:
+
+NON:
+
+* modificare prompt OpenAI;
+* cambiare modelli;
+* cambiare schema;
+* aggiungere blacklist ingredienti;
+* aggiungere nuove validazioni;
+* cambiare database;
+* cambiare UI;
+* effettuare migrazioni;
+* fare deploy;
+* pubblicare;
+* aumentare il numero di chiamate OpenAI;
+* generare piani reali a pagamento se non strettamente necessario.
+
+Questa è una fase di sola raccolta del codice per audit esterno.
+
+# 13. ZIP
+
+Genera:
+
+`familysync-meal-plan-diagnostic-YYYYMMDD.zip`
+
+Lo ZIP deve includere soltanto i file necessari alla diagnosi, ma deve essere completo rispetto alla funzione Piano Pasti.
+
+Escludi:
+
+* node_modules;
+* build;
+* dist;
+* cache;
+* log;
+* `.env`;
+* token;
+* secrets;
+* API key;
+* credenziali;
+* database dump;
+* file utente;
+* APK;
+* AAB;
+* certificati;
+* keystore;
+* ZIP precedenti.
+
+Prima di creare lo ZIP esegui una scansione per verificare che non contenga segreti.
+
+# 14. CONTROLLO DELLO ZIP
+
+Dopo averlo creato:
+
+1. estrailo in una cartella temporanea;
+2. verifica che tutti gli import dei file inclusi necessari alla funzione Piano Pasti siano comprensibili;
+3. verifica che siano presenti tutti i file richiesti;
+4. verifica che `server/lib/openai.ts` sia completo;
+5. verifica che le route Piano Pasti siano complete;
+6. verifica che il frontend Piano Pasti sia presente;
+7. verifica che gli schemi Zod/JSON siano presenti;
+8. verifica che i test esistenti siano presenti.
+
+Non è necessario includere l'intero progetto se questi file sono sufficienti, ma non omettere dipendenze interne indispensabili alla comprensione del flusso.
+
+# 15. RISPOSTA FINALE
+
+Alla fine indicami soltanto:
+
+* nome esatto dello ZIP;
+* dimensione;
+* numero di file;
+* elenco sintetico delle aree incluse;
+* conferma “nessun segreto incluso”;
+* eventuali file richiesti che non esistono nel progetto.
+
+Non darmi ancora una diagnosi o una soluzione.
+
+Fermati dopo la creazione dello ZIP e attendi il controllo esterno.
