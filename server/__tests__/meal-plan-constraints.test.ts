@@ -13,33 +13,59 @@ import { compatibleMealIngredients } from "../lib/openai";
 
 const ingredient = (name: string) => ({ name });
 
-test("dieta e allergie convergono nelle stesse esclusioni canoniche", () => {
-  const glutenFromDiet = normalizeMealPlanConstraints({ diet: "senza glutine" });
-  const glutenFromAllergies = normalizeMealPlanConstraints({ allergies: "glutine" });
-  const lactoseFromDiet = normalizeMealPlanConstraints({ diet: "senza lattosio" });
-  const lactoseFromAllergies = normalizeMealPlanConstraints({ allergies: "lattosio" });
+test("i nove dietProfile chiusi normalizzano nei soli pattern ed esclusioni supportati", () => {
+  const cases = [
+    ["mediterranean", ["mediterranean"], []],
+    ["mediterranean_gluten_free", ["mediterranean"], ["gluten"]],
+    ["mediterranean_lactose_free", ["mediterranean"], ["lactose"]],
+    ["vegetarian", ["vegetarian"], []],
+    ["vegetarian_gluten_free", ["vegetarian"], ["gluten"]],
+    ["vegan", ["vegan"], []],
+    ["pescetarian", ["pescetarian"], []],
+    ["low_carb", ["low-carb"], []],
+    ["halal", ["halal"], []],
+  ] as const;
 
-  assert.deepEqual(glutenFromDiet.exclusions, ["gluten"]);
-  assert.deepEqual(glutenFromAllergies.exclusions, ["gluten"]);
-  assert.deepEqual(lactoseFromDiet.exclusions, ["lactose"]);
-  assert.deepEqual(lactoseFromAllergies.exclusions, ["lactose"]);
-  assert.equal(mealPlanHasExclusion({ diet: "gluten-free" }, "gluten"), true);
-  assert.equal(mealPlanHasExclusion({ diet: "Sono celiaco" }, "gluten"), true);
-  assert.equal(mealPlanHasExclusion({ diet: "intollerante al lattosio" }, "lactose"), true);
+  for (const [dietProfile, dietaryPatterns, exclusions] of cases) {
+    const normalized = normalizeMealPlanConstraints({ dietProfile });
+    assert.deepEqual(normalized.dietaryPatterns, dietaryPatterns, dietProfile);
+    assert.deepEqual(normalized.exclusions, exclusions, dietProfile);
+    assert.equal(normalized.source.dietProfile, dietProfile, dietProfile);
+  }
+  assert.equal(mealPlanHasExclusion({ dietProfile: "mediterranean_gluten_free" }, "gluten"), true);
+  assert.equal(mealPlanHasExclusion({ dietProfile: "mediterranean_lactose_free" }, "lactose"), true);
 });
 
-test("il consenso salute distingue scelta alimentare e condizione dichiarata", () => {
-  assert.equal(mealPlanPreferencesContainHealthData({ diet: "senza glutine" }), false);
-  assert.equal(mealPlanPreferencesContainHealthData({ diet: "senza lattosio" }), false);
-  assert.equal(mealPlanPreferencesContainHealthData({ allergies: "glutine" }), true);
-  assert.equal(mealPlanPreferencesContainHealthData({ allergies: "lattosio" }), true);
-  assert.equal(mealPlanPreferencesContainHealthData({ diet: "Sono celiaca" }), true);
-  assert.equal(mealPlanPreferencesContainHealthData({ diet: "intolleranza al lattosio" }), true);
+test("diet e allergies legacy non vengono propagati come vincoli", () => {
+  const legacy = { diet: "Vegana senza glutine", allergies: "glutine, arachidi" };
+  const normalized = normalizeMealPlanConstraints(legacy);
+
+  assert.deepEqual(normalized.dietaryPatterns, []);
+  assert.deepEqual(normalized.exclusions, []);
+  assert.deepEqual(normalized.customExclusions, []);
+  assert.equal(mealPlanHasExclusion(legacy, "gluten"), false);
+  assert.equal(mealPlanPreferencesContainHealthData(legacy), false);
+  assert.deepEqual(
+    validateMealPlanConstraints(
+      [{ title: "Pasta con arachidi", ingredients: [ingredient("Pasta"), ingredient("Arachidi")] }],
+      legacy,
+    ),
+    [],
+  );
+});
+
+test("il consenso salute considera solo le note, non il profilo o i campi legacy", () => {
+  assert.equal(mealPlanPreferencesContainHealthData({ dietProfile: "mediterranean_gluten_free" }), false);
+  assert.equal(mealPlanPreferencesContainHealthData({ diet: "Sono celiaca" }), false);
+  assert.equal(mealPlanPreferencesContainHealthData({ allergies: "lattosio" }), false);
+  assert.equal(mealPlanPreferencesContainHealthData({ notes: "Sono celiaca" }), true);
+  assert.equal(mealPlanPreferencesContainHealthData({ notes: "intolleranza al lattosio" }), true);
 });
 
 test("allowlist senza glutine conserva prodotti dichiarati sicuri", () => {
-  const breakfast = compatibleMealIngredients({ diet: "senza glutine" }, "breakfast");
-  const main = compatibleMealIngredients({ diet: "senza glutine" }, "main");
+  const preferences = { dietProfile: "mediterranean_gluten_free" } as const;
+  const breakfast = compatibleMealIngredients(preferences, "breakfast");
+  const main = compatibleMealIngredients(preferences, "main");
   for (const item of ["pane senza glutine", "fette biscottate senza glutine", "biscotti senza glutine"]) {
     assert.ok(breakfast.includes(item), item);
   }
@@ -55,7 +81,7 @@ test("allergia al glutine: pasta, pane e cereali non dichiarati senza glutine ve
   for (const title of ["Penne al tonno", "Pane tostato", "Yogurt con cereali"]) {
     const violations = validateMealPlanConstraints(
       [{ title, ingredients: [ingredient(title)] }],
-      { allergies: "Glutine" },
+      { dietProfile: "mediterranean_gluten_free" },
     );
     assert.ok(violations.some((violation) => violation.code === "gluten"), title);
   }
@@ -72,21 +98,20 @@ test("allergia al glutine: prodotti dichiarati senza glutine vengono accettati",
       ],
       steps: ["Cuoci le penne senza glutine e condiscile"],
     }],
-    { allergies: "Glutine" },
+    { dietProfile: "mediterranean_gluten_free" },
   );
   assert.deepEqual(violations, []);
 });
 
-test("senza glutine nel campo Dieta applica la stessa validazione del campo Allergie", () => {
+test("il profilo mediterraneo senza glutine applica la validazione canonica", () => {
   const unsafe = [{ title: "Pasta comune", ingredients: [ingredient("Pasta di semola")] }];
   const safe = [{
     title: "Pasta senza glutine con ceci",
     ingredients: [ingredient("Pasta di mais senza glutine"), ingredient("Ceci")],
   }];
-  for (const preferences of [{ diet: "senza glutine" }, { allergies: "glutine" }]) {
-    assert.ok(validateMealPlanConstraints(unsafe, preferences).some((violation) => violation.code === "gluten"));
-    assert.deepEqual(validateMealPlanConstraints(safe, preferences), []);
-  }
+  const preferences = { dietProfile: "mediterranean_gluten_free" } as const;
+  assert.ok(validateMealPlanConstraints(unsafe, preferences).some((violation) => violation.code === "gluten"));
+  assert.deepEqual(validateMealPlanConstraints(safe, preferences), []);
 });
 
 test("un sostituto sicuro non rende sicuri altri ingredienti nello stesso testo", () => {
@@ -95,7 +120,7 @@ test("un sostituto sicuro non rende sicuri altri ingredienti nello stesso testo"
       title: "Pasta di riso con pane comune",
       ingredients: [ingredient("Pasta di riso con pane comune")],
     }],
-    { allergies: "Glutine" },
+    { dietProfile: "mediterranean_gluten_free" },
   );
   assert.ok(glutenViolations.some((violation) => violation.code === "gluten"));
 
@@ -104,7 +129,7 @@ test("un sostituto sicuro non rende sicuri altri ingredienti nello stesso testo"
       title: "Latte vegetale con burro",
       ingredients: [ingredient("Latte vegetale con burro")],
     }],
-    { diet: "Vegana" },
+    { dietProfile: "vegan" },
   );
   assert.ok(veganViolations.some((violation) => violation.code === "milk"));
 });
@@ -115,7 +140,7 @@ test("dieta vegetariana: carne e pesce vengono rifiutati", () => {
       title: "Penne al tonno",
       ingredients: [ingredient("Penne"), ingredient("Tonno")],
     }],
-    { diet: "Vegetariana" },
+    { dietProfile: "vegetarian" },
   );
   assert.ok(violations.some((violation) => violation.code === "fish"));
 });
@@ -126,7 +151,7 @@ test("dieta vegana: latte, uova e miele vengono rifiutati", () => {
       title: "Yogurt con uova e miele",
       ingredients: [ingredient("Yogurt"), ingredient("Uova"), ingredient("Miele")],
     }],
-    { diet: "Vegana" },
+    { dietProfile: "vegan" },
   );
   assert.deepEqual(
     new Set(violations.map((violation) => violation.code)),
@@ -140,7 +165,7 @@ test("dieta vegana: sostituti vegetali espliciti vengono accettati", () => {
       title: "Yogurt vegetale con frutta",
       ingredients: [ingredient("Yogurt vegetale di soia"), ingredient("Fragole")],
     }],
-    { diet: "Vegana" },
+    { dietProfile: "vegan" },
   );
   assert.deepEqual(violations, []);
 });
@@ -160,7 +185,7 @@ test("intolleranza al lattosio: i passaggi possono riferirsi alla bevanda vegeta
         "Completa con la banana a fettine e servi.",
       ],
     }],
-    { allergies: "Lattosio" },
+    { dietProfile: "mediterranean_lactose_free" },
   );
   assert.deepEqual(violations, []);
 });
@@ -177,7 +202,7 @@ test("intolleranza al lattosio: un'etichetta descrittiva non invalida ingredient
         "Unisci gli ingredienti e servi.",
       ],
     }],
-    { allergies: "Lattosio" },
+    { dietProfile: "mediterranean_lactose_free" },
   );
   assert.deepEqual(violations, []);
 });
@@ -197,37 +222,33 @@ test("intolleranza al lattosio: un latticino diverso e non dichiarato sicuro res
         "Unisci la pasta e manteca per un minuto.",
       ],
     }],
-    { allergies: "Lattosio" },
+    { dietProfile: "mediterranean_lactose_free" },
   );
   assert.ok(violations.some((violation) => violation.code === "lactose" && violation.matched === "panna"));
 });
 
-test("senza lattosio nel campo Dieta applica la stessa validazione del campo Allergie", () => {
+test("il profilo mediterraneo senza lattosio applica la validazione canonica", () => {
   const unsafe = [{ title: "Pasta con ricotta", ingredients: [ingredient("Pasta"), ingredient("Ricotta")] }];
   const safe = [{ title: "Pasta con ceci", ingredients: [ingredient("Pasta"), ingredient("Ceci")] }];
-  for (const preferences of [{ diet: "senza lattosio" }, { allergies: "lattosio" }]) {
-    assert.ok(validateMealPlanConstraints(unsafe, preferences).some((violation) => violation.code === "lactose"));
-    assert.deepEqual(validateMealPlanConstraints(safe, preferences), []);
-  }
+  const preferences = { dietProfile: "mediterranean_lactose_free" } as const;
+  assert.ok(validateMealPlanConstraints(unsafe, preferences).some((violation) => violation.code === "lactose"));
+  assert.deepEqual(validateMealPlanConstraints(safe, preferences), []);
 });
 
-test("allergia al latte non accetta prodotti solo senza lattosio", () => {
+test("il profilo vegano rifiuta anche prodotti senza lattosio che contengono latte", () => {
   const violations = validateMealPlanConstraints(
     [{ title: "Latte senza lattosio", ingredients: [ingredient("Latte senza lattosio")] }],
-    { allergies: "latte" },
+    { dietProfile: "vegan" },
   );
   assert.ok(violations.some((violation) => violation.code === "milk"));
 });
 
-test("combinazioni di pattern ed esclusioni mantengono tutti i vincoli", () => {
+test("i profili combinati esistono solo nel catalogo chiuso", () => {
   const cases = [
-    { diet: "mediterranea senza glutine", expectedPatterns: ["mediterranean"], expectedExclusions: ["gluten"] },
-    { diet: "mediterranea senza lattosio", expectedPatterns: ["mediterranean"], expectedExclusions: ["lactose"] },
-    { diet: "mediterranea senza glutine e senza lattosio", expectedPatterns: ["mediterranean"], expectedExclusions: ["gluten", "lactose"] },
-    { diet: "vegetariana senza glutine", expectedPatterns: ["vegetarian"], expectedExclusions: ["gluten"] },
-    { diet: "vegana senza glutine", expectedPatterns: ["vegan"], expectedExclusions: ["gluten"] },
-    { diet: "vegana senza glutine", allergies: "frutta a guscio", expectedPatterns: ["vegan"], expectedExclusions: ["gluten", "nuts"] },
-  ];
+    { dietProfile: "mediterranean_gluten_free", expectedPatterns: ["mediterranean"], expectedExclusions: ["gluten"] },
+    { dietProfile: "mediterranean_lactose_free", expectedPatterns: ["mediterranean"], expectedExclusions: ["lactose"] },
+    { dietProfile: "vegetarian_gluten_free", expectedPatterns: ["vegetarian"], expectedExclusions: ["gluten"] },
+  ] as const;
   for (const { expectedPatterns, expectedExclusions, ...preferences } of cases) {
     const normalized = normalizeMealPlanConstraints(preferences);
     assert.deepEqual(normalized.dietaryPatterns, expectedPatterns, JSON.stringify(preferences));
@@ -235,21 +256,10 @@ test("combinazioni di pattern ed esclusioni mantengono tutti i vincoli", () => {
   }
 });
 
-test("allergie personalizzate: il nome inserito resta un divieto", () => {
-  const violations = validateMealPlanConstraints(
-    [{
-      title: "Macedonia di fragole",
-      ingredients: [ingredient("Fragole"), ingredient("Mela")],
-    }],
-    { allergies: "Fragole" },
-  );
-  assert.ok(violations.some((violation) => violation.code === "allergen-fragole"));
-});
-
-test("una dieta non verificabile viene bloccata invece di essere ignorata", () => {
+test("un piano senza dietProfile non può avviare la generazione", () => {
   assert.match(
     unsupportedMealPlanDiet({ diet: "Solo cibi della mia infanzia" }) || "",
-    /non può ancora essere verificato/i,
+    /Scegli un profilo dieta/i,
   );
 });
 
@@ -268,21 +278,21 @@ test("le note che esprimono allergie o esclusioni sono classificate come dati sa
   );
 });
 
-test("le note sanitarie estraibili diventano vincoli alimentari effettivi", () => {
+test("le note sanitarie non vengono convertite in vincoli e restano bloccanti", () => {
   for (const notes of ["Non posso mangiare fragole", "Devo evitare arachidi"]) {
-    const food = notes.includes("fragole") ? "Fragole" : "Arachidi";
-    const violations = validateMealPlanConstraints(
-      [{ title: `Pasto con ${food}`, ingredients: [ingredient(food)] }],
-      { notes },
+    assert.deepEqual(extractMealPlanHealthConstraints({ notes }), [], notes);
+    assert.match(
+      unsupportedMealPlanHealthNote({ notes }) || "",
+      /Allergie e intolleranze non si inseriscono/i,
+      notes,
     );
-    assert.ok(violations.length > 0, notes);
   }
 });
 
 test("una nota sanitaria ambigua viene rifiutata invece di essere ignorata", () => {
   assert.match(
     unsupportedMealPlanHealthNote({ notes: "L'anafilassi è un problema importante" }) || "",
-    /non può essere verificata/i,
+    /Allergie e intolleranze non si inseriscono/i,
   );
 });
 
@@ -305,14 +315,14 @@ test("condizioni mediche generiche non attraversano il percorso di preferenze st
   }
 });
 
-test("una condizione medica non supportata resta bloccante anche con un'allergia estraibile", () => {
+test("una condizione medica non supportata resta bloccante senza estrarre allergie", () => {
   for (const notes of [
     "Sono diabetico e allergico alle arachidi",
     "Sono in gravidanza e non posso mangiare fragole",
     "Ho insufficienza renale e devo evitare le noci",
   ]) {
     assert.equal(mealPlanPreferencesContainHealthData({ notes }), true, notes);
-    assert.ok(extractMealPlanHealthConstraints({ notes }).length > 0, notes);
+    assert.deepEqual(extractMealPlanHealthConstraints({ notes }), [], notes);
     assert.match(
       unsupportedMealPlanHealthNote({ notes }) || "",
       /condizione medica/i,
@@ -321,16 +331,13 @@ test("una condizione medica non supportata resta bloccante anche con un'allergia
   }
 });
 
-test("celiaco e celiaca diventano un vincolo sul glutine prima della generazione", () => {
+test("celiaco e celiaca nelle note restano bloccanti e non diventano un profilo", () => {
   for (const notes of ["Sono celiaco", "Sono celiaca"]) {
     assert.equal(mealPlanPreferencesContainHealthData({ notes }), true, notes);
-    assert.deepEqual(extractMealPlanHealthConstraints({ notes }), ["glutine"], notes);
-    assert.equal(unsupportedMealPlanHealthNote({ notes }), undefined, notes);
-    assert.ok(
-      validateMealPlanConstraints(
-        [{ title: "Pasta al pomodoro", ingredients: [ingredient("Pasta")] }],
-        { notes },
-      ).some((violation) => violation.code === "gluten"),
+    assert.deepEqual(extractMealPlanHealthConstraints({ notes }), [], notes);
+    assert.match(
+      unsupportedMealPlanHealthNote({ notes }) || "",
+      /Allergie e intolleranze non si inseriscono/i,
       notes,
     );
   }

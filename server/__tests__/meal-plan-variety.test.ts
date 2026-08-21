@@ -42,7 +42,7 @@ test("il fixture monotono osservato viene segnalato senza essere trattato come n
   assert.ok(evaluation.issues.some((issue) =>
     issue.code === "repeated_protein" && issue.source === "salmone" && issue.count === 5));
   assert.ok(evaluation.issues.some((issue) => issue.code === "low_carbohydrate_variety"));
-  assert.deepEqual(validateMealPlanConstraints(items, { allergies: "glutine" }), []);
+  assert.deepEqual(validateMealPlanConstraints(items, { dietProfile: "mediterranean_gluten_free" }), []);
 });
 
 test("una normale alternanza non viene segnalata per una singola ripetizione", () => {

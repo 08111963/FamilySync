@@ -17,9 +17,9 @@ const lunch = (date: string, title: string, ingredients: string[]) => ({
 });
 
 test("solo lattosio conserva un pool ampio e separa i prodotti senza lattosio dall'allergia al latte", () => {
-  const breakfast = compatibleMealIngredients({ allergies: "lattosio" }, "breakfast");
-  const main = compatibleMealIngredients({ allergies: "lattosio" }, "main");
-  const milkAllergy = compatibleMealIngredients({ allergies: "latte" }, "main");
+  const preferences = { dietProfile: "mediterranean_lactose_free" } as const;
+  const breakfast = compatibleMealIngredients(preferences, "breakfast");
+  const main = compatibleMealIngredients(preferences, "main");
 
   for (const ingredient of [
     "pasta", "riso", "couscous", "farro", "orzo", "quinoa", "polenta di mais",
@@ -31,18 +31,13 @@ test("solo lattosio conserva un pool ampio e separa i prodotti senza lattosio da
   assert.ok(main.includes("ricotta senza lattosio"));
   assert.ok(main.includes("mozzarella senza lattosio"));
   assert.ok(!main.includes("latte"));
-  assert.ok(!milkAllergy.includes("yogurt senza lattosio"));
   assert.deepEqual(
     validateMealPlanConstraints(
       [{ title: "Yogurt senza lattosio", ingredients: [{ name: "yogurt senza lattosio" }] }],
-      { allergies: "lattosio" },
+      preferences,
     ),
     [],
   );
-  assert.ok(validateMealPlanConstraints(
-    [{ title: "Yogurt senza lattosio", ingredients: [{ name: "yogurt senza lattosio" }] }],
-    { allergies: "latte" },
-  ).length > 0);
 });
 
 test("le varianti di pasta pomodoro tonno hanno la stessa firma concettuale", () => {
@@ -99,5 +94,5 @@ test("il fixture reale lactose 7/7 viene segnalato in modo esplicito", () => {
   assert.match(context, /SEMANTIC LUNCH SIGNATURES USED/i);
   assert.match(context, /pasta \+ tomato \+ tuna \+ pasta_main/i);
   assert.match(context, /EVITA una firma semantica già usata/i);
-  assert.deepEqual(validateMealPlanConstraints(lunches, { allergies: "lattosio" }), []);
+  assert.deepEqual(validateMealPlanConstraints(lunches, { dietProfile: "mediterranean_lactose_free" }), []);
 });

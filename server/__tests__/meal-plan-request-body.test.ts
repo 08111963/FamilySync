@@ -9,10 +9,10 @@ import {
 const userId = "meal-plan-request-body-test-user";
 const allowedConsent = async () => true;
 
-test("body reale dieta senza glutine attraversa parser route e normalizzazione", async () => {
+test("body reale dietProfile senza glutine attraversa parser route e normalizzazione", async () => {
   const body = {
     weekStartDate: "2026-08-24",
-    preferences: { diet: "senza glutine" },
+    preferences: { dietProfile: "mediterranean_gluten_free" },
   };
   const prepared = await prepareMealPlanPreferences(userId, body.preferences, allowedConsent);
 
@@ -27,10 +27,10 @@ test("body reale dieta senza glutine attraversa parser route e normalizzazione",
   );
 });
 
-test("body reale dieta senza lattosio attraversa parser route e normalizzazione", async () => {
+test("body reale dietProfile senza lattosio attraversa parser route e normalizzazione", async () => {
   const body = {
     weekStartDate: "2026-08-24",
-    preferences: { diet: "senza lattosio" },
+    preferences: { dietProfile: "mediterranean_lactose_free" },
   };
   const prepared = await prepareMealPlanPreferences(userId, body.preferences, allowedConsent);
 
@@ -45,7 +45,7 @@ test("body reale dieta senza lattosio attraversa parser route e normalizzazione"
   );
 });
 
-test("corpi frontend senza glutine e glutine in allergie hanno la stessa esclusione", async () => {
+test("diet e allergies legacy non creano esclusioni dal body frontend", async () => {
   const [diet, allergies] = await Promise.all([
     prepareMealPlanPreferences(userId, { diet: "senza glutine" }, allowedConsent),
     prepareMealPlanPreferences(userId, { allergies: "glutine" }, allowedConsent),
@@ -53,8 +53,8 @@ test("corpi frontend senza glutine e glutine in allergie hanno la stessa esclusi
   assert.equal(diet.ok, true);
   assert.equal(allergies.ok, true);
   if (!diet.ok || !allergies.ok) return;
-  assert.deepEqual(
-    normalizeMealPlanConstraints(diet.preferences).exclusions,
-    normalizeMealPlanConstraints(allergies.preferences).exclusions,
-  );
+  assert.deepEqual(normalizeMealPlanConstraints(diet.preferences).exclusions, []);
+  assert.deepEqual(normalizeMealPlanConstraints(allergies.preferences).exclusions, []);
+  assert.deepEqual(diet.preferences, { dietProfile: "mediterranean" });
+  assert.deepEqual(allergies.preferences, { dietProfile: "mediterranean" });
 });
