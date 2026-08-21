@@ -636,6 +636,44 @@ test("i pasti ripetuti in giorni diversi vengono rigenerati prima della consegna
   }
 });
 
+test("un solo doppione viene riparato localmente senza rigenerare l'intera settimana", async (t) => {
+  let responseNumber = 0;
+  const { client, calls } = createFakeClient((request) => {
+    const firstWeek = responseNumber++ < THREE_MEAL_WEEK_REQUESTS;
+    const items = weekItems(request);
+    if (
+      firstWeek
+      && (request.dates[0] === DATES[0] || request.dates[0] === DATES[6])
+      && request.mealTypes.includes("dinner")
+    ) {
+      return items.map((item) => item.mealType === "dinner"
+        ? makeMeal(item.date, item.mealType, "Pollo arrosto con patate", [
+            { name: "pollo", quantity: "120", unit: "g" },
+            { name: "patate", quantity: "180", unit: "g" },
+            { name: "spinaci", quantity: "150", unit: "g" },
+          ])
+        : item);
+    }
+    if (request.mealTypes.length === 1 && request.mealTypes[0] === "dinner") {
+      return [makeMeal(request.dates[0]!, "dinner", "Cena riparata e diversa", [
+        { name: "salmone", quantity: "150", unit: "g" },
+        { name: "riso", quantity: "80", unit: "g" },
+        { name: "zucchine", quantity: "150", unit: "g" },
+      ])];
+    }
+    return items;
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS + 1);
+  assert.ok(calls.at(-1)?.sysPrompt.includes("CORREZIONE VARIETÀ LOCALE OBBLIGATORIA"));
+  assertCompleteWeek(plan.items, 3);
+  assert.equal(new Set(plan.items.filter((item) => item.mealType === "dinner").map((item) => item.title)).size, 7);
+});
+
 test("una risposta incompleta non viene consegnata come settimana valida", async (t) => {
   const { client } = createFakeClient((request) => request.dates.slice(0, 0).flatMap((date) =>
     request.mealTypes.map((mealType) => makeMeal(date, mealType, "Pasto", [{ name: "mela", quantity: "1", unit: "pezzo" }])),

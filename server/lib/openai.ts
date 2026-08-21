@@ -717,6 +717,12 @@ class MealPlanVarietyRetryError extends Error {
   }
 }
 
+interface RepeatedMealSlot {
+  date: string;
+  mealType: MealPlanSuggestion["items"][number]["mealType"];
+  title: string;
+}
+
 function normalizeMealPlanConcept(value: string): string {
   return value
     .normalize("NFKD")
@@ -763,19 +769,29 @@ function mealConceptsAreTooSimilar(left: string, right: string): boolean {
  * delle combinazioni senza trasformare somiglianze lessicali in falsi errori.
  */
 function findRepeatedMealConcepts(items: MealPlanSuggestion["items"]): string[] {
+  return findRepeatedMealSlots(items).map((slot) => slot.title);
+}
+
+/**
+ * Restituisce i pasti successivi che duplicano un titolo già usato nello
+ * stesso tipo di pasto. Conservare il primo e sostituire quelli successivi
+ * permette una correzione locale, molto meno costosa di un'altra settimana
+ * intera generata in parallelo.
+ */
+function findRepeatedMealSlots(items: MealPlanSuggestion["items"]): RepeatedMealSlot[] {
   const seenTitles = new Map<string, Array<{ date: string; title: string }>>();
-  const repeated = new Set<string>();
+  const repeated: RepeatedMealSlot[] = [];
 
   for (const item of items) {
     const entries = seenTitles.get(item.mealType) || [];
     if (entries.some((entry) =>
       entry.date !== item.date && mealConceptsAreTooSimilar(entry.title, item.title))) {
-      repeated.add(item.title);
+      repeated.push({ date: item.date, mealType: item.mealType, title: item.title });
     }
     entries.push({ date: item.date, title: item.title });
     seenTitles.set(item.mealType, entries);
   }
-  return Array.from(repeated).slice(0, 16);
+  return repeated.slice(0, 16);
 }
 
 function buildMealPlanVarietyCorrection(repeatedConcepts: string[], nextAttempt: number): string {
@@ -798,6 +814,7 @@ const MAX_MALFORMED_RESPONSE_RETRIES = 2;
 // un'allergia consuma retroattivamente il tentativo sanitario e il client
 // riceve un generico "risposta non valida".
 const MAX_VARIETY_GENERATION_RETRIES = 1;
+const MAX_LOCAL_VARIETY_REPAIRS = 3;
 const SAFE_MAIN_INGREDIENTS = [
   "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
   "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
@@ -1249,7 +1266,12 @@ async function generateWeeklyMealPlanAttempt(
     return requests;
   });
 
-  async function fetchChunk(request: WeeklyMealRequest, themeHint?: string, breakfastHint?: string): Promise<MealPlanSuggestion['items']> {
+  async function fetchChunk(
+    request: WeeklyMealRequest,
+    themeHint?: string,
+    breakfastHint?: string,
+    localCorrection = "",
+  ): Promise<MealPlanSuggestion['items']> {
     const chunkDates = request.dates;
     const requestMealTypes = request.mealTypes;
     const mealsForRequest = requestMealTypes.length;
@@ -1305,7 +1327,7 @@ ${constrainedRecipeReferenceRule}
    - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno realizza questa combinazione concreta e non sostituirla con una colazione generica: ${breakfastHint}.` : ''}
-${constraintRule}${constraintCorrection}${varietyCorrection}${qualityCorrection}
+ ${constraintRule}${constraintCorrection}${varietyCorrection}${qualityCorrection}${localCorrection}
 - Rispondi SOLO con JSON: ${responseContract}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
@@ -1513,7 +1535,89 @@ ${constraintRule}${constraintCorrection}${varietyCorrection}${qualityCorrection}
     throw new MealPlanConstraintRetryError(constraintViolations);
   }
 
-  const repeatedConcepts = findRepeatedMealConcepts(filtered);
+  const repeatedSlots = findRepeatedMealSlots(filtered);
+  let finalItems = filtered;
+  if (repeatedSlots.length > 0 && repeatedSlots.length <= MAX_LOCAL_VARIETY_REPAIRS) {
+    const locallyRepaired = [...filtered];
+    let localRepairFailed = false;
+
+    for (const slot of repeatedSlots) {
+      const dayIndex = dates.indexOf(slot.date);
+      const forbiddenTitles = locallyRepaired
+        .filter((item) =>
+          item.mealType === slot.mealType
+          && !(item.date === slot.date && item.mealType === slot.mealType))
+        .map((item) => item.title)
+        .slice(0, 12);
+      const repairRequest: WeeklyMealRequest = {
+        dates: [slot.date],
+        mealTypes: [slot.mealType],
+        ingredientNames: slot.mealType === "breakfast"
+          ? compatibleMealIngredients(context.preferences, "breakfast")
+          : allergenSafePlan
+            ? compatibleMealIngredients(context.preferences, "main")
+            : undefined,
+        label: `${slot.date}-${slot.mealType}-variety-repair`,
+      };
+      const localCorrection = `
+- CORREZIONE VARIETÀ LOCALE OBBLIGATORIA: genera un solo ${slot.mealType} per ${slot.date}, completo e compatibile.
+- Il titolo e la ricetta devono essere realmente diversi dai pasti già presenti. Non usare questi titoli: ${forbiddenTitles.join("; ")}.`;
+      try {
+        const replacements = await fetchChunk(
+          repairRequest,
+          slot.mealType === "breakfast"
+            ? undefined
+            : `${activeDayThemes[dayIndex]} ${activeDinnerThemes[dayIndex]}`,
+          slot.mealType === "breakfast" ? activeBreakfastThemes[dayIndex] : undefined,
+          localCorrection,
+        );
+        const replacement = replacements.find((item) =>
+          item.date === slot.date && item.mealType === slot.mealType);
+        const replacementText = replacement
+          ? [
+              replacement.title,
+              replacement.description,
+              ...(replacement.ingredients || []).map((ingredient) => ingredient.name),
+              ...(replacement.steps || []),
+            ].join(" ")
+          : "";
+        const replacementIsComplete = !!replacement
+          && !!replacement.title.trim()
+          && !!replacement.description?.trim()
+          && !!replacement.ingredients?.length
+          && !!replacement.steps?.length
+          && replacement.steps.length >= 3
+          && replacement.steps.length <= 6
+          && replacement.steps.every((step) => !!step?.trim())
+          && replacement.ingredients.every((ingredient) =>
+            !!ingredient.name?.trim() && !!ingredient.quantity?.trim() && !!ingredient.unit?.trim());
+        const replacementIsSafe = !!replacement
+          && validateMealPlanConstraints([replacement], context.preferences).length === 0
+          && (replacement.mealType !== "breakfast" || !savoryBreakfastTerm(replacementText))
+          && (glutenFreeRequired || wantsWholegrain || !/\bintegral(?:e|i)?\b/i.test(replacementText));
+        if (!replacementIsComplete || !replacementIsSafe) {
+          localRepairFailed = true;
+          break;
+        }
+        const replacementIndex = locallyRepaired.findIndex((item) =>
+          item.date === slot.date && item.mealType === slot.mealType);
+        if (replacementIndex < 0) {
+          localRepairFailed = true;
+          break;
+        }
+        locallyRepaired[replacementIndex] = replacement;
+      } catch {
+        localRepairFailed = true;
+        break;
+      }
+    }
+
+    if (!localRepairFailed && findRepeatedMealSlots(locallyRepaired).length === 0) {
+      finalItems = locallyRepaired;
+    }
+  }
+
+  const repeatedConcepts = findRepeatedMealConcepts(finalItems);
   if (repeatedConcepts.length > 0) {
     if (!context.suppressInternalLogs) {
       console.warn(JSON.stringify({
@@ -1527,14 +1631,14 @@ ${constraintRule}${constraintCorrection}${varietyCorrection}${qualityCorrection}
 
   if (context.onProgress) {
     for (const date of dates) {
-      const dayItems = filtered.filter((item) => item.date === date);
+      const dayItems = finalItems.filter((item) => item.date === date);
       if (dayItems.length > 0) {
         try { context.onProgress(dayItems); } catch {}
       }
     }
   }
 
-  return { title: 'Piano Settimanale', items: filtered };
+  return { title: 'Piano Settimanale', items: finalItems };
 }
 
 export async function generateWeeklyMealPlan(
