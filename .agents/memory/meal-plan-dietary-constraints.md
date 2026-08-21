@@ -20,3 +20,9 @@ La dieta, le allergie e le note devono attraversare una sola normalizzazione can
 **Why:** inferire regole diverse da ciascun campo, oppure trasformare ogni token libero in blacklist, fa divergere prompt, allowlist e validatore e può rifiutare alimenti dichiarati compatibili.
 
 **How to apply:** usa le esclusioni canoniche per consenso, prompt, schema, allowlist e validazione. I prodotti trasformati a rischio glutine sono ammessi soltanto con dicitura esplicita “senza glutine”; una scelta personale “senza glutine” non è di per sé dato sanitario, mentre celiachia e allergie dichiarate richiedono il consenso salute.
+
+La varietà culinaria è una preferenza best-effort separata dalla sicurezza: i blocchi giornalieri possono ricevere solo categorie aggregate già usate per ridurre le ripetizioni, ma non devono allentare la closed allowlist né trasformare monotonia in una violazione alimentare.
+
+**Why:** un prompt sicuro ma troppo ristretto tende a ripetere riso e una singola proteina; rigenerare con ulteriori chiamate costa quota e non dà garanzie migliori.
+
+**How to apply:** mantenere invariato il budget di chiamate e passare ai blocchi successivi solo un contesto compatto di carboidrati/proteine già usati. Un controllo deterministico può segnalare fonti dominanti e varietà bassa, ma la validazione dei vincoli alimentari prevale sempre.

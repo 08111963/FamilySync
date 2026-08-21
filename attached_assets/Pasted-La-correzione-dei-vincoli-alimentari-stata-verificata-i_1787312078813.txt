@@ -1,0 +1,383 @@
+La correzione dei vincoli alimentari è stata verificata in produzione e, in linea generale, funziona.
+
+Il caso testato è:
+
+* Dieta: mediterranea
+* Allergie / intolleranze: glutine
+
+Il piano generato rispetta il senza glutine, ma è troppo rigido e ripetitivo.
+
+Dalle prove reali risultano molte ripetizioni di:
+
+* riso;
+* salmone;
+* patate;
+* quinoa;
+* legumi;
+* pollo;
+* polenta.
+
+Inoltre, nonostante l'allowlist ora consenta prodotti gluten-free specifici, nella settimana non è comparsa nemmeno una volta la pasta senza glutine.
+
+NON modificare né indebolire le correzioni già implementate su:
+
+* `normalizeMealPlanConstraints()`;
+* equivalenza `diet` / `allergies`;
+* distinzione `gluten`, `lactose`, `milk`;
+* validazione semantica;
+* closed allowlist;
+* JSON Schema;
+* Zod;
+* `MAX_CONSTRAINT_GENERATION_ATTEMPTS = 2`.
+
+La sicurezza alimentare deve restare invariata.
+
+L'obiettivo di questo mandato è esclusivamente migliorare la VARIETÀ e la naturalezza dei piani generati.
+
+# 1. ANALIZZA IL PROMPT ATTUALE
+
+Controlla `generateWeeklyMealPlan()` e tutti gli helper che costruiscono il prompt.
+
+Cerca istruzioni che, nel caso mediterranea + senza glutine, indirizzano troppo il modello verso:
+
+* riso;
+* quinoa;
+* polenta;
+* patate.
+
+In particolare verifica eventuali frasi equivalenti a:
+
+“usa riso, quinoa, polenta e patate come fonti di carboidrati”.
+
+Questa formulazione è troppo restrittiva.
+
+Sostituiscila con una regola che mantenga la sicurezza ma allarghi le opzioni.
+
+Esempio concettuale:
+
+“Per una dieta mediterranea senza glutine varia le fonti di carboidrati scegliendo tra riso, risotti, patate, polenta, quinoa e prodotti esplicitamente senza glutine come pasta e pane senza glutine. Non usare cereali o prodotti contenenti glutine.”
+
+Non copiare necessariamente questa frase alla lettera: integrala correttamente nell'architettura attuale.
+
+# 2. USA DAVVERO LE ALTERNATIVE GLUTEN-FREE GIÀ AMMESSE
+
+La lista sicura ora contiene ingredienti come:
+
+* pasta senza glutine;
+* pasta di mais senza glutine;
+* pasta di riso senza glutine;
+* pane senza glutine;
+* fette biscottate senza glutine;
+* biscotti senza glutine;
+* couscous di mais senza glutine;
+* gnocchi senza glutine.
+
+Verifica che questi ingredienti:
+
+* arrivino effettivamente nel prompt;
+* non vengano esclusi da filtri successivi;
+* non abbiano una priorità troppo bassa;
+* possano essere scelti nei pasti principali.
+
+Non rendere obbligatoria la pasta ogni giorno.
+
+Per una settimana mediterranea senza glutine, l'obiettivo è una varietà realistica.
+
+# 3. AGGIUNGI REGOLE DI VARIETÀ SETTIMANALE
+
+Il generatore deve ragionare sull'intera settimana e non soltanto sul singolo pasto.
+
+Aggiungi regole qualitative, non prescrizioni mediche.
+
+Per 7 giorni / 21 pasti principali, cerca di rispettare:
+
+## Carboidrati principali
+
+* almeno 4 fonti differenti durante la settimana;
+* stessa fonte principale non più di 3 volte, quando possibile;
+* per dieta mediterranea senza glutine includere normalmente almeno 1 pasto con pasta senza glutine, se non esistono altri vincoli che lo impediscono;
+* alternare, quando appropriato:
+
+  * pasta GF;
+  * riso/risotto;
+  * patate;
+  * polenta;
+  * quinoa;
+  * pane GF;
+  * legumi come componente amidacea/proteica.
+
+Non forzare prodotti trasformati quando non servono.
+
+## Proteine
+
+Evitare che la stessa proteina principale domini la settimana.
+
+Cerca di alternare:
+
+* pesce;
+* carne bianca;
+* uova;
+* legumi;
+* eventualmente latticini compatibili se non esclusi;
+* altre fonti coerenti con la dieta scelta.
+
+Come regola orientativa:
+
+* stessa proteina principale non più di 2 volte nella settimana, quando ragionevolmente possibile;
+* “pesce” può comparire più volte, ma evitare per esempio salmone 4-5 volte.
+
+Queste sono regole di varietà culinaria, non indicazioni nutrizionali individuali.
+
+# 4. NON RIPETERE INUTILMENTE “SENZA GLUTINE” NEI TITOLI
+
+Il vincolo deve essere rispettato negli ingredienti, non ripetuto meccanicamente nel nome del piatto.
+
+Esempi poco naturali:
+
+* “Risotto al salmone e spinaci (senza glutine)”;
+* “Polenta di mais (senza glutine)”;
+* “Gallette di riso senza glutine” quando il nome non necessita della specifica.
+
+Mantieni “senza glutine” nel titolo quando serve a identificare realmente un prodotto sostitutivo, per esempio:
+
+* pasta senza glutine al pomodoro;
+* pane senza glutine con marmellata.
+
+Non aggiungerlo a piatti naturalmente privi di glutine solo per ricordare il vincolo.
+
+# 5. NON CAMBIARE LE REGOLE DI SICUREZZA
+
+Resta obbligatorio:
+
+* rifiutare pasta normale;
+* rifiutare pane normale;
+* rifiutare couscous normale;
+* rifiutare farro;
+* rifiutare orzo;
+* rifiutare pangrattato;
+* rifiutare biscotti normali;
+* applicare la validazione anche a titolo, descrizione, ingredienti e istruzioni.
+
+Non diminuire la severità del validatore per ottenere più varietà.
+
+La varietà deve derivare da un pool sicuro più ampio e da un prompt migliore.
+
+# 6. CONTROLLA LA GENERAZIONE A BLOCCHI
+
+Il piano viene generato attraverso più chiamate OpenAI.
+
+Verifica se ogni blocco/giorno viene generato senza conoscere abbastanza i pasti già scelti.
+
+Se il prompt dei blocchi successivi non contiene un riepilogo sintetico degli ingredienti/proteine/carboidrati già usati, il modello non può evitare bene le ripetizioni.
+
+Senza aumentare il numero di chiamate, passa ai blocchi successivi un contesto compatto come:
+
+* carboidrati principali già usati;
+* proteine principali già usate;
+* piatti già generati.
+
+Non inviare tutto il JSON precedente se non serve.
+
+Mantieni il contesto piccolo per contenere i token e i costi.
+
+# 7. NON AUMENTARE LE CHIAMATE OPENAI
+
+Non aumentare:
+
+`MAX_CONSTRAINT_GENERATION_ATTEMPTS = 2`
+
+Non aggiungere una seconda chiamata AI solo per “migliorare la varietà”.
+
+La varietà deve essere ottenuta nella stessa pipeline attuale.
+
+L'obiettivo è semmai diminuire i retry grazie a prompt più chiari.
+
+# 8. TEST AUTOMATICI DI VARIETÀ
+
+Aggiungi test senza chiamate OpenAI reali.
+
+Testa almeno:
+
+## Prompt
+
+Per:
+
+```ts
+{
+  diet: "mediterranea",
+  allergies: "glutine"
+}
+```
+
+il prompt deve contenere/consentire esplicitamente:
+
+* pasta senza glutine;
+* riso;
+* patate;
+* polenta;
+* quinoa;
+
+e non deve presentare riso/quinoa/polenta/patate come uniche possibilità.
+
+## Allowlist
+
+Verifica che `compatibleMealIngredients()` per mediterranea + glutine includa realmente:
+
+* pasta senza glutine;
+* pasta di riso senza glutine;
+* pasta di mais senza glutine;
+* pane senza glutine.
+
+## Sicurezza
+
+Continua a escludere:
+
+* pasta;
+* pane;
+* couscous;
+* farro;
+* orzo.
+
+## Diversità
+
+Crea una funzione pura o helper testabile che valuti la varietà di un piano generato.
+
+Non deve rifiutare un piano per una singola ripetizione.
+
+Deve però poter rilevare situazioni evidentemente monotone, ad esempio:
+
+* salmone 5 volte;
+* riso come carboidrato principale in 8-10 pasti;
+* solo 2 fonti di carboidrati in tutta la settimana.
+
+Se aggiungi questa verifica al runtime, non trasformarla in una nuova chiamata OpenAI.
+
+Deve essere deterministica.
+
+# 9. ATTENZIONE AI PIANI CON PIÙ VINCOLI
+
+La varietà non deve rendere impossibili casi più complessi.
+
+Testa almeno:
+
+* mediterranea + senza glutine;
+* mediterranea + senza lattosio;
+* mediterranea + senza glutine + senza lattosio;
+* vegetariana + senza glutine;
+* vegana + senza glutine;
+* vegana + senza glutine + frutta a guscio.
+
+Più vincoli ci sono, più la regola di varietà deve essere “best effort”.
+
+La sicurezza prevale sempre sulla varietà.
+
+# 10. TEST DEL CASO REALE OSSERVATO
+
+Aggiungi un fixture equivalente a una settimana come questa:
+
+* molto riso;
+* più pasti con salmone;
+* patate;
+* quinoa;
+* polenta;
+* zero pasta GF.
+
+Il controllo di varietà deve rilevare almeno:
+
+* eccessiva ripetizione proteica;
+* bassa varietà delle fonti di carboidrati.
+
+Non deve invece considerare il piano “non sicuro”.
+
+Distingui chiaramente:
+
+* constraint safety;
+* meal-plan variety.
+
+# 11. UX
+
+Non cambiare la schermata Piano Pasti se non necessario.
+
+Il risultato atteso è semplicemente che la prossima generazione produca un piano più naturale.
+
+Non aggiungere slider o nuove opzioni “varietà” in questa fase.
+
+# 12. REPORT
+
+Crea:
+
+`MEAL_PLAN_VARIETY_FIX_REPORT.md`
+
+con:
+
+| Aspetto                  | Prima               | Dopo                                  | Test |
+| ------------------------ | ------------------- | ------------------------------------- | ---- |
+| Pasta GF utilizzabile    | sì ma poco favorita | realmente favorita tra le alternative | ...  |
+| Ripetizione riso         | alta                | ridotta/best effort                   | ...  |
+| Ripetizione salmone      | alta                | ridotta/best effort                   | ...  |
+| Numero fonti carboidrati | basso               | almeno 4 quando possibile             | ...  |
+| Sicurezza glutine        | attiva              | invariata                             | ...  |
+| Retry OpenAI             | max 2               | max 2                                 | ...  |
+
+Indica anche:
+
+* file modificati;
+* prompt modificato;
+* helper di varietà aggiunti;
+* test aggiunti;
+* numero totale test;
+* numero massimo di chiamate OpenAI invariato.
+
+# 13. VERIFICA
+
+Esegui:
+
+`npm run typecheck`
+`npm run test:ai`
+`npx tsx server/__tests__/meal-plan-constraints.test.ts`
+`npx tsx server/__tests__/meal-plan-generation.test.ts`
+`npx tsx server/__tests__/meal-plan-replace.test.ts`
+
+e gli eventuali nuovi test di varietà.
+
+Riporta:
+
+* totale test;
+* passati;
+* falliti;
+* typecheck;
+* numero massimo di model call;
+* conferma che non sono state aggiunte nuove chiamate OpenAI.
+
+# 14. NON FARE DEPLOY
+
+Non fare deploy in questa fase.
+
+Genera:
+
+`familysync-meal-plan-variety-fixed-20260821.zip`
+
+Escludi:
+
+* `.env`;
+* API key;
+* token;
+* segreti;
+* database dump;
+* node_modules;
+* build;
+* APK;
+* ZIP precedenti.
+
+Includi:
+
+* codice modificato;
+* prompt;
+* constraint helpers;
+* eventuale variety helper;
+* test;
+* package.json;
+* lockfile;
+* `MEAL_PLAN_VARIETY_FIX_REPORT.md`.
+
+Fermati dopo la generazione dello ZIP e attendi il controllo esterno.

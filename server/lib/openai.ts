@@ -13,6 +13,7 @@ import {
   type MealPlanConstraintViolation,
 } from './meal-plan-constraints';
 import { recordMealPlanLatency } from './meal-plan-latency-monitor';
+import { buildMealPlanVarietyContext, evaluateMealPlanVariety } from './meal-plan-variety';
 
 // Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
 // SDK lancia se la chiave manca, e ciò impedirebbe l'avvio del server.
@@ -1269,18 +1270,26 @@ async function generateWeeklyMealPlanAttempt(
   // poche verdure": ancoriamo la distribuzione settimanale reale della dieta.
   const dietLower = (context.preferences?.diet || '').toLowerCase();
   const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
+  const mediterraneanDiet = mealPlanHasDietaryPattern(context.preferences, "mediterranean");
   const constrainedPlan = hasMealPlanConstraints(context.preferences);
   const lactoseAllowsGluten = !glutenFreeRequired &&
     mealPlanHasExclusion(context.preferences, "lactose") &&
     !mealPlanHasDietaryPattern(context.preferences, "low-carb");
   const lactoseFreeRequired = mealPlanHasExclusion(context.preferences, "lactose");
-  const mediterraneanRule = dietLower.includes('mediterran') && glutenFreeRequired
-    ? `\n- DIETA MEDITERRANEA SENZA GLUTINE: riso, quinoa, polenta e patate come fonti di carboidrati; verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte; carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
-    : dietLower.includes('mediterran') && constrainedPlan
+  const mediterraneanRule = mediterraneanDiet && glutenFreeRequired
+    ? `\n- DIETA MEDITERRANEA SENZA GLUTINE: varia le fonti di carboidrati tra riso o risotti, patate, polenta, quinoa e prodotti esplicitamente senza glutine della lista chiusa, come pasta senza glutine, couscous di mais senza glutine, gnocchi senza glutine o pane senza glutine. Verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte; carne bianca 1-2 volte; olio extravergine d'oliva e frutta.`
+    : mediterraneanDiet && constrainedPlan
       ? `\n- DIETA MEDITERRANEA CON VINCOLI: verdure in OGNI pranzo e cena, olio extravergine d'oliva e frutta; scegli ogni componente soltanto tra quelli compatibili con tutti i vincoli indicati.`
-    : dietLower.includes('mediterran')
+    : mediterraneanDiet
       ? `\n- DIETA MEDITERRANEA VERA: pasta/riso/cereali come primo quasi ogni giorno a pranzo; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
       : '';
+  const weeklyVarietyRule = `
+- VARIETÀ SETTIMANALE (best effort, mai in contrasto con i vincoli): sui pranzi e sulle cene cerca almeno 4 fonti di carboidrati diverse nella settimana e non usare la stessa più di 3 volte quando sono disponibili alternative compatibili.
+- Alterna le proteine principali: evita la stessa proteina specifica più di 2 volte quando possibile; il pesce può comparire più volte, ma non ripetere sempre lo stesso tipo.
+${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea senza glutine includi normalmente almeno un pranzo con pasta senza glutine, se non è esclusa da altri vincoli. Non rendere obbligatori prodotti trasformati negli altri pasti.` : ""}`;
+  const glutenFreeTitleRule = glutenFreeRequired
+    ? `\n- Nei titoli non aggiungere meccanicamente “senza glutine” a piatti naturalmente privi di glutine. Mantieni la dicitura soltanto quando identifica davvero un prodotto sostitutivo, per esempio pasta o pane senza glutine.`
+    : "";
   const prefText = context.preferences
     ? `${context.preferences.diet ? ` Dieta: ${context.preferences.diet}.` : ''}${context.preferences.allergies ? ' Allergie/intolleranze presenti: applica i vincoli di sicurezza già indicati.' : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}${rawNotes ? ` Preferenze della famiglia (dettate a voce, seguile con attenzione): ${rawNotes}.` : ''}`
     : '';
@@ -1351,22 +1360,22 @@ async function generateWeeklyMealPlanAttempt(
   // al modello di ignorarli: sostituiamoli con alternative naturalmente prive
   // di glutine, così il primo tentativo è già praticabile per il validatore.
   const glutenFreeDayThemes = [
-    'privilegia riso naturalmente privo di glutine con verdure di stagione e una fonte proteica compatibile',
+    'a pranzo privilegia pasta senza glutine con verdure di stagione e una fonte proteica compatibile; a cena scegli una combinazione più leggera e diversa',
     'privilegia pesce o una fonte proteica compatibile con patate e verdure',
-    'privilegia quinoa o polenta con verdure e una fonte proteica compatibile',
-    'privilegia legumi con riso, patate o polenta e verdure',
+    'privilegia quinoa con verdure e una fonte proteica compatibile',
+    'privilegia couscous di mais senza glutine o legumi con verdure e una fonte proteica compatibile',
     'privilegia risotti con verdure e una fonte proteica compatibile',
-    'privilegia zuppe di verdure e legumi con patate, riso o polenta',
-    'privilegia piatti regionali italiani naturalmente senza glutine con verdure',
+    'privilegia polenta o gnocchi senza glutine con verdure e una fonte proteica compatibile',
+    'privilegia piatti regionali italiani naturalmente senza glutine oppure pane senza glutine con una fonte proteica compatibile e verdure',
   ];
   const glutenFreeDayThemesB = [
-    'privilegia riso basmati con verdure e una fonte proteica compatibile',
+    'privilegia pasta di riso senza glutine con verdure e una fonte proteica compatibile',
     'privilegia polenta con verdure e una fonte proteica compatibile',
     'privilegia quinoa con ortaggi di stagione e una fonte proteica compatibile',
-    'privilegia vellutate di verdure con legumi e patate',
+    'privilegia couscous di mais senza glutine con verdure e una fonte proteica compatibile',
     'privilegia insalate di riso con verdure e una fonte proteica compatibile',
     'privilegia patate al forno con verdure e una fonte proteica compatibile',
-    'privilegia un piatto mediterraneo naturalmente senza glutine con verdure',
+    'privilegia gnocchi senza glutine o un piatto mediterraneo naturalmente senza glutine con verdure',
   ];
   const compatibleDayThemes = [
     'componi un pranzo e una cena esclusivamente con ingredienti compatibili e verdure di stagione',
@@ -1466,6 +1475,7 @@ async function generateWeeklyMealPlanAttempt(
     themeHint?: string,
     breakfastHint?: string,
     localCorrection = "",
+    priorVarietyContext = "",
   ): Promise<MealPlanSuggestion['items']> {
     const chunkDates = request.dates;
     const requestMealTypes = request.mealTypes;
@@ -1519,10 +1529,10 @@ ${constrainedRecipeReferenceRule}
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}
-   - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}
+   - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno realizza questa combinazione concreta e non sostituirla con una colazione generica: ${breakfastHint}.` : ''}
- ${constraintRule}${constraintCorrection}${varietyCorrection}${qualityCorrection}${localCorrection}
+ ${constraintRule}${priorVarietyContext}${constraintCorrection}${varietyCorrection}${qualityCorrection}${localCorrection}
 - Rispondi SOLO con JSON: ${responseContract}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
@@ -1567,13 +1577,28 @@ ${constrainedRecipeReferenceRule}
   let failedChunks = 0;
   let firstReason: unknown = null;
   let modelCallsStarted = 0;
-  const results = await Promise.allSettled(
-    weeklyRequests.map((request) => fetchChunk(
-      request,
-      request.themeHint,
-      request.breakfastHint,
-    )),
-  );
+  const results: PromiseSettledResult<MealPlanSuggestion["items"]>[] = [];
+  // Le richieste dello stesso giorno restano parallele; i giorni successivi
+  // ricevono però un riepilogo di sole categorie già usate. Così la varietà
+  // migliora senza una singola chiamata OpenAI supplementare né il JSON intero
+  // delle ricette precedenti.
+  for (const date of dates) {
+    const dayRequests = weeklyRequests.filter((request) => request.dates[0] === date);
+    const priorVarietyContext = buildMealPlanVarietyContext(allItems);
+    const dayResults = await Promise.allSettled(
+      dayRequests.map((request) => fetchChunk(
+        request,
+        request.themeHint,
+        request.breakfastHint,
+        "",
+        priorVarietyContext,
+      )),
+    );
+    results.push(...dayResults);
+    for (const result of dayResults) {
+      if (result.status === "fulfilled") allItems.push(...result.value);
+    }
+  }
   for (const result of results) {
     if (result.status === "rejected") {
       failedChunks++;
@@ -1583,7 +1608,6 @@ ${constrainedRecipeReferenceRule}
       }
       continue;
     }
-    allItems.push(...result.value);
   }
 
   const filtered = allItems.filter((it) => validDates.has(it.date));
@@ -1765,6 +1789,7 @@ ${constrainedRecipeReferenceRule}
             : `${activeDayThemes[dayIndex]} ${activeDinnerThemes[dayIndex]}`,
           slot.mealType === "breakfast" ? activeBreakfastThemes[dayIndex] : undefined,
           localCorrection,
+          buildMealPlanVarietyContext(locallyRepaired),
         );
         const replacement = replacements.find((item) =>
           item.date === slot.date && item.mealType === slot.mealType);
@@ -1822,6 +1847,15 @@ ${constrainedRecipeReferenceRule}
       }));
     }
     throw new MealPlanVarietyRetryError(repeatedConcepts);
+  }
+  const varietyEvaluation = evaluateMealPlanVariety(finalItems);
+  if (varietyEvaluation.issues.length > 0 && !context.suppressInternalLogs) {
+    console.info(JSON.stringify({
+      tag: "AI_MEAL_PLAN_VARIETY_ADVISORY",
+      variant,
+      issues: varietyEvaluation.issues.map((issue) => issue.code),
+      carbohydrateSources: varietyEvaluation.distinctCarbohydrateSources,
+    }));
   }
 
   if (context.onProgress) {

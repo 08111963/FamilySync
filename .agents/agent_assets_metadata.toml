@@ -299,3 +299,10 @@ uri = "file://familysync-meal-plan-constraints-fixed-20260821.zip"
 type = "unspecified"
 title = "ZIP finale — correzione vincoli Piano Pasti"
 description = "Archivio definitivo verificato: implementazione, test inclusi nella suite ufficiale, report con confronto prima/dopo, package-lock e nessun segreto o build."
+
+[[outputs]]
+id = "xezXuvRvQJ6IShS7ngXVS"
+uri = "file://familysync-meal-plan-variety-fixed-20260821.zip"
+type = "unspecified"
+title = "ZIP finale — varietà Piani Pasti"
+description = "Correzione verificata di prompt, varietà tra blocchi e helper deterministico; include test, report e lockfile, senza segreti, build o archivi precedenti."
