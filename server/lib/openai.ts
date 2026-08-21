@@ -698,6 +698,7 @@ interface MealPlanModelCallBudget {
 interface MealPlanGenerationAttemptContext extends MealPlanGenerationContext {
   constraintCorrection?: string;
   varietyCorrection?: string;
+  qualityCorrection?: string;
   generationAttempt: number;
   modelCallBudget?: MealPlanModelCallBudget;
 }
@@ -749,20 +750,17 @@ function mealConceptsAreTooSimilar(left: string, right: string): boolean {
   // Titoli tecnici come "Colazione 0" non sono ricette e non devono
   // influire sul controllo di varietà.
   if (leftTokens.size === 0 || rightTokens.size === 0) return false;
-  if (normalizedLeft === normalizedRight) return true;
-  if (leftTokens.size < 2 || rightTokens.size < 2) return false;
-  let common = 0;
-  for (const token of leftTokens) {
-    if (rightTokens.has(token)) common++;
-  }
-  const union = new Set([...leftTokens, ...rightTokens]).size;
-  return common >= 2 && common / union >= 0.7;
+  // Il confronto lessicale ampio faceva fallire piani validi: colazioni diverse
+  // condividono naturalmente parole come "frutta" e "yogurt". I temi
+  // giornalieri impongono varietà concreta; qui blocchiamo esclusivamente lo
+  // stesso piatto dichiarato due volte.
+  return normalizedLeft === normalizedRight;
 }
 
 /**
- * Rileva piatti uguali o quasi uguali nel medesimo tipo di pasto, purché
- * appartengano a giorni diversi. Gli ingredienti da soli non bastano: patate
- * o verdure possono essere un contorno comune a ricette realmente diverse.
+ * Rileva lo stesso piatto dichiarato nel medesimo tipo di pasto, purché
+ * appartenga a giorni diversi. I temi giornalieri garantiscono la varietà
+ * delle combinazioni senza trasformare somiglianze lessicali in falsi errori.
  */
 function findRepeatedMealConcepts(items: MealPlanSuggestion["items"]): string[] {
   const seenTitles = new Map<string, Array<{ date: string; title: string }>>();
@@ -794,7 +792,7 @@ function buildMealPlanVarietyCorrection(repeatedConcepts: string[], nextAttempt:
 // premere nuovamente il pulsante. Oltre questo limite l'attesa e il consumo
 // quota diventano sproporzionati.
 const MAX_CONSTRAINT_GENERATION_ATTEMPTS = 2;
-const MAX_MALFORMED_RESPONSE_RETRIES = 1;
+const MAX_MALFORMED_RESPONSE_RETRIES = 2;
 const SAFE_MAIN_INGREDIENTS = [
   "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
   "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
@@ -946,6 +944,20 @@ function buildConstraintCorrection(
 - Prima di rispondere esegui un secondo controllo completo contro dieta e allergie.${glutenCorrection}`;
 }
 
+function buildMealPlanQualityCorrection(error: AiError, nextAttempt: number): string {
+  const breakfastCorrection = error.message.includes("colazione")
+    ? `
+- Per ogni breakfast usa esclusivamente una colazione dolce: non nominare né usare alimenti salati o da pranzo/cena nel titolo, descrizione, ingredienti o passaggi.`
+    : "";
+  const completenessCorrection = error.message.includes("incompleto")
+    ? `
+- Per ogni ricetta compila tutti i campi: titolo, descrizione, almeno un ingrediente con nome/quantità/unità e da 3 a 6 passaggi non vuoti.`
+    : "";
+  return `
+- CORREZIONE DI QUALITÀ OBBLIGATORIA (tentativo ${nextAttempt}): il risultato precedente non era consegnabile.
+- Restituisci esclusivamente tutti i pasti richiesti, completi e coerenti con il loro tipo.${breakfastCorrection}${completenessCorrection}`;
+}
+
 async function generateWeeklyMealPlanAttempt(
   context: MealPlanGenerationAttemptContext,
 ): Promise<MealPlanSuggestion> {
@@ -983,6 +995,7 @@ async function generateWeeklyMealPlanAttempt(
   const constraintRule = buildMealPlanConstraintPrompt(context.preferences);
   const constraintCorrection = context.constraintCorrection || "";
   const varietyCorrection = context.varietyCorrection || "";
+  const qualityCorrection = context.qualityCorrection || "";
 
   // Piatti tradizionali: il modello tende a "salutizzare" tutto proponendo
   // pasta/pane integrali ovunque. Niente varianti integrali salvo richiesta.
@@ -1096,13 +1109,13 @@ async function generateWeeklyMealPlanAttempt(
     'frullato o smoothie con biscotti secchi',
   ];
   const glutenFreeBreakfastThemes = [
-    'una colazione leggera con ingredienti dichiaratamente compatibili e frutta fresca',
-    'un frullato di frutta composto solo da ingredienti compatibili',
-    'una colazione con frutta fresca e componenti compatibili',
-    'uno smoothie di frutta con ingredienti compatibili',
-    'una colazione leggera con frutta cotta e ingredienti compatibili',
-    'una macedonia di frutta con componenti compatibili',
-    'una colazione a base di frutta composta solo da ingredienti compatibili',
+    'yogurt bianco con banana e miele',
+    'frullato di banana, bevanda di riso e cacao amaro',
+    'pane senza glutine con marmellata e arancia',
+    'caffellatte con biscotti senza glutine',
+    'yogurt bianco con pera e cacao amaro',
+    'gallette di riso con miele e kiwi',
+    'smoothie di frutta con bevanda di cocco',
   ];
   const compatibleBreakfastThemes = [
     'una colazione leggera composta soltanto da ingredienti compatibili con tutti i vincoli',
@@ -1213,8 +1226,8 @@ ${constrainedRecipeReferenceRule}
   ${completeDinnerRule}
    - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
-- ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno segui questa idea: ${breakfastHint}.` : ''}
-${constraintRule}${constraintCorrection}${varietyCorrection}
+- ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno realizza questa combinazione concreta e non sostituirla con una colazione generica: ${breakfastHint}.` : ''}
+${constraintRule}${constraintCorrection}${varietyCorrection}${qualityCorrection}
 - Rispondi SOLO con JSON: ${responseContract}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
@@ -1316,17 +1329,24 @@ ${constraintRule}${constraintCorrection}${varietyCorrection}
       `Piano pasti incompleto: ricevuti ${filtered.length} pasti, attesi ${expectedMeals}`,
     );
   }
-  const unsuitableBreakfast = filtered.find((item) => {
+  const unsuitableBreakfast = filtered.map((item) => {
     if (item.mealType !== "breakfast") return false;
     const text = [
       item.title,
       item.description,
       ...(item.ingredients || []).map((ingredient) => ingredient.name),
-      ...(item.steps || []),
     ].join(" ");
-    return !!savoryBreakfastTerm(text);
-  });
+    const term = savoryBreakfastTerm(text);
+    return term ? { item, term } : false;
+  }).find(Boolean);
   if (unsuitableBreakfast) {
+    if (!context.suppressInternalLogs) {
+      console.warn(JSON.stringify({
+        tag: "AI_MEAL_PLAN_BREAKFAST_REJECTED",
+        variant,
+        term: unsuitableBreakfast.term,
+      }));
+    }
     throw new AiError(
       "AI_BAD_RESPONSE",
       "La risposta AI contiene un pasto non adatto alla colazione",
@@ -1438,6 +1458,7 @@ export async function generateWeeklyMealPlan(
     : { maxCalls: Math.max(1, requestedModelCalls), usedCalls: 0 };
   let constraintCorrection: string | undefined;
   let varietyCorrection: string | undefined;
+  let qualityCorrection: string | undefined;
 
   let constraintAttempt = 1;
   let malformedResponseRetries = 0;
@@ -1455,6 +1476,7 @@ export async function generateWeeklyMealPlan(
         generationAttempt: constraintAttempt + malformedResponseRetries,
         constraintCorrection,
         varietyCorrection,
+        qualityCorrection,
         modelCallBudget,
       });
     } catch (error) {
@@ -1468,6 +1490,10 @@ export async function generateWeeklyMealPlan(
             retry: malformedResponseRetries,
           }));
         }
+        qualityCorrection = buildMealPlanQualityCorrection(
+          error,
+          malformedResponseRetries + 1,
+        );
         // Non esporre un ciclo di tentativi nell'interfaccia: il client riceve
         // esclusivamente il piano già completo e validato.
         context.onStatus?.("Completo il piano pasti verificato.");
