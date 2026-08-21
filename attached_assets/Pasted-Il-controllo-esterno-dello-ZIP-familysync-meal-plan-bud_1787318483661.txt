@@ -1,0 +1,592 @@
+Il controllo esterno dello ZIP `familysync-meal-plan-budget-final-20260821.zip` ha confermato che il budget cumulativo delle chiamate OpenAI è stato finalmente centralizzato e applicato dalle route.
+
+Questa parte NON va riscritta.
+
+Attualmente però risulta:
+
+```ts
+MAX_MEAL_PLAN_MODEL_CALLS = 42;
+```
+
+Questo valore è troppo alto rispetto ai percorsi normali osservati:
+
+* piano standard: circa 14 chiamate;
+* piano con solo `lactose`: circa 7 chiamate.
+
+Un tetto di 42 consente teoricamente fino a tre volte il costo di un piano standard e rende poco efficace il controllo dei costi.
+
+L'obiettivo di questo mandato è quindi **ridurre e ottimizzare il budget OpenAI senza modificare la sicurezza alimentare, gli allergeni o la varietà già corretta**.
+
+# 1. NON MODIFICARE LE CORREZIONI FUNZIONALI
+
+Non modificare:
+
+* `normalizeMealPlanConstraints()`;
+* gluten;
+* lactose;
+* milk;
+* gli altri allergeni;
+* closed allowlist;
+* validazione semantica;
+* JSON Schema;
+* Zod;
+* semantic duplicate detection;
+* memoria inter-giorno;
+* regole di varietà;
+* pool ingredienti;
+* UI Piano Pasti.
+
+Questo mandato riguarda esclusivamente:
+
+* numero di chiamate OpenAI;
+* retry;
+* repair;
+* hard cap;
+* comportamento a budget quasi esaurito.
+
+# 2. RICOSTRUISCI IL COSTO REALE DELLA PIPELINE
+
+Prima di modificare il valore 42, ricostruisci esattamente quante chiamate OpenAI richiede ogni percorso.
+
+Produci una tabella con almeno:
+
+| Scenario                         | Chiamate OpenAI |
+| -------------------------------- | --------------: |
+| Piano standard normale           |             ... |
+| Piano lactose normale            |             ... |
+| Piano gluten normale             |             ... |
+| 1 malformed-response retry       |             ... |
+| 1 constraint retry               |             ... |
+| 1 local variety repair           |             ... |
+| 3 local variety repair           |             ... |
+| full variety retry               |             ... |
+| combinazione peggiore realistica |             ... |
+
+Distingui chiaramente:
+
+* chiamate indispensabili per generare il piano;
+* chiamate necessarie per sicurezza;
+* chiamate utilizzate soltanto per migliorare la varietà.
+
+# 3. PRINCIPIO OBBLIGATORIO
+
+Usa questa priorità:
+
+1. SICUREZZA ALIMENTARE;
+2. validità strutturale della risposta;
+3. completamento del piano;
+4. varietà.
+
+La varietà è **best effort**.
+
+Non è accettabile raddoppiare o triplicare il costo di una generazione soltanto per avere un piano più vario.
+
+Se un piano è:
+
+* strutturalmente valido;
+* sicuro rispetto agli allergeni;
+* completo;
+
+ma presenta qualche ripetizione, deve essere preferito a una nuova generazione completa costosa.
+
+# 4. RIDUCI IL TETTO 42
+
+Non mantenere:
+
+```ts
+MAX_MEAL_PLAN_MODEL_CALLS = 42;
+```
+
+soltanto perché permette tutti i retry teoricamente possibili.
+
+Calcola il valore minimo ragionevole sulla base dei test.
+
+Come ordine di grandezza:
+
+```text
+16–18 chiamate
+```
+
+è molto più coerente con un percorso standard da circa 14 chiamate.
+
+Non impostare automaticamente 18: scegli il valore finale in base alla pipeline reale e documentalo.
+
+Il risultato deve comunque essere **sensibilmente inferiore a 42**.
+
+# 5. UN SOLO BUDGET GLOBALE PER CLICK
+
+Ogni pressione dell'utente su:
+
+* Genera Piano;
+* Genera alternativa;
+
+deve avere un unico budget cumulativo.
+
+Devono consumare lo stesso contatore:
+
+* chiamate normali;
+* format retry;
+* malformed JSON retry;
+* constraint retry;
+* local variety repair;
+* eventuale full variety retry.
+
+Nessuna funzione deve poter creare un nuovo contatore e aggirare il limite.
+
+Deve valere sempre:
+
+```ts
+modelCalls <= MAX_MEAL_PLAN_MODEL_CALLS
+```
+
+# 6. CONTA PRIMA DI CHIAMARE OPENAI
+
+Prima di ogni invocazione OpenAI:
+
+1. controlla budget residuo;
+2. verifica che la chiamata sia consentita;
+3. incrementa atomicamente/logicamente il contatore;
+4. effettua la richiesta.
+
+Non fare:
+
+```text
+chiamata OpenAI
+→ poi incremento
+```
+
+Il limite deve essere impossibile da superare anche in caso di errore.
+
+# 7. NON INIZIARE OPERAZIONI CHE NON POSSONO FINIRE
+
+Questa parte è importante.
+
+Se una determinata operazione richiede più chiamate del budget residuo, non deve essere iniziata.
+
+Esempio:
+
+```text
+budget residuo = 3
+full retry della settimana = circa 14
+```
+
+Non iniziare la rigenerazione completa sapendo che non potrà terminare.
+
+Aggiungi helper espliciti se necessario, per esempio:
+
+```ts
+canAffordModelCalls(requiredCalls)
+remainingModelCalls()
+```
+
+# 8. RIDUCI IL COSTO DELLA VARIETÀ
+
+Controlla:
+
+```ts
+MAX_LOCAL_VARIETY_REPAIRS
+```
+
+e:
+
+```ts
+MAX_VARIETY_GENERATION_RETRIES
+```
+
+La varietà non deve consumare gran parte del budget.
+
+Preferenza:
+
+* prompt corretto;
+* temi giornalieri;
+* memoria inter-giorno;
+* rilevamento duplicati;
+
+prima di:
+
+* local repair;
+* rigenerazione completa.
+
+## Local repair
+
+Può essere mantenuto, ma:
+
+* deve consumare il budget globale;
+* deve essere limitato;
+* non deve partire se il margine è necessario per eventuali retry di sicurezza.
+
+## Full variety retry
+
+Valuta seriamente di eliminarlo.
+
+Se viene mantenuto, deve essere eseguito soltanto quando:
+
+* il budget residuo permette di completare l'intera nuova generazione;
+* esiste una motivazione forte;
+* non riguarda soltanto una lieve ripetizione.
+
+In generale preferisco **non rigenerare tutta la settimana per sola varietà**.
+
+# 9. RISERVA IL MARGINE ALLA SICUREZZA
+
+Il margine oltre il percorso normale deve essere utilizzato principalmente per:
+
+* violazione allergene;
+* risposta malformata/non validabile;
+* errore strutturale recuperabile.
+
+Non per rendere il menu esteticamente più vario.
+
+Esempio concettuale:
+
+```text
+Percorso standard ≈ 14
+Hard cap = 17
+
+Margine = 3
+```
+
+Queste 3 chiamate devono essere utilizzabili per recovery indispensabili.
+
+Non devono essere consumate tutte preventivamente dalla varietà.
+
+# 10. COMPORTAMENTO A BUDGET ESAURITO
+
+Quando il budget termina:
+
+NON:
+
+* effettuare una chiamata extra;
+* restituire un piano con allergeni incompatibili;
+* ignorare un errore di validazione;
+* nascondere il problema.
+
+Usa un errore tipizzato, per esempio quello già esistente:
+
+```text
+AI_MODEL_CALL_BUDGET_EXHAUSTED
+```
+
+e un messaggio utente comprensibile.
+
+Esempio:
+
+> Non è stato possibile completare il piano in modo affidabile. Riprova.
+
+Non mostrare all'utente il numero tecnico di chiamate.
+
+# 11. CASO VARIETÀ CON BUDGET ESAURITO
+
+Caso specifico:
+
+* piano completo;
+* allergeni rispettati;
+* risposta valida;
+* qualche ripetizione;
+* nessun budget residuo.
+
+In questo caso NON fallire automaticamente soltanto per varietà.
+
+La varietà è best effort.
+
+Se il piano supera le verifiche di sicurezza obbligatorie, può essere consegnato con advisory interno.
+
+Diverso il caso di violazione allergene:
+
+* mai consegnare il piano;
+* anche se il budget è esaurito.
+
+# 12. TUTTI I CHIAMANTI DEVONO PASSARE IL BUDGET
+
+Cerca TUTTI i punti che chiamano:
+
+```ts
+generateWeeklyMealPlan()
+```
+
+inclusi:
+
+* route `weekly-meal-plan`;
+* route `weekly-meal-plan/stream`;
+* Genera alternativa;
+* eventuali helper;
+* job;
+* altri endpoint.
+
+Tutti devono utilizzare il budget centralizzato.
+
+Aggiungi test che falliscano se un nuovo chiamante viene aggiunto senza hard cap.
+
+# 13. NON CAMBIARE LE QUOTE GIORNALIERE
+
+Non modificare:
+
+```text
+AI_DAILY_LIMITS
+```
+
+o la quota per:
+
+```text
+weekly-meal-plan
+```
+
+Questo mandato riguarda le chiamate modello effettuate da una singola generazione, non quante generazioni giornaliere sono consentite all'utente.
+
+Mantieni separati:
+
+* quota utente/famiglia;
+* model call budget per singola richiesta.
+
+# 14. TEST PARAMETRICI DEL BUDGET
+
+Aggiungi test senza chiamate OpenAI reali.
+
+Simula almeno:
+
+### Caso A
+
+Piano standard normale.
+
+Verifica:
+
+```text
+calls = numero standard
+calls <= hard cap
+```
+
+### Caso B
+
+Piano lactose normale.
+
+### Caso C
+
+Piano gluten normale.
+
+### Caso D
+
+Un local repair.
+
+### Caso E
+
+Tre local repair.
+
+### Caso F
+
+Malformed response + retry.
+
+### Caso G
+
+Constraint violation + retry.
+
+### Caso H
+
+Constraint violation + local repair.
+
+### Caso I
+
+Budget quasi esaurito prima di full retry.
+
+Verifica che il full retry NON inizi.
+
+### Caso L
+
+Budget esaurito durante una possibile correzione di varietà.
+
+Verifica che un piano già sicuro e valido non venga inutilmente rigenerato.
+
+### Caso M
+
+Budget esaurito con violazione allergene.
+
+Verifica che il piano NON venga restituito.
+
+# 15. TEST DEL LIMITE ASSOLUTO
+
+Aggiungi un test parametrico che attraversi tutti i percorsi più costosi e verifichi sempre:
+
+```ts
+assert.ok(modelCalls <= MAX_MEAL_PLAN_MODEL_CALLS);
+```
+
+Aggiungi anche:
+
+```ts
+assert.equal(maxObservedCalls <= MAX_MEAL_PLAN_MODEL_CALLS, true);
+```
+
+Riporta nel report il massimo effettivamente osservato.
+
+# 16. TEST DI NON REGRESSIONE ALLERGENI
+
+Riesegui tutti i test su:
+
+* gluten;
+* lactose;
+* milk;
+* egg;
+* peanut;
+* nuts;
+* fish;
+* soy;
+* sesame;
+* celery;
+* mustard;
+* lupin;
+* sulfites;
+* shellfish;
+* molluscs;
+
+e tutte le combinazioni già presenti nell'audit.
+
+Abbassare il budget NON deve indebolire la sicurezza.
+
+# 17. TEST DI NON REGRESSIONE VARIETÀ
+
+Riesegui:
+
+* gluten variety;
+* lactose variety;
+* semantic duplicate detection;
+* memoria inter-giorno;
+* variety checker.
+
+Non aumentare il numero di chiamate per far passare questi test.
+
+# 18. REPORT
+
+Crea:
+
+`MEAL_PLAN_MODEL_CALL_BUDGET_REPORT.md`
+
+Inserisci almeno:
+
+## Prima
+
+```text
+MAX_MEAL_PLAN_MODEL_CALLS = 42
+```
+
+## Dopo
+
+```text
+MAX_MEAL_PLAN_MODEL_CALLS = <nuovo valore>
+```
+
+## Tabella costi
+
+| Percorso           | Chiamate tipiche | Massimo consentito |
+| ------------------ | ---------------: | -----------------: |
+| Standard           |              ... |                ... |
+| Lactose            |              ... |                ... |
+| Gluten             |              ... |                ... |
+| + malformed retry  |              ... |                ... |
+| + constraint retry |              ... |                ... |
+| + local repair     |              ... |                ... |
+| Worst case ammesso |              ... |                ... |
+
+## Margine
+
+Spiega:
+
+* perché il nuovo valore è sufficiente;
+* quale margine resta;
+* quali operazioni vengono sacrificate prima;
+* perché la sicurezza non viene sacrificata.
+
+# 19. COSTO STIMATO
+
+Senza fare nuove chiamate reali a OpenAI, indica anche:
+
+* riduzione percentuale del worst-case teorico rispetto a 42;
+* differenza tra percorso tipico e hard cap.
+
+Non serve stimare euro se non disponi del consumo token reale.
+
+È sufficiente, per esempio:
+
+```text
+42 → 17
+riduzione worst-case model calls = 59,5%
+```
+
+calcolata sul valore finale reale.
+
+# 20. VERIFICA COMPLETA
+
+Esegui:
+
+```bash
+npm run typecheck
+npm run test:ai
+npm run test:meal-plan-allergens
+```
+
+e tutti gli altri test Piano Pasti disponibili.
+
+Riporta:
+
+* file di test;
+* test totali;
+* passati;
+* falliti;
+* saltati;
+* durata;
+* exit code;
+* hard cap finale;
+* massimo model calls osservato nei test.
+
+# 21. NON FARE DEPLOY
+
+NON fare deploy.
+
+NON effettuare chiamate OpenAI reali se i mock sono sufficienti.
+
+NON modificare il database.
+
+NON modificare pagamenti, mobile o altre funzioni FamilySync.
+
+# 22. ZIP FINALE
+
+Genera:
+
+`familysync-meal-plan-budget-optimized-20260821.zip`
+
+Includi almeno:
+
+* `server/routes/ai.ts`;
+* `server/lib/openai.ts`;
+* helper budget;
+* helper constraints;
+* helper variety;
+* test budget;
+* test allergeni;
+* test Piano Pasti;
+* `package.json`;
+* lockfile;
+* `MEAL_PLAN_MODEL_CALL_BUDGET_REPORT.md`.
+
+Escludi:
+
+* `.env`;
+* OpenAI API key;
+* token;
+* credenziali;
+* database dump;
+* node_modules;
+* build;
+* APK/AAB;
+* certificati;
+* ZIP precedenti.
+
+Prima dello ZIP esegui scansione segreti.
+
+Dopo aver creato lo ZIP:
+
+1. estrailo in una directory pulita;
+2. verifica che tutti i file richiesti esistano;
+3. riesegui typecheck e test sul contenuto estratto;
+4. calcola SHA-256;
+5. indica numero di file.
+
+Fermati dopo la generazione dello ZIP e attendi il controllo esterno.

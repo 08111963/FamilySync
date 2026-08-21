@@ -90,7 +90,7 @@ const GLUTEN_RULE: FoodRule = {
     "pasta", "penne", "spaghetti", "fusilli", "rigatoni", "linguine",
     "tagliatelle", "orecchiette", "lasagne", "cannelloni", "gnocchi",
     "pane", "fette biscottate", "biscotti", "cracker", "crostini", "pangrattato",
-    "pizza", "focaccia", "piadina", "couscous", "farro", "orzo", "segale",
+    "pizza", "focaccia", "piadina", "couscous", "gallette di riso", "farro", "orzo", "segale",
     "avena", "cereali", "granola", "cornetto", "brioche", "crostata",
     "ciambellone", "plumcake", "seitan", "birra",
   ],
@@ -149,7 +149,8 @@ const FISH_RULE: FoodRule = {
   label: "pesce",
   terms: [
     "pesce", "tonno", "salmone", "merluzzo", "orata", "branzino", "sgombro",
-    "alici", "acciughe", "sardine", "trota", "pesce spada", "polpo",
+    "alici", "acciughe", "sardine", "trota", "sogliola", "dentice", "nasello",
+    "rana pescatrice", "pesce spada", "polpo",
     "calamari", "gamberi", "crostacei", "molluschi", "frutti di mare",
   ],
 };
@@ -181,8 +182,9 @@ const NUT_RULE: FoodRule = {
   code: "nuts",
   label: "frutta a guscio",
   terms: [
-    "frutta secca", "frutta a guscio", "noci", "nocciole", "mandorle",
-    "pistacchi", "anacardi", "pinoli", "pecan", "macadamia",
+    "frutta secca", "frutta a guscio", "noce", "noci", "nocciola", "nocciole",
+    "mandorla", "mandorle", "pistacchio", "pistacchi", "anacardo", "anacardi",
+    "pinolo", "pinoli", "pecan", "macadamia",
   ],
 };
 
@@ -212,11 +214,75 @@ function plantSubstituteIsExplicit(text: string, term: string): boolean {
     text.includes(`${normalizedTerm} spalmabile ${marker}`));
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+interface TextRange {
+  start: number;
+  end: number;
+}
+
+function addRegexRanges(ranges: TextRange[], text: string, expression: RegExp): void {
+  let match: RegExpExecArray | null;
+  while ((match = expression.exec(text)) !== null) {
+    ranges.push({ start: match.index, end: match.index + match[0].length });
+    if (match[0].length === 0) expression.lastIndex += 1;
+  }
+}
+
+function glutenSafeRanges(text: string, rule: FoodRule): TextRange[] {
+  const ranges: TextRange[] = [];
+  const safeMarker = "(?:senza glutine|gluten free)";
+  // Il marker deve qualificare proprio il prodotto intercettato. Sono ammessi
+  // solo i descrittori di cereale che il pool sicuro già usa; un marker
+  // presente dopo un altro alimento nella stessa frase non può rendere sicuro
+  // il termine precedente.
+  const optionalGrainDescriptor = "(?:\\s+(?:di|al|alla)\\s+(?:mais|riso|legumi|quinoa|grano saraceno))*";
+  // Il marker è sicuro in sé (es. un titolo "Senza glutine"), ma non può
+  // proteggere altre occorrenze del termine fuori dalla sua stessa porzione.
+  addRegexRanges(ranges, text, new RegExp(`\\b${safeMarker}\\b`, "g"));
+  for (const term of rule.terms) {
+    const escapedTerm = escapeRegExp(normalize(term));
+    addRegexRanges(
+      ranges,
+      text,
+      new RegExp(`\\b${escapedTerm}${optionalGrainDescriptor}\\s+${safeMarker}\\b`, "g"),
+    );
+    addRegexRanges(
+      ranges,
+      text,
+      new RegExp(`\\b${safeMarker}\\s+${escapedTerm}\\b`, "g"),
+    );
+  }
+  return ranges;
+}
+
+function findUnsafeGlutenTerm(text: string, rule: FoodRule): string | undefined {
+  const safeRanges = glutenSafeRanges(text, rule);
+  for (const term of rule.terms) {
+    const normalizedTerm = normalize(term);
+    const expression = new RegExp(`\\b${escapeRegExp(normalizedTerm)}\\b`, "g");
+    let match: RegExpExecArray | null;
+    while ((match = expression.exec(text)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (!safeRanges.some((range) => start >= range.start && end <= range.end)) {
+        return term;
+      }
+      if (match[0].length === 0) expression.lastIndex += 1;
+    }
+  }
+  return undefined;
+}
+
 function matchedTermIsSafe(text: string, rule: FoodRule, term: string): boolean {
   if (rule.code === "gluten") {
     // Per sicurezza il sostituto deve essere dichiarato esplicitamente:
     // "pasta di riso" da solo non garantisce assenza di contaminazioni.
-    return hasTerm(text, "senza glutine") || hasTerm(text, "gluten free");
+    // Una singola porzione di testo è sicura solo se non contiene nessuna
+    // occorrenza non qualificata, incluso "glutine" fuori dal suo marker.
+    return hasTerm(text, term) && !findUnsafeGlutenTerm(text, rule);
   }
   if (rule.code === "lactose") {
     return hasTerm(text, "senza lattosio") ||
@@ -368,7 +434,7 @@ export function normalizeMealPlanConstraints(
   if (/\b(?:latte|caseina|proteine del latte)\b/.test(allergyText)) addUnique(exclusions, "milk");
   if (/\b(?:uovo|uova|albume|tuorlo)\b/.test(allergyText)) addUnique(exclusions, "egg");
   if (/\b(?:arachide|arachidi)\b/.test(allergyText)) addUnique(exclusions, "peanut");
-  if (/\b(?:frutta secca|frutta a guscio|noci|nocciole|mandorle|pistacchi|anacardi)\b/.test(allergyText)) {
+  if (/\b(?:frutta secca|frutta a guscio|noce|noci|nocciola|nocciole|mandorla|mandorle|pistacchio|pistacchi|anacardo|anacardi|pinolo|pinoli|pecan|macadamia)\b/.test(allergyText)) {
     addUnique(exclusions, "nuts");
   }
   if (/\bpesce\b/.test(allergyText)) addUnique(exclusions, "fish");
@@ -378,7 +444,7 @@ export function normalizeMealPlanConstraints(
     }
   }
 
-  const knownAllergenText = /\b(?:glutine|celiac\w*|lattosio|latte|caseina|proteine del latte|uovo|uova|albume|tuorlo|arachid\w*|frutta secca|frutta a guscio|noci|nocciole|mandorle|pistacchi|anacardi|pesce|soia|sesamo|sedano|senape|lupin\w*|solfiti|anidride solforosa|gamber\w*|scampi|aragosta|astice|granchio|crostacei|cozze|vongole|ostriche|polpo|calamari|seppia|molluschi)\b/;
+  const knownAllergenText = /\b(?:glutine|celiac\w*|lattosio|latte|caseina|proteine del latte|uovo|uova|albume|tuorlo|arachid\w*|frutta secca|frutta a guscio|noce|noci|nocciola|nocciole|mandorla|mandorle|pistacchio|pistacchi|anacardo|anacardi|pinolo|pinoli|pecan|macadamia|pesce|soia|sesamo|sedano|senape|lupin\w*|solfiti|anidride solforosa|gamber\w*|scampi|aragosta|astice|granchio|crostacei|cozze|vongole|ostriche|polpo|calamari|seppia|molluschi)\b/;
   for (const part of allergyText.split(/\s+e\s+/i)) {
     const cleaned = normalize(part)
       .replace(/^(?:allergia|allergico|allergica|intolleranza|intollerante)\s+(?:a|al|allo|alla|alle|agli)\s+/, "")
@@ -609,15 +675,16 @@ export function validateMealPlanConstraints(
       .filter(Boolean);
     for (const rule of rules) {
       for (const segment of segments) {
-        const matchedTerms = rule.terms.filter((term) => hasTerm(segment, term));
-        const unsafeMatch = matchedTerms.find((term) => {
+        const unsafeMatch = rule.code === "gluten"
+          ? findUnsafeGlutenTerm(segment, rule)
+          : rule.terms.filter((term) => hasTerm(segment, term)).find((term) => {
           if (matchedTermIsSafe(segment, rule, term)) return false;
           if (term === rule.label) return true;
           const isIngredientDeclaration = ingredientSegments.includes(segment);
           if (isIngredientDeclaration) return true;
           return !ingredientSegments.some((ingredientSegment) =>
             safeIngredientCanBeReferredToAs(ingredientSegment, rule, term));
-        });
+          });
         if (unsafeMatch) {
           violations.push({
             code: rule.code,

@@ -908,7 +908,7 @@ const SAFE_MAIN_INGREDIENTS = [
 const SAFE_GLUTEN_FREE_MAIN_INGREDIENTS = [
   "pasta senza glutine", "pasta di mais senza glutine", "pasta di riso senza glutine",
   "pane senza glutine", "fette biscottate senza glutine", "biscotti senza glutine",
-  "couscous di mais senza glutine", "gnocchi senza glutine",
+  "couscous di mais senza glutine", "gnocchi senza glutine", "gallette di riso senza glutine",
 ];
 
 // Questi alimenti sono compatibili SOLTANTO con l'intolleranza al lattosio
@@ -925,7 +925,7 @@ const SAFE_BREAKFAST_INGREDIENTS = [
   "yogurt bianco", "latte", "caffè", "cacao amaro", "miele", "marmellata",
   "pane", "fette biscottate",
   "pane senza glutine", "fette biscottate senza glutine", "biscotti senza glutine",
-  "gallette di riso",
+  "gallette di riso", "gallette di riso senza glutine",
   "bevanda di riso", "bevanda di cocco", "yogurt vegetale di cocco",
 ];
 
@@ -1009,7 +1009,7 @@ function buildCompatibleBreakfastThemes(
   const rusk = first("fette biscottate", "fette biscottate senza glutine") || "";
   const biscuits = first("biscotti senza glutine") || "";
   const yogurt = first("yogurt bianco", "yogurt vegetale di cocco") || "";
-  const crispbread = allowed.has("gallette di riso") ? "gallette di riso" : (rusk || bread || drink);
+  const crispbread = first("gallette di riso", "gallette di riso senza glutine") || (rusk || bread || drink);
 
   return [
     yogurt ? `${yogurt} con ${fruit(0)} e ${spread}` : `${drink} con ${fruit(0)} e cacao amaro`,
@@ -1431,7 +1431,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     'pane senza glutine con marmellata e arancia',
     'caffellatte con biscotti senza glutine',
     'yogurt bianco con pera e cacao amaro',
-    'gallette di riso con miele e kiwi',
+    'gallette di riso senza glutine con miele e kiwi',
     'smoothie di frutta con bevanda di cocco',
   ];
   const compatibleBreakfastThemes = buildCompatibleBreakfastThemes(context.preferences);
