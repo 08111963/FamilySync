@@ -7,6 +7,7 @@ import {
   hasMealPlanConstraints,
   mealPlanHasDietaryPattern,
   mealPlanHasExclusion,
+  mealPlanRequiresMediterraneanRedMeat,
   mealPlanRequiresGlutenFree,
   unsupportedMealPlanHealthNote,
   validateMealPlanConstraints,
@@ -15,6 +16,7 @@ import {
 import { recordMealPlanLatency } from './meal-plan-latency-monitor';
 import {
   buildMealPlanVarietyContext,
+  evaluateMealPlanRedMeat,
   evaluateMealPlanVariety,
   mealPlanLunchSemanticSignature,
   planMealPlanLunchFamilies,
@@ -954,7 +956,11 @@ const SAFE_MAIN_INGREDIENTS = [
   "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
   "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
   "patate", "patate dolci", "ceci", "lenticchie", "fagioli", "piselli",
-  "uova", "pollo", "tacchino", "salmone", "merluzzo", "tonno",
+  // Carni rosse già riconosciute dalle regole del Piano Pasti. Sono necessarie
+  // anche alla lista chiusa dei profili mediterranei senza glutine/lattosio,
+  // perché il loro target proteico settimanale possa restare verificabile.
+  "uova", "pollo", "tacchino", "manzo", "vitello", "maiale", "agnello",
+  "salmone", "merluzzo", "tonno",
   "olio extravergine di oliva",
   "pomodori", "zucchine", "melanzane", "peperoni", "carote", "spinaci",
   "bietole", "broccoli", "cavolfiore", "zucca", "cipolle", "aglio",
@@ -1335,15 +1341,19 @@ async function generateWeeklyMealPlanAttempt(
   const dietLower = (context.preferences?.dietProfile || '').toLowerCase();
   const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
   const mediterraneanDiet = mealPlanHasDietaryPattern(context.preferences, "mediterranean");
+  const requiresMediterraneanRedMeat = mealPlanRequiresMediterraneanRedMeat(context.preferences);
   const constrainedPlan = hasMealPlanConstraints(context.preferences);
   const lactoseAllowsGluten = !glutenFreeRequired &&
     mealPlanHasExclusion(context.preferences, "lactose") &&
     !mealPlanHasDietaryPattern(context.preferences, "low-carb");
   const lactoseFreeRequired = mealPlanHasExclusion(context.preferences, "lactose");
+  const redMeatWeeklyRule = requiresMediterraneanRedMeat
+    ? " Includi almeno un pasto principale con carne rossa nella settimana, preferibilmente uno."
+    : "";
   const mediterraneanRule = mediterraneanDiet && glutenFreeRequired
-    ? `\n- DIETA MEDITERRANEA SENZA GLUTINE: varia le fonti di carboidrati tra riso o risotti, patate, polenta, quinoa e prodotti esplicitamente senza glutine della lista chiusa, come pasta senza glutine, couscous di mais senza glutine, gnocchi senza glutine o pane senza glutine. Verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte; carne bianca 1-2 volte; olio extravergine d'oliva e frutta.`
+    ? `\n- DIETA MEDITERRANEA SENZA GLUTINE: varia le fonti di carboidrati tra riso o risotti, patate, polenta, quinoa e prodotti esplicitamente senza glutine della lista chiusa, come pasta senza glutine, couscous di mais senza glutine, gnocchi senza glutine o pane senza glutine. Verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte; carne bianca 1-2 volte; olio extravergine d'oliva e frutta.${redMeatWeeklyRule}`
     : mediterraneanDiet && constrainedPlan
-      ? `\n- DIETA MEDITERRANEA CON VINCOLI: verdure in OGNI pranzo e cena, olio extravergine d'oliva e frutta; scegli ogni componente soltanto tra quelli compatibili con tutti i vincoli indicati.`
+      ? `\n- DIETA MEDITERRANEA CON VINCOLI: verdure in OGNI pranzo e cena, olio extravergine d'oliva e frutta; scegli ogni componente soltanto tra quelli compatibili con tutti i vincoli indicati.${redMeatWeeklyRule}`
     : mediterraneanDiet
       ? `\n- DIETA MEDITERRANEA VERA: alterna a pranzo pasta, riso/risotti, cereali in chicco, legumi, patate o polenta secondo la famiglia-obiettivo del giorno; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; includi almeno un pasto principale con carne rossa nella settimana, preferibilmente uno, mantenendo la varietà delle fonti proteiche; olio extravergine d'oliva e frutta.`
       : '';
@@ -1520,6 +1530,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     compatibleMainIngredients,
     dates.length,
     variant === 2 ? 1 : 0,
+    { requireRedMeat: requiresMediterraneanRedMeat },
   );
   // Una risposta settimanale da sette ricette dettagliate viene talvolta
   // troncata dal provider: il risultato sembra JSON valido ma contiene solo
@@ -1581,7 +1592,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
       : "";
     const lunchSemanticTargetRule = requestMealTypes.includes("lunch")
       && (request.lunchSemanticTarget?.mainProtein || request.lunchSemanticTarget?.preparation)
-      ? `\n- OBIETTIVO PROFILO PRANZO DEL GIORNO: proteina principale ${request.lunchSemanticTarget?.mainProtein || "compatibile"}; profilo/preparazione ${request.lunchSemanticTarget?.preparation || "diverso dai giorni già usati"}. Quando compatibile, seguilo senza ripetere una coppia proteina + profilo già presente nel contesto.`
+      ? `\n- OBIETTIVO PROFILO PRANZO DEL GIORNO: proteina principale ${request.lunchSemanticTarget?.mainProtein === "red_meat" ? "red_meat (carne rossa: manzo, vitello, maiale o agnello compatibile)" : request.lunchSemanticTarget?.mainProtein || "compatibile"}; profilo/preparazione ${request.lunchSemanticTarget?.preparation || "diverso dai giorni già usati"}. Quando compatibile, seguilo senza ripetere una coppia proteina + profilo già presente nel contesto.`
       : "";
     const lactoseFreeOutputRule = lactoseFreeRequired
       ? `\n- PIANO SENZA LATTOSIO: in TUTTI i campi dell'output non scrivere né usare lattosio, latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone, salvo un prodotto della lista chiusa che riporti esplicitamente “senza lattosio”. Non usare mai un prodotto lattiero-caseario implicito. A colazione scegli bevanda vegetale, frutta, pane o gallette e marmellata, oppure un prodotto esplicitamente senza lattosio della lista; negli altri pasti usa solo gli ingredienti compatibili della lista chiusa.`
@@ -1848,6 +1859,25 @@ ${constrainedRecipeReferenceRule}
       /* callback osservativa: ignora errori */
     }
     throw new MealPlanConstraintRetryError(constraintViolations);
+  }
+  const redMeatEvaluation = evaluateMealPlanRedMeat(filtered);
+  if (requiresMediterraneanRedMeat && !redMeatEvaluation.hasRedMeat) {
+    // Il blueprint imposta sempre il target red_meat prima della generazione.
+    // Se il modello lo ignora, non consegniamo un piano non conforme e non
+    // lanciamo una rigenerazione completa: nessuna chiamata aggiuntiva può
+    // aggirare la protezione locale deterministica.
+    if (!context.suppressInternalLogs) {
+      console.warn(JSON.stringify({
+        tag: "AI_MEAL_PLAN_RED_MEAT_REJECTED",
+        variant,
+        mainMealCount: redMeatEvaluation.mainMealCount,
+        redMeatMealCount: redMeatEvaluation.redMeatMealCount,
+      }));
+    }
+    throw new AiError(
+      "AI_CONSTRAINT_VIOLATION",
+      "Il piano mediterraneo non include una carne rossa tra pranzo e cena",
+    );
   }
 
   const repeatedSlots = findRepeatedMealSlots(disambiguateMealTitles(filtered));

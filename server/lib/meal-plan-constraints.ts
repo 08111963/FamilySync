@@ -370,6 +370,20 @@ export function mealPlanHasDietaryPattern(
   return normalizeMealPlanConstraints(preferences).dietaryPatterns.includes(pattern);
 }
 
+/**
+ * La carne rossa è una regola di equilibrio del solo catalogo mediterraneo,
+ * non un requisito per i profili che escludono la carne o per gli altri
+ * pattern che la possono ammettere per ragioni diverse.
+ */
+export function mealPlanRequiresMediterraneanRedMeat(
+  preferences?: MealPlanConstraintPreferences,
+): boolean {
+  const profile = normalizeMealPlanConstraints(preferences).source.dietProfile;
+  return profile === "mediterranean"
+    || profile === "mediterranean_gluten_free"
+    || profile === "mediterranean_lactose_free";
+}
+
 export function unsupportedMealPlanHealthNote(
   preferences?: MealPlanConstraintPreferences,
 ): string | undefined {

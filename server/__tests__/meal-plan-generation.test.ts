@@ -8,7 +8,7 @@ import {
   __setOpenAiClientForTest,
 } from "../lib/openai";
 import { validateMealPlanConstraints } from "../lib/meal-plan-constraints";
-import { evaluateMealPlanVariety } from "../lib/meal-plan-variety";
+import { evaluateMealPlanRedMeat, evaluateMealPlanVariety } from "../lib/meal-plan-variety";
 
 const WEEK_START = "2026-08-03";
 const DATES = Array.from({ length: 7 }, (_, i) => {
@@ -183,6 +183,14 @@ function mediterraneanDiverseWeekItems(request: RequestInfo): Meal[] {
       }
       if (mealType === "lunch") {
         const target = request.sysPrompt.match(/OBIETTIVO FAMIGLIA PRANZO DEL GIORNO: ([^.]+)\./)?.[1];
+        const proteinTarget = request.sysPrompt.match(/OBIETTIVO PROFILO PRANZO DEL GIORNO: proteina principale ([^;]+);/)?.[1];
+        if (proteinTarget?.startsWith("red_meat")) {
+          return makeMeal(date, mealType, "Pasta con manzo e zucchine", [
+            { name: "pasta", quantity: "80", unit: "g" },
+            { name: "manzo", quantity: "120", unit: "g" },
+            { name: "zucchine", quantity: "150", unit: "g" },
+          ]);
+        }
         const lunch = target ? lunchesByFamily[target] : lunches[index]!;
         assert.ok(lunch, `la fixture deve coprire la famiglia-obiettivo ${target || "non presente"}`);
         return makeMeal(date, mealType, lunch.title, lunch.ingredients);
@@ -240,6 +248,14 @@ function mediterraneanGlutenFreeWeekItems(request: RequestInfo): Meal[] {
       }
       if (mealType === "lunch") {
         const target = request.sysPrompt.match(/OBIETTIVO FAMIGLIA PRANZO DEL GIORNO: ([^.]+)\./)?.[1];
+        const proteinTarget = request.sysPrompt.match(/OBIETTIVO PROFILO PRANZO DEL GIORNO: proteina principale ([^;]+);/)?.[1];
+        if (proteinTarget?.startsWith("red_meat")) {
+          return makeMeal(date, mealType, "Riso con manzo e zucchine", [
+            { name: "riso", quantity: "80", unit: "g" },
+            { name: "manzo", quantity: "120", unit: "g" },
+            { name: "zucchine", quantity: "150", unit: "g" },
+          ]);
+        }
         const lunch = target ? lunchesByFamily[target] : undefined;
         assert.ok(lunch, `il target gluten-free deve usare una famiglia compatibile: ${target || "mancante"}`);
         return makeMeal(date, mealType, lunch!.title, lunch!.ingredients);
@@ -299,7 +315,7 @@ test("mediterranea senza allergie riceve una famiglia-obiettivo per ogni pranzo 
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { diet: "mediterranea" },
+    preferences: { dietProfile: "mediterranean" },
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
@@ -314,6 +330,11 @@ test("mediterranea senza allergie riceve una famiglia-obiettivo per ogni pranzo 
     "cereale in chicco", "patate/polenta", "quinoa",
   ]);
   assert.ok(lunchCalls.every((call) => /OBIETTIVO PROFILO PRANZO DEL GIORNO/i.test(call.sysPrompt)));
+  assert.equal(
+    lunchCalls.filter((call) => /proteina principale red_meat \(carne rossa/i.test(call.sysPrompt)).length,
+    1,
+    "il blueprint deve assegnare una sola carne rossa a uno dei quattordici pasti principali",
+  );
   assert.ok(lunchCalls.slice(1).every((call) => /LUNCH FAMILY COUNTS/i.test(call.sysPrompt)));
   assert.ok(lunchCalls.slice(1).every((call) => /LUNCH BASE COUNTS/i.test(call.sysPrompt)));
   assert.ok(lunchCalls.slice(1).every((call) => /SEMANTIC LUNCH SIGNATURES USED/i.test(call.sysPrompt)));
@@ -326,6 +347,7 @@ test("mediterranea senza allergie riceve una famiglia-obiettivo per ogni pranzo 
       "repeated_lunch_pattern", "repeated_lunch_semantic_signature",
       "repeated_lunch_protein_preparation", "consecutive_lunch_pattern"].includes(issue.code)));
   assert.deepEqual(validateMealPlanConstraints(plan.items, { diet: "mediterranea" }), []);
+  assert.equal(evaluateMealPlanRedMeat(plan.items).hasRedMeat, true);
 });
 
 test("il Piano B mediterraneo allinea temi e famiglie-obiettivo senza nuove chiamate", async (t) => {
@@ -336,7 +358,7 @@ test("il Piano B mediterraneo allinea temi e famiglie-obiettivo senza nuove chia
   const plan = await generateWeeklyMealPlan({
     familySize: 4,
     weekStartDate: WEEK_START,
-    preferences: { diet: "mediterranea" },
+    preferences: { dietProfile: "mediterranean" },
     planVariant: 2,
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
@@ -358,6 +380,56 @@ test("il Piano B mediterraneo allinea temi e famiglie-obiettivo senza nuove chia
     ["low_lunch_family_variety", "excessive_lunch_family", "repeated_lunch_base",
       "repeated_lunch_pattern", "repeated_lunch_semantic_signature",
       "repeated_lunch_protein_preparation", "consecutive_lunch_pattern"].includes(issue.code)));
+});
+
+test("mediterranea senza glutine mantiene il target red_meat nella lista chiusa", async (t) => {
+  const { client, calls } = createFakeClient(mediterraneanGlutenFreeWeekItems);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "mediterranean_gluten_free" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
+
+  const lunchCalls = calls.filter((call) => call.mealTypes.includes("lunch"));
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS);
+  assert.equal(lunchCalls.filter((call) =>
+    /proteina principale red_meat \(carne rossa/i.test(call.sysPrompt)).length, 1);
+  assert.ok(lunchCalls.every((call) => call.ingredientNames?.includes("manzo")));
+  assert.equal(evaluateMealPlanRedMeat(plan.items).hasRedMeat, true);
+  assert.deepEqual(
+    validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_gluten_free" }),
+    [],
+  );
+});
+
+test("mediterranea rifiuta una risposta senza carne rossa senza rigenerare la settimana", async (t) => {
+  const { client, calls } = createFakeClient((request) =>
+    mediterraneanDiverseWeekItems(request).map((item) => ({
+      ...item,
+      title: item.title.replace(/manzo/gi, "pollo"),
+      ingredients: item.ingredients.map((ingredient) => ({
+        ...ingredient,
+        name: ingredient.name.replace(/manzo/gi, "pollo"),
+      })),
+    })),
+  );
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  await assert.rejects(
+    generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      preferences: { dietProfile: "mediterranean" },
+      maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+    }),
+    (error: unknown) => (error as { code?: string }).code === "AI_CONSTRAINT_VIOLATION",
+  );
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS);
 });
 
 test("due pasti al giorno mantengono il contratto da 14 pasti completi", async (t) => {

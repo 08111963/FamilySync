@@ -7,6 +7,7 @@ import {
 } from "../../shared/meal-plan-diet-profiles";
 import {
   normalizeMealPlanConstraints,
+  mealPlanRequiresMediterraneanRedMeat,
   validateMealPlanConstraints,
 } from "../lib/meal-plan-constraints";
 
@@ -49,4 +50,16 @@ test("vegetariano e vegano rifiutano carne rossa senza leggere allergies legacy"
     allergies: "glutine, arachidi",
   }).exclusions, []);
   assert.equal(legacyMealPlanDietToProfile("vegetariana"), "vegetarian");
+});
+
+test("solo i profili mediterranei che consentono carne richiedono la carne rossa settimanale", () => {
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "mediterranean" }), true);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "mediterranean_gluten_free" }), true);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "mediterranean_lactose_free" }), true);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "vegetarian" }), false);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "vegetarian_gluten_free" }), false);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "vegan" }), false);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "pescetarian" }), false);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "low_carb" }), false);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "halal" }), false);
 });

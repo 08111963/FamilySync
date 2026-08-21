@@ -2,7 +2,9 @@ export interface MealPlanVarietyItem {
   date?: string;
   mealType?: string;
   title?: string;
+  description?: string;
   ingredients?: Array<{ name?: string }>;
+  steps?: string[];
 }
 
 export type MealPlanVarietyIssueCode =
@@ -85,7 +87,8 @@ function proteinSources(item: MealPlanVarietyItem): Set<string> {
   const sources = new Set<string>();
   for (const ingredient of item.ingredients || []) {
     const name = ingredient.name || "";
-    if (matches(name, /\bsalmone\b/)) sources.add("salmone");
+    if (isRedMeatText(name)) sources.add("carne rossa");
+    else if (matches(name, /\bsalmone\b/)) sources.add("salmone");
     else if (matches(name, /\bmerluzzo\b/)) sources.add("merluzzo");
     else if (matches(name, /\btonno\b/)) sources.add("tonno");
     else if (matches(name, /\bpollo\b/)) sources.add("pollo");
@@ -95,6 +98,45 @@ function proteinSources(item: MealPlanVarietyItem): Set<string> {
     else if (matches(name, /\b(?:ricotta|formaggio|parmigiano|mozzarella)\b/)) sources.add("latticini");
   }
   return sources;
+}
+
+/**
+ * Solo termini già riconosciuti dal catalogo/regole carne del Piano Pasti.
+ * "Ragù" non è sufficiente: può essere vegetale e non dimostra carne rossa.
+ */
+const RED_MEAT_PATTERN = /\b(?:manzo|vitello|maiale|suino|agnello)\b/;
+
+function isRedMeatText(value: string): boolean {
+  return RED_MEAT_PATTERN.test(normalize(value));
+}
+
+export interface MealPlanRedMeatEvaluation {
+  mainMealCount: number;
+  redMeatMealCount: number;
+  hasRedMeat: boolean;
+}
+
+/**
+ * Controllo locale sull'intera settimana: pranzo e cena sono entrambi pasti
+ * principali. Gli ingredienti sono la fonte primaria, ma titolo, descrizione e
+ * passaggi aiutano a non perdere un termine già dichiarato dalla ricetta.
+ */
+export function evaluateMealPlanRedMeat(
+  items: MealPlanVarietyItem[],
+): MealPlanRedMeatEvaluation {
+  const mainMeals = items.filter((item) =>
+    item.mealType === "lunch" || item.mealType === "dinner");
+  const redMeatMealCount = mainMeals.filter((item) => isRedMeatText([
+    item.title || "",
+    item.description || "",
+    ...(item.ingredients || []).map((ingredient) => ingredient.name || ""),
+    ...(item.steps || []),
+  ].join(" "))).length;
+  return {
+    mainMealCount: mainMeals.length,
+    redMeatMealCount,
+    hasRedMeat: redMeatMealCount >= 1,
+  };
 }
 
 function firstSource(sources: Set<string>): string | undefined {
@@ -235,6 +277,7 @@ function mealPlanLunchFlavour(item: MealPlanVarietyItem): string | undefined {
 
 function mealPlanLunchProtein(item: MealPlanVarietyItem): string {
   return ({
+    "carne rossa": "red_meat",
     salmone: "salmon",
     merluzzo: "cod",
     tonno: "tuna",
@@ -329,6 +372,7 @@ type SemanticLunchTargetDefinition = {
 };
 
 const LUNCH_PROTEIN_TARGETS: SemanticLunchTargetDefinition[] = [
+  { label: "red_meat", available: (items) => items.some((item) => isRedMeatText(item)) },
   { label: "salmone", available: (items) => items.some((item) => /\bsalmone\b/.test(item)) },
   { label: "merluzzo", available: (items) => items.some((item) => /\bmerluzzo\b/.test(item)) },
   { label: "tonno", available: (items) => items.some((item) => /\btonno\b/.test(item)) },
@@ -356,12 +400,20 @@ export function planMealPlanLunchSemanticTargets(
   ingredientNames: string[],
   days = 7,
   rotationOffset = 0,
+  options?: { requireRedMeat?: boolean },
 ): LunchSemanticProfileTarget[] {
   if (days <= 0) return [];
   const normalizedIngredients = ingredientNames.map(normalize);
-  const proteins = LUNCH_PROTEIN_TARGETS
+  const availableProteins = LUNCH_PROTEIN_TARGETS
     .filter((entry) => entry.available(normalizedIngredients))
     .map((entry) => entry.label);
+  // red_meat entra nel blueprint solo come requisito esplicito mediterraneo:
+  // non deve comparire casualmente nella rotazione, che altrimenti potrebbe
+  // produrre due target pur avendo richiesto "preferibilmente uno".
+  const proteins = availableProteins.filter((protein) => protein !== "red_meat");
+  if (proteins.length === 0 && availableProteins.includes("red_meat")) {
+    proteins.push("red_meat");
+  }
   const preparations = LUNCH_PREPARATION_TARGETS
     .filter((entry) => entry.available(normalizedIngredients))
     .map((entry) => entry.label);
@@ -376,10 +428,21 @@ export function planMealPlanLunchSemanticTargets(
       order: (proteinIndex + preparationIndex + rotationOffset) % proteins.length,
     })),
   ).sort((left, right) => left.order - right.order || left.preparation!.localeCompare(right.preparation!));
-  return Array.from({ length: days }, (_, index) => {
+  const targets = Array.from({ length: days }, (_, index) => {
     const pair = pairs[index % pairs.length]!;
     return { mainProtein: pair.mainProtein, preparation: pair.preparation };
   });
+  // Il target è assegnato prima delle chiamate giornaliere: uno dei sette
+  // pranzi, quindi uno dei quattordici pasti principali, richiede
+  // deterministicamente una carne rossa senza rigenerare la settimana.
+  if (options?.requireRedMeat && availableProteins.includes("red_meat") && targets.length > 0) {
+    const targetIndex = (targets.length - 1 + rotationOffset) % targets.length;
+    targets[targetIndex] = {
+      ...targets[targetIndex],
+      mainProtein: "red_meat",
+    };
+  }
+  return targets;
 }
 
 function countSources(

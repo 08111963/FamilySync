@@ -5,7 +5,10 @@ components/VoiceInput.tsx
 docs/guida-utente.md
 e2e/meal-plan-diet-selector.test.ts
 server/__tests__/meal-plan-diet-profiles.test.ts
+server/__tests__/meal-plan-generation.test.ts
+server/__tests__/meal-plan-variety.test.ts
 server/lib/meal-plan-constraints.ts
+server/lib/meal-plan-variety.ts
 server/lib/openai.ts
 server/routes/ai.ts
 server/routes/meal-plans.ts

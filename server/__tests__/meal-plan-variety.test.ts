@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMealPlanVarietyContext,
+  evaluateMealPlanRedMeat,
   evaluateMealPlanVariety,
   mealPlanLunchBase,
   mealPlanLunchProteinPreparation,
@@ -89,6 +90,58 @@ test("la rotazione locale distribuisce sette famiglie compatibili senza affidars
   ]);
   assert.equal(new Set(semanticTargets.map((target) =>
     `${target.mainProtein} + ${target.preparation}`)).size, 7);
+});
+
+test("il blueprint mediterraneo impone una carne rossa e il controllo conta pranzo più cena", () => {
+  const ingredients = [
+    "pasta", "riso", "ceci", "couscous", "farro", "patate", "quinoa",
+    "salmone", "tonno", "pollo", "tacchino", "uova", "manzo",
+    "limone", "pomodori", "pesto", "zucchine",
+  ];
+  const targets = planMealPlanLunchSemanticTargets(ingredients, 7, 0, {
+    requireRedMeat: true,
+  });
+  assert.equal(targets.filter((target) => target.mainProtein === "red_meat").length, 1);
+
+  const withRedMeat = [
+    meal("lunch", "Riso con manzo e zucchine", ["riso", "manzo", "zucchine"]),
+    meal("dinner", "Merluzzo con patate", ["merluzzo", "patate", "bietole"]),
+  ];
+  assert.deepEqual(evaluateMealPlanRedMeat(withRedMeat), {
+    mainMealCount: 2,
+    redMeatMealCount: 1,
+    hasRedMeat: true,
+  });
+
+  const withoutRedMeat = [
+    meal("lunch", "Riso con ceci e zucchine", ["riso", "ceci", "zucchine"]),
+    meal("dinner", "Merluzzo con patate", ["merluzzo", "patate", "bietole"]),
+  ];
+  assert.deepEqual(evaluateMealPlanRedMeat(withoutRedMeat), {
+    mainMealCount: 2,
+    redMeatMealCount: 0,
+    hasRedMeat: false,
+  }, "l'assenza resta un advisory locale, senza una rigenerazione completa");
+});
+
+test("il blueprint gluten-free conserva il target red_meat, vegetariano e vegano non lo richiedono", () => {
+  const glutenFreeIngredients = [
+    "pasta senza glutine", "riso", "ceci", "patate", "quinoa",
+    "manzo", "salmone", "pollo", "zucchine", "pomodori",
+  ];
+  assert.ok(
+    planMealPlanLunchSemanticTargets(glutenFreeIngredients, 7, 0, {
+      requireRedMeat: true,
+    }).some((target) => target.mainProtein === "red_meat"),
+  );
+  assert.ok(
+    !planMealPlanLunchSemanticTargets(
+      glutenFreeIngredients.filter((ingredient) => ingredient !== "manzo"),
+      7,
+      0,
+      { requireRedMeat: false },
+    ).some((target) => target.mainProtein === "red_meat"),
+  );
 });
 
 test("sei paste mediterranee con contorni diversi restano un caso monotono", () => {
