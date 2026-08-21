@@ -14,7 +14,7 @@ import { eq, and, gte, desc, inArray, lt } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
-import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateBudgetInsights, generateRecipeSuggestions, generateWeeklyMealPlan, searchRecipesByQuery, transcribeAudio, generateRecipeImage, parseEventFromText, parseExpenseFromText, parseChoreFromText, parseAssistantActionsFromText, type ShoppingSuggestionItem } from '../lib/openai';
+import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateBudgetInsights, generateRecipeSuggestions, generateWeeklyMealPlan, MAX_MEAL_PLAN_MODEL_CALLS, searchRecipesByQuery, transcribeAudio, generateRecipeImage, parseEventFromText, parseExpenseFromText, parseChoreFromText, parseAssistantActionsFromText, type ShoppingSuggestionItem } from '../lib/openai';
 import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { recipes, recipeIngredients } from '../../shared/schema';
@@ -922,7 +922,11 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
 
     const run = await withAiUsage(
       { userId, familyId, feature: 'weekly-meal-plan' },
-      () => generateWeeklyMealPlan({ ...context, planVariant: 1 }),
+      () => generateWeeklyMealPlan({
+        ...context,
+        planVariant: 1,
+        maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+      }),
     );
     if (run.outcome === 'limited') return sendRateLimited(res, run.max, run.window, run.plan);
     if (run.outcome === 'unavailable') return sendUsageUnavailable(res);
@@ -1019,6 +1023,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       weekStartDate,
       preferences: preparedPreferences.preferences,
       planVariant,
+      maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
       onStatus: writeStatus,
     });
     await finalizeUsageOnce(true);

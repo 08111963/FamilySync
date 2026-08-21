@@ -1,0 +1,524 @@
+Dopo le correzioni specifiche su glutine e lattosio, non voglio più verificare gli allergeni uno alla volta in produzione.
+
+Esegui ora un **unico controllo sistematico e parametrico di tutti gli allergeni/intolleranze supportati dal Piano Pasti**, senza fare deploy.
+
+Obiettivo: verificare che ogni vincolo venga interpretato correttamente, mantenga un pool alimentare sufficientemente ampio, non produca menu eccessivamente ripetitivi, non introduca ingredienti incompatibili e non aumenti in modo incontrollato le chiamate OpenAI.
+
+NON riscrivere il Piano Pasti.
+
+Mantieni le correzioni già funzionanti su:
+
+* `normalizeMealPlanConstraints()`;
+* distinzione dietary patterns / exclusions;
+* `gluten`;
+* `lactose`;
+* `milk`;
+* closed allowlist;
+* JSON Schema;
+* Zod;
+* validazione semantica;
+* firma semantica dei pasti;
+* memoria di varietà inter-giorno;
+* retry di sicurezza.
+
+# 1. INVENTARIO COMPLETO DEI VINCOLI SUPPORTATI
+
+Prima di modificare il codice, ricava dal progetto l'elenco reale di tutti gli allergeni/intolleranze riconosciuti.
+
+Controlla:
+
+* normalizzatore;
+* regex/sinonimi;
+* `meal-plan-constraints`;
+* UI;
+* tipi condivisi;
+* prompt;
+* validatori.
+
+Crea una tabella:
+
+| Vincolo canonico | Input riconosciuti | Campo possibile | Regola validatore | Allowlist dedicata |
+| ---------------- | ------------------ | --------------- | ----------------- | ------------------ |
+
+Includi almeno, se supportati:
+
+* gluten;
+* lactose;
+* milk;
+* egg;
+* peanut;
+* tree_nuts;
+* fish;
+* shellfish;
+* soy;
+* sesame;
+
+e qualsiasi altro allergene/intolleranza già presente nel progetto.
+
+Non inventare supporto per allergeni non esistenti senza prima segnalarlo.
+
+# 2. VERIFICA NORMALIZZAZIONE
+
+Per ogni vincolo controlla che formulazioni equivalenti convergano sullo stesso valore canonico.
+
+Esempi:
+
+## Glutine
+
+* glutine
+* senza glutine
+* gluten free
+* celiaco/celiaca
+
+→ `gluten`
+
+## Lattosio
+
+* lattosio
+* senza lattosio
+* intollerante al lattosio
+* intolleranza al lattosio
+
+→ `lactose`
+
+## Latte
+
+* latte
+* proteine del latte
+* caseina
+* allergia al latte
+
+→ `milk`
+
+## Uova
+
+* uovo
+* uova
+* allergia alle uova
+
+→ `egg`
+
+## Arachidi
+
+* arachidi
+* peanut
+* allergia alle arachidi
+
+→ `peanut`
+
+## Frutta a guscio
+
+* frutta secca, solo se semanticamente previsto;
+* frutta a guscio;
+* noci;
+* nocciole;
+* mandorle;
+* pistacchi;
+* anacardi;
+
+→ regola canonica appropriata.
+
+Attenzione: non confondere “frutta secca” con categorie non equivalenti se il validatore attuale le distingue.
+
+# 3. VERIFICA SICUREZZA PER OGNI ALLERGENE
+
+Per ogni vincolo crea una matrice di ingredienti:
+
+| Vincolo | Ingredienti vietati | Ingredienti esplicitamente sicuri | Casi ambigui |
+| ------- | ------------------- | --------------------------------- | ------------ |
+
+Il validatore deve controllare:
+
+* titolo;
+* descrizione;
+* ingredienti;
+* istruzioni.
+
+Non limitarsi ai nomi del piatto.
+
+Verifica anche ingredienti composti e sinonimi.
+
+Esempio:
+
+`milk`
+
+deve essere più restrittivo di:
+
+`lactose`.
+
+Un prodotto “senza lattosio” non è automaticamente sicuro per `milk`.
+
+# 4. VERIFICA FALSE POSITIVE
+
+Non basta evitare ingredienti pericolosi.
+
+Controlla anche che il sistema NON elimini alimenti sicuri soltanto perché contengono una parola associata all'allergene.
+
+Esempi già osservati:
+
+* `pane senza glutine` non deve essere escluso per la parola “glutine”;
+* prodotti esplicitamente “senza lattosio” non devono essere esclusi per la parola “lattosio”, se compatibili con il vincolo.
+
+Crea test equivalenti per tutti gli allergeni che hanno prodotti sostitutivi esplicitamente sicuri.
+
+# 5. ANALISI DELL'ALLOWLIST PER OGNI VINCOLO
+
+Per ciascun allergene/intolleranza calcola il pool reale disponibile per:
+
+* colazione;
+* pranzo;
+* cena.
+
+Produci una tabella:
+
+| Vincolo | Colazione | Pranzo | Cena | Famiglie pranzo | Famiglie cena | Rischio rigidità |
+| ------- | --------: | -----: | ---: | --------------: | ------------: | ---------------- |
+
+Classifica il rischio:
+
+* basso;
+* medio;
+* alto.
+
+Segnala casi in cui un singolo vincolo riduce eccessivamente il pool.
+
+Un solo allergene non dovrebbe trasformare automaticamente il menu in 2-3 pasti ripetuti, salvo vincoli realmente molto restrittivi.
+
+# 6. VARIETÀ SETTIMANALE
+
+Usa il variety checker già implementato.
+
+Per ogni vincolo verifica almeno:
+
+* stesso pattern pranzo;
+* stesso pattern cena;
+* ripetizioni consecutive;
+* stessa fonte di carboidrati;
+* stessa proteina;
+* numero di famiglie di piatto diverse.
+
+Per un singolo allergene, quando il pool lo consente, cerca come best effort:
+
+* almeno 4 famiglie differenti di pranzo;
+* almeno 4 famiglie differenti di cena;
+* stesso pattern massimo 2 volte/settimana;
+* mai lo stesso pattern in giorni consecutivi;
+* stesso carboidrato principale massimo 3 volte;
+* stessa proteina principale massimo 2 volte.
+
+La sicurezza prevale sempre sulla varietà.
+
+# 7. TEST INDIVIDUALI PER OGNI ALLERGENE
+
+Crea test parametrizzati.
+
+Per ogni allergene supportato verifica:
+
+1. normalizzazione;
+2. allowlist;
+3. ingredienti vietati;
+4. ingredienti sicuri;
+5. validazione semantica;
+6. varietà minima possibile;
+7. nessun crash;
+8. nessun fallback non sicuro.
+
+Evita di duplicare centinaia di test manualmente: usa test table-driven/parametrici dove possibile.
+
+# 8. COMBINAZIONI OBBLIGATORIE
+
+Testa anche combinazioni realistiche, perché spesso i problemi emergono solo quando i vincoli si sommano.
+
+Includi almeno:
+
+* gluten + lactose;
+* gluten + milk;
+* gluten + egg;
+* gluten + tree_nuts;
+* lactose + egg;
+* milk + egg;
+* vegan + gluten;
+* vegan + soy;
+* vegan + tree_nuts;
+* vegetarian + gluten;
+* mediterranean + gluten;
+* mediterranean + lactose;
+* gluten + lactose + tree_nuts.
+
+Se alcune combinazioni lasciano un pool troppo ristretto, non inventare piatti rischiosi.
+
+Il sistema deve:
+
+* produrre un piano sicuro se possibile;
+* oppure restituire un errore chiaro se non è possibile ottenere un piano affidabile.
+
+Mai rilassare silenziosamente un allergene.
+
+# 9. CASI CRITICI DI CROSS-CONTAMINATION / PRODOTTI COMPOSTI
+
+Senza trasformare FamilySync in un sistema medico, controlla almeno i casi lessicalmente critici già gestibili dal software:
+
+* salsa di soia in piano gluten-free;
+* pangrattato;
+* farine;
+* prodotti da forno;
+* pesto con frutta a guscio;
+* salse con latte/panna;
+* maionese con uova;
+* creme/spalmabili con frutta a guscio;
+* tofu/soia;
+* prodotti “senza lattosio” con proteine del latte.
+
+Non dichiarare “sicuro” ciò che non è verificabile dal testo.
+
+Quando necessario usa formulazioni esplicite come:
+
+* “senza glutine”;
+* “senza latte”;
+* “senza uova”;
+
+invece di presumere che una categoria generica sia compatibile.
+
+# 10. PROMPT OPENAI
+
+Controlla che ogni allergene arrivi al prompt in forma canonica e non come testo ambiguo.
+
+Il prompt deve distinguere chiaramente:
+
+VINCOLI OBBLIGATORI
+da
+PREFERENZE CULINARIE.
+
+Gli allergeni devono essere non negoziabili.
+
+Non devono essere presentati come:
+
+* preferenza;
+* suggerimento;
+* “se possibile”.
+
+# 11. GENERAZIONE A BLOCCHI E MEMORIA
+
+Verifica che il riepilogo inter-giorno funzioni per tutti gli allergeni, non solo gluten/lactose.
+
+Passa ai blocchi successivi:
+
+* pattern già usati;
+* proteine già usate;
+* carboidrati già usati;
+* famiglie già usate.
+
+Non aggiungere nuove chiamate OpenAI.
+
+# 12. BUDGET OPENAI
+
+Questo audit deve includere anche il budget globale.
+
+Per ogni scenario parametrico conta le chiamate simulate.
+
+Il limite deve comprendere:
+
+* chiamate normali;
+* malformed response retry;
+* constraint retry;
+* local repair;
+* eventuale variety repair.
+
+Deve valere sempre:
+
+`modelCalls <= MAX_MEAL_PLAN_MODEL_CALLS`
+
+Non aumentare il limite per far passare più combinazioni.
+
+Se una combinazione non è generabile entro il budget in sicurezza, restituisci un errore chiaro.
+
+# 13. TEST DELLE ROUTE REALI
+
+Verifica i body reali inviati dall'app.
+
+Testa almeno:
+
+```json
+{
+  "preferences": {
+    "allergies": "uova"
+  }
+}
+```
+
+```json
+{
+  "preferences": {
+    "allergies": "frutta a guscio"
+  }
+}
+```
+
+```json
+{
+  "preferences": {
+    "allergies": "pesce"
+  }
+}
+```
+
+```json
+{
+  "preferences": {
+    "allergies": "soia"
+  }
+}
+```
+
+e le combinazioni previste.
+
+Verifica:
+
+frontend
+→ route
+→ normalizzazione
+→ prompt
+→ allowlist
+→ OpenAI mock
+→ validazione
+→ piano finale.
+
+# 14. REPORT SISTEMATICO
+
+Crea:
+
+`MEAL_PLAN_ALLERGEN_AUDIT_REPORT.md`
+
+Deve contenere almeno:
+
+## A. Inventario
+
+| Canonical constraint | Sinonimi | Supportato |
+| -------------------- | -------- | ---------- |
+
+## B. Sicurezza
+
+| Allergene | Vietati correttamente | False positive | Esito |
+| --------- | --------------------- | -------------- | ----- |
+
+## C. Ampiezza pool
+
+| Allergene | Pool colazione | Pool pranzo | Pool cena | Rischio rigidità |
+| --------- | -------------: | ----------: | --------: | ---------------- |
+
+## D. Varietà
+
+| Allergene | Pattern max | Famiglie pranzo | Famiglie cena | Esito |
+| --------- | ----------: | --------------: | ------------: | ----- |
+
+## E. Combinazioni
+
+| Combinazione | Piano possibile | Sicurezza | Varietà | Note |
+| ------------ | --------------: | --------: | ------: | ---- |
+
+## F. Costi
+
+| Scenario | Model calls |
+| -------- | ----------: |
+
+# 15. CLASSIFICA I PROBLEMI
+
+Classifica eventuali difetti trovati:
+
+* P0 = possibile violazione di allergene;
+* P1 = vincolo interpretato male;
+* P2 = menu molto rigido/ripetitivo;
+* P3 = qualità/UX;
+* P4 = documentazione/test.
+
+Correggi automaticamente P0 e P1.
+
+Correggi P2 solo se puoi farlo senza:
+
+* indebolire la sicurezza;
+* aumentare il budget OpenAI;
+* creare regressioni.
+
+Per P3/P4 documenta e correggi se semplice.
+
+# 16. TEST COMPLETI
+
+Esegui:
+
+`npm run typecheck`
+`npm run test:ai`
+
+più tutti i test Piano Pasti:
+
+* constraints;
+* generation;
+* request-body;
+* replace;
+* variety;
+* lactose variety;
+* gluten variety;
+* nuovi test parametrizzati allergeni;
+* budget.
+
+Riporta:
+
+* file test;
+* test totali;
+* passati;
+* falliti;
+* saltati;
+* durata;
+* exit code.
+
+# 17. NON FARE DEPLOY
+
+Non fare deploy.
+
+Non effettuare chiamate OpenAI reali per questo audit se i mock sono sufficienti.
+
+Non modificare database o migrazioni se non strettamente necessario.
+
+# 18. ZIP FINALE
+
+Genera:
+
+`familysync-meal-plan-allergens-audit-fixed-20260821.zip`
+
+Includi:
+
+* `server/lib/openai.ts`;
+* normalizzatore constraints;
+* variety helper;
+* route AI;
+* frontend Piano Pasti;
+* tipi/schema;
+* test;
+* package.json;
+* lockfile;
+* `MEAL_PLAN_ALLERGEN_AUDIT_REPORT.md`.
+
+Escludi:
+
+* `.env`;
+* OpenAI API key;
+* token;
+* segreti;
+* database dump;
+* node_modules;
+* build;
+* APK/AAB;
+* certificati;
+* ZIP precedenti.
+
+Prima dello ZIP esegui una scansione dei segreti.
+
+Dopo aver creato lo ZIP:
+
+1. estrailo in una directory pulita;
+2. verifica che tutti i file richiesti siano realmente presenti;
+3. riesegui typecheck e test sul contenuto estratto;
+4. riporta SHA-256 e numero file.
+
+Fermati dopo la creazione dello ZIP e attendi il controllo esterno.
+
+Non dichiarare genericamente “tutti gli allergeni funzionano”: il report deve mostrare il risultato singolarmente per ogni allergene e per le principali combinazioni.

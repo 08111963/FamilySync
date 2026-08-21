@@ -2,9 +2,8 @@
 
 ## Scopo e confini
 
-Questo documento descrive il percorso del Piano Pasti nel codice incluso
-nell'archivio diagnostico. È una mappa di raccolta tecnica per controllo
-esterno: non modifica il comportamento dell'app e non propone correzioni.
+Questo documento descrive il percorso del Piano Pasti e il limite cumulativo
+di chiamate al modello incluso nell'archivio di verifica.
 
 I riferimenti sono percorsi relativi alla radice del progetto.
 
@@ -119,8 +118,31 @@ preferenza, nel testo di `notes`.
   configurazione del client; `server/lib/ai-usage.ts` gestisce prenotazione e
   finalizzazione quota; `server/lib/meal-plan-latency-monitor.ts` è la
   telemetria operativa delle chiamate Piano Pasti.
-- Sono inclusi retry di formato, vincoli e varietà nel codice originale,
-  insieme ai test corrispondenti.
+- Sono inclusi retry di formato, vincoli e varietà, tutti soggetti allo stesso
+  budget cumulativo e ai test corrispondenti.
+
+## Budget delle chiamate al modello
+
+`MAX_MEAL_PLAN_MODEL_CALLS` è la costante centralizzata, impostata a **42**.
+Entrambe le route reali—`POST /:familyId/weekly-meal-plan` e
+`POST /:familyId/weekly-meal-plan/stream`—la passano esplicitamente a
+`generateWeeklyMealPlan()`. Il generatore usa inoltre lo stesso valore come
+default sicuro e non permette a un chiamante di innalzarlo.
+
+| Percorso | Chiamate tipiche |
+| --- | ---: |
+| Piano standard | 14 (due blocchi giornalieri per 7 giorni) |
+| Piano `lactose` | 7 (colazioni deterministiche sicure, un blocco giornaliero) |
+| Massimo assoluto consentito | 42 |
+
+Il contatore viene incrementato prima di ogni invocazione OpenAI e viene
+condiviso da chiamate normali, retry di formato, retry dei vincoli, riparazioni
+locali della varietà e rigenerazione completa per varietà. Al raggiungimento
+del limite viene restituito l'errore tipizzato
+`AI_MODEL_CALL_BUDGET_EXHAUSTED` (HTTP 503): nessuna nuova chiamata OpenAI
+parte, i giorni restanti non vengono elaborati e nessun piano parziale o non
+verificato viene consegnato. La verifica dei vincoli alimentari resta sempre
+prioritaria rispetto a un ulteriore tentativo di varietà.
 
 ## Configurazione OpenAI inclusa
 
@@ -147,10 +169,15 @@ Versione SDK: `openai` `^6.18.0`, documentata in `package.json` e bloccata in
 
 ## Test inclusi
 
-L'archivio contiene i test esistenti del generatore, parser, vincoli,
+L'archivio contiene i test del generatore, parser, vincoli,
 sostituzione/persistenza, policy/quota/errori AI e monitor Piano Pasti,
-oltre a `e2e/meal-plan-replace.test.ts`. Non sono stati creati test nuovi per
-questa raccolta.
+oltre a `e2e/meal-plan-replace.test.ts`. Il test del budget verifica
+esplicitamente entrambe le route; i fixture del generatore contano le chiamate
+fake e verificano `modelCalls <= MAX_MEAL_PLAN_MODEL_CALLS` per percorso
+normale lactose, gluten, riparazione locale, retry dei vincoli, risposta
+malformata, retry completo di varietà e combinazioni di retry. Un caso separato
+prova che il budget esaurito non invia risultati parziali né avvia una chiamata
+supplementare.
 
 ## Inventario e assenze note
 

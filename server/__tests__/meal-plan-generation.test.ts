@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 process.env.AI_INTEGRATIONS_OPENAI_API_KEY = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "test-key";
-import { generateWeeklyMealPlan, __setOpenAiClientForTest } from "../lib/openai";
+import {
+  generateWeeklyMealPlan,
+  MAX_MEAL_PLAN_MODEL_CALLS,
+  __setOpenAiClientForTest,
+} from "../lib/openai";
 import { validateMealPlanConstraints } from "../lib/meal-plan-constraints";
 import { evaluateMealPlanVariety } from "../lib/meal-plan-variety";
 
@@ -351,8 +355,10 @@ test("vincoli nel campo Dieta raggiungono prompt e schema senza aumentare le chi
     familySize: 4,
     weekStartDate: WEEK_START,
     preferences: { diet: "senza glutine" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
   assert.equal(glutenClient.calls.length, THREE_MEAL_WEEK_REQUESTS);
+  assert.ok(glutenClient.calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assert.ok(glutenClient.calls.every((call) => /Esclusioni canoniche applicate: gluten/i.test(call.sysPrompt)));
   assert.ok(glutenClient.calls.some((call) => call.ingredientNames?.includes("pasta senza glutine")));
   assert.deepEqual(validateMealPlanConstraints(glutenPlan.items, { diet: "senza glutine" }), []);
@@ -363,9 +369,11 @@ test("vincoli nel campo Dieta raggiungono prompt e schema senza aumentare le chi
     familySize: 4,
     weekStartDate: WEEK_START,
     preferences: { diet: "senza lattosio" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
   t.after(() => __setOpenAiClientForTest(null));
   assert.equal(lactoseClient.calls.length, CONSTRAINED_WEEK_REQUESTS);
+  assert.ok(lactoseClient.calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assert.ok(lactoseClient.calls.every((call) => /Esclusioni canoniche applicate: lactose/i.test(call.sysPrompt)));
   assert.ok(lactoseClient.calls.every((call) => call.ingredientNames?.includes("pasta")));
   assert.deepEqual(validateMealPlanConstraints(lactosePlan.items, { diet: "senza lattosio" }), []);
@@ -445,9 +453,11 @@ test("solo lattosio usa quattro famiglie di pranzo e passa firme ai giorni succe
     familySize: 4,
     weekStartDate: WEEK_START,
     preferences: { allergies: "lattosio" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
   assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS);
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assert.ok(calls.every((call) => call.ingredientNames?.includes("couscous")));
   assert.ok(calls.every((call) => call.ingredientNames?.includes("farro")));
   assert.ok(calls.every((call) => call.ingredientNames?.includes("ricotta senza lattosio")));
@@ -571,9 +581,11 @@ test("con lattosio: un riferimento libero a un latticino rigenera il piano natur
     familySize: 4,
     weekStartDate: WEEK_START,
     preferences: { allergies: "Lattosio" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
   assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 2);
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assert.ok(calls.every((call) => /PIANO SENZA LATTOSIO/i.test(call.sysPrompt)));
   assert.ok(calls.slice(CONSTRAINED_WEEK_REQUESTS).every((call) =>
     /VINCOLO LATTOSIO: ricrea il piano con ingredienti naturalmente privi di latticini/i.test(call.sysPrompt)));
@@ -625,9 +637,11 @@ test("con lattosio: formato, allergene e varietà usano retry indipendenti e cum
     familySize: 4,
     weekStartDate: WEEK_START,
     preferences: { allergies: "Lattosio" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
   assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 5);
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   const finalAttemptPrompts = calls.slice(CONSTRAINED_WEEK_REQUESTS * 4);
   assert.ok(finalAttemptPrompts.every((call) => /almeno un ingrediente/i.test(call.sysPrompt)));
   assert.ok(finalAttemptPrompts.every((call) => /VINCOLO LATTOSIO/i.test(call.sysPrompt)));
@@ -761,9 +775,14 @@ test("i pasti ripetuti in giorni diversi vengono rigenerati prima della consegna
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
-  const plan = await generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START });
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
 
   assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2, "una sola rigenerazione completa per eliminare i doppioni");
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assert.ok(calls.slice(THREE_MEAL_WEEK_REQUESTS).every((call) => /CORREZIONE VARIETÀ OBBLIGATORIA/.test(call.sysPrompt)));
   assertCompleteWeek(plan.items, 3);
   for (const mealType of ["breakfast", "lunch", "dinner"]) {
@@ -802,9 +821,14 @@ test("un solo doppione viene riparato localmente senza rigenerare l'intera setti
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
-  const plan = await generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START });
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
 
   assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS + 1);
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assert.ok(calls.at(-1)?.sysPrompt.includes("CORREZIONE VARIETÀ LOCALE OBBLIGATORIA"));
   assertCompleteWeek(plan.items, 3);
   assert.equal(new Set(plan.items.filter((item) => item.mealType === "dinner").map((item) => item.title)).size, 7);
@@ -861,9 +885,11 @@ test("una risposta incompleta viene rigenerata una sola volta senza inviare pian
     weekStartDate: WEEK_START,
     preferences: { allergies: "Lattosio" },
     onProgress: (items) => progress.push(items as Meal[]),
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
   assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS * 2, "una sola rigenerazione completa dei pasti AI");
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assertCompleteWeek(plan.items, 3);
   assert.equal(progress.length, 7, "nessun giorno parziale raggiunge il client");
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
@@ -902,4 +928,22 @@ test("un alimento da pranzo nel testo della colazione viene rigenerato senza app
     plan.items.every((item) => (item.steps?.length || 0) >= 3 && (item.steps?.length || 0) <= 6),
     "la rigenerazione deve mantenere una ricetta completa",
   );
+});
+
+test("il budget esaurito non avvia nuove chiamate e non consegna un piano parziale", async (t) => {
+  const { client, calls } = createFakeClient(() => []);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  await assert.rejects(
+    generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      preferences: { allergies: "Lattosio" },
+      maxModelCalls: CONSTRAINED_WEEK_REQUESTS,
+    }),
+    (error: unknown) => (error as { code?: string }).code === "AI_MODEL_CALL_BUDGET_EXHAUSTED",
+  );
+  assert.equal(calls.length, CONSTRAINED_WEEK_REQUESTS);
+  assert.ok(calls.length <= CONSTRAINED_WEEK_REQUESTS);
 });

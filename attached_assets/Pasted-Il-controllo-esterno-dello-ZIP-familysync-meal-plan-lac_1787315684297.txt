@@ -1,0 +1,111 @@
+Il controllo esterno dello ZIP `familysync-meal-plan-lactose-variety-fixed-20260821.zip` conferma che la correzione della varietà dei pranzi con `lactose` è corretta.
+
+NON modificare più:
+
+* normalizzazione dei vincoli;
+* allowlist;
+* firma semantica dei pranzi;
+* varietà;
+* prompt lactose;
+* sicurezza `lactose` / `milk`;
+* test funzionali.
+
+Resta soltanto un problema comune di controllo costi.
+
+Nel codice `generateWeeklyMealPlan()` supporta:
+
+`maxModelCalls`
+
+ma le route:
+
+* `POST /:familyId/weekly-meal-plan`
+* `POST /:familyId/weekly-meal-plan/stream`
+
+non passano attualmente questo parametro.
+
+Di conseguenza il budget interno non è attivo in produzione.
+
+Correggi esclusivamente questo punto.
+
+# Requisito
+
+Definisci una costante centralizzata, per esempio:
+
+`MAX_MEAL_PLAN_MODEL_CALLS`
+
+e passala SEMPRE a `generateWeeklyMealPlan()` da tutti i chiamanti reali.
+
+Il budget deve comprendere cumulativamente:
+
+* chiamate normali;
+* format retry;
+* constraint retry;
+* local variety repair;
+* full variety retry.
+
+Quando il budget è esaurito:
+
+* nessuna nuova chiamata OpenAI deve partire;
+* il sistema deve terminare con un errore tipizzato e comprensibile;
+* non devono essere esposti risultati non sicuri.
+
+La sicurezza alimentare prevale sulla varietà.
+
+Se il budget non consente un ulteriore tentativo di varietà, è preferibile fermarsi piuttosto che superare il limite.
+
+# Test obbligatori
+
+Aggiungi test che dimostrino:
+
+* percorso lactose normale;
+* percorso gluten normale;
+* local repair;
+* constraint retry;
+* malformed response retry;
+* full variety retry;
+* combinazione di più retry.
+
+Per ogni caso conta le chiamate fake.
+
+Deve valere sempre:
+
+`modelCalls <= MAX_MEAL_PLAN_MODEL_CALLS`
+
+Verifica anche che tutte le route passino esplicitamente il budget.
+
+# Report
+
+Aggiorna il report indicando separatamente:
+
+* chiamate tipiche standard;
+* chiamate tipiche lactose;
+* massimo assoluto consentito;
+* comportamento a budget esaurito.
+
+Non dichiarare “7 chiamate” come massimo: 7 è il percorso normale lactose.
+
+# Verifica
+
+Esegui:
+
+`npm run typecheck`
+`npm run test:ai`
+
+e tutti i test Piano Pasti.
+
+NON fare deploy.
+
+Genera:
+
+`familysync-meal-plan-budget-final-20260821.zip`
+
+Includi:
+
+* `server/routes/ai.ts`;
+* `server/lib/openai.ts`;
+* test;
+* package.json;
+* lockfile;
+* report aggiornato.
+
+Fermati dopo lo ZIP.

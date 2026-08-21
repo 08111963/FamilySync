@@ -313,3 +313,10 @@ uri = "file://familysync-meal-plan-lactose-variety-fixed-20260821.zip"
 type = "unspecified"
 title = "ZIP finale — varietà pranzi senza lattosio"
 description = "Correzione verificata di firma concettuale, memoria tra blocchi, closed allowlist lactose/milk e test completi; include report e lockfile, senza segreti o build."
+
+[[outputs]]
+id = "zBfkVwh03EUJYwEOlyu8X"
+uri = "file://familysync-meal-plan-budget-final-20260821.zip"
+type = "unspecified"
+title = "ZIP finale — budget Piano Pasti"
+description = "Archivio verificato con limite centralizzato, route, test, lockfile e report aggiornato."

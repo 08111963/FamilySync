@@ -886,6 +886,12 @@ const MAX_MALFORMED_RESPONSE_RETRIES = 2;
 // riceve un generico "risposta non valida".
 const MAX_VARIETY_GENERATION_RETRIES = 1;
 const MAX_LOCAL_VARIETY_REPAIRS = 3;
+/**
+ * Tetto cumulativo per una generazione utente: include blocchi giornalieri,
+ * retry di formato/vincolo/varietà e riparazioni locali. È l'unico massimo
+ * assoluto esposto alle route reali; chiamanti sintetici possono solo ridurlo.
+ */
+export const MAX_MEAL_PLAN_MODEL_CALLS = 42;
 const SAFE_MAIN_INGREDIENTS = [
   "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
   "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
@@ -1552,7 +1558,7 @@ ${constrainedRecipeReferenceRule}
     if (context.modelCallBudget) {
       if (context.modelCallBudget.usedCalls >= context.modelCallBudget.maxCalls) {
         throw new AiError(
-          "AI_PROVIDER_ERROR",
+          "AI_MODEL_CALL_BUDGET_EXHAUSTED",
           `Budget interno chiamate piano pasti esaurito (${context.modelCallBudget.maxCalls})`,
         );
       }
@@ -1607,6 +1613,16 @@ ${constrainedRecipeReferenceRule}
         priorVarietyContext,
       )),
     );
+    const budgetFailure = dayResults.find((result) =>
+      result.status === "rejected"
+      && result.reason instanceof AiError
+      && result.reason.code === "AI_MODEL_CALL_BUDGET_EXHAUSTED");
+    if (budgetFailure?.status === "rejected") {
+      // Non attraversare gli altri giorni dopo un esaurimento: non potrebbe
+      // partire alcuna chiamata aggiuntiva e non deve esistere un piano
+      // parziale da validare o consegnare.
+      throw budgetFailure.reason;
+    }
     results.push(...dayResults);
     for (const result of dayResults) {
       if (result.status === "fulfilled") allItems.push(...result.value);
@@ -1635,7 +1651,7 @@ ${constrainedRecipeReferenceRule}
       mode: standardPlan ? 'standard' : 'constrained',
       durationMs: aiDurationMs,
       modelCalls: modelCallsStarted,
-      modelCallBudget: weeklyRequests.length,
+      modelCallBudget: context.modelCallBudget?.maxCalls ?? MAX_MEAL_PLAN_MODEL_CALLS,
     });
     console.log(JSON.stringify({
       tag: "AI_MEAL_PLAN_CALL",
@@ -1902,10 +1918,11 @@ export async function generateWeeklyMealPlan(
   const attempts = Math.max(1, Math.min(MAX_CONSTRAINT_GENERATION_ATTEMPTS, requestedLimit));
   const requestedModelCalls = Number.isFinite(context.maxModelCalls)
     ? Math.floor(context.maxModelCalls!)
-    : undefined;
-  const modelCallBudget = requestedModelCalls === undefined
-    ? undefined
-    : { maxCalls: Math.max(1, requestedModelCalls), usedCalls: 0 };
+    : MAX_MEAL_PLAN_MODEL_CALLS;
+  const modelCallBudget = {
+    maxCalls: Math.max(1, Math.min(MAX_MEAL_PLAN_MODEL_CALLS, requestedModelCalls)),
+    usedCalls: 0,
+  };
   let constraintCorrection: string | undefined;
   let varietyCorrection: string | undefined;
   let qualityCorrection: string | undefined;
