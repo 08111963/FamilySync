@@ -27,6 +27,12 @@ import { useFamily } from "@/context/FamilyContext";
 import { apiRequest, apiStream, getApiErrorMessage } from "@/lib/query-client";
 import { freeLimitMessage } from "@/lib/plan-limit";
 import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
+import {
+  MEAL_PLAN_DIET_PROFILES,
+  detectMealPlanDietProfileFromText,
+  mealPlanDietProfileLabel,
+  type MealPlanDietProfile,
+} from "@/shared/meal-plan-diet-profiles";
 
 interface MealPlanIngredient {
   name: string;
@@ -60,8 +66,7 @@ interface AiMealPlanResponse {
   weekStartDate: string;
   items: MealPlanItem[];
   preferences?: {
-    diet?: string;
-    allergies?: string;
+    dietProfile?: MealPlanDietProfile;
     notes?: string;
   };
 }
@@ -404,8 +409,7 @@ export default function MealPlansScreen() {
     setWeekStart(iso);
     setWeekStartInput(isoToDisplay(iso));
   };
-  const [diet, setDiet] = useState("");
-  const [allergies, setAllergies] = useState("");
+  const [dietProfile, setDietProfile] = useState<MealPlanDietProfile>("mediterranean");
   // Preferenze passate dall'assistente AI della Home (es. "mediterraneo"):
   // precompilano le note, la generazione parte solo col pulsante "Genera Piano".
   const { notes: notesParam, assistant: assistantParam } = useLocalSearchParams<{ notes?: string; assistant?: string }>();
@@ -537,7 +541,7 @@ export default function MealPlansScreen() {
   // aggiornamenti (e la lettura vocale) di uno stream vecchio vengono ignorati.
   const streamSeqRef = useRef(0);
 
-  const fetchMealPlanStream = async (opts?: { voiceNotes?: string; speak?: boolean }) => {
+  const fetchMealPlanStream = async (opts?: { voiceNotes?: string; speak?: boolean; profile?: MealPlanDietProfile }) => {
     if (!currentFamily || generating || generatingAlt) return;
     const seq = ++streamSeqRef.current;
     const isActive = () => streamSeqRef.current === seq;
@@ -550,9 +554,7 @@ export default function MealPlansScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const notes = (opts?.voiceNotes ?? voicePrefs).trim();
-    const preferences: Record<string, string> = {};
-    if (diet.trim()) preferences.diet = diet.trim();
-    if (allergies.trim()) preferences.allergies = allergies.trim();
+    const preferences: { dietProfile: MealPlanDietProfile; notes?: string } = { dietProfile: opts?.profile ?? dietProfile };
     if (notes) preferences.notes = notes;
     const body: any = { weekStartDate: weekStart };
     if (Object.keys(preferences).length > 0) body.preferences = preferences;
@@ -663,9 +665,7 @@ export default function MealPlansScreen() {
     setGenerationError(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    const preferences: Record<string, string> = {};
-    if (diet.trim()) preferences.diet = diet.trim();
-    if (allergies.trim()) preferences.allergies = allergies.trim();
+    const preferences: { dietProfile: MealPlanDietProfile; notes?: string } = { dietProfile };
     if (voicePrefs.trim()) preferences.notes = voicePrefs.trim();
     const body: any = { weekStartDate: weekStart, planVariant: 2 };
     if (Object.keys(preferences).length > 0) body.preferences = preferences;
@@ -744,12 +744,21 @@ export default function MealPlansScreen() {
     return fetchAlternativeStream({ speak: autoSpeak });
   };
 
-  // Dettatura completa: l'utente detta dieta, allergie e preferenze in una volta;
+  // La dettatura raccoglie preferenze culinarie aggiuntive, mai allergie:
+  // il profilo selezionato resta l'unico vincolo della generazione.
   // al rilascio si genera subito il piano e a fine generazione viene letto ad alta voce.
   const handleVoiceGenerate = (text: string) => {
     const spoken = text.trim();
     if (!spoken) return;
+    const spokenProfile = detectMealPlanDietProfileFromText(spoken);
+    if (spokenProfile) setDietProfile(spokenProfile);
     setVoicePrefs(spoken);
+    // Il testo resta una preferenza culinaria; il profilo è estratto soltanto
+    // da espressioni canoniche e non da allergie generiche.
+    if (spokenProfile) {
+      void fetchMealPlanStream({ voiceNotes: spoken, speak: autoSpeak, profile: spokenProfile });
+      return;
+    }
     fetchMealPlanStream({ voiceNotes: spoken, speak: autoSpeak });
   };
 
@@ -988,30 +997,27 @@ export default function MealPlansScreen() {
             <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
           </Pressable>
 
-          <Text style={[styles.sectionLabel, { color: colors.text }]}>Dieta (opzionale)</Text>
-          <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="leaf-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.textInput, { color: colors.text }]}
-              value={diet}
-              onChangeText={setDiet}
-              placeholder="Es. mediterranea, vegetariana, vegana..."
-              placeholderTextColor={colors.textSecondary}
-              keyboardAppearance={isDark ? "dark" : "light"}
-            />
-          </View>
-
-          <Text style={[styles.sectionLabel, { color: colors.text }]}>Allergie / intolleranze (opzionale)</Text>
-          <View style={[styles.inputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="warning-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={[styles.textInput, { color: colors.text }]}
-              value={allergies}
-              onChangeText={setAllergies}
-              placeholder="Es. glutine, lattosio..."
-              placeholderTextColor={colors.textSecondary}
-              keyboardAppearance={isDark ? "dark" : "light"}
-            />
+          <Text style={[styles.sectionLabel, { color: colors.text }]}>Dieta</Text>
+          <View style={styles.dietProfiles} accessibilityRole="radiogroup">
+            {MEAL_PLAN_DIET_PROFILES.map((profile) => {
+              const selected = dietProfile === profile;
+              return (
+                <Pressable
+                  key={profile}
+                  onPress={() => setDietProfile(profile)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  testID={`mealplan-diet-${profile}`}
+                  style={[
+                    styles.dietProfileOption,
+                    { backgroundColor: colors.surface, borderColor: selected ? colors.primary : colors.border },
+                  ]}
+                >
+                  <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={19} color={selected ? colors.primary : colors.textSecondary} />
+                  <Text style={[styles.dietProfileText, { color: colors.text }]}>{mealPlanDietProfileLabel(profile)}</Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           {currentFamily ? (
@@ -1022,7 +1028,7 @@ export default function MealPlansScreen() {
                     Detta e genera
                   </Text>
                   <Text style={[styles.voiceCardHint, { color: colors.textSecondary }]}>
-                    Tieni premuto il microfono e detta dieta, allergie e preferenze. Al rilascio genero il piano{autoSpeak ? " e te lo leggo" : ""}.
+                    Tieni premuto il microfono e detta preferenze culinarie. Il profilo Dieta selezionato resta il vincolo del piano{autoSpeak ? " e te lo leggo" : ""}.
                   </Text>
                 </View>
                 <VoiceInput
@@ -1034,7 +1040,7 @@ export default function MealPlansScreen() {
               </View>
               <AiPrivacyNotice />
               <Text style={[styles.aiDisclaimerText, { color: colors.textSecondary }]} testID="mealplan-ai-disclaimer">
-                I piani pasti sono generati dall'intelligenza artificiale e non da un nutrizionista: non sostituiscono il parere di un medico o professionista. Per esigenze particolari consulta uno specialista.
+                I piani pasti non sostituiscono il parere di un medico, dietista o nutrizionista. Verifica sempre le etichette dei prodotti e, per esigenze individuali, consulta un professionista.
               </Text>
               {voicePrefs ? (
                 <View style={[styles.voicePrefsBox, { borderColor: colors.border }]}>
@@ -1634,6 +1640,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 12,
     height: 48,
+  },
+  dietProfiles: {
+    gap: 8,
+  },
+  dietProfileOption: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  dietProfileText: {
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
   },
   inputIcon: {
     marginRight: 10,

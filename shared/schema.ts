@@ -54,8 +54,8 @@ export const users = pgTable("users", {
   // NULL per gli account creati prima dell'introduzione (trattati come adulti,
   // vedi Privacy Policy). Nessuna data di nascita completa: minimizzazione.
   ageBand: varchar("age_band", { length: 10 }),
-  // Consenso SPECIFICO e separato per l'invio all'AI di allergie/intolleranze
-  // (possibili dati relativi alla salute, art. 9 GDPR). Opt-in, mai preselezionato.
+  // Consenso storico per funzioni legacy che possono trattare dati sanitari.
+  // Il Piano Pasti usa ora solo profili dieta chiusi e non legge allergie.
   aiHealthConsent: boolean("ai_health_consent").default(false).notNull(),
   // Versione della Privacy Policy di cui l'utente ha dichiarato presa visione
   // (informativa, NON consenso contrattuale). NULL = mai registrata.
@@ -396,7 +396,7 @@ export const mealPlans = pgTable("meal_plans", {
   createdByUserId: uuid("created_by_user_id").notNull().references(() => users.id),
   weekStartDate: date("week_start_date").notNull(),
   title: text("title"),
-  preferences: jsonb("preferences").$type<{ diet?: string; allergies?: string; notes?: string; maxTimeMinutes?: number; mealsPerDay?: number }>(),
+  preferences: jsonb("preferences").$type<{ dietProfile?: import("./meal-plan-diet-profiles").MealPlanDietProfile; notes?: string; maxTimeMinutes?: number; mealsPerDay?: number }>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   unique("meal_plans_family_week").on(table.familyId, table.weekStartDate),

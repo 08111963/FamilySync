@@ -27,10 +27,13 @@ import { isObjectStorageMode, persistUploadedFile, uploadObjectExists } from '..
 import {
   type MealPlanConstraintPreferences,
   hasMealPlanConstraints,
-  mealPlanPreferencesContainHealthData,
   unsupportedMealPlanHealthNote,
-  unsupportedMealPlanDiet,
 } from '../lib/meal-plan-constraints';
+import {
+  isMealPlanDietProfile,
+  legacyMealPlanDietToProfile,
+  type MealPlanDietProfile,
+} from '../../shared/meal-plan-diet-profiles';
 
 const router = Router();
 
@@ -54,6 +57,10 @@ async function userHasAiHealthConsent(userId: string): Promise<boolean> {
 }
 
 const mealPlanPreferencesSchema = z.object({
+  dietProfile: z.string().trim().max(80).optional(),
+  // Accettati esclusivamente per non rompere client già pubblicati. Non sono
+  // mai inoltrati alla pipeline: allergies viene ignorato, diet è mappato solo
+  // se coincide esattamente con un profilo storico noto.
   diet: z.string().trim().max(300).optional(),
   allergies: z.string().trim().max(300).optional(),
   notes: z.string().trim().max(600).optional(),
@@ -83,29 +90,31 @@ export async function prepareMealPlanPreferences(
       body: { error: { code: "VALIDATION_ERROR", message: "Preferenze del piano pasti non valide" } },
     };
   }
-  const preferences = parsed.data;
+  const rawPreferences = parsed.data || {};
+  const requestedProfile = rawPreferences.dietProfile;
+  if (requestedProfile && !isMealPlanDietProfile(requestedProfile)) {
+    return {
+      ok: false,
+      status: 422,
+      body: { error: { code: "UNSUPPORTED_DIET_PROFILE", message: "Scegli un profilo dieta disponibile dal menu." } },
+    };
+  }
+  const legacyProfile = legacyMealPlanDietToProfile(rawPreferences.diet);
+  const dietProfile: MealPlanDietProfile = isMealPlanDietProfile(requestedProfile)
+    ? requestedProfile
+    : legacyProfile || "mediterranean";
+  const preferences: MealPlanConstraintPreferences & { maxTimeMinutes?: number; mealsPerDay?: number } = {
+    dietProfile,
+    ...(rawPreferences.notes ? { notes: rawPreferences.notes } : {}),
+    ...(rawPreferences.maxTimeMinutes ? { maxTimeMinutes: rawPreferences.maxTimeMinutes } : {}),
+    ...(rawPreferences.mealsPerDay ? { mealsPerDay: rawPreferences.mealsPerDay } : {}),
+  };
   const unsupportedHealthNote = unsupportedMealPlanHealthNote(preferences);
   if (unsupportedHealthNote) {
     return {
       ok: false,
       status: 422,
       body: { error: { code: "UNSUPPORTED_ALLERGY_NOTE", message: unsupportedHealthNote } },
-    };
-  }
-  const unsupportedDiet = unsupportedMealPlanDiet(preferences);
-  if (unsupportedDiet) {
-    return {
-      ok: false,
-      status: 422,
-      body: { error: { code: "UNSUPPORTED_DIET", message: unsupportedDiet } },
-    };
-  }
-  if (mealPlanPreferencesContainHealthData(preferences) && !(await hasAiHealthConsent(userId))) {
-    const error = new AiError("AI_HEALTH_CONSENT_REQUIRED");
-    return {
-      ok: false,
-      status: error.httpStatus,
-      body: { error: { code: error.code, message: error.userMessage } },
     };
   }
   return { ok: true, preferences };

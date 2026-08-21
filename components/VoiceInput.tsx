@@ -24,7 +24,7 @@ import { isAiDisabled, showAiErrorAlert } from "@/lib/ai-error-message";
 
 // ---- Lock globale: un solo microfono attivo alla volta ----
 // Evita registrazioni concorrenti quando più VoiceInput sono nella stessa
-// schermata (es. campi Dieta e Allergie del piano pasti).
+// schermata (per esempio form con più campi dettabili).
 let activeMicId: string | null = null;
 const micListeners = new Set<() => void>();
 

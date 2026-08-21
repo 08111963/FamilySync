@@ -36,7 +36,7 @@ L'app ha 7 schede principali in fondo allo schermo:
 | Schermata | Come accedere | Cosa puoi fare |
 |-----------|---------------|----------------|
 | Ricette | Card "Ricette" dalla Home | Generare ricette AI, cercare ricette, creare ricette proprie, salvare, aggiungere ingredienti alla spesa |
-| Piano Pasti | Card "Piano Pasti" dalla Home | Generare piani settimanali AI, creare/modificare piani manualmente, convertire in lista spesa |
+| Piano Pasti | Card "Piano Pasti" dalla Home | Scegliere un profilo dieta, generare piani settimanali AI, creare/modificare piani manualmente, convertire in lista spesa |
 | Dispensa | Icona vassoio nella scheda Spesa | Vedere cosa c'è in casa, gestire quantità e date di scadenza, evitare sprechi e doppioni |
 | Invita Familiare | Pulsante "Aggiungi" nella scheda Famiglia | Invitare un familiare via email, WhatsApp o QR code; per i minori di 14 anni creare il profilo bambino con accesso tramite codice PIN |
 | Il mio profilo | Icona matita sulla propria riga nella scheda Famiglia | Personalizzare la foto e il colore del proprio profilo |
@@ -549,15 +549,14 @@ La schermata ha due sezioni, accessibili tramite le tab in alto:
 Per generare un nuovo piano settimanale:
 1. Tocca la tab **Genera con AI**
 2. Imposta la **data di inizio settimana**
-3. **(Opzionale)** Inserisci le tue **preferenze alimentari**:
-   - **Dieta**: ad esempio "vegetariana", "mediterranea", "senza lattosio"
-   - **Allergie/Intolleranze**: ad esempio "glutine", "frutta secca", "uova"
-4. Tocca il pulsante **Genera Piano Pasti** per avviare la generazione AI
-5. L'AI creerà un piano completo per 7 giorni con colazione, pranzo, cena e spuntini
+3. Scegli il **Profilo Dieta**: Mediterranea, Mediterranea senza glutine, Mediterranea senza lattosio, Vegetariana, Vegetariana senza glutine, Vegana, Pescetariana, Low carb o Halal.
+4. Aggiungi solo preferenze culinarie pratiche nelle note, ad esempio tempi o ingredienti graditi: allergie e intolleranze non sono un campo del Piano Pasti.
+5. Tocca il pulsante **Genera Piano Pasti** per avviare la generazione AI
+6. L'AI creerà un piano completo per 7 giorni con colazione, pranzo, cena e spuntini
 
-> **Importante**: i piani pasti sono generati dall'intelligenza artificiale, **non da un nutrizionista**. Non sostituiscono il parere di un medico o di un professionista della nutrizione: per diete particolari, allergie gravi o esigenze di salute, consulta sempre uno specialista.
+> **Importante**: i piani pasti sono generati dall'intelligenza artificiale, **non da un nutrizionista**. Non sostituiscono il parere di un medico o di un professionista della nutrizione: verifica sempre le etichette dei prodotti e, per esigenze individuali, consulta sempre uno specialista.
 
-**Detta e genera (a voce)**: nella tab Genera trovi la card **"Detta e genera"** con un unico microfono. Tieni premuto e detta in una volta sola dieta, allergie e preferenze (es. "siamo vegetariani, niente frutta secca, piatti veloci la sera"): al rilascio la generazione parte da sola e il piano ti viene **letto ad alta voce**, giorno per giorno.
+**Detta e genera (a voce)**: nella tab Genera scegli prima il Profilo Dieta, poi tieni premuto e detta preferenze culinarie (es. "piatti veloci la sera"): al rilascio la generazione parte da sola e il piano ti viene **letto ad alta voce**, giorno per giorno.
 
 **Lettura vocale automatica (attiva/disattiva)**: nella stessa card trovi l'interruttore **"L'AI legge il piano ad alta voce"**. Quando è attivo, dopo aver dettato l'AI legge automaticamente il piano; quando è spento, il piano viene generato in silenzio. La scelta viene ricordata sul tuo dispositivo. Il pulsante **altoparlante** per ascoltare a richiesta resta sempre disponibile.
 

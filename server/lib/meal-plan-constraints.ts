@@ -1,7 +1,17 @@
+import {
+  MEAL_PLAN_DIET_PROFILE_DEFINITIONS,
+  type MealPlanDietProfile,
+} from "../../shared/meal-plan-diet-profiles";
+
 export interface MealPlanConstraintPreferences {
-  diet?: string;
-  allergies?: string;
+  dietProfile?: MealPlanDietProfile;
   notes?: string;
+  maxTimeMinutes?: number;
+  mealsPerDay?: number;
+  /** @deprecated Read only for legacy records; ignored by profile normalization. */
+  diet?: string;
+  /** @deprecated Ignored by profile normalization and never accepted as a new constraint. */
+  allergies?: string;
 }
 
 export type MealPlanDietaryPattern =
@@ -13,29 +23,15 @@ export type MealPlanDietaryPattern =
   | "halal";
 
 export type MealPlanExclusion =
-  | "gluten"
-  | "lactose"
-  | "milk"
-  | "egg"
-  | "peanut"
-  | "nuts"
-  | "fish"
-  | "soy"
-  | "sesame"
-  | "celery"
-  | "mustard"
-  | "lupin"
-  | "sulfites"
-  | "shellfish"
-  | "molluscs";
+  | "gluten" | "lactose" | "milk" | "egg" | "peanut" | "nuts" | "fish"
+  | "soy" | "sesame" | "celery" | "mustard" | "lupin" | "sulfites"
+  | "shellfish" | "molluscs";
 
 /**
  * Interpretazione unica delle preferenze del Piano Pasti.
  *
- * `healthDerived` riguarda il consenso per dati sanitari, non la sicurezza
- * alimentare: una scelta "senza glutine" può essere personale, mentre
- * "celiaco" e il campo Allergie dichiarano una condizione sanitaria. In
- * entrambi i casi l'esclusione alimentare risultante è identica.
+ * I profili sono una tassonomia di prodotto e non leggono mai testo libero
+ * relativo ad allergie o intolleranze.
  */
 export interface NormalizedMealPlanConstraints {
   dietaryPatterns: MealPlanDietaryPattern[];
@@ -43,8 +39,7 @@ export interface NormalizedMealPlanConstraints {
   customExclusions: string[];
   healthDerived: boolean;
   source: {
-    diet: string;
-    allergies: string;
+    dietProfile?: MealPlanDietProfile;
     notes: string;
   };
 }
@@ -336,136 +331,29 @@ function addRule(target: FoodRule[], rule: FoodRule): void {
   if (!target.some((existing) => existing.code === rule.code)) target.push(rule);
 }
 
-function safetySources(preferences?: MealPlanConstraintPreferences): {
-  diet: string;
-  allergies: string;
-} {
-  const notes = normalize(preferences?.notes || "");
-  const notesDescribeDiet =
-    /\b(dieta|vegetarian|vegan|pescetar|mediterran|chetogen|keto|low carb|senza glutine|senza lattosio|halal)\b/.test(notes);
-  return {
-    diet: normalize(`${preferences?.diet || ""} ${notesDescribeDiet ? notes : ""}`),
-    allergies: normalize([
-      preferences?.allergies || "",
-      ...extractMealPlanHealthConstraints(preferences),
-    ].join(", ")),
-  };
-}
-
-function cleanExtractedConstraint(value: string): string {
-  return normalize(value)
-    .split(/\b(?:ma|pero|preferisco|vorrei|invece|e poi)\b/, 1)[0]!
-    .replace(/^(?:il|lo|la|i|gli|le|del|dello|della|dei|degli|delle)\s+/, "")
-    .trim();
-}
-
-export function extractMealPlanHealthConstraints(
-  preferences?: MealPlanConstraintPreferences,
-): string[] {
-  const notes = normalize(preferences?.notes || "");
-  if (!notes) return [];
-
-  const extracted: string[] = [];
-  if (notes.includes("senza glutine") || notes.includes("gluten free") || notes.includes("celiac")) {
-    extracted.push("glutine");
-  }
-  if (notes.includes("senza lattosio")) extracted.push("lattosio");
-
-  const patterns = [
-    /\bnon posso (?:mangiare|assumere)\s+(.+)$/,
-    /\bdevo evitare\s+(.+)$/,
-    /\b(?:allerg\w*|intoller\w*)\s+(?:(?:a|al|allo|alla|ai|agli|alle)\s+)(.+)$/,
-    /\banafil\w*\s+(?:(?:a|al|allo|alla|ai|agli|alle|da|dal|dallo|dalla|dai|dagli|dalle)\s+)(.+)$/,
-  ];
-  for (const pattern of patterns) {
-    const match = notes.match(pattern);
-    const value = match?.[1] ? cleanExtractedConstraint(match[1]) : "";
-    if (value) extracted.push(value);
-  }
-  return [...new Set(extracted)];
-}
-
-function addUnique<T>(target: T[], value: T): void {
-  if (!target.includes(value)) target.push(value);
-}
-
-/**
- * Centralizza la semantica delle preferenze: l'origine resta disponibile per
- * consenso e messaggi, ma l'applicazione alimentare usa soltanto pattern ed
- * esclusioni canonici. Nessun altro modulo deve riclassificare testo libero
- * di dieta/allergie con regex proprie.
- */
 export function normalizeMealPlanConstraints(
   preferences?: MealPlanConstraintPreferences,
 ): NormalizedMealPlanConstraints {
-  const source = {
-    diet: preferences?.diet?.trim() || "",
-    allergies: preferences?.allergies?.trim() || "",
-    notes: preferences?.notes?.trim() || "",
+  const dietProfile = preferences?.dietProfile;
+  const definition = dietProfile ? MEAL_PLAN_DIET_PROFILE_DEFINITIONS[dietProfile] : undefined;
+  return {
+    dietaryPatterns: definition ? [definition.dietaryPattern] : [],
+    exclusions: definition ? [...definition.excludes] : [],
+    customExclusions: [],
+    healthDerived: HEALTH_NOTE_PATTERN.test(normalize(preferences?.notes || "")),
+    source: { dietProfile, notes: preferences?.notes?.trim() || "" },
   };
-  const normalizedNotes = normalize(source.notes);
-  const notesDescribeDiet =
-    /\b(dieta|vegetarian|vegan|pescetar|mediterran|chetogen|keto|low carb|senza glutine|gluten free|senza lattosio|halal)\b/.test(normalizedNotes);
-  const dietText = normalize(`${source.diet} ${notesDescribeDiet ? source.notes : ""}`);
-  const allergyText = normalize([
-    source.allergies,
-    ...extractMealPlanHealthConstraints(preferences),
-  ].join(" "));
-  const constraintText = `${dietText} ${allergyText}`.trim();
-  const dietaryPatterns: MealPlanDietaryPattern[] = [];
-  const exclusions: MealPlanExclusion[] = [];
-  const customExclusions: string[] = [];
-
-  if (/\bmediterran\w*\b/.test(dietText)) addUnique(dietaryPatterns, "mediterranean");
-  if (/\bvegetarian\w*\b/.test(dietText)) addUnique(dietaryPatterns, "vegetarian");
-  if (/\bvegan\w*\b/.test(dietText)) addUnique(dietaryPatterns, "vegan");
-  if (/\bpescetar\w*\b|\bpescetarian\w*\b/.test(dietText)) addUnique(dietaryPatterns, "pescetarian");
-  if (/\b(?:chetogen\w*|keto|low carb|basso contenuto di carboidrati)\b/.test(dietText)) {
-    addUnique(dietaryPatterns, "low-carb");
-  }
-  if (/\bhalal\b/.test(dietText)) addUnique(dietaryPatterns, "halal");
-
-  if (/\b(?:senza glutine|gluten free|gluten-free|glutine|celiac\w*)\b/.test(constraintText)) {
-    addUnique(exclusions, "gluten");
-  }
-  if (/\b(?:senza lattosio|lattosio|intolleranza al lattosio|intollerante al lattosio)\b/.test(constraintText)) {
-    addUnique(exclusions, "lactose");
-  }
-  if (/\b(?:latte|caseina|proteine del latte)\b/.test(allergyText)) addUnique(exclusions, "milk");
-  if (/\b(?:uovo|uova|albume|tuorlo)\b/.test(allergyText)) addUnique(exclusions, "egg");
-  if (/\b(?:arachide|arachidi)\b/.test(allergyText)) addUnique(exclusions, "peanut");
-  if (/\b(?:frutta secca|frutta a guscio|noce|noci|nocciola|nocciole|mandorla|mandorle|pistacchio|pistacchi|anacardo|anacardi|pinolo|pinoli|pecan|macadamia)\b/.test(allergyText)) {
-    addUnique(exclusions, "nuts");
-  }
-  if (/\bpesce\b/.test(allergyText)) addUnique(exclusions, "fish");
-  for (const rule of SIMPLE_ALLERGEN_RULES) {
-    if (rule.terms.some((term) => hasTerm(allergyText, term))) {
-      addUnique(exclusions, rule.code as MealPlanExclusion);
-    }
-  }
-
-  const knownAllergenText = /\b(?:glutine|celiac\w*|lattosio|latte|caseina|proteine del latte|uovo|uova|albume|tuorlo|arachid\w*|frutta secca|frutta a guscio|noce|noci|nocciola|nocciole|mandorla|mandorle|pistacchio|pistacchi|anacardo|anacardi|pinolo|pinoli|pecan|macadamia|pesce|soia|sesamo|sedano|senape|lupin\w*|solfiti|anidride solforosa|gamber\w*|scampi|aragosta|astice|granchio|crostacei|cozze|vongole|ostriche|polpo|calamari|seppia|molluschi)\b/;
-  for (const part of allergyText.split(/\s+e\s+/i)) {
-    const cleaned = normalize(part)
-      .replace(/^(?:allergia|allergico|allergica|intolleranza|intollerante)\s+(?:a|al|allo|alla|alle|agli)\s+/, "")
-      .trim();
-    if (cleaned && !knownAllergenText.test(cleaned)) addUnique(customExclusions, cleaned);
-  }
-
-  const dietDeclaresMedicalCondition = /\b(?:celiac\w*|intolleranza al lattosio|intollerante al lattosio)\b/.test(
-    normalize(source.diet),
-  );
-  const healthDerived = Boolean(source.allergies) ||
-    dietDeclaresMedicalCondition ||
-    HEALTH_NOTE_PATTERN.test(normalizedNotes);
-
-  return { dietaryPatterns, exclusions, customExclusions, healthDerived, source };
 }
 
 export function mealPlanPreferencesContainHealthData(
   preferences?: MealPlanConstraintPreferences,
 ): boolean {
   return normalizeMealPlanConstraints(preferences).healthDerived;
+}
+
+/** @deprecated Allergy extraction is intentionally disabled for meal plans. */
+export function extractMealPlanHealthConstraints(_preferences?: MealPlanConstraintPreferences): string[] {
+  return [];
 }
 
 export function mealPlanHasExclusion(
@@ -485,19 +373,16 @@ export function mealPlanHasDietaryPattern(
 export function unsupportedMealPlanHealthNote(
   preferences?: MealPlanConstraintPreferences,
 ): string | undefined {
-  if (!mealPlanPreferencesContainHealthData(preferences)) return undefined;
   const notes = normalize(preferences?.notes || "");
+  if (!HEALTH_NOTE_PATTERN.test(notes)) return undefined;
   // Le condizioni mediche generiche non hanno una regola alimentare
   // deterministica in questo prodotto. Un'allergia estraibile nella stessa
   // frase non rende verificabile diabete, gravidanza o insufficienza renale:
   // la condizione non supportata deve restare bloccante.
   if (UNSUPPORTED_MEDICAL_CONDITION_PATTERN.test(notes)) {
-    return "La condizione medica indicata nelle note non può essere verificata con sicurezza. Chiedi consiglio al medico e inserisci solo gli alimenti da evitare nel campo Allergie.";
+    return "La condizione medica indicata nelle note non può essere verificata con sicurezza. Chiedi consiglio a un professionista.";
   }
-  if (preferences?.allergies?.trim() || extractMealPlanHealthConstraints(preferences).length > 0) {
-    return undefined;
-  }
-  return "L'indicazione su allergie o intolleranze nelle note non può essere verificata con sicurezza. Inserisci gli alimenti da evitare nel campo Allergie.";
+  return "Allergie e intolleranze non si inseriscono nel Piano Pasti. Scegli un profilo dieta disponibile e consulta un professionista per esigenze individuali.";
 }
 
 function rulesForPreferences(preferences?: MealPlanConstraintPreferences): FoodRule[] {
@@ -526,48 +411,13 @@ function rulesForPreferences(preferences?: MealPlanConstraintPreferences): FoodR
     });
   }
 
-  const knownRules: Record<MealPlanExclusion, FoodRule> = {
+  const profileRules: Partial<Record<MealPlanExclusion, FoodRule>> = {
     gluten: GLUTEN_RULE,
     lactose: LACTOSE_RULE,
-    milk: MILK_RULE,
-    egg: EGG_RULE,
-    peanut: PEANUT_RULE,
-    nuts: NUT_RULE,
-    fish: FISH_RULE,
-    soy: SIMPLE_ALLERGEN_RULES[0]!,
-    sesame: SIMPLE_ALLERGEN_RULES[1]!,
-    celery: SIMPLE_ALLERGEN_RULES[2]!,
-    mustard: SIMPLE_ALLERGEN_RULES[3]!,
-    lupin: SIMPLE_ALLERGEN_RULES[4]!,
-    sulfites: SIMPLE_ALLERGEN_RULES[5]!,
-    shellfish: SIMPLE_ALLERGEN_RULES[6]!,
-    molluscs: SIMPLE_ALLERGEN_RULES[7]!,
   };
-  for (const exclusion of normalized.exclusions) addRule(rules, knownRules[exclusion]);
-
-  const allergies = normalize([
-    normalized.source.allergies,
-    ...extractMealPlanHealthConstraints(preferences),
-  ].join(", "));
-  for (const rule of SIMPLE_ALLERGEN_RULES) {
-    if (rule.terms.some((term) => hasTerm(allergies, term))) addRule(rules, rule);
-  }
-
-  // Per allergie meno comuni, il nome inserito dall'utente resta comunque un
-  // divieto verificabile in modo conservativo (es. "fragole", "kiwi").
-  for (const allergen of normalized.customExclusions) {
-    const terms = [allergen];
-    if (allergen.endsWith("e")) terms.push(`${allergen.slice(0, -1)}a`);
-    if (allergen.endsWith("i")) {
-      terms.push(`${allergen.slice(0, -1)}o`);
-      terms.push(`${allergen.slice(0, -1)}e`);
-    }
-    addRule(rules, {
-      code: `allergen-${allergen.replace(/\s+/g, "-")}`,
-      label: allergen,
-      terms,
-      safeMarkers: [`senza ${allergen}`],
-    });
+  for (const exclusion of normalized.exclusions) {
+    const rule = profileRules[exclusion];
+    if (rule) addRule(rules, rule);
   }
 
   return rules;
@@ -585,20 +435,9 @@ export function mealPlanRequiresGlutenFree(preferences?: MealPlanConstraintPrefe
 }
 
 export function unsupportedMealPlanDiet(preferences?: MealPlanConstraintPreferences): string | undefined {
-  const explicitDiet = normalize(preferences?.diet || "");
-  if (!explicitDiet) return undefined;
-  const normalized = normalizeMealPlanConstraints(preferences);
-  const supported = [
-    "mediterran", "vegetarian", "vegan", "pescetar", "senza glutine",
-    "gluten free", "senza lattosio", "lattosio", "halal", "chetogen", "keto",
-    "low carb", "basso contenuto di carboidrati",
-  ].some((marker) => explicitDiet.includes(marker)) ||
-    normalized.dietaryPatterns.length > 0 ||
-    normalized.exclusions.includes("gluten") ||
-    normalized.exclusions.includes("lactose");
-  return supported
+  return preferences?.dietProfile
     ? undefined
-    : "Il tipo di dieta indicato non può ancora essere verificato automaticamente. Usa una dieta mediterranea, vegetariana, vegana, pescetariana, chetogenica/low carb, senza glutine, senza lattosio o halal.";
+    : "Scegli un profilo dieta dal menu per generare il Piano Pasti.";
 }
 
 export function buildMealPlanConstraintPrompt(
@@ -606,31 +445,23 @@ export function buildMealPlanConstraintPrompt(
 ): string {
   if (!hasMealPlanConstraints(preferences)) return "";
   const normalized = normalizeMealPlanConstraints(preferences);
-  const diet = normalized.source.diet;
-  const allergies = [
-    normalized.source.allergies,
-    ...extractMealPlanHealthConstraints(preferences),
-  ].filter(Boolean).join(", ");
+  const diet = normalized.source.dietProfile
+    ? MEAL_PLAN_DIET_PROFILE_DEFINITIONS[normalized.source.dietProfile].label.it
+    : "";
   const lactoseRequired = normalized.exclusions.includes("lactose");
-  const milkRequired = normalized.exclusions.includes("milk");
-  const canonicalExclusions = normalized.exclusions
-    .concat(normalized.customExclusions.map((item) => `allergene:${item}` as MealPlanExclusion))
-    .join(", ");
+  const canonicalExclusions = normalized.exclusions.join(", ");
   const canonicalPatterns = normalized.dietaryPatterns.join(", ");
   const compatibilityRule = lactoseRequired
     ? `- Per il vincolo lattosio crea ricette naturalmente prive di latticini. Non usare né nominare lattosio, latte, yogurt, burro, panna, ricotta o formaggi nell'output. Non etichettare i piatti come "senza lattosio": la compatibilità è garantita dagli ingredienti scelti.`
-    : milkRequired
-      ? `- Per il vincolo latte/proteine del latte non usare latte, caseina, siero, yogurt, burro, panna, ricotta o formaggi. Un prodotto solo "senza lattosio" non è compatibile con questo vincolo.`
     : `- Se usi un sostituto compatibile, dichiarane esplicitamente la compatibilità nel titolo E nell'ingrediente. Non lasciare mai implicita la compatibilità e non usare esempi o alternative che possano contraddire un altro vincolo.`;
   return `
 - VINCOLI ALIMENTARI OBBLIGATORI E PRIORITARI: prevalgono su QUALSIASI tema, esempio, regola nutrizionale o richiesta di varietà precedente.
 ${canonicalPatterns ? `- Pattern alimentari canonici applicati: ${canonicalPatterns}.` : ""}
 ${canonicalExclusions ? `- Esclusioni canoniche applicate: ${canonicalExclusions}.` : ""}
-${diet ? `- La dieta "${diet}" è un vincolo rigido: nessun pasto può contraddirla.` : ""}
-${allergies ? `- Le allergie/intolleranze "${allergies}" sono vincoli di sicurezza: non usare gli allergeni né ingredienti che normalmente li contengono.` : ""}
+ ${diet ? `- Il profilo "${diet}" è un vincolo rigido: nessun pasto può contraddirlo.` : ""}
 ${compatibilityRule}
 - L'array ingredients deve essere completo per ogni pasto: non omettere ingredienti, condimenti o componenti composti.
-- Prima di rispondere ricontrolla ogni titolo, descrizione, ingrediente e passaggio contro dieta e allergie. Se un tema suggerito è incompatibile, sostituiscilo con un piatto compatibile.`;
+ - Prima di rispondere ricontrolla ogni titolo, descrizione, ingrediente e passaggio contro il profilo. Se un tema suggerito è incompatibile, sostituiscilo con un piatto compatibile.`;
 }
 
 function itemSegments(item: MealPlanConstraintItem): string[] {

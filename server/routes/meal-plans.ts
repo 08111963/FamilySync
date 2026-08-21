@@ -15,12 +15,16 @@ import { toShoppingQuantity } from '../lib/shopping-quantity';
 import { consolidateIngredients, canonicalIngredientKey, type IngredientEntry } from '../lib/consolidate-ingredients';
 import {
   hasMealPlanConstraints,
-  unsupportedMealPlanDiet,
   unsupportedMealPlanHealthNote,
   validateMealPlanConstraints,
   type MealPlanConstraintItem,
   type MealPlanConstraintPreferences,
 } from '../lib/meal-plan-constraints';
+import {
+  isMealPlanDietProfile,
+  legacyMealPlanDietToProfile,
+  type MealPlanDietProfile,
+} from '../../shared/meal-plan-diet-profiles';
 
 const router = Router();
 
@@ -31,6 +35,9 @@ const createMealPlanSchema = z.object({
   replace: z.boolean().optional(),
   title: z.string().optional(),
   preferences: z.object({
+    dietProfile: z.string().optional(),
+    // Compatibilità input con client precedenti: allergies è ignorato e non
+    // viene memorizzato; diet viene accettata soltanto per mappare voci note.
     diet: z.string().optional(),
     allergies: z.string().optional(),
     maxTimeMinutes: z.number().optional(),
@@ -51,6 +58,27 @@ const createMealPlanSchema = z.object({
     })).optional().nullable(),
   })),
 });
+
+function canonicalMealPlanPreferences(input: unknown): MealPlanConstraintPreferences & {
+  maxTimeMinutes?: number;
+  mealsPerDay?: number;
+} {
+  const raw = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const requested = raw.dietProfile;
+  const dietProfile: MealPlanDietProfile = isMealPlanDietProfile(requested)
+    ? requested
+    : legacyMealPlanDietToProfile(raw.diet) || "mediterranean";
+  return {
+    dietProfile,
+    ...(typeof raw.notes === "string" && raw.notes.trim() ? { notes: raw.notes.trim() } : {}),
+    ...(typeof raw.maxTimeMinutes === "number" ? { maxTimeMinutes: raw.maxTimeMinutes } : {}),
+    ...(typeof raw.mealsPerDay === "number" ? { mealsPerDay: raw.mealsPerDay } : {}),
+  };
+}
+
+function safePlanResponse<T extends { preferences?: unknown }>(plan: T): T {
+  return { ...plan, preferences: canonicalMealPlanPreferences(plan.preferences) };
+}
 
 interface ConstraintItemInput {
   recipeId?: string | null;
@@ -122,15 +150,12 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
     }
 
     const { items, replace, ...planData } = parsed.data;
-    const unsupportedHealthNote = unsupportedMealPlanHealthNote(planData.preferences);
+    const preferences = canonicalMealPlanPreferences(planData.preferences);
+    const unsupportedHealthNote = unsupportedMealPlanHealthNote(preferences);
     if (unsupportedHealthNote) {
       return res.status(422).json(constraintErrorResponse(unsupportedHealthNote));
     }
-    const unsupportedDiet = unsupportedMealPlanDiet(planData.preferences);
-    if (unsupportedDiet) {
-      return res.status(422).json(constraintErrorResponse(unsupportedDiet));
-    }
-    const resolvedItems = hasMealPlanConstraints(planData.preferences)
+    const resolvedItems = hasMealPlanConstraints(preferences)
       ? await Promise.all(items.map((item) => resolveConstraintItem(familyId, item)))
       : items.map((item) => ({
           title: item.titleOverride,
@@ -139,11 +164,11 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
         }));
     const constraintViolations = validateMealPlanConstraints(
       resolvedItems,
-      planData.preferences,
+      preferences,
     );
     if (constraintViolations.length > 0) {
       return res.status(422).json(constraintErrorResponse(
-        "Il piano contiene pasti incompatibili con la dieta o le allergie indicate.",
+        "Il piano contiene pasti incompatibili con il profilo dieta selezionato.",
       ));
     }
 
@@ -181,7 +206,7 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
           createdByUserId: req.user!.userId,
           weekStartDate: planData.weekStartDate,
           title: planData.title,
-          preferences: planData.preferences,
+          preferences,
         }).returning();
 
         let insertedItems: any[] = [];
@@ -211,7 +236,7 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
       throw insertErr;
     }
 
-    res.status(201).json({ ...result.plan, items: result.insertedItems });
+    res.status(201).json({ ...safePlanResponse(result.plan), items: result.insertedItems });
   } catch (error) {
     logger.error('Create meal plan error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione del piano pasti" } });
@@ -233,7 +258,7 @@ router.get('/:familyId/meal-plans', authenticate, requireFamilyMember(), async (
       .groupBy(mealPlans.id)
       .orderBy(desc(mealPlans.weekStartDate));
 
-    res.json(plans.map(({ plan, itemCount }) => ({ ...plan, itemCount })));
+    res.json(plans.map(({ plan, itemCount }) => ({ ...safePlanResponse(plan), itemCount })));
   } catch (error) {
     logger.error('List meal plans error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero dei piani pasti" } });
@@ -275,7 +300,7 @@ router.get('/:familyId/meal-plans/:planId', authenticate, requireFamilyMember(),
       recipeTitle: item.recipeId ? recipesMap[item.recipeId] ?? null : null,
     }));
 
-    res.json({ ...plan, items: itemsWithRecipes });
+    res.json({ ...safePlanResponse(plan), items: itemsWithRecipes });
   } catch (error) {
     logger.error('Get meal plan error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero del piano pasti" } });
@@ -390,16 +415,12 @@ router.post('/:familyId/meal-plans/:planId/items', authenticate, requireFamilyMe
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Ricetta non trovata" } });
     }
 
-    const planPreferences = plan.preferences as MealPlanConstraintPreferences | null;
+    const planPreferences = canonicalMealPlanPreferences(plan.preferences);
     const unsupportedHealthNote = unsupportedMealPlanHealthNote(planPreferences || undefined);
     if (unsupportedHealthNote) {
       return res.status(422).json(constraintErrorResponse(unsupportedHealthNote));
     }
-    const unsupportedDiet = unsupportedMealPlanDiet(planPreferences || undefined);
-    if (unsupportedDiet) {
-      return res.status(422).json(constraintErrorResponse(unsupportedDiet));
-    }
-    if (hasMealPlanConstraints(planPreferences || undefined)) {
+    if (hasMealPlanConstraints(planPreferences)) {
       const constraintItem = await resolveConstraintItem(familyId, parsed.data);
       const violations = validateMealPlanConstraints([constraintItem], planPreferences || undefined);
       if (violations.length > 0) {
@@ -464,16 +485,12 @@ router.put('/:familyId/meal-plans/:planId/items/:itemId', authenticate, requireF
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Indica una ricetta o il nome del pasto" } });
     }
 
-    const planPreferences = plan.preferences as MealPlanConstraintPreferences | null;
+    const planPreferences = canonicalMealPlanPreferences(plan.preferences);
     const unsupportedHealthNote = unsupportedMealPlanHealthNote(planPreferences || undefined);
     if (unsupportedHealthNote) {
       return res.status(422).json(constraintErrorResponse(unsupportedHealthNote));
     }
-    const unsupportedDiet = unsupportedMealPlanDiet(planPreferences || undefined);
-    if (unsupportedDiet) {
-      return res.status(422).json(constraintErrorResponse(unsupportedDiet));
-    }
-    if (hasMealPlanConstraints(planPreferences || undefined)) {
+    if (hasMealPlanConstraints(planPreferences)) {
       const constraintItem = await resolveConstraintItem(familyId, {
         recipeId: nextRecipeId,
         titleOverride: nextTitle,

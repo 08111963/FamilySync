@@ -665,7 +665,7 @@ interface MealPlanGenerationContext {
 
   weekStartDate: string;
 
-  preferences?: { diet?: string; allergies?: string; maxTimeMinutes?: number; mealsPerDay?: number; notes?: string };
+  preferences?: import("./meal-plan-constraints").MealPlanConstraintPreferences;
 
   planVariant?: number;
 
@@ -1021,9 +1021,6 @@ export function compatibleMealIngredients(
 ): string[] {
   const isGlutenFree = mealPlanHasExclusion(preferences, "gluten");
   const avoidsLactose = mealPlanHasExclusion(preferences, "lactose");
-  const avoidsMilk = mealPlanHasExclusion(preferences, "milk");
-  const avoidsEgg = mealPlanHasExclusion(preferences, "egg");
-  const avoidsFish = mealPlanHasExclusion(preferences, "fish");
   const vegetarian = mealPlanHasDietaryPattern(preferences, "vegetarian") ||
     mealPlanHasDietaryPattern(preferences, "vegan");
   const vegan = mealPlanHasDietaryPattern(preferences, "vegan");
@@ -1033,7 +1030,7 @@ export function compatibleMealIngredients(
       ? [...SAFE_MAIN_INGREDIENTS, ...SAFE_GLUTEN_FREE_MAIN_INGREDIENTS]
       : SAFE_MAIN_INGREDIENTS;
 
-  return [...base, ...(avoidsLactose && !avoidsMilk ? SAFE_LACTOSE_FREE_DAIRY_INGREDIENTS : [])]
+  return [...base, ...(avoidsLactose ? SAFE_LACTOSE_FREE_DAIRY_INGREDIENTS : [])]
     .filter((ingredient) => {
       const normalizedIngredient = ingredient
         .normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -1041,9 +1038,7 @@ export function compatibleMealIngredients(
       // lessicale: pasta/pane/biscotti esplicitamente compatibili devono
       // restare disponibili quando il vincolo canonico è glutine.
       if (isGlutenFree && /\b(?:pane|fette biscottate|biscotti|cornetto|pancake|avena|granola)\b/.test(normalizedIngredient) && !normalizedIngredient.includes("senza glutine")) return false;
-       if ((avoidsLactose || avoidsMilk) && /\b(?:latte|yogurt|biscotti|fette biscottate)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso|senza glutine|senza lattosio|delattosat)\b/.test(normalizedIngredient)) return false;
-      if (avoidsEgg && /\buova?\b/.test(normalizedIngredient)) return false;
-      if (avoidsFish && /\b(?:tonno|salmone|merluzzo)\b/.test(normalizedIngredient)) return false;
+       if (avoidsLactose && /\b(?:latte|yogurt|biscotti|fette biscottate)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso|senza glutine|senza lattosio|delattosat)\b/.test(normalizedIngredient)) return false;
       if (vegetarian && /\b(?:pollo|tacchino)\b/.test(normalizedIngredient)) return false;
       if (vegan && /\b(?:uova?|miele|latte|yogurt)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso)\b/.test(normalizedIngredient)) return false;
       if (mealPlanConstraintsHaveViolation(ingredient, preferences)) return false;
@@ -1253,10 +1248,7 @@ function mealPlanConstraintsHaveViolation(
 function usesMealPlanIngredientAllowlist(
   preferences?: MealPlanGenerationContext["preferences"],
 ): boolean {
-  return mealPlanHasExclusion(preferences, "gluten") ||
-    mealPlanHasExclusion(preferences, "lactose") ||
-    mealPlanHasExclusion(preferences, "milk") ||
-    hasMealPlanConstraints(preferences);
+  return hasMealPlanConstraints(preferences);
 }
 
 /**
@@ -1340,7 +1332,7 @@ async function generateWeeklyMealPlanAttempt(
   const rawNotes = typeof context.preferences?.notes === 'string' ? context.preferences.notes.trim().slice(0, 600) : '';
   // "Dieta mediterranea" senza guida diventa spesso "tanti legumi, poca pasta,
   // poche verdure": ancoriamo la distribuzione settimanale reale della dieta.
-  const dietLower = (context.preferences?.diet || '').toLowerCase();
+  const dietLower = (context.preferences?.dietProfile || '').toLowerCase();
   const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
   const mediterraneanDiet = mealPlanHasDietaryPattern(context.preferences, "mediterranean");
   const constrainedPlan = hasMealPlanConstraints(context.preferences);
@@ -1353,7 +1345,7 @@ async function generateWeeklyMealPlanAttempt(
     : mediterraneanDiet && constrainedPlan
       ? `\n- DIETA MEDITERRANEA CON VINCOLI: verdure in OGNI pranzo e cena, olio extravergine d'oliva e frutta; scegli ogni componente soltanto tra quelli compatibili con tutti i vincoli indicati.`
     : mediterraneanDiet
-      ? `\n- DIETA MEDITERRANEA VERA: alterna a pranzo pasta, riso/risotti, cereali in chicco, legumi, patate o polenta secondo la famiglia-obiettivo del giorno; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; carne rossa al massimo 1 volta; olio extravergine d'oliva e frutta.`
+      ? `\n- DIETA MEDITERRANEA VERA: alterna a pranzo pasta, riso/risotti, cereali in chicco, legumi, patate o polenta secondo la famiglia-obiettivo del giorno; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; inserisci ESATTAMENTE un pasto con carne rossa magra nella settimana; olio extravergine d'oliva e frutta.`
       : '';
   const weeklyVarietyRule = `
 - VARIETÀ SETTIMANALE (best effort, mai in contrasto con i vincoli): sui pranzi e sulle cene cerca almeno 4 fonti di carboidrati diverse nella settimana e non usare la stessa più di 3 volte quando sono disponibili alternative compatibili.
@@ -1369,7 +1361,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     ? `\n- Nei titoli non aggiungere meccanicamente “senza glutine” a piatti naturalmente privi di glutine. Mantieni la dicitura soltanto quando identifica davvero un prodotto sostitutivo, per esempio pasta o pane senza glutine.`
     : "";
   const prefText = context.preferences
-    ? `${context.preferences.diet ? ` Dieta: ${context.preferences.diet}.` : ''}${context.preferences.allergies ? ' Allergie/intolleranze presenti: applica i vincoli di sicurezza già indicati.' : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}${rawNotes ? ` Preferenze della famiglia (dettate a voce, seguile con attenzione): ${rawNotes}.` : ''}`
+    ? `${context.preferences.dietProfile ? ` Profilo dieta: ${context.preferences.dietProfile}.` : ''}${context.preferences.maxTimeMinutes ? ` Tempo max preparazione: ${context.preferences.maxTimeMinutes} min.` : ''}${rawNotes ? ` Preferenze della famiglia (dettate a voce, seguile con attenzione): ${rawNotes}.` : ''}`
     : '';
   const constraintRule = buildMealPlanConstraintPrompt(context.preferences);
   const constraintCorrection = context.constraintCorrection || "";
