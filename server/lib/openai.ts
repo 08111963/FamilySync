@@ -894,6 +894,68 @@ function compatibleMealIngredients(
     });
 }
 
+function buildCompatibleBreakfastThemes(
+  preferences?: MealPlanGenerationContext["preferences"],
+): string[] {
+  const allowed = new Set(compatibleMealIngredients(preferences, "breakfast"));
+  const first = (...ingredients: string[]) => ingredients.find((ingredient) => allowed.has(ingredient));
+  const fruits = [
+    "mela", "banana", "pera", "arancia", "mandarino", "pesca", "albicocca",
+    "fragole", "mirtilli", "lamponi", "uva", "kiwi",
+  ].filter((ingredient) => allowed.has(ingredient));
+  const fruit = (index: number) => fruits[index % Math.max(1, fruits.length)] || "frutta compatibile";
+  const drink = first("latte", "bevanda di riso", "bevanda di cocco") || "bevanda compatibile";
+  const spread = first("marmellata", "miele") || "una confettura compatibile";
+  const bread = first("pane", "pane senza glutine") || "";
+  const rusk = first("fette biscottate", "fette biscottate senza glutine") || "";
+  const biscuits = first("biscotti senza glutine") || "";
+  const yogurt = first("yogurt bianco", "yogurt vegetale di cocco") || "";
+  const crispbread = allowed.has("gallette di riso") ? "gallette di riso" : (rusk || bread || drink);
+
+  return [
+    yogurt ? `${yogurt} con ${fruit(0)} e ${spread}` : `${drink} con ${fruit(0)} e cacao amaro`,
+    bread ? `${bread} con ${spread} e ${fruit(1)}` : `${crispbread} con ${spread} e ${fruit(1)}`,
+    `frullato di ${fruit(2)} con ${drink} e cacao amaro`,
+    biscuits ? `caffè o ${drink} con ${biscuits} e ${fruit(3)}` : `${drink} con ${fruit(3)} e una piccola porzione di frutta`,
+    `${crispbread} con ${spread} e ${fruit(4)}`,
+    `${rusk || bread || drink} con ${spread} e ${fruit(5)}`,
+    `macedonia di ${fruit(6)} con ${drink} e ${spread}`,
+  ];
+}
+
+function buildDinnerThemes(
+  preferences?: MealPlanGenerationContext["preferences"],
+): string[] {
+  if (!hasMealPlanConstraints(preferences)) {
+    return [
+      "A CENA prepara pesce al forno o alla griglia, verdure e patate: non usare carne, uova o legumi.",
+      "A CENA prepara pollo o tacchino con verdure saltate e riso o pane: non usare pesce.",
+      "A CENA prepara una zuppa di legumi con verdure e pane: non usare carne, pesce o uova.",
+      "A CENA prepara una frittata o uova con contorno di verdure e patate: non usare carne o pesce.",
+      "A CENA prepara una carne bianca in umido con ortaggi e polenta o pane: non usare pesce o uova.",
+      "A CENA prepara pesce in padella con verdure e riso: deve essere un pesce diverso dalla prima cena.",
+      "A CENA prepara polpette vegetariane di legumi con insalata e patate: non usare carne, pesce o uova.",
+    ];
+  }
+
+  const allowed = new Set(compatibleMealIngredients(preferences, "main"));
+  const canUseFish = ["salmone", "merluzzo", "tonno"].some((ingredient) => allowed.has(ingredient));
+  const canUsePoultry = ["pollo", "tacchino"].some((ingredient) => allowed.has(ingredient));
+  const canUseEggs = allowed.has("uova");
+  const canUseLegumes = ["ceci", "lenticchie", "fagioli", "piselli"].some((ingredient) => allowed.has(ingredient));
+  const protein = "una fonte proteica esplicitamente compatibile";
+
+  return [
+    canUseFish ? "A CENA usa pesce compatibile al forno con verdure e patate." : `A CENA usa ${protein} al forno con verdure e patate.`,
+    canUsePoultry ? "A CENA usa pollo o tacchino compatibile in padella con verdure e riso." : `A CENA usa ${protein} in padella con verdure e riso.`,
+    canUseLegumes ? "A CENA prepara legumi compatibili in zuppa con verdure e una fonte di carboidrati." : `A CENA prepara ${protein} in zuppa o vellutata con verdure.`,
+    canUseEggs ? "A CENA prepara uova compatibili con verdure e patate." : `A CENA usa ${protein} con verdure e patate.`,
+    `A CENA usa ${protein} in umido con ortaggi e polenta o riso.`,
+    canUseFish ? "A CENA usa un pesce compatibile preparato in modo diverso dalla prima cena, con verdure e riso." : `A CENA usa ${protein} alla griglia con verdure e riso.`,
+    canUseLegumes ? "A CENA prepara polpette o burger di legumi compatibili con insalata e patate." : `A CENA usa ${protein} con insalata e patate.`,
+  ];
+}
+
 function mealPlanConstraintsHaveViolation(
   ingredient: string,
   preferences?: MealPlanGenerationContext["preferences"],
@@ -949,13 +1011,17 @@ function buildMealPlanQualityCorrection(error: AiError, nextAttempt: number): st
     ? `
 - Per ogni breakfast usa esclusivamente una colazione dolce: non nominare né usare alimenti salati o da pranzo/cena nel titolo, descrizione, ingredienti o passaggi.`
     : "";
+  const wholegrainCorrection = error.message.includes("integrali")
+    ? `
+- Non usare mai le parole "integrale", "integrali" o "integral" e non proporre pasta, riso, pane o cereali integrali: non sono stati richiesti. Usa esclusivamente equivalenti classici compatibili.`
+    : "";
   const completenessCorrection = error.message.includes("incompleto")
     ? `
 - Per ogni ricetta compila tutti i campi: titolo, descrizione, almeno un ingrediente con nome/quantità/unità e da 3 a 6 passaggi non vuoti.`
     : "";
   return `
 - CORREZIONE DI QUALITÀ OBBLIGATORIA (tentativo ${nextAttempt}): il risultato precedente non era consegnabile.
-- Restituisci esclusivamente tutti i pasti richiesti, completi e coerenti con il loro tipo.${breakfastCorrection}${completenessCorrection}`;
+- Restituisci esclusivamente tutti i pasti richiesti, completi e coerenti con il loro tipo.${breakfastCorrection}${wholegrainCorrection}${completenessCorrection}`;
 }
 
 async function generateWeeklyMealPlanAttempt(
@@ -1000,13 +1066,9 @@ async function generateWeeklyMealPlanAttempt(
   // Piatti tradizionali: il modello tende a "salutizzare" tutto proponendo
   // pasta/pane integrali ovunque. Niente varianti integrali salvo richiesta.
   const wantsWholegrain = dietLower.includes('integral') || rawNotes.toLowerCase().includes('integral');
-  const wholegrainRule = glutenFreeRequired
+  const wholegrainRule = glutenFreeRequired || wantsWholegrain
     ? ''
-    : constrainedPlan
-    ? `\n- VINCOLI: non usare esempi standard, prodotti confezionati o sostituti impliciti. Ogni ingrediente, condimento e componente deve essere dichiaratamente compatibile con TUTTI i vincoli indicati.`
-    : wantsWholegrain
-    ? ''
-    : `\n- Pasta, riso e pane: usa quelli CLASSICI (pasta di semola, riso bianco, pane comune). NON proporre varianti "integrali" a meno che l'utente non le chieda espressamente.`;
+    : `\n- Pasta, riso e pane: usa quelli CLASSICI (pasta di semola, riso bianco, pane comune). NON proporre varianti "integrali" a meno che l'utente non le chieda espressamente. Questo vale anche se sono presenti allergie, intolleranze o altri vincoli: tali vincoli non implicano mai prodotti integrali.`;
   // Il modello è poco affidabile nel dichiarare "senza glutine" su ogni campo
   // della ricetta (titolo, ingredienti e passaggi). Per una richiesta legata
   // al glutine privilegiamo quindi ingredienti naturalmente idonei: è più
@@ -1096,6 +1158,7 @@ async function generateWeeklyMealPlanAttempt(
     : mediterraneanRule
     ? (variant === 2 ? mediterraneanDayThemesB : mediterraneanDayThemes)
     : (variant === 2 ? [...dayThemes.slice(3), ...dayThemes.slice(0, 3)] : dayThemes);
+  const activeDinnerThemes = buildDinnerThemes(context.preferences);
 
   // Anche le colazioni ruotano: senza un tema per giorno il modello propone
   // sempre la stessa colazione generica (es. "latte e biscotti") tutti i giorni.
@@ -1117,15 +1180,7 @@ async function generateWeeklyMealPlanAttempt(
     'gallette di riso con miele e kiwi',
     'smoothie di frutta con bevanda di cocco',
   ];
-  const compatibleBreakfastThemes = [
-    'una colazione leggera composta soltanto da ingredienti compatibili con tutti i vincoli',
-    'una colazione semplice con ingredienti freschi già compatibili',
-    'una colazione con componenti dichiaratamente compatibili, senza sostituti impliciti',
-    'una colazione leggera verificata contro tutti i vincoli indicati',
-    'una colazione semplice con ingredienti compatibili e non confezionati',
-    'una colazione variata composta solo da ingredienti compatibili',
-    'una colazione italiana leggera che rispetti ogni vincolo indicato',
-  ];
+  const compatibleBreakfastThemes = buildCompatibleBreakfastThemes(context.preferences);
   const activeBreakfastThemes = glutenFreeRequired
     ? glutenFreeBreakfastThemes
     : constrainedPlan
@@ -1168,7 +1223,7 @@ async function generateWeeklyMealPlanAttempt(
           ? compatibleMealIngredients(context.preferences, "main")
           : undefined,
         label: `${date}-main`,
-        themeHint: activeDayThemes[dayIndex],
+        themeHint: `${activeDayThemes[dayIndex]} ${activeDinnerThemes[dayIndex]}`,
       });
     }
     return requests;
@@ -1383,6 +1438,27 @@ ${constraintRule}${constraintCorrection}${varietyCorrection}${qualityCorrection}
     throw new AiError(
       "AI_BAD_RESPONSE",
       "La risposta AI contiene un pasto incompleto",
+    );
+  }
+  const unexpectedWholegrain = !glutenFreeRequired && !wantsWholegrain
+    ? filtered.find((item) => /\bintegral(?:e|i)?\b/i.test([
+      item.title,
+      item.description,
+      ...(item.ingredients || []).map((ingredient) => ingredient.name),
+      ...(item.steps || []),
+    ].join(" ")))
+    : undefined;
+  if (unexpectedWholegrain) {
+    if (!context.suppressInternalLogs) {
+      console.warn(JSON.stringify({
+        tag: "AI_MEAL_PLAN_WHOLEGRAIN_REJECTED",
+        variant,
+        mealType: unexpectedWholegrain.mealType,
+      }));
+    }
+    throw new AiError(
+      "AI_BAD_RESPONSE",
+      "La risposta AI usa varianti integrali non richieste",
     );
   }
   context.onStatus?.("Controllo che ogni pasto rispetti i vincoli alimentari.");

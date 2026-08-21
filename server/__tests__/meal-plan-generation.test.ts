@@ -119,6 +119,33 @@ function weekItems(request: RequestInfo): Meal[] {
   });
 }
 
+function lactoseSafeWeekItems(request: RequestInfo): Meal[] {
+  const breakfastFruits = ["banana", "mela", "pera", "arancia", "kiwi", "mirtilli", "pesca"];
+  return request.dates.flatMap((date) => {
+    const index = DATES.indexOf(date);
+    return request.mealTypes.map((mealType) => {
+      if (mealType === "breakfast") {
+        return makeMeal(date, mealType, `Colazione ${index}`, [
+          { name: breakfastFruits[index]!, quantity: "1", unit: "pezzo" },
+          { name: "bevanda di riso", quantity: "200", unit: "ml" },
+        ]);
+      }
+      if (mealType === "lunch") {
+        return makeMeal(date, mealType, `Pranzo ${index}`, [
+          { name: "pasta", quantity: "80", unit: "g" },
+          { name: "ceci", quantity: "100", unit: "g" },
+          { name: "zucchine", quantity: "150", unit: "g" },
+        ]);
+      }
+      return makeMeal(date, mealType, `Cena ${index}`, [
+        { name: "pollo", quantity: "120", unit: "g" },
+        { name: "patate", quantity: "180", unit: "g" },
+        { name: "spinaci", quantity: "150", unit: "g" },
+      ]);
+    });
+  });
+}
+
 function assertCompleteWeek(items: Array<{ date: string; mealType: string }>, mealsPerDay: number) {
   assert.equal(items.length, 7 * mealsPerDay);
   for (const date of DATES) {
@@ -283,6 +310,66 @@ test("con lattosio: la lista sicura esclude latticini ma consente la pasta", asy
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { allergies: "Lattosio" }), []);
   assert.ok(plan.items.some((item) => item.ingredients?.some((ingredient) => ingredient.name === "pasta")));
+});
+
+test("con vincoli: i prompt mantengono prodotti classici e rotazioni concrete per colazione e cena", async (t) => {
+  const { client, calls } = createFakeClient(lactoseSafeWeekItems);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { allergies: "Lattosio" },
+  });
+
+  assert.ok(
+    calls.every((call) => /NON proporre varianti "integrali"/i.test(call.sysPrompt)),
+    "un vincolo come il lattosio non deve trasformare pasta, riso o pane in integrali",
+  );
+  const breakfastPrompts = calls
+    .filter((call) => call.mealTypes.length === 1 && call.mealTypes[0] === "breakfast")
+    .map((call) => call.sysPrompt.match(/Per la colazione di questo giorno realizza questa combinazione concreta e non sostituirla con una colazione generica: ([^.]+)\./)?.[1]);
+  assert.equal(breakfastPrompts.length, 7);
+  assert.equal(new Set(breakfastPrompts).size, 7, "ogni giorno deve ricevere una colazione concreta diversa");
+  assert.ok(breakfastPrompts.every((prompt) => prompt && !/^una colazione/i.test(prompt)));
+
+  const dinnerPrompts = calls
+    .filter((call) => call.mealTypes.includes("dinner"))
+    .map((call) => call.sysPrompt.match(/(A CENA[^.]+\.)/)?.[1]);
+  assert.equal(dinnerPrompts.length, 7);
+  assert.equal(new Set(dinnerPrompts).size, 7, "ogni giorno deve ricevere una cena con rotazione dedicata");
+});
+
+test("prodotti integrali non richiesti vengono rigenerati prima della consegna", async (t) => {
+  let responseNumber = 0;
+  const { client, calls } = createFakeClient((request) => {
+    const firstAttempt = responseNumber++ < THREE_MEAL_WEEK_REQUESTS;
+    return weekItems(request).map((item) => firstAttempt && item.mealType === "lunch"
+      ? makeMeal(item.date, item.mealType, "Pasta integrale con ceci e zucchine", [
+          { name: "pasta integrale", quantity: "80", unit: "g" },
+          { name: "ceci", quantity: "100", unit: "g" },
+          { name: "zucchine", quantity: "150", unit: "g" },
+        ])
+      : item);
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+  });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 2);
+  assert.ok(calls.slice(THREE_MEAL_WEEK_REQUESTS).every((call) =>
+    /Non usare mai le parole "integrale"/i.test(call.sysPrompt)));
+  assert.ok(plan.items.every((item) => !/\bintegral(?:e|i)?\b/i.test([
+    item.title,
+    item.description,
+    ...(item.ingredients || []).map((ingredient) => ingredient.name),
+    ...(item.steps || []),
+  ].join(" "))));
 });
 
 test("con lattosio: i passaggi dettagliati usano il contesto dell'ingrediente vegetale sicuro", async (t) => {
