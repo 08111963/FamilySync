@@ -1007,6 +1007,7 @@ export default function MealPlansScreen() {
                   onPress={() => setDietProfile(profile)}
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
+                  aria-checked={selected}
                   testID={`mealplan-diet-${profile}`}
                   style={[
                     styles.dietProfileOption,
