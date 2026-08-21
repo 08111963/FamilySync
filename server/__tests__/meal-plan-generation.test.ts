@@ -256,14 +256,18 @@ test("mediterranea senza allergie riceve una famiglia-obiettivo per ogni pranzo 
     "pasta", "risotto/riso", "piatto di legumi", "couscous",
     "cereale in chicco", "patate/polenta", "quinoa",
   ]);
+  assert.ok(lunchCalls.every((call) => /OBIETTIVO PROFILO PRANZO DEL GIORNO/i.test(call.sysPrompt)));
   assert.ok(lunchCalls.slice(1).every((call) => /LUNCH FAMILY COUNTS/i.test(call.sysPrompt)));
   assert.ok(lunchCalls.slice(1).every((call) => /LUNCH BASE COUNTS/i.test(call.sysPrompt)));
+  assert.ok(lunchCalls.slice(1).every((call) => /SEMANTIC LUNCH SIGNATURES USED/i.test(call.sysPrompt)));
+  assert.ok(lunchCalls.slice(1).every((call) => /DO NOT REPEAT/i.test(call.sysPrompt)));
 
   const variety = evaluateMealPlanVariety(plan.items);
   assert.ok(Object.keys(variety.lunchFamilyCounts).length >= 4);
   assert.ok(!variety.issues.some((issue) =>
     ["low_lunch_family_variety", "excessive_lunch_family", "repeated_lunch_base",
-      "repeated_lunch_pattern", "consecutive_lunch_pattern"].includes(issue.code)));
+      "repeated_lunch_pattern", "repeated_lunch_semantic_signature",
+      "repeated_lunch_protein_preparation", "consecutive_lunch_pattern"].includes(issue.code)));
   assert.deepEqual(validateMealPlanConstraints(plan.items, { diet: "mediterranea" }), []);
 });
 
@@ -295,7 +299,8 @@ test("il Piano B mediterraneo allinea temi e famiglie-obiettivo senza nuove chia
   assert.ok(Object.keys(variety.lunchFamilyCounts).length >= 4);
   assert.ok(!variety.issues.some((issue) =>
     ["low_lunch_family_variety", "excessive_lunch_family", "repeated_lunch_base",
-      "repeated_lunch_pattern", "consecutive_lunch_pattern"].includes(issue.code)));
+      "repeated_lunch_pattern", "repeated_lunch_semantic_signature",
+      "repeated_lunch_protein_preparation", "consecutive_lunch_pattern"].includes(issue.code)));
 });
 
 test("due pasti al giorno mantengono il contratto da 14 pasti completi", async (t) => {
@@ -570,8 +575,8 @@ test("solo lattosio usa quattro famiglie di pranzo e passa firme ai giorni succe
   assert.ok(calls.every((call) => call.ingredientNames?.includes("farro")));
   assert.ok(calls.every((call) => call.ingredientNames?.includes("ricotta senza lattosio")));
   assert.match(calls[0]!.sysPrompt, /stesso schema.*massimo 2 volte/i);
-  assert.ok(calls.slice(1).every((call) => /PRANZI GIÀ USATI/i.test(call.sysPrompt)));
-  assert.ok(calls.slice(1).some((call) => /pasta \+ pomodoro \+ tonno/i.test(call.sysPrompt)));
+  assert.ok(calls.slice(1).every((call) => /SEMANTIC LUNCH SIGNATURES USED/i.test(call.sysPrompt)));
+  assert.ok(calls.slice(1).some((call) => /pasta \+ tomato \+ tuna \+ pasta_main/i.test(call.sysPrompt)));
   const evaluation = evaluateMealPlanVariety(plan.items);
   assert.ok(Object.keys(evaluation.lunchFamilyCounts).length >= 4);
   assert.ok(!evaluation.issues.some((issue) => issue.code === "low_lunch_family_variety"));
@@ -941,6 +946,54 @@ test("un solo doppione viene riparato localmente senza rigenerare l'intera setti
   assert.ok(calls.at(-1)?.sysPrompt.includes("CORREZIONE VARIETÀ LOCALE OBBLIGATORIA"));
   assertCompleteWeek(plan.items, 3);
   assert.equal(new Set(plan.items.filter((item) => item.mealType === "dinner").map((item) => item.title)).size, 7);
+});
+
+test("un duplicato semantico riso-limone-salmone usa una sola riparazione locale", async (t) => {
+  const { client, calls } = createFakeClient((request) => {
+    if (request.mealTypes.length === 1 && request.mealTypes[0] === "lunch") {
+      return [makeMeal(request.dates[0]!, "lunch", "Couscous al pomodoro con tacchino", [
+        { name: "couscous", quantity: "80", unit: "g" },
+        { name: "tacchino", quantity: "120", unit: "g" },
+        { name: "pomodori", quantity: "120", unit: "g" },
+      ])];
+    }
+    return mediterraneanDiverseWeekItems(request).map((item) => {
+      if (item.mealType !== "lunch") return item;
+      if (item.date === DATES[1]) {
+        return makeMeal(item.date, "lunch", "Risotto al limone con salmone e insalata", [
+          { name: "risotto", quantity: "80", unit: "g" },
+          { name: "limone", quantity: "1", unit: "pezzo" },
+          { name: "salmone", quantity: "120", unit: "g" },
+          { name: "insalata", quantity: "150", unit: "g" },
+        ]);
+      }
+      if (item.date === DATES[4]) {
+        return makeMeal(item.date, "lunch", "Riso al limone con salmone e pomodori", [
+          { name: "riso", quantity: "80", unit: "g" },
+          { name: "limone", quantity: "1", unit: "pezzo" },
+          { name: "salmone", quantity: "120", unit: "g" },
+          { name: "pomodori", quantity: "150", unit: "g" },
+        ]);
+      }
+      return item;
+    });
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { diet: "mediterranea" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
+
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS + 1);
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
+  assert.match(calls.at(-1)!.sysPrompt, /CORREZIONE VARIETÀ LOCALE OBBLIGATORIA/i);
+  assert.match(calls.at(-1)!.sysPrompt, /rice \+ lemon \+ salmon \+ grain_main/i);
+  assert.ok(!evaluateMealPlanVariety(plan.items).issues.some((issue) =>
+    issue.code === "repeated_lunch_semantic_signature"));
 });
 
 test("un retry allergene seguito da un repair locale resta nello stesso budget", async (t) => {

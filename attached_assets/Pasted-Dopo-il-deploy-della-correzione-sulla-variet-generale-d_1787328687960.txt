@@ -1,0 +1,480 @@
+Dopo il deploy della correzione sulla varietà generale dei pranzi, il risultato è nettamente migliorato: non viene più generata pasta quasi ogni giorno.
+
+Resta però un difetto specifico: vengono ancora prodotti nella stessa settimana **piatti semanticamente quasi identici**, anche se appartengono formalmente a categorie leggermente diverse.
+
+Caso reale osservato in produzione:
+
+```text
+25/08
+Risotto al limone con salmone e fagiolini
+
+28/08
+Riso al limone con salmone e zucchini saltati
+```
+
+Per l'utente questi due piatti sono sostanzialmente duplicati:
+
+```text
+riso + limone + salmone
+```
+
+Cambiare:
+
+* risotto → riso;
+* fagiolini → zucchine;
+
+NON rappresenta una variazione sufficiente del piatto principale.
+
+Questo mandato deve correggere esclusivamente questo difetto residuo.
+
+NON fare deploy.
+
+# 1. NON MODIFICARE LE CORREZIONI GIÀ FUNZIONANTI
+
+NON modificare:
+
+* allergeni;
+* normalizzazione constraints;
+* allowlist;
+* sicurezza alimentare;
+* `MAX_MEAL_PLAN_MODEL_CALLS = 28`;
+* quote giornaliere;
+* local repair massimo già impostato;
+* rotazione deterministica delle famiglie di pranzo;
+* UI;
+* database.
+
+La rotazione delle famiglie appena implementata deve rimanere.
+
+# 2. RIPRODUCI IL CASO REALE
+
+Aggiungi questo fixture:
+
+```text
+Risotto al limone con salmone e fagiolini
+Riso al limone con salmone e zucchini saltati
+```
+
+Il sistema deve identificarli come **near semantic duplicate**.
+
+Non considerarli diversi soltanto perché:
+
+```text
+risotto != riso
+fagiolini != zucchine
+```
+
+La struttura principale è:
+
+```text
+cereale/base = riso
+profilo/preparazione = limone
+proteina = salmone
+```
+
+# 3. NORMALIZZA LE FAMIGLIE EQUIVALENTI
+
+Introduci una normalizzazione semantica deterministica.
+
+Esempi:
+
+```text
+riso
+risotto
+riso integrale
+riso basmati
+```
+
+devono poter essere ricondotti alla macro-base:
+
+```text
+rice
+```
+
+quando serve al controllo anti-duplicazione.
+
+Analogamente, valuta equivalenze sensate come:
+
+```text
+pasta
+pasta integrale
+spaghetti
+penne
+fusilli
+```
+
+→ macro-base `pasta`
+
+Non usare questa normalizzazione per modificare il nome visualizzato del piatto.
+
+Serve esclusivamente al controllo di varietà.
+
+# 4. FIRMA SEMANTICA DEL PIATTO
+
+Per ogni pranzo crea una firma almeno su quattro dimensioni:
+
+```text
+macro_carbohydrate
+main_flavour_or_preparation
+main_protein
+meal_structure
+```
+
+Esempio:
+
+```text
+Risotto al limone con salmone e fagiolini
+
+macro_carbohydrate = rice
+main_flavour = lemon
+main_protein = salmon
+meal_structure = grain_main
+```
+
+e:
+
+```text
+Riso al limone con salmone e zucchini
+
+macro_carbohydrate = rice
+main_flavour = lemon
+main_protein = salmon
+meal_structure = grain_main
+```
+
+Le due firme devono risultare equivalenti o con similarità sufficientemente alta da essere considerate duplicate.
+
+# 5. CONTORNI SECONDARI NON DEVONO NASCONDERE IL DUPLICATO
+
+Ignora ai fini della firma principale differenze secondarie come:
+
+* insalata;
+* pomodori;
+* fagiolini;
+* zucchine;
+* broccoli;
+* rucola;
+* olio EVO;
+* basilico;
+* aglio;
+* prezzemolo;
+
+quando il nucleo principale del pasto rimane identico.
+
+Esempio:
+
+```text
+riso + limone + salmone + fagiolini
+riso + limone + salmone + zucchine
+```
+
+deve essere considerato lo stesso pattern principale.
+
+# 6. NON BASTA CONTROLLARE LA FAMIGLIA
+
+Il checker deve mantenere separati almeno:
+
+```text
+family
+base/preparation
+protein
+semantic signature
+```
+
+La famiglia serve a evitare:
+
+```text
+pasta 6/7
+```
+
+La firma serve a evitare:
+
+```text
+riso + limone + salmone
+risotto + limone + salmone
+```
+
+Sono due problemi diversi.
+
+# 7. PIANIFICAZIONE DETERMINISTICA PIÙ SPECIFICA
+
+La rotazione preventiva non deve scegliere soltanto:
+
+```text
+pasta
+riso
+legumi
+couscous
+...
+```
+
+Aggiungi anche un **profilo-obiettivo** per il pranzo.
+
+Esempio concettuale:
+
+```text
+Lunedì:
+family = pasta
+protein = fish
+profile = tomato
+
+Martedì:
+family = rice
+protein = fish
+profile = lemon
+
+Mercoledì:
+family = legumes
+protein = legumes
+profile = soup
+
+Giovedì:
+family = couscous
+protein = legumes
+profile = vegetables
+
+Venerdì:
+family = grain
+protein = poultry
+profile = mediterranean
+
+Sabato:
+family = polenta
+protein = poultry
+profile = stew
+
+Domenica:
+family = quinoa
+protein = legumes
+profile = vegetables
+```
+
+Non devono essere necessariamente questi valori.
+
+Il principio è che **due giorni non ricevano lo stesso tripletto principale**.
+
+La pianificazione deve essere locale/deterministica e NON aggiungere chiamate OpenAI.
+
+# 8. EVITA ANCHE PROTEINA + PROFILO RIPETUTI
+
+In un normale piano mediterraneo senza allergeni, evita nella stessa settimana combinazioni come:
+
+```text
+salmone + limone
+salmone + limone
+```
+
+anche se un giorno c'è riso e un altro risotto.
+
+Best effort:
+
+```text
+same main protein + same main flavour/preparation <= 1
+```
+
+quando il pool disponibile lo permette.
+
+# 9. MEMORIA PASSATA AL MODELLO
+
+Il contesto dei giorni successivi deve includere anche:
+
+```text
+SEMANTIC LUNCH SIGNATURES USED:
+- rice + lemon + salmon
+- pasta + tomato + tuna
+- legumes + soup + lentils
+
+DO NOT REPEAT:
+- rice + lemon + salmon
+```
+
+Non limitarti a:
+
+```text
+LUNCH FAMILY COUNTS
+```
+
+perché il problema attuale dimostra che non è sufficiente.
+
+# 10. TEST PARAMETRICI
+
+Queste coppie devono essere considerate duplicati o near-duplicate:
+
+```text
+Risotto al limone con salmone e fagiolini
+Riso al limone con salmone e zucchine
+```
+
+```text
+Pasta al pomodoro con tonno e insalata
+Spaghetti al pomodoro con tonno e verdure
+```
+
+```text
+Riso con pollo e zucchine
+Risotto con pollo e zucchine
+```
+
+Queste invece devono essere considerate sufficientemente differenti:
+
+```text
+Risotto al limone con salmone
+Riso con ceci e verdure
+```
+
+```text
+Pasta al pomodoro con tonno
+Pasta con crema di zucchine e pollo
+```
+
+# 11. TEST SULLA SETTIMANA REALE
+
+Usa almeno questi pranzi:
+
+```text
+1 Pasta al pomodoro con tonno e insalata
+2 Risotto al limone con salmone e fagiolini
+3 Zuppa di lenticchie con pane
+4 Couscous alle verdure e ceci
+5 Riso al limone con salmone e zucchine
+6 Polenta con spezzatino di pollo
+7 Insalata di quinoa con ceci e verdure
+```
+
+Il checker deve individuare come problema:
+
+```text
+2 ↔ 5
+```
+
+perché entrambi rappresentano:
+
+```text
+rice + lemon + salmon
+```
+
+# 12. NESSUN NUOVO FULL RETRY
+
+NON reintrodurre:
+
+```text
+MAX_VARIETY_GENERATION_RETRIES
+```
+
+Non effettuare una seconda generazione completa della settimana per correggere questo problema.
+
+Usa:
+
+* blueprint deterministico;
+* memoria inter-giorno;
+* semantic signature;
+* local repair già esistente, solo se necessario e dentro il budget.
+
+# 13. BUDGET INVARIATO
+
+Deve restare:
+
+```ts
+MAX_MEAL_PLAN_MODEL_CALLS = 28;
+```
+
+e:
+
+```text
+modelCalls <= 28
+```
+
+in ogni percorso.
+
+Nessuna nuova chiamata OpenAI deve essere aggiunta al percorso normale.
+
+# 14. ALLERGENI INVARIATI
+
+Riesegui l'audit sui 15 allergeni.
+
+La nuova firma semantica è un controllo di varietà e NON deve interferire con:
+
+* gluten;
+* lactose;
+* milk;
+* egg;
+* peanut;
+* nuts;
+* fish;
+* soy;
+* sesame;
+* celery;
+* mustard;
+* lupin;
+* sulfites;
+* shellfish;
+* molluscs.
+
+# 15. REPORT
+
+Crea:
+
+`MEAL_PLAN_SEMANTIC_DUPLICATE_FIX_REPORT.md`
+
+Riporta esplicitamente il caso reale:
+
+```text
+Risotto al limone con salmone e fagiolini
+vs
+Riso al limone con salmone e zucchini saltati
+```
+
+e mostra:
+
+```text
+prima: considerati diversi
+dopo: semantic signature equivalente
+```
+
+Indica inoltre:
+
+* regole di normalizzazione;
+* macro-carboidrati;
+* proteina;
+* profilo/preparazione;
+* test aggiunti;
+* model calls prima/dopo.
+
+# 16. VERIFICA
+
+Esegui:
+
+```bash
+npm run typecheck
+npm run test:ai
+npm run test:meal-plan-allergens
+```
+
+più tutti i test Piano Pasti e varietà.
+
+Riporta:
+
+* test passed;
+* failed;
+* hard cap;
+* massimo model calls osservato;
+* nessuna regressione allergeni.
+
+# 17. ZIP
+
+NON fare deploy.
+
+Genera soltanto:
+
+`familysync-meal-plan-semantic-duplicates-fixed-20260821.zip`
+
+ZIP minimale con:
+
+* file realmente modificati;
+* test;
+* report;
+* manifest esatto.
+
+Non includere l'intero repository.
+
+Fermati dopo la creazione dello ZIP per il controllo esterno.

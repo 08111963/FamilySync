@@ -54,9 +54,9 @@ test("le varianti di pasta pomodoro tonno hanno la stessa firma concettuale", ()
   const signatures = variants.map(mealPlanLunchSignature);
 
   assert.deepEqual(signatures, [
-    "pasta + pomodoro + tonno",
-    "pasta + pomodoro + tonno",
-    "pasta + pomodoro + tonno",
+    "pasta + tomato + tuna + pasta_main",
+    "pasta + tomato + tuna + pasta_main",
+    "pasta + tomato + tuna + pasta_main",
   ]);
   assert.deepEqual(variants.map(mealPlanLunchFamily), ["pasta", "pasta", "pasta"]);
 });
@@ -90,13 +90,14 @@ test("il fixture reale lactose 7/7 viene segnalato in modo esplicito", () => {
   const context = buildMealPlanVarietyContext(lunches);
 
   assert.ok(evaluation.issues.some((issue) =>
-    issue.code === "repeated_lunch_pattern" && issue.source === "pasta + pomodoro + tonno" && issue.count === 6));
+    issue.code === "repeated_lunch_pattern"
+      && issue.source === "pasta + tomato + tuna + pasta_main" && issue.count === 6));
   assert.ok(evaluation.issues.some((issue) => issue.code === "consecutive_lunch_pattern"));
   assert.ok(evaluation.issues.some((issue) => issue.code === "low_lunch_family_variety" && issue.count === 1));
   assert.ok(evaluation.issues.some((issue) =>
     issue.code === "repeated_carbohydrate" && issue.source === "pasta" && issue.count === 7));
-  assert.match(context, /PRANZI GIÀ USATI/i);
-  assert.match(context, /pasta \+ pomodoro \+ tonno/i);
-  assert.match(context, /EVITA una firma di pranzo già usata/i);
+  assert.match(context, /SEMANTIC LUNCH SIGNATURES USED/i);
+  assert.match(context, /pasta \+ tomato \+ tuna \+ pasta_main/i);
+  assert.match(context, /EVITA una firma semantica già usata/i);
   assert.deepEqual(validateMealPlanConstraints(lunches, { allergies: "lattosio" }), []);
 });

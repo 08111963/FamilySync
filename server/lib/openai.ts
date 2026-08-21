@@ -16,7 +16,9 @@ import { recordMealPlanLatency } from './meal-plan-latency-monitor';
 import {
   buildMealPlanVarietyContext,
   evaluateMealPlanVariety,
+  mealPlanLunchSemanticSignature,
   planMealPlanLunchFamilies,
+  planMealPlanLunchSemanticTargets,
 } from './meal-plan-variety';
 
 // Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
@@ -761,6 +763,7 @@ interface RepeatedMealSlot {
   date: string;
   mealType: MealPlanSuggestion["items"][number]["mealType"];
   title: string;
+  semanticSignature?: string;
 }
 
 function normalizeMealPlanConcept(value: string): string {
@@ -803,6 +806,14 @@ function mealConceptsAreTooSimilar(left: string, right: string): boolean {
   return normalizedLeft === normalizedRight;
 }
 
+function hasDeclaredLunchSemanticCore(item: MealPlanSuggestion["items"][number]): boolean {
+  if (item.mealType !== "lunch") return false;
+  const title = normalizeMealPlanConcept(item.title);
+  const hasMacroCarbohydrate = /\b(?:pasta|spaghetti|penne|fusilli|maccheroni|riso|risotto|couscous|farro|orzo|quinoa|polenta|patate|ceci|lenticchie|fagioli|piselli)\b/.test(title);
+  const hasProtein = /\b(?:salmone|merluzzo|tonno|pollo|tacchino|uova?|ceci|lenticchie|fagioli|piselli|ricotta|formaggio|parmigiano|mozzarella)\b/.test(title);
+  return hasMacroCarbohydrate && hasProtein;
+}
+
 /**
  * Rileva lo stesso piatto dichiarato nel medesimo tipo di pasto, purché
  * appartenga a giorni diversi. I temi giornalieri garantiscono la varietà
@@ -820,16 +831,34 @@ function findRepeatedMealConcepts(items: MealPlanSuggestion["items"]): string[] 
  */
 function findRepeatedMealSlots(items: MealPlanSuggestion["items"]): RepeatedMealSlot[] {
   const seenTitles = new Map<string, Array<{ date: string; title: string }>>();
+  const seenLunchSignatures = new Map<string, Set<string>>();
   const repeated: RepeatedMealSlot[] = [];
 
   for (const item of items) {
     const entries = seenTitles.get(item.mealType) || [];
-    if (entries.some((entry) =>
-      entry.date !== item.date && mealConceptsAreTooSimilar(entry.title, item.title))) {
-      repeated.push({ date: item.date, mealType: item.mealType, title: item.title });
+    const repeatedTitle = entries.some((entry) =>
+      entry.date !== item.date && mealConceptsAreTooSimilar(entry.title, item.title));
+    const semanticSignature = item.mealType === "lunch"
+      ? mealPlanLunchSemanticSignature(item)
+      : undefined;
+    const repeatedSemanticLunch = !!semanticSignature
+      && hasDeclaredLunchSemanticCore(item)
+      && (seenLunchSignatures.get(semanticSignature)?.size || 0) > 0;
+    if (repeatedTitle || repeatedSemanticLunch) {
+      repeated.push({
+        date: item.date,
+        mealType: item.mealType,
+        title: item.title,
+        semanticSignature: repeatedSemanticLunch ? semanticSignature : undefined,
+      });
     }
     entries.push({ date: item.date, title: item.title });
     seenTitles.set(item.mealType, entries);
+    if (semanticSignature) {
+      const dates = seenLunchSignatures.get(semanticSignature) || new Set<string>();
+      dates.add(item.date);
+      seenLunchSignatures.set(semanticSignature, dates);
+    }
   }
   return repeated.slice(0, 16);
 }
@@ -1483,6 +1512,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     themeHint?: string;
     breakfastHint?: string;
     lunchFamilyTarget?: string;
+    lunchSemanticTarget?: { mainProtein?: string; preparation?: string };
   };
   const allergenSafePlan = usesMealPlanIngredientAllowlist(context.preferences);
   const standardPlan = !constrainedPlan;
@@ -1492,6 +1522,11 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     dates.length,
     // Il Piano B parte dal riso: riso → legumi → couscous → cereale →
     // patate → quinoa → pasta, mantenendo un'alternativa strutturale al Piano A.
+    variant === 2 ? 1 : 0,
+  );
+  const lunchSemanticTargets = planMealPlanLunchSemanticTargets(
+    compatibleMainIngredients,
+    dates.length,
     variant === 2 ? 1 : 0,
   );
   // Una risposta settimanale da sette ricette dettagliate viene talvolta
@@ -1524,6 +1559,9 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
         lunchFamilyTarget: mainMealTypes.includes("lunch")
           ? lunchFamilyTargets[dayIndex]
           : undefined,
+        lunchSemanticTarget: mainMealTypes.includes("lunch")
+          ? lunchSemanticTargets[dayIndex]
+          : undefined,
       });
     }
     return requests;
@@ -1548,6 +1586,10 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
       : "";
     const lunchFamilyTargetRule = requestMealTypes.includes("lunch") && request.lunchFamilyTarget
       ? `\n- OBIETTIVO FAMIGLIA PRANZO DEL GIORNO: ${request.lunchFamilyTarget}. Il pranzo DEVE appartenere a questa famiglia, salvo conflitto con un vincolo di sicurezza. Non sostituirla con pasta o un'altra famiglia solo cambiando condimento, contorno, olio o erbe.`
+      : "";
+    const lunchSemanticTargetRule = requestMealTypes.includes("lunch")
+      && (request.lunchSemanticTarget?.mainProtein || request.lunchSemanticTarget?.preparation)
+      ? `\n- OBIETTIVO PROFILO PRANZO DEL GIORNO: proteina principale ${request.lunchSemanticTarget?.mainProtein || "compatibile"}; profilo/preparazione ${request.lunchSemanticTarget?.preparation || "diverso dai giorni già usati"}. Quando compatibile, seguilo senza ripetere una coppia proteina + profilo già presente nel contesto.`
       : "";
     const lactoseFreeOutputRule = lactoseFreeRequired
       ? `\n- PIANO SENZA LATTOSIO: in TUTTI i campi dell'output non scrivere né usare lattosio, latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone, salvo un prodotto della lista chiusa che riporti esplicitamente “senza lattosio”. Non usare mai un prodotto lattiero-caseario implicito. A colazione scegli bevanda vegetale, frutta, pane o gallette e marmellata, oppure un prodotto esplicitamente senza lattosio della lista; negli altri pasti usa solo gli ingredienti compatibili della lista chiusa.`
@@ -1591,7 +1633,7 @@ ${constrainedRecipeReferenceRule}
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}
-    - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
+     - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
 - ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno realizza questa combinazione concreta e non sostituirla con una colazione generica: ${breakfastHint}.` : ''}
  ${constraintRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}
@@ -1849,10 +1891,13 @@ ${constrainedRecipeReferenceRule}
         lunchFamilyTarget: slot.mealType === "lunch"
           ? lunchFamilyTargets[dayIndex]
           : undefined,
+        lunchSemanticTarget: slot.mealType === "lunch"
+          ? lunchSemanticTargets[dayIndex]
+          : undefined,
       };
       const localCorrection = `
 - CORREZIONE VARIETÀ LOCALE OBBLIGATORIA: genera un solo ${slot.mealType} per ${slot.date}, completo e compatibile.
-- Il titolo e la ricetta devono essere realmente diversi dai pasti già presenti. Non usare questi titoli: ${forbiddenTitles.join("; ")}.`;
+- Il titolo e la ricetta devono essere realmente diversi dai pasti già presenti. Non usare questi titoli: ${forbiddenTitles.join("; ")}.${slot.semanticSignature ? ` Non ripetere questa firma semantica: ${slot.semanticSignature}.` : ""}`;
       try {
         const replacements = await fetchChunk(
           repairRequest,

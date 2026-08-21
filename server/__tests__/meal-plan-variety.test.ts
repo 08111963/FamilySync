@@ -4,8 +4,11 @@ import {
   buildMealPlanVarietyContext,
   evaluateMealPlanVariety,
   mealPlanLunchBase,
+  mealPlanLunchProteinPreparation,
+  mealPlanLunchSemanticSignature,
   mealPlanLunchSignature,
   planMealPlanLunchFamilies,
+  planMealPlanLunchSemanticTargets,
 } from "../lib/meal-plan-variety";
 import { validateMealPlanConstraints } from "../lib/meal-plan-constraints";
 
@@ -78,6 +81,14 @@ test("la rotazione locale distribuisce sette famiglie compatibili senza affidars
     ],
     "il Piano B ruota le stesse sette famiglie primarie",
   );
+
+  const semanticTargets = planMealPlanLunchSemanticTargets([
+    "pasta", "riso", "ceci", "couscous", "farro", "patate", "quinoa",
+    "salmone", "tonno", "pollo", "tacchino", "uova", "limone", "pomodori",
+    "pesto", "zucchine",
+  ]);
+  assert.equal(new Set(semanticTargets.map((target) =>
+    `${target.mainProtein} + ${target.preparation}`)).size, 7);
 });
 
 test("sei paste mediterranee con contorni diversi restano un caso monotono", () => {
@@ -121,12 +132,79 @@ test("contorni, erbe e pomodori laterali non cambiano base o firma del pranzo", 
     "pasta + pesto", "pasta + pesto", "pasta + pesto",
   ]);
   assert.deepEqual(variants.map((item) => mealPlanLunchSignature(item)), [
-    "pasta + pesto + tonno", "pasta + pesto + tonno", "pasta + pesto + tonno",
+    "pasta + pesto + tuna + pasta_main",
+    "pasta + pesto + tuna + pasta_main",
+    "pasta + pesto + tuna + pasta_main",
   ]);
   assert.ok(evaluation.issues.some((issue) =>
     issue.code === "repeated_lunch_base" && issue.source === "pasta + pesto" && issue.count === 3));
   assert.ok(evaluation.issues.some((issue) =>
-    issue.code === "repeated_lunch_pattern" && issue.source === "pasta + pesto + tonno" && issue.count === 3));
+    issue.code === "repeated_lunch_semantic_signature"
+      && issue.source === "pasta + pesto + tuna + pasta_main" && issue.count === 3));
+});
+
+test("le firme semantiche uniscono varianti equivalenti senza confondere piatti diversi", () => {
+  const duplicatePairs = [
+    [
+      meal("lunch", "Risotto al limone con salmone e insalata", ["risotto", "limone", "salmone", "insalata"]),
+      meal("lunch", "Riso al limone con salmone e pomodori", ["riso basmati", "limone", "salmone", "pomodori"]),
+      "rice + lemon + salmon + grain_main",
+    ],
+    [
+      meal("lunch", "Pasta al pomodoro con tonno e insalata", ["pasta", "pomodori", "tonno", "insalata"]),
+      meal("lunch", "Spaghetti al pomodoro con tonno e verdure", ["spaghetti", "pomodori", "tonno", "zucchine"]),
+      "pasta + tomato + tuna + pasta_main",
+    ],
+    [
+      meal("lunch", "Riso con pollo e zucchine", ["riso", "pollo", "zucchine"]),
+      meal("lunch", "Risotto con pollo e zucchine", ["risotto", "pollo", "zucchine"]),
+      "rice + simple + chicken + grain_main",
+    ],
+  ] as const;
+
+  for (const [first, second, signature] of duplicatePairs) {
+    assert.equal(mealPlanLunchSemanticSignature(first), signature);
+    assert.equal(mealPlanLunchSemanticSignature(second), signature);
+  }
+
+  const riceSalmon = duplicatePairs[0]!;
+  const evaluation = evaluateMealPlanVariety([riceSalmon[0], riceSalmon[1]]);
+  assert.equal(mealPlanLunchProteinPreparation(riceSalmon[0]), "salmon + lemon");
+  assert.ok(evaluation.issues.some((issue) =>
+    issue.code === "repeated_lunch_semantic_signature"
+      && issue.source === "rice + lemon + salmon + grain_main" && issue.count === 2));
+  assert.ok(evaluation.issues.some((issue) =>
+    issue.code === "repeated_lunch_protein_preparation"
+      && issue.source === "salmon + lemon" && issue.count === 2));
+
+  assert.notEqual(
+    mealPlanLunchSemanticSignature(meal("lunch", "Risotto al limone con salmone", ["riso", "limone", "salmone"])),
+    mealPlanLunchSemanticSignature(meal("lunch", "Riso con ceci e verdure", ["riso", "ceci", "zucchine"])),
+  );
+  assert.notEqual(
+    mealPlanLunchSemanticSignature(meal("lunch", "Pasta al pomodoro con tonno", ["pasta", "pomodori", "tonno"])),
+    mealPlanLunchSemanticSignature(meal("lunch", "Pasta con crema di zucchine e pollo", ["pasta", "zucchine", "pollo"])),
+  );
+});
+
+test("la settimana reale segnala riso-limone-salmone anche a giorni non consecutivi", () => {
+  const lunches = [
+    meal("lunch", "Pasta al pomodoro con tonno e insalata", ["pasta", "pomodori", "tonno", "insalata"]),
+    meal("lunch", "Risotto al limone con salmone e fagiolini", ["risotto", "limone", "salmone", "fagiolini"]),
+    meal("lunch", "Zuppa di lenticchie con pane", ["lenticchie", "pane", "carote"]),
+    meal("lunch", "Couscous alle verdure e ceci", ["couscous", "ceci", "zucchine"]),
+    meal("lunch", "Riso al limone con salmone e zucchine", ["riso", "limone", "salmone", "zucchine"]),
+    meal("lunch", "Polenta con spezzatino di pollo", ["polenta", "pollo", "carote"]),
+    meal("lunch", "Insalata di quinoa con ceci e verdure", ["quinoa", "ceci", "rucola"]),
+  ];
+  const evaluation = evaluateMealPlanVariety(lunches);
+
+  assert.ok(evaluation.issues.some((issue) =>
+    issue.code === "repeated_lunch_semantic_signature"
+      && issue.source === "rice + lemon + salmon + grain_main" && issue.count === 2));
+  assert.match(buildMealPlanVarietyContext(lunches), /SEMANTIC LUNCH SIGNATURES USED/i);
+  assert.match(buildMealPlanVarietyContext(lunches), /DO NOT REPEAT/i);
+  assert.match(buildMealPlanVarietyContext(lunches), /rice \+ lemon \+ salmon \+ grain_main/i);
 });
 
 test("un piano con famiglie, basi e proteine alternate supera il controllo dei pranzi", () => {
@@ -145,5 +223,6 @@ test("un piano con famiglie, basi e proteine alternate supera il controllo dei p
   assert.equal(new Set(Object.keys(evaluation.lunchBaseCounts)).size, 7);
   assert.ok(!evaluation.issues.some((issue) =>
     ["low_lunch_family_variety", "excessive_lunch_family", "repeated_lunch_base",
-      "repeated_lunch_pattern", "consecutive_lunch_pattern"].includes(issue.code)));
+      "repeated_lunch_pattern", "repeated_lunch_semantic_signature",
+      "repeated_lunch_protein_preparation", "consecutive_lunch_pattern"].includes(issue.code)));
 });

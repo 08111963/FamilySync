@@ -3,15 +3,16 @@ name: Varietà concettuale dei pranzi
 description: Regola per evitare pranzi fotocopia anche quando titolo o contorni cambiano.
 ---
 
-La varietà dei pranzi va misurata con una firma concettuale — famiglia o
-carboidrato principale, base/preparazione e proteina — non con l’intero titolo.
-Contorni, olio, erbe e insalata non rendono nuovo un piatto già visto.
+La varietà dei pranzi va misurata con una firma semantica — macro-carboidrato,
+profilo/preparazione, proteina e struttura — non con l’intero titolo.
+Contorni, olio, erbe e insalata non rendono nuovo un piatto già visto, anche
+quando sono citati nel titolo.
 
-**Why:** una memoria che conta soltanto carboidrati e proteine aggregati non
-impedisce a un modello di ripetere pasta-pomodoro-tonno cambiando dettagli
-secondari.
+**Why:** categorie aggregate o un confronto letterale non impediscono
+risotto/riso-limone-salmone, oppure pasta/spaghetti-pomodoro-tonno, cambiando
+soltanto dettagli secondari.
 
-**How to apply:** guidare ogni pranzo verso una famiglia culinaria diversa
-quando esistono alternative sicure; contorni e garnish non cambiano il piatto.
-I vincoli alimentari prevalgono sempre e la varietà non giustifica chiamate o
-retry AI aggiuntivi.
+**How to apply:** guidare ogni pranzo verso una famiglia e un profilo
+compatibili diversi quando esistono alternative sicure; confrontare il nucleo
+del titolo prima dei contorni. I vincoli alimentari prevalgono sempre e la
+varietà non giustifica chiamate o retry AI aggiuntivi.

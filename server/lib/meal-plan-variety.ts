@@ -13,6 +13,8 @@ export type MealPlanVarietyIssueCode =
   | "excessive_lunch_family"
   | "repeated_lunch_base"
   | "repeated_lunch_pattern"
+  | "repeated_lunch_semantic_signature"
+  | "repeated_lunch_protein_preparation"
   | "consecutive_lunch_pattern";
 
 export interface MealPlanVarietyIssue {
@@ -30,6 +32,8 @@ export interface MealPlanVarietyEvaluation {
   lunchFamilyCounts: Record<string, number>;
   lunchBaseCounts: Record<string, number>;
   lunchSignatureCounts: Record<string, number>;
+  lunchSemanticSignatureCounts: Record<string, number>;
+  lunchProteinPreparationCounts: Record<string, number>;
   lunchCarbohydrateCounts: Record<string, number>;
   lunchProteinCounts: Record<string, number>;
   issues: MealPlanVarietyIssue[];
@@ -52,7 +56,7 @@ function carbohydrateSources(item: MealPlanVarietyItem): Set<string> {
     const name = ingredient.name || "";
     if (matches(name, /\b(?:pasta(?: di (?:mais|riso))? senza glutine|gnocchi senza glutine)\b/)) {
       sources.add("pasta senza glutine");
-    } else if (matches(name, /\bpasta\b/)) {
+    } else if (matches(name, /\b(?:pasta|spaghetti|penne|fusilli|maccheroni)\b/)) {
       sources.add("pasta");
     } else if (matches(name, /\b(?:riso|risotto)\b/)) {
       sources.add("riso/risotto");
@@ -97,6 +101,11 @@ function firstSource(sources: Set<string>): string | undefined {
   return sources.values().next().value;
 }
 
+type LunchSemanticProfileTarget = {
+  mainProtein?: string;
+  preparation?: string;
+};
+
 /**
  * Classifica la struttura del pranzo, non la decorazione nel titolo. Zuppa e
  * insalata sono famiglie autonome perché pane o legumi in accompagnamento non
@@ -127,32 +136,137 @@ export function mealPlanLunchFamily(item: MealPlanVarietyItem): string | undefin
 export function mealPlanLunchBase(item: MealPlanVarietyItem): string | undefined {
   const family = mealPlanLunchFamily(item);
   if (!family) return undefined;
-  // La base appartiene al piatto dichiarato, non alla lista completa degli
-  // ingredienti: pomodori o insalata come contorno non devono cambiare una
-  // pasta al pesto in una pasta al pomodoro o in un'insalata.
+  // La base appartiene al nucleo dichiarato prima di "con ...": pomodori o
+  // insalata come contorno, anche se citati nel titolo, non devono cambiare
+  // una pasta al pesto o un risotto al limone.
   const text = normalize(item.title || "");
-  const base = /\b(?:pomodoro|pomodori|passata|sugo)\b/.test(text)
+  const mainDishText = text.split(/\bcon\b/, 1)[0] || text;
+  const base = /\b(?:pomodoro|pomodori|passata|sugo)\b/.test(mainDishText)
     ? "pomodoro"
-    : /\b(?:pesto)\b/.test(text)
+    : /\b(?:pesto)\b/.test(mainDishText)
       ? "pesto"
-      : /\b(?:zuppa|minestra|minestrone|vellutata)\b/.test(text)
+      : /\b(?:zuppa|minestra|minestrone|vellutata)\b/.test(mainDishText)
         ? "zuppa"
-        : /\binsalata\b/.test(text)
+        : /\binsalata\b/.test(mainDishText)
           ? "insalata"
-          : /\b(?:forno|gratina(?:to|ta)?)\b/.test(text)
+          : /\b(?:forno|gratina(?:to|ta)?)\b/.test(mainDishText)
             ? "forno"
             : "preparazione semplice";
   return `${family} + ${base}`;
 }
 
-/**
- * Firma concettuale dei pranzi: famiglia + base/preparazione + proteina.
- * Aromi, olio, insalata e verdure di contorno non cambiano la firma.
- */
-export function mealPlanLunchSignature(item: MealPlanVarietyItem): string | undefined {
+function mealPlanLunchPreparation(item: MealPlanVarietyItem): string | undefined {
   const base = mealPlanLunchBase(item);
-  if (!base) return undefined;
-  return `${base} + ${firstSource(proteinSources(item)) || "senza proteina identificata"}`;
+  return base?.split(" + ").at(-1);
+}
+
+function mealPlanLunchMacroCarbohydrate(item: MealPlanVarietyItem): string | undefined {
+  switch (mealPlanLunchFamily(item)) {
+    case "pasta":
+      return "pasta";
+    case "risotto/riso":
+      return "rice";
+    case "piatto di legumi":
+      return "legumes";
+    case "couscous":
+      return "couscous";
+    case "cereale in chicco":
+      return "whole_grain";
+    case "patate/polenta":
+      return "potato_polenta";
+    case "quinoa":
+      return "quinoa";
+    case "zuppa":
+      return "soup";
+    case "insalata di cereali/piatto freddo":
+      return "cold_grain";
+    case "pane/piadina":
+      return "bread";
+    default:
+      return undefined;
+  }
+}
+
+function mealPlanLunchStructure(item: MealPlanVarietyItem): string | undefined {
+  switch (mealPlanLunchFamily(item)) {
+    case "pasta":
+      return "pasta_main";
+    case "risotto/riso":
+    case "couscous":
+    case "cereale in chicco":
+    case "quinoa":
+      return "grain_main";
+    case "piatto di legumi":
+      return "legume_main";
+    case "patate/polenta":
+      return "potato_polenta_main";
+    case "zuppa":
+      return "soup_main";
+    case "insalata di cereali/piatto freddo":
+      return "cold_grain_main";
+    case "pane/piadina":
+      return "bread_main";
+    default:
+      return undefined;
+  }
+}
+
+function mealPlanLunchFlavour(item: MealPlanVarietyItem): string | undefined {
+  switch (mealPlanLunchPreparation(item)) {
+    case "pomodoro":
+      return "tomato";
+    case "pesto":
+      return "pesto";
+    case "zuppa":
+      return "soup";
+    case "forno":
+      return "oven";
+    case "insalata":
+      return "salad";
+    default: {
+      const title = normalize(item.title || "");
+      if (/\b(?:limone|lime)\b/.test(title)) return "lemon";
+      if (/\b(?:umido|stufato)\b/.test(title)) return "stew";
+      if (/\b(?:crema|vellutata)\b/.test(title)) return "cream";
+      return "simple";
+    }
+  }
+}
+
+function mealPlanLunchProtein(item: MealPlanVarietyItem): string {
+  return ({
+    salmone: "salmon",
+    merluzzo: "cod",
+    tonno: "tuna",
+    pollo: "chicken",
+    tacchino: "turkey",
+    uova: "eggs",
+    legumi: "legumes",
+    latticini: "dairy",
+  } as Record<string, string>)[firstSource(proteinSources(item)) || ""] || "no_primary_protein";
+}
+
+/**
+ * Firma semantica del pranzo: macro-carboidrato, profilo/preparazione,
+ * proteina e struttura. Riso e risotto, oppure pasta e spaghetti, condividono
+ * la macro-base; contorni e garnish non possono mascherare un duplicato.
+ */
+export function mealPlanLunchSemanticSignature(item: MealPlanVarietyItem): string | undefined {
+  const macroCarbohydrate = mealPlanLunchMacroCarbohydrate(item);
+  const mealStructure = mealPlanLunchStructure(item);
+  const mainFlavour = mealPlanLunchFlavour(item);
+  if (!macroCarbohydrate || !mealStructure || !mainFlavour) return undefined;
+  return `${macroCarbohydrate} + ${mainFlavour} + ${mealPlanLunchProtein(item)} + ${mealStructure}`;
+}
+
+export function mealPlanLunchProteinPreparation(item: MealPlanVarietyItem): string | undefined {
+  const flavour = mealPlanLunchFlavour(item);
+  if (!flavour || !mealPlanLunchFamily(item)) return undefined;
+  return `${mealPlanLunchProtein(item)} + ${flavour}`;
+}
+
+export function mealPlanLunchSignature(item: MealPlanVarietyItem): string | undefined {
+  return mealPlanLunchSemanticSignature(item);
 }
 
 type LunchFamilyDefinition = {
@@ -209,6 +323,65 @@ export function planMealPlanLunchFamilies(
   return targets;
 }
 
+type SemanticLunchTargetDefinition = {
+  label: string;
+  available: (normalizedIngredients: string[]) => boolean;
+};
+
+const LUNCH_PROTEIN_TARGETS: SemanticLunchTargetDefinition[] = [
+  { label: "salmone", available: (items) => items.some((item) => /\bsalmone\b/.test(item)) },
+  { label: "merluzzo", available: (items) => items.some((item) => /\bmerluzzo\b/.test(item)) },
+  { label: "tonno", available: (items) => items.some((item) => /\btonno\b/.test(item)) },
+  { label: "pollo", available: (items) => items.some((item) => /\bpollo\b/.test(item)) },
+  { label: "tacchino", available: (items) => items.some((item) => /\btacchino\b/.test(item)) },
+  { label: "uova", available: (items) => items.some((item) => /\buova?\b/.test(item)) },
+  { label: "legumi", available: (items) => items.some((item) => /\b(?:ceci|lenticchie|fagioli|piselli)\b/.test(item)) },
+];
+
+const LUNCH_PREPARATION_TARGETS: SemanticLunchTargetDefinition[] = [
+  { label: "limone", available: (items) => items.some((item) => /\b(?:limone|lime)\b/.test(item)) },
+  { label: "pomodoro", available: (items) => items.some((item) => /\b(?:pomodoro|pomodori|passata|sugo)\b/.test(item)) },
+  { label: "pesto", available: (items) => items.some((item) => /\bpesto\b/.test(item)) },
+  { label: "verdure", available: (items) => items.some((item) => /\b(?:zucchine?|melanzane?|broccoli|spinaci|bietole|peperoni|carote|fagiolini|rucola)\b/.test(item)) },
+  { label: "forno", available: () => true },
+  { label: "in umido", available: () => true },
+];
+
+/**
+ * Obiettivi locali per la coppia proteina + profilo: arrivano esclusivamente
+ * dal pool già compatibile. Non sono un vincolo di sicurezza e degradano
+ * silenziosamente se il pool non offre alternative sufficienti.
+ */
+export function planMealPlanLunchSemanticTargets(
+  ingredientNames: string[],
+  days = 7,
+  rotationOffset = 0,
+): LunchSemanticProfileTarget[] {
+  if (days <= 0) return [];
+  const normalizedIngredients = ingredientNames.map(normalize);
+  const proteins = LUNCH_PROTEIN_TARGETS
+    .filter((entry) => entry.available(normalizedIngredients))
+    .map((entry) => entry.label);
+  const preparations = LUNCH_PREPARATION_TARGETS
+    .filter((entry) => entry.available(normalizedIngredients))
+    .map((entry) => entry.label);
+  if (proteins.length === 0 || preparations.length === 0) {
+    return Array.from({ length: days }, () => ({}));
+  }
+
+  const pairs = proteins.flatMap((protein, proteinIndex) =>
+    preparations.map((preparation, preparationIndex) => ({
+      mainProtein: protein,
+      preparation,
+      order: (proteinIndex + preparationIndex + rotationOffset) % proteins.length,
+    })),
+  ).sort((left, right) => left.order - right.order || left.preparation!.localeCompare(right.preparation!));
+  return Array.from({ length: days }, (_, index) => {
+    const pair = pairs[index % pairs.length]!;
+    return { mainProtein: pair.mainProtein, preparation: pair.preparation };
+  });
+}
+
 function countSources(
   items: MealPlanVarietyItem[],
   classifier: (item: MealPlanVarietyItem) => Set<string>,
@@ -245,6 +418,8 @@ export function evaluateMealPlanVariety(
   const lunchFamilyCounts = countValues(lunches.map(mealPlanLunchFamily));
   const lunchBaseCounts = countValues(lunches.map(mealPlanLunchBase));
   const lunchSignatureCounts = countValues(lunches.map(mealPlanLunchSignature));
+  const lunchSemanticSignatureCounts = countValues(lunches.map(mealPlanLunchSemanticSignature));
+  const lunchProteinPreparationCounts = countValues(lunches.map(mealPlanLunchProteinPreparation));
   const lunchCarbohydrateCounts = countSources(lunches, carbohydrateSources);
   const lunchProteinCounts = countSources(lunches, proteinSources);
   const distinctCarbohydrateSources = Object.keys(carbohydrateCounts).length;
@@ -287,6 +462,12 @@ export function evaluateMealPlanVariety(
   for (const [source, count] of Object.entries(lunchSignatureCounts)) {
     if (count > 2) issues.push({ code: "repeated_lunch_pattern", source, count });
   }
+  for (const [source, count] of Object.entries(lunchSemanticSignatureCounts)) {
+    if (count >= 2) issues.push({ code: "repeated_lunch_semantic_signature", source, count });
+  }
+  for (const [source, count] of Object.entries(lunchProteinPreparationCounts)) {
+    if (count >= 2) issues.push({ code: "repeated_lunch_protein_preparation", source, count });
+  }
   for (const [source, count] of Object.entries(lunchCarbohydrateCounts)) {
     if (count > 3) issues.push({ code: "repeated_carbohydrate", source, count });
   }
@@ -312,6 +493,8 @@ export function evaluateMealPlanVariety(
     lunchFamilyCounts,
     lunchBaseCounts,
     lunchSignatureCounts,
+    lunchSemanticSignatureCounts,
+    lunchProteinPreparationCounts,
     lunchCarbohydrateCounts,
     lunchProteinCounts,
     issues,
@@ -350,16 +533,17 @@ export function buildMealPlanVarietyContext(
   const proteins = compactCounts(evaluation.proteinCounts) || "nessuna ancora";
   const lunchFamilies = compactCounts(evaluation.lunchFamilyCounts) || "nessuna ancora";
   const lunchBases = compactCounts(evaluation.lunchBaseCounts) || "nessuna ancora";
-  const lunchSignatures = compactCounts(evaluation.lunchSignatureCounts) || "nessuno ancora";
+  const lunchSignatures = compactCounts(evaluation.lunchSemanticSignatureCounts) || "nessuno ancora";
   const lunchCarbs = compactCounts(evaluation.lunchCarbohydrateCounts) || "nessuno ancora";
   const lunchProteins = compactCounts(evaluation.lunchProteinCounts) || "nessuna ancora";
   return `
 - CONTESTO VARIETÀ DEI GIORNI GIÀ GENERATI: carboidrati principali usati: ${carbs}; proteine principali usate: ${proteins}.
-- PRANZI GIÀ USATI (firme concettuali): ${lunchSignatures}.
+ - SEMANTIC LUNCH SIGNATURES USED: ${lunchSignatures}.
 - LUNCH FAMILY COUNTS: ${lunchFamilies}.
 - LUNCH BASE COUNTS: ${lunchBases}.
 - LUNCH PROTEIN COUNTS: ${lunchProteins}. Carboidrati pranzo: ${lunchCarbs}.
-- AVOID NEXT: ${avoidNext(evaluation.lunchFamilyCounts, 3)}, ${avoidNext(evaluation.lunchBaseCounts, 2)}, ${avoidNext(evaluation.lunchProteinCounts, 2)}.
-- EVITA una firma di pranzo già usata, in particolare la stessa base con la stessa proteina: cambiare solo olio, erbe, insalata o un contorno non crea un pranzo nuovo.
+ - DO NOT REPEAT: ${Object.entries(evaluation.lunchSemanticSignatureCounts).filter(([, count]) => count >= 1).map(([signature]) => signature).join(", ") || "nessuna firma ancora"}.
+ - AVOID NEXT: ${avoidNext(evaluation.lunchFamilyCounts, 3)}, ${avoidNext(evaluation.lunchBaseCounts, 2)}, ${avoidNext(evaluation.lunchProteinCounts, 2)}.
+ - EVITA una firma semantica già usata, in particolare la stessa macro-base, profilo e proteina: riso/risotto, pasta/spaghetti e differenze solo di contorno non creano un pranzo nuovo.
 - Per questo giorno, quando compatibile con tutti i vincoli, scegli una fonte di carboidrati e una proteina meno presenti. Non alterare mai gli ingredienti richiesti dai vincoli di sicurezza.`;
 }
