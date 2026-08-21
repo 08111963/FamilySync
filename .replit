@@ -3,7 +3,7 @@ modules = ["nodejs-22", "python-3.11", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["jq", "imagemagick", "chromium", "glib", "nss", "nspr", "at-spi2-atk", "cups", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXrandr", "mesa", "pango", "cairo", "alsa-lib", "xorg.libxcb", "xorg.libX11", "zip"]
+packages = ["alsa-lib", "at-spi2-atk", "cairo", "chromium", "cups", "freetype", "glib", "gumbo", "harfbuzz", "imagemagick", "jbig2dec", "jq", "libjpeg_turbo", "mesa", "mupdf", "nspr", "nss", "openjpeg", "pango", "swig", "xcbuild", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXrandr", "xorg.libxcb", "zip"]
 
 [deployment]
 deploymentTarget = "vm"
@@ -12,7 +12,7 @@ run = ["npm", "run", "server:prod"]
 
 [[ports]]
 localPort = 5000
-externalPort = 80
+externalPort = 5000
 
 [[ports]]
 localPort = 5055
@@ -26,6 +26,9 @@ externalPort = 3001
 localPort = 5099
 externalPort = 3003
 
+[[ports]]
+localPort = 8081
+externalPort = 80
 
 [[ports]]
 localPort = 8082
