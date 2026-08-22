@@ -794,6 +794,13 @@ class MealPlanRepairError extends Error {
   }
 }
 
+function buildMealPlanFormatCorrection(nextAttempt: number): string {
+  return `
+- CORREZIONE FORMATO OBBLIGATORIA (tentativo ${nextAttempt}): la risposta precedente non era JSON parsabile oppure non conteneva un oggetto con una chiave "items" interpretabile.
+- Restituisci esclusivamente un oggetto JSON con la chiave "items" come array completo di tutti i pasti richiesti.
+- Non aggiungere Markdown, testo introduttivo, commenti o campi al posto dell'array "items".`;
+}
+
 interface RepeatedMealSlot {
   date: string;
   mealType: MealPlanSuggestion["items"][number]["mealType"];
@@ -1688,7 +1695,22 @@ ${constrainedRecipeReferenceRule}
     });
 
     const content = response.choices[0].message.content || '{"items":[]}';
-    const parsed: unknown = JSON.parse(content);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      // Un JSON invalido è un difetto recuperabile dell'output del Piano Pasti,
+      // non un errore di trasporto/provider: il chiamante avvierà un solo repair.
+      throw new MealPlanRepairError([], buildMealPlanFormatCorrection(context.generationAttempt + 1));
+    }
+    if (
+      !parsed
+      || typeof parsed !== "object"
+      || Array.isArray(parsed)
+      || !Array.isArray((parsed as { items?: unknown }).items)
+    ) {
+      throw new MealPlanRepairError([], buildMealPlanFormatCorrection(context.generationAttempt + 1));
+    }
     return parseMealItems(parsed);
   }
 
@@ -1758,6 +1780,10 @@ ${constrainedRecipeReferenceRule}
   }
 
   if (failedChunks > 0 && firstReason !== null) {
+    // Gli errori di repair sono difetti dell'output AI già classificati qui
+    // sopra. Devono raggiungere il ciclo settimanale senza essere scambiati
+    // per un errore del provider, così può avviarsi l'unico repair consentito.
+    if (firstReason instanceof MealPlanRepairError) throw firstReason;
     throw mapOpenAiError(firstReason);
   }
   const expectedMeals = dates.length * mealTypes.length;

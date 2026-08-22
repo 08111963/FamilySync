@@ -1,0 +1,92 @@
+Il controllo esterno dello ZIP single-call conferma che il refactor principale è corretto:
+
+- una sola application model call normale;
+- massimo un repair;
+- 9 profili coperti;
+- requestId/dietProfile contro stale response;
+- nessuna terza chiamata;
+- blueprint settimanale locale.
+
+NON modificare questa architettura.
+
+Resta però un problema bloccante:
+
+nel percorso Piano Pasti la risposta viene parsata con:
+
+JSON.parse(content)
+
+Se JSON.parse fallisce, l'errore passa attraverso mapOpenAiError(), ma il ciclo generateWeeklyMealPlan() effettua il secondo tentativo soltanto per:
+
+- MealPlanRepairError
+- MealPlanConstraintRetryError
+
+Quindi una risposta JSON realmente malformata sembra NON attivare il repair e può fallire dopo una sola model call.
+
+CORREGGI ESCLUSIVAMENTE QUESTO PUNTO.
+
+1. Una risposta non parsabile o strutturalmente non interpretabile deve essere classificata come errore recuperabile del Piano Pasti.
+
+2. Primo JSON malformato:
+   → nessun output al client
+   → costruisci una correction precisa
+   → esegui UNA sola seconda application model call.
+
+3. Secondo JSON ancora malformato:
+   → fallisci
+   → nessuna terza call.
+
+4. Deve valere sempre:
+
+normal = 1 application call
+malformed + repair = 2 application calls
+second malformed = fail after 2
+
+5. Non aumentare:
+MAX_MEAL_PLAN_MODEL_CALLS
+
+6. Non modificare:
+- profili dieta;
+- blueprint;
+- requestId;
+- stale-response logic;
+- provider routing;
+- prompt dieta;
+- UI;
+- database.
+
+7. Aggiungi test espliciti:
+
+A.
+prima risposta = JSON non parsabile
+seconda risposta = settimana valida
+→ PASS
+→ calls === 2
+
+B.
+prima risposta = JSON non parsabile
+seconda risposta = JSON non parsabile
+→ FAIL
+→ calls === 2
+
+C.
+prima risposta = JSON valido ma schema incompleto
+seconda = valida
+→ PASS
+→ calls === 2
+
+8. Verifica anche che l'errore JSON non venga trasformato in un generico errore provider prima che il generatore possa classificarlo come recoverable.
+
+9. Aggiorna:
+MEAL_PLAN_SINGLE_CALL_REFACTOR_REPORT.md
+
+specificando chiaramente:
+
+- malformed JSON → 1 repair;
+- max application calls = 2.
+
+10. NON fare deploy.
+
+Genera:
+familysync-meal-plan-single-call-refactor-final-20260822.zip
+
+ZIP minimale con soli file realmente modificati, test, report e manifest.

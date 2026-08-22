@@ -34,6 +34,7 @@ type RequestInfo = {
   itemCount: number;
   tokenLimit: number;
 };
+type FakeMealPlanResponse = Meal[] | { content: string };
 
 function datesFromPrompt(prompt: string): string[] {
   const match = prompt.match(/SOLO per questi giorni: ([0-9,\- ]+)\./);
@@ -121,7 +122,7 @@ function fullWeek(profile?: MealPlanDietProfile, duplicate = false, includeRedMe
   ]);
 }
 
-function createFakeClient(responder: (request: RequestInfo, call: number) => Meal[]) {
+function createFakeClient(responder: (request: RequestInfo, call: number) => FakeMealPlanResponse) {
   const calls: RequestInfo[] = [];
   const client = {
     chat: {
@@ -137,9 +138,14 @@ function createFakeClient(responder: (request: RequestInfo, call: number) => Mea
             tokenLimit: request.max_completion_tokens,
           };
           calls.push(info);
+          const response = responder(info, calls.length);
           return {
             choices: [{
-              message: { content: JSON.stringify({ items: responder(info, calls.length) }) },
+              message: {
+                content: Array.isArray(response)
+                  ? JSON.stringify({ items: response })
+                  : response.content,
+              },
               finish_reason: "stop",
             }],
           };
@@ -189,6 +195,57 @@ test("un duplicato deterministico esegue un solo repair con il JSON precedente",
   assert.equal(calls.length, 2, "prima chiamata + un solo repair");
   assert.match(calls[1]!.prompt, /JSON DEL PIANO PRECEDENTE DA CORREGGERE/);
   assert.match(calls[1]!.prompt, /CORREZIONE VARIETÀ OBBLIGATORIA/);
+  assert.equal(plan.items.length, 21);
+});
+
+test("un primo JSON non parsabile riceve un solo repair full-week", async (t) => {
+  const { client, calls } = createFakeClient((_request, call) =>
+    call === 1 ? { content: '{"items": ' } : fullWeek("mediterranean"));
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "mediterranean" },
+  });
+
+  assert.equal(calls.length, 2);
+  assert.match(calls[1]!.prompt, /CORREZIONE FORMATO OBBLIGATORIA/);
+  assert.equal(plan.items.length, 21);
+});
+
+test("due JSON non parsabili falliscono dopo due sole chiamate", async (t) => {
+  const { client, calls } = createFakeClient(() => ({ content: '{"items": ' }));
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  await assert.rejects(
+    generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      preferences: { dietProfile: "mediterranean" },
+    }),
+    /piano completo richiede una correzione/i,
+  );
+  assert.equal(calls.length, 2);
+});
+
+test("un JSON valido ma con schema incompleto riceve un solo repair", async (t) => {
+  const { client, calls } = createFakeClient((_request, call) =>
+    call === 1
+      ? { content: JSON.stringify({ items: [{ date: DATES[0], mealType: "breakfast" }] }) }
+      : fullWeek("mediterranean"));
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "mediterranean" },
+  });
+
+  assert.equal(calls.length, 2);
   assert.equal(plan.items.length, 21);
 });
 

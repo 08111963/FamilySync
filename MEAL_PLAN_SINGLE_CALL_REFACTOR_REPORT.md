@@ -16,6 +16,10 @@ alcun deploy.
   di pasto richiesti.
 - Recupero: **al massimo 1 repair**, con il JSON del piano precedente e le
   correzioni locali determinate dal validatore.
+- Un JSON non parsabile o con top-level non interpretabile è classificato come
+  difetto recuperabile del Piano Pasti prima della mappatura degli errori del
+  provider: il primo output malformato riceve **1 repair**, il secondo fallisce
+  dopo **2 chiamate applicative totali**.
 - Nessun repair per singolo pasto e nessun terzo tentativo.
 - `MAX_MEAL_PLAN_MODEL_CALLS` resta a **28** come cap globale di difesa in
   profondità; il costo interno di ogni settimana è 1.
@@ -54,6 +58,8 @@ La suite dedicata copre:
 - una sola chiamata in condizioni normali;
 - repair globale con JSON precedente e limite di due chiamate;
 - fallimento senza terza chiamata;
+- JSON non parsabile al primo tentativo, JSON non parsabile anche nel repair e
+  JSON valido ma con schema incompleto;
 - tutti i nove profili chiusi;
 - vincoli vegan, gluten-free, lactose-free, halal e carne rossa;
 - budget applicativo di una sola chiamata;
