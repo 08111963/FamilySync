@@ -1,0 +1,150 @@
+# FAMILY SYNC — AGGIUNGERE PAGINA DI BENVENUTO PRIMA DEL LOGIN
+
+La schermata di autenticazione già realizzata va mantenuta.
+
+Non ricostruire l'app e non modificare inutilmente autenticazione, database o funzionalità già implementate.
+
+Voglio correggere esclusivamente il flusso iniziale dell'app.
+
+## NUOVO FLUSSO
+
+Attualmente l'app apre direttamente la pagina Login/Registrazione.
+
+Voglio invece questo comportamento:
+
+**Apertura FamilySync → Pagina di benvenuto → Login/Registrazione → Onboarding → Home**
+
+---
+
+## 1. PAGINA PUBBLICA INIZIALE
+
+La route principale `/` deve diventare una vera **Welcome Page di FamilySync**.
+
+Non deve contenere direttamente il form email/password.
+
+Deve presentare FamilySync in modo semplice, moderno e familiare.
+
+### Contenuto principale
+
+Mostrare:
+
+**FamilySync**
+
+**La tua famiglia, organizzata.**
+
+Breve testo introduttivo, ad esempio:
+
+> Calendario, spesa, faccende, pasti e comunicazione familiare in un unico posto.
+
+Inserire due CTA principali:
+
+### `Inizia ora`
+
+porta alla registrazione.
+
+### `Accedi`
+
+porta al login.
+
+---
+
+## 2. PRESENTAZIONE DELLE FUNZIONI
+
+Nella Welcome Page mostrare in modo visivamente leggero alcune delle funzioni principali:
+
+* Calendario condiviso
+* Lista della spesa
+* Faccende
+* Piano pasti
+* Chat familiare
+
+Non creare una lunga landing page commerciale.
+
+Deve sembrare la schermata iniziale di una vera app consumer, non il sito di un software aziendale.
+
+---
+
+## 3. DESIGN
+
+Mantenere l'identità grafica già utilizzata nella schermata Login attuale:
+
+* logo/nome FamilySync;
+* palette calda;
+* stile morbido;
+* interfaccia pulita;
+* angoli arrotondati;
+* aspetto familiare e accogliente.
+
+La Welcome Page deve avere maggiore impatto visivo rispetto alla schermata Login.
+
+Può utilizzare una composizione grafica/illustrazione coerente con il concetto di:
+
+**famiglia + organizzazione + collaborazione**
+
+senza appesantire la pagina.
+
+Evitare fotografie stock generiche.
+
+---
+
+## 4. MOBILE FIRST
+
+Su smartphone la prima schermata deve essere particolarmente curata.
+
+Idealmente, senza dover scorrere molto, l'utente deve vedere:
+
+* FamilySync;
+* slogan;
+* breve descrizione;
+* elemento grafico principale;
+* pulsante `Inizia ora`;
+* pulsante `Accedi`.
+
+I pulsanti devono essere grandi e facilmente utilizzabili da touch.
+
+---
+
+## 5. AUTENTICAZIONE ESISTENTE
+
+La pagina Login/Registrazione già costruita deve rimanere disponibile separatamente.
+
+Mantenere le modalità già previste:
+
+* email/password;
+* recupero password;
+* Google;
+* Apple, se già predisposto/supportato.
+
+Non rompere o ricreare l'autenticazione esistente.
+
+---
+
+## 6. ROUTING
+
+Impostare idealmente questo comportamento:
+
+* `/` → Welcome Page
+* `/auth` → Login/Registrazione
+* utente autenticato con famiglia → Dashboard
+* utente autenticato senza famiglia → Onboarding
+
+Se un utente ha già una sessione valida, non deve essere obbligato a passare nuovamente dalla Welcome Page o dal login.
+
+---
+
+## 7. IMPORTANTE
+
+Questa è una modifica UX circoscritta.
+
+**NON:**
+
+* ricostruire il progetto;
+* modificare il database senza necessità;
+* cambiare le policy RLS;
+* riscrivere l'autenticazione;
+* eliminare funzionalità già funzionanti;
+* creare una seconda autenticazione parallela.
+
+Intervenire soltanto sul routing iniziale e sulla nuova Welcome Page.
+
+Al termine mostrami la nuova schermata iniziale e indicami brevemente quali file/componenti hai modificato.
