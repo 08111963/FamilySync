@@ -82,7 +82,7 @@ test('separa gli aggregati standard e vincolati e conserva solo metriche numeric
   assert.equal(constrained?.mode, 'constrained');
   assert.equal(constrained?.sampleCount, 1);
   assert.equal(constrained?.signal, null);
-  assert.equal(constrained?.averageModelCalls, 3);
+  assert.equal(constrained?.averageModelCalls, 2);
   assert.ok(!Object.keys(standard ?? {}).some((key) => /title|ingredient|preference|note|family/i.test(key)));
 });
 

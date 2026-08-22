@@ -37,6 +37,14 @@ const USER = {
 const SELECTED_PROFILE: MealPlanDietProfile = "vegetarian_gluten_free";
 const AI_STREAM_PATH = `/api/ai/${FAMILY_ID}/weekly-meal-plan/stream`;
 const SAVE_PATH = `/api/meal-plans/${FAMILY_ID}/meal-plans`;
+const DEMO_ITEMS = [{
+  date: "2030-03-04",
+  mealType: "lunch",
+  title: "Pranzo demo verificato",
+  description: "Pasto locale usato esclusivamente dallo stub E2E.",
+  ingredients: [{ name: "Riso", quantity: "80", unit: "g" }],
+  steps: ["Prepara.", "Cuoci.", "Servi."],
+}];
 
 /** Body ricevuti dallo stream AI sintetico: non arriva mai al backend. */
 const aiRequestBodies: unknown[] = [];
@@ -86,18 +94,37 @@ async function stubApi(pg: Page) {
     if (path === `/api/meal-plans/${FAMILY_ID}/meal-plans` && method === "GET") return json([]);
 
     if (path === AI_STREAM_PATH && method === "POST") {
-      aiRequestBodies.push(request.postDataJSON());
-      // Risposta NDJSON deliberatamente minima e locale: è la prova che la
-      // UI gestisce la richiesta senza consumo AI o backend reale.
+      const requestBody = request.postDataJSON() as {
+        requestId?: string;
+        preferences?: { dietProfile?: MealPlanDietProfile };
+      };
+      aiRequestBodies.push(requestBody);
+      const requestId = requestBody.requestId || "missing-request-id";
+      const dietProfile = requestBody.preferences?.dietProfile || "mediterranean";
+      // Lo stream manda prima un evento riferito a una richiesta precedente:
+      // l'interfaccia deve ignorarlo, quindi accettare solo l'evento correlato
+      // alla richiesta attiva e allo stesso profilo.
       return route.fulfill({
         status: 200,
         contentType: "application/x-ndjson",
-        body: `${JSON.stringify({
-          type: "done",
-          title: "Piano demo senza consumo AI",
-          weekStartDate: "2030-03-04",
-          items: [],
-        })}\n`,
+        body: [
+          JSON.stringify({
+            type: "done",
+            requestId: "mealplan-stale-response",
+            dietProfile: "mediterranean",
+            title: "Piano obsoleto da ignorare",
+            weekStartDate: "2030-03-04",
+            items: DEMO_ITEMS,
+          }),
+          JSON.stringify({
+            type: "done",
+            requestId,
+            dietProfile,
+            title: "Piano demo verificato",
+            weekStartDate: "2030-03-04",
+            items: DEMO_ITEMS,
+          }),
+        ].join("\n") + "\n",
       });
     }
 
@@ -207,7 +234,7 @@ describe("Selettore Dieta nel Piano Pasti", () => {
     );
   });
 
-  test("apre il dropdown, seleziona Vegetariana senza glutine e invia solo dietProfile allo stream intercettato", async () => {
+  test("apre il dropdown, seleziona Vegetariana senza glutine e ignora risposte stale", async () => {
     await page.getByTestId("mealplan-diet-selector").tap();
     for (const profile of MEAL_PLAN_DIET_PROFILES) {
       const option = page.getByTestId(`mealplan-diet-option-${profile}`);
@@ -226,14 +253,28 @@ describe("Selettore Dieta nel Piano Pasti", () => {
       "il valore scelto deve restare visibile dopo la chiusura del menu",
     );
 
+    // Il controllo staleness è rieseguito in background: può aprire di nuovo
+    // il banner tra la scelta del profilo e il tap di generazione.
+    await dismissWebUpdateBanner(page);
     await page.getByText("Genera Piano").first().tap();
     await waitForAiRequest();
 
-    const body = aiRequestBodies[0] as { preferences?: unknown };
+    const body = aiRequestBodies[0] as { requestId?: unknown; preferences?: unknown };
     assert.deepEqual(
       body.preferences,
       { dietProfile: SELECTED_PROFILE },
       "la richiesta AI deve contenere esclusivamente il dietProfile selezionato nelle preferences",
+    );
+    assert.match(
+      String(body.requestId),
+      /^mealplan-\d+-\d+$/,
+      "ogni stream deve dichiarare un requestId opaco",
+    );
+    await page.getByText("Piano demo verificato").waitFor({ timeout: 10_000 });
+    assert.equal(
+      await page.getByText("Piano obsoleto da ignorare").count(),
+      0,
+      "una risposta con requestId o profilo diverso non deve aggiornare l'anteprima",
     );
     assert.equal(
       savePostBodies.length,

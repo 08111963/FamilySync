@@ -9,15 +9,16 @@ import { sendMealPlanAllergenRegressionAlertEmail } from '../lib/email';
 import {
   ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS,
   ALLERGEN_MONITOR_MAX_MODEL_CALLS,
-  ALLERGEN_MONITOR_SYNTHETIC_ALLERGEN,
+  ALLERGEN_MONITOR_DIET_PROFILE,
   isAllergenMonitorEnabled,
   runMealPlanAllergenMonitorOnce,
 } from '../lib/meal-plan-allergen-monitor';
 
-test('sentinella: usa solo allergene sintetico e registra il primo tentativo conforme', async () => {
+test('sentinella: usa solo il profilo chiuso sintetico e registra il primo tentativo conforme', async () => {
   const result = await runMealPlanAllergenMonitorOnce({
     generate: async (context) => {
-      assert.equal(context.preferences?.allergies, ALLERGEN_MONITOR_SYNTHETIC_ALLERGEN);
+      assert.equal(context.preferences?.dietProfile, ALLERGEN_MONITOR_DIET_PROFILE);
+      assert.equal(context.preferences?.allergies, undefined);
       assert.equal(context.preferences?.mealsPerDay, 2);
       assert.equal(context.maxConstraintAttempts, ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS);
       assert.equal(context.maxModelCalls, ALLERGEN_MONITOR_MAX_MODEL_CALLS);
@@ -37,7 +38,7 @@ test('sentinella: un tentativo corretto viene registrato ma non allerta', async 
   let notifications = 0;
   const result = await runMealPlanAllergenMonitorOnce({
     generate: async (context) => {
-      context.onConstraintViolation?.({ attempt: 1, violationCodes: ['peanut'] });
+      context.onConstraintViolation?.({ attempt: 1, violationCodes: ['gluten'] });
       return { title: 'Piano', items: [] };
     },
     notifyRegression: async () => { notifications++; },
@@ -46,7 +47,7 @@ test('sentinella: un tentativo corretto viene registrato ma non allerta', async 
   assert.deepEqual(result, {
     outcome: 'recovered',
     attempts: 2,
-    violationCodes: ['peanut'],
+    violationCodes: ['gluten'],
   });
   assert.equal(notifications, 0);
 });
@@ -56,7 +57,7 @@ test('sentinella: avvisa solo dopo la regressione confermata da tutti i tentativ
   const result = await runMealPlanAllergenMonitorOnce({
     generate: async (context) => {
       for (let attempt = 1; attempt <= ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS; attempt++) {
-        context.onConstraintViolation?.({ attempt, violationCodes: ['peanut', 'peanut'] });
+        context.onConstraintViolation?.({ attempt, violationCodes: ['gluten', 'gluten'] });
       }
       throw new AiError('AI_CONSTRAINT_VIOLATION');
     },
@@ -66,9 +67,9 @@ test('sentinella: avvisa solo dopo la regressione confermata da tutti i tentativ
   assert.deepEqual(result, {
     outcome: 'regression_confirmed',
     attempts: 2,
-    violationCodes: ['peanut'],
+    violationCodes: ['gluten'],
   });
-  assert.deepEqual(notifications, [{ attempts: 2, violationCodes: ['peanut'] }]);
+  assert.deepEqual(notifications, [{ attempts: 2, violationCodes: ['gluten'] }]);
 });
 
 test('sentinella: errori del provider non sono regressioni e non inviano alert', async () => {
@@ -86,7 +87,7 @@ test('sentinella: errori del provider non sono regressioni e non inviano alert',
   assert.equal(notifications, 0);
 });
 
-test('sentinella: un errore di vincolo diverso dall’allergene sintetico non allerta', async () => {
+test('sentinella: un errore di vincolo diverso dal profilo sintetico non allerta', async () => {
   let notifications = 0;
   const result = await runMealPlanAllergenMonitorOnce({
     generate: async (context) => {
@@ -114,29 +115,45 @@ test('sentinella: resta opt-in e ha un budget massimo rigido documentato', () =>
     process.env.MEAL_PLAN_ALLERGEN_MONITOR = ' TRUE ';
     assert.equal(isAllergenMonitorEnabled(), true);
     assert.equal(ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS, 2);
-    assert.equal(ALLERGEN_MONITOR_MAX_MODEL_CALLS, 14);
+    assert.equal(ALLERGEN_MONITOR_MAX_MODEL_CALLS, 2);
   } finally {
     if (previous === undefined) delete process.env.MEAL_PLAN_ALLERGEN_MONITOR;
     else process.env.MEAL_PLAN_ALLERGEN_MONITOR = previous;
   }
 });
 
-test('sentinella integrata: validatore reale, 14 chiamate e un solo log minimale', async (t) => {
+test('sentinella integrata: validatore reale, due chiamate settimanali e un solo log minimale', async (t) => {
   let modelCalls = 0;
   const fakeClient = {
     chat: {
       completions: {
-        create: async (request: { messages: Array<{ role: string; content: string }> }) => {
+        create: async (request: {
+          messages: Array<{ role: string; content: string }>;
+          response_format: {
+            json_schema: {
+              schema: {
+                properties: {
+                  items: {
+                    items: { properties: { mealType: { enum: Array<'breakfast' | 'lunch' | 'dinner'> } } };
+                  };
+                };
+              };
+            };
+          };
+        }) => {
           modelCalls++;
           const systemPrompt = request.messages.find((message) => message.role === 'system')?.content || '';
           const datesText = systemPrompt.match(/SOLO per questi giorni: ([0-9,\- ]+)\./)?.[1] || '';
           const dates = datesText.split(',').map((date) => date.trim()).filter(Boolean);
-          const items = dates.flatMap((date) => ['lunch', 'dinner'].map((mealType) => ({
+          const mealTypes = request.response_format.json_schema.schema.properties.items.items.properties.mealType.enum;
+          const items = dates.flatMap((date) => mealTypes.map((mealType) => ({
             date,
             mealType,
-            title: `Piatto sintetico con arachidi ${mealType}`,
+            title: mealType === 'breakfast'
+              ? `Colazione dolce sintetica con pane ${date}`
+              : `Pasto sintetico con pane ${mealType} ${date}`,
             description: 'Ricetta sintetica completa per la sentinella.',
-            ingredients: [{ name: 'Arachidi', quantity: '20', unit: 'g' }],
+            ingredients: [{ name: 'Pane', quantity: '20', unit: 'g' }],
             steps: [
               'Prepara gli ingredienti indicati.',
               'Cuoci il piatto con cura.',
@@ -182,11 +199,11 @@ test('sentinella integrata: validatore reale, 14 chiamate e un solo log minimale
   assert.deepEqual(result, {
     outcome: 'regression_confirmed',
     attempts: 2,
-    violationCodes: ['peanut'],
+    violationCodes: ['gluten'],
   });
-  assert.equal(modelCalls, ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS * 7);
+  assert.equal(modelCalls, ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS);
   assert.ok(modelCalls <= ALLERGEN_MONITOR_MAX_MODEL_CALLS);
-  assert.deepEqual(notifications, [{ attempts: 2, violationCodes: ['peanut'] }]);
+  assert.deepEqual(notifications, [{ attempts: 2, violationCodes: ['gluten'] }]);
   assert.equal(emitted.length, 1, 'nessun log interno del generatore deve uscire');
   assert.equal(emitted[0]?.level, 'warn');
   const message = String(emitted[0]?.args[0] || '');
@@ -201,7 +218,7 @@ test('sentinella integrata: validatore reale, 14 chiamate e un solo log minimale
     tag: 'MEAL_PLAN_ALLERGEN_MONITOR',
     outcome: 'regression_confirmed',
     attempts: 2,
-    violationCodes: ['peanut'],
+    violationCodes: ['gluten'],
   });
 });
 
@@ -216,13 +233,13 @@ test('notifica allergeni: configurazioni email mancanti non aggiungono log', asy
     delete process.env.RESEND_API_KEY;
     await sendMealPlanAllergenRegressionAlertEmail({
       attempts: 3,
-      violationCodes: ['peanut'],
+      violationCodes: ['gluten'],
     });
 
     process.env.APP_OWNER_EMAILS = 'owner@test.dev';
     await sendMealPlanAllergenRegressionAlertEmail({
       attempts: 3,
-      violationCodes: ['peanut'],
+      violationCodes: ['gluten'],
     });
     assert.deepEqual(emitted, []);
   } finally {

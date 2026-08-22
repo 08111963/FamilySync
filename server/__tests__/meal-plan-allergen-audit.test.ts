@@ -200,8 +200,8 @@ test("body reale → route parser → prompt → mock → piano finale: ogni die
     assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS, `${scenario.name}: budget massimo invariato`);
     assert.equal(
       calls.length,
-      7,
-      `${scenario.name}: chiamate mock previste senza retry`,
+      1,
+      `${scenario.name}: una chiamata settimanale prevista senza repair`,
     );
     assert.ok(calls.every((call) =>
       new RegExp(`Pattern alimentari canonici applicati:.*\\b${scenario.dietaryPattern}\\b`, "i").test(call.prompt),

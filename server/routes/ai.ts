@@ -1015,7 +1015,12 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
   const familyId = getParam(req, 'familyId');
   const userId = req.user!.userId;
   const ai = resolveAiRequestContext(req, "weekly-meal-plan-stream");
-  const { weekStartDate, preferences, planVariant: rawPlanVariant } = req.body || {};
+  const { weekStartDate, preferences, planVariant: rawPlanVariant, requestId: rawRequestId } = req.body || {};
+  // Il client può correlare il proprio identificatore opaco; un input non
+  // valido non viene riflesso e riceve un UUID server-side sicuro.
+  const requestId = typeof rawRequestId === "string" && /^[A-Za-z0-9_-]{12,160}$/.test(rawRequestId)
+    ? rawRequestId
+    : crypto.randomUUID();
   const planVariant = rawPlanVariant === 2 ? 2 : 1;
 
   if (!weekStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate)) {
@@ -1063,11 +1068,13 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader("X-Meal-Plan-Request-Id", requestId);
     res.flushHeaders();
 
+    const dietProfile = preparedPreferences.preferences?.dietProfile || "mediterranean";
     const writeStatus = (message: string) => {
       if (clientClosed) return;
-      try { res.write(JSON.stringify({ type: 'status', message }) + '\n'); } catch {}
+      try { res.write(JSON.stringify({ type: 'status', requestId, dietProfile, message }) + '\n'); } catch {}
     };
     writeStatus('Preparo un piano pasti verificato.');
 
@@ -1092,15 +1099,16 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       itemsCount: plan.items.length,
     });
 
-    res.write(JSON.stringify({ type: 'items', items: plan.items }) + '\n');
+    res.write(JSON.stringify({ type: 'items', requestId, dietProfile, items: plan.items }) + '\n');
     res.write(JSON.stringify({
       type: 'done',
+      requestId,
+      dietProfile,
       title: plan.title || "Piano Settimanale",
       weekStartDate,
       itemsCount: plan.items.length,
-      // Lista FINALE dopo la ripassata anti-doppioni: i piatti erano già stati
-      // inviati in streaming PRIMA delle sostituzioni, quindi il client deve
-      // rimpiazzare ciò che ha accumulato con questa versione corretta.
+      // Lista finale verificata: l'unica chiamata può avere avuto un repair
+      // interno, ma nessun output non validato è stato mai inviato al client.
       items: plan.items,
     }) + '\n');
     res.end();
@@ -1120,7 +1128,14 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       sendAiError(res, error, "Errore nella generazione del piano pasti");
     } else {
       const message = isAiError(error) ? error.userMessage : "Errore nella generazione del piano pasti";
-      try { res.write(JSON.stringify({ type: 'error', message }) + '\n'); } catch {}
+      try {
+        res.write(JSON.stringify({
+          type: 'error',
+          requestId,
+          dietProfile: preferences?.dietProfile || "mediterranean",
+          message,
+        }) + '\n');
+      } catch {}
       res.end();
     }
   } finally {

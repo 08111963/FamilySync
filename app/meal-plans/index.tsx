@@ -65,6 +65,7 @@ interface AiMealPlanResponse {
   title: string;
   weekStartDate: string;
   items: MealPlanItem[];
+  requestId?: string;
   preferences?: {
     dietProfile?: MealPlanDietProfile;
     notes?: string;
@@ -553,6 +554,7 @@ export default function MealPlansScreen() {
   const fetchMealPlanStream = async (opts?: { voiceNotes?: string; speak?: boolean; profile?: MealPlanDietProfile }) => {
     if (!currentFamily || generating || generatingAlt) return;
     const seq = ++streamSeqRef.current;
+    const requestId = `mealplan-${Date.now()}-${seq}`;
     const isActive = () => streamSeqRef.current === seq;
     setGenerating(true);
     setAiPlans([]);
@@ -567,8 +569,10 @@ export default function MealPlansScreen() {
       dietProfile: opts?.profile ?? dietProfileRef.current,
     };
     if (notes) preferences.notes = notes;
-    const body: any = { weekStartDate: weekStart };
+    const body: any = { weekStartDate: weekStart, requestId };
     if (Object.keys(preferences).length > 0) body.preferences = preferences;
+    const isMatchingResponse = (obj: any) =>
+      obj?.requestId === requestId && obj?.dietProfile === preferences.dietProfile;
 
     const collectedItems: MealPlanItem[] = [];
     let doneTitle = "Piano Settimanale";
@@ -579,7 +583,7 @@ export default function MealPlansScreen() {
         `/api/ai/${currentFamily.id}/weekly-meal-plan/stream`,
         body,
         (obj) => {
-          if (!isActive()) return;
+          if (!isActive() || !isMatchingResponse(obj)) return;
           if (obj?.type === "error") {
             streamErrorMessage = typeof obj.message === "string"
               ? obj.message
@@ -594,6 +598,7 @@ export default function MealPlansScreen() {
                 title: "Piano Settimanale",
                 weekStartDate: weekStart,
                 items: obj.items,
+                        requestId,
                 preferences,
               }]);
             } else {
@@ -603,6 +608,7 @@ export default function MealPlansScreen() {
                     title: "Piano Settimanale",
                     weekStartDate: weekStart,
                     items: obj.items,
+                    requestId,
                     preferences,
                   }];
                 }
@@ -626,6 +632,7 @@ export default function MealPlansScreen() {
                        title: obj.title || doneTitle,
                        weekStartDate: obj.weekStartDate || weekStart,
                        items: finalItems,
+                        requestId,
                        preferences,
                      }]
                    : prev;
@@ -637,6 +644,7 @@ export default function MealPlansScreen() {
                   title: obj.title || first.title,
                   weekStartDate: obj.weekStartDate || weekStart,
                   items: finalItems ?? first.items,
+                  requestId,
                 },
                 ...prev.slice(1),
               ];
@@ -672,6 +680,7 @@ export default function MealPlansScreen() {
   const fetchAlternativeStream = async (opts?: { speak?: boolean; profile?: MealPlanDietProfile }) => {
     if (!currentFamily || generating || generatingAlt) return;
     const seq = ++streamSeqRef.current;
+    const requestId = `mealplan-${Date.now()}-${seq}`;
     const isActive = () => streamSeqRef.current === seq;
     setGeneratingAlt(true);
     setAiDisabledError(false);
@@ -682,8 +691,10 @@ export default function MealPlansScreen() {
       dietProfile: opts?.profile ?? dietProfileRef.current,
     };
     if (voicePrefs.trim()) preferences.notes = voicePrefs.trim();
-    const body: any = { weekStartDate: weekStart, planVariant: 2 };
+    const body: any = { weekStartDate: weekStart, planVariant: 2, requestId };
     if (Object.keys(preferences).length > 0) body.preferences = preferences;
+    const isMatchingResponse = (obj: any) =>
+      obj?.requestId === requestId && obj?.dietProfile === preferences.dietProfile;
 
     let started = false;
     let streamErrorMessage: string | null = null;
@@ -693,7 +704,7 @@ export default function MealPlansScreen() {
         `/api/ai/${currentFamily.id}/weekly-meal-plan/stream`,
         body,
         (obj) => {
-          if (!isActive()) return;
+          if (!isActive() || !isMatchingResponse(obj)) return;
           if (obj?.type === "error") {
             streamErrorMessage = typeof obj.message === "string"
               ? obj.message
@@ -710,6 +721,7 @@ export default function MealPlansScreen() {
                   title: "Piano B - Creativo",
                   weekStartDate: weekStart,
                   items: obj.items as MealPlanItem[],
+                  requestId,
                   preferences,
                 };
                 return planA ? [planA, planB] : [planB];

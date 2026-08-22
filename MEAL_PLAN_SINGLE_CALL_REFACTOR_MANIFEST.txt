@@ -1,0 +1,33 @@
+FamilySync — manifest consegna Piano Pasti single-call
+Data: 2026-08-22
+
+CONTENUTO ARCHIVIO
+==================
+MEAL_PLAN_SINGLE_CALL_REFACTOR_REPORT.md
+MEAL_PLAN_SINGLE_CALL_REFACTOR_MANIFEST.txt
+app/meal-plans/index.tsx
+e2e/meal-plan-diet-selector.test.ts
+server/lib/openai.ts
+server/routes/ai.ts
+server/lib/meal-plan-allergen-monitor.ts
+server/lib/meal-plan-latency-monitor.ts
+server/__tests__/meal-plan-generation.test.ts
+server/__tests__/meal-plan-allergen-audit.test.ts
+server/__tests__/meal-plan-allergen-monitor.test.ts
+server/__tests__/meal-plan-latency-monitor.test.ts
+
+ESCLUSIONI
+==========
+Nessun .env, segreto, token, credenziale, database, node_modules,
+static-build/, web-build/ o altro artefatto generato è incluso.
+Non sono incluse migrazioni e non è stato effettuato alcun deploy.
+
+VERIFICHE
+=========
+- npm run typecheck: PASS
+- npm run test:ai: PASS
+- test monitor/latency focalizzati: PASS
+- e2e/meal-plan-diet-selector.test.ts: PASS
+- git diff --check: PASS
+- verifica archivio con unzip -t: eseguita dopo la creazione
+- scansione nomi/contenuti sensibili: eseguita dopo la creazione

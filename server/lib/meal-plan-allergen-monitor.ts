@@ -10,8 +10,8 @@ import { claimScheduledJobRun } from './scheduled-jobs';
 /**
  * Sentinella periodica contro regressioni del modello sui vincoli allergeni.
  *
- * Genera esclusivamente un piano sintetico con l'allergene supportato
- * "arachidi". Non registra né passa al logging preferenze reali, titoli,
+ * Genera esclusivamente un piano sintetico con il profilo chiuso
+ * "mediterranea senza glutine". Non registra né passa al logging preferenze reali, titoli,
  * ingredienti o contenuti dei pasti: conserva solo l'esito, i tentativi e i
  * codici emessi da validateMealPlanConstraints, cioè lo stesso validatore che
  * protegge i piani utente.
@@ -25,17 +25,16 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000;
 
-/** Un solo allergene noto e supportato: nessun dato sanitario reale. */
-export const ALLERGEN_MONITOR_SYNTHETIC_ALLERGEN = 'Arachidi';
-export const ALLERGEN_MONITOR_EXPECTED_VIOLATION_CODE = 'peanut';
+/** Un solo profilo chiuso noto: nessun dato sanitario reale o campo libero. */
+export const ALLERGEN_MONITOR_DIET_PROFILE = 'mediterranean_gluten_free' as const;
+export const ALLERGEN_MONITOR_EXPECTED_VIOLATION_CODE = 'gluten';
 /** Massimo tentativi completi del generatore; non configurabile da env. */
 export const ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS = 2;
 /**
- * Il monitor usa due pasti giornalieri, quindi ogni tentativo completo usa
- * 7 chiamate. La rigenerazione completa per sola varietà non esiste:
- * 2 × 7 = 14, esattamente il cap settimanale difensivo.
+ * Il monitor usa lo stesso contratto settimanale dell'app: un tentativo
+ * completo è una sola chiamata e può avere un solo repair globale.
  */
-export const ALLERGEN_MONITOR_MAX_MODEL_CALLS = 14;
+export const ALLERGEN_MONITOR_MAX_MODEL_CALLS = 2;
 export const ALLERGEN_MONITOR_JOB_NAME = 'meal_plan_allergen_weekly';
 
 export type MealPlanAllergenMonitorOutcome =
@@ -83,7 +82,7 @@ export async function runMealPlanAllergenMonitorOnce(options?: {
       familySize: 4,
       weekStartDate: nextMondayIso(),
       preferences: {
-        allergies: ALLERGEN_MONITOR_SYNTHETIC_ALLERGEN,
+        dietProfile: ALLERGEN_MONITOR_DIET_PROFILE,
         mealsPerDay: 2,
       },
       maxConstraintAttempts: ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS,

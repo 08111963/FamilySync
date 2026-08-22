@@ -7,10 +7,9 @@ import { sendMealPlanLatencyAlertEmail } from './email';
 /**
  * Budget operativi per una singola richiesta del provider.
  *
- * Il percorso standard usa una richiesta compatta; quello con vincoli usa una
- * richiesta per tipo di pasto in parallelo. I retry sono campioni separati:
- * superare il budget di chiamate è quindi un segnale utile anche quando la
- * risposta finale viene comunque prodotta.
+ * Il percorso standard e quello con vincoli usano entrambi un contratto
+ * settimanale. I retry sono campioni separati: il percorso vincolato può
+ * effettuare al massimo un repair globale.
  */
 export const MEAL_PLAN_LATENCY_BUDGETS = {
   standard: {
@@ -19,7 +18,7 @@ export const MEAL_PLAN_LATENCY_BUDGETS = {
   },
   constrained: {
     durationMs: 60_000,
-    modelCalls: 3,
+    modelCalls: 2,
   },
 } as const;
 
@@ -33,8 +32,8 @@ export interface MealPlanLatencySample {
   durationMs: number;
   modelCalls: number;
   /**
-   * Budget della configurazione corrente. Il percorso vincolato può avere
-   * 2, 3 o 4 tipi di pasto; se assente resta il default storico di 3.
+   * Budget della configurazione corrente. Il percorso vincolato può avere un
+   * tentativo iniziale e un solo repair; se assente resta il default di 2.
    */
   modelCallBudget?: number;
 }

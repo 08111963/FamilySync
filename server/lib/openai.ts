@@ -755,30 +755,42 @@ function reserveMealPlanModelCall(budget?: MealPlanModelCallBudget): void {
 }
 
 function mealPlanAttemptModelCallCost(context: MealPlanGenerationContext): number {
-  const mealsPerDay = context.preferences?.mealsPerDay || 3;
-  const includesBreakfast = mealsPerDay >= 3;
-  const hasMainRequest = mealsPerDay >= 2;
-  const usesDeterministicLactoseBreakfasts = includesBreakfast
-    && mealPlanHasExclusion(context.preferences, "lactose")
-    && !mealPlanRequiresGlutenFree(context.preferences);
-  // Colazione, pranzo e cena dello stesso giorno condividono una sola risposta
-  // piccola. Le colazioni senza lattosio restano determinate, ma il blocco
-  // pranzo/cena giornaliero esiste sempre.
-  return hasMainRequest || (includesBreakfast && !usesDeterministicLactoseBreakfasts)
-    ? 7
-    : 0;
+  // Una generazione applicativa corrisponde sempre a una richiesta JSON per
+  // l'intera settimana. Il budget resta a 28 per compatibilità e difesa in
+  // profondità, ma il percorso utente ne può avviare al massimo due.
+  void context;
+  return 1;
 }
 interface MealPlanGenerationAttemptContext extends MealPlanGenerationContext {
   constraintCorrection?: string;
   qualityCorrection?: string;
+  /** JSON del tentativo precedente, disponibile solo per l'unico repair. */
+  previousPlanJson?: string;
   generationAttempt: number;
   modelCallBudget?: MealPlanModelCallBudget;
 }
 
 class MealPlanConstraintRetryError extends Error {
-  constructor(readonly violations: MealPlanConstraintViolation[]) {
+  constructor(
+    readonly violations: MealPlanConstraintViolation[],
+    readonly items: MealPlanSuggestion["items"],
+  ) {
     super("Il tentativo di generazione non rispetta i vincoli alimentari");
     this.name = "MealPlanConstraintRetryError";
+  }
+}
+
+/**
+ * Errore recuperabile della risposta completa. Il JSON precedente viene
+ * consegnato una sola volta al repair, senza mai arrivare al client.
+ */
+class MealPlanRepairError extends Error {
+  constructor(
+    readonly items: MealPlanSuggestion["items"],
+    readonly correction: string,
+  ) {
+    super("Il piano completo richiede una correzione mirata");
+    this.name = "MealPlanRepairError";
   }
 }
 
@@ -1520,12 +1532,11 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     : constrainedPlan
       ? compatibleBreakfastThemes
       : breakfastThemes;
-  const usesDeterministicLactoseBreakfasts = lactoseFreeRequired
-    && !glutenFreeRequired
-    && mealTypes.includes("breakfast");
-  const deterministicBreakfasts = usesDeterministicLactoseBreakfasts
-    ? buildLactoseSafeBreakfasts(dates, context.familySize, glutenFreeRequired)
-    : [];
+  // Anche le colazioni senza lattosio fanno parte dell'unico contratto
+  // settimanale. La lista chiusa e la validazione locale restano la garanzia
+  // di sicurezza; non aggiungiamo più pasti deterministici accanto all'output
+  // AI perché renderebbero il JSON da 21 elementi ambiguo.
+  const deterministicBreakfasts: MealPlanSuggestion["items"] = [];
 
   type WeeklyMealRequest = {
     dates: string[];
@@ -1553,41 +1564,34 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     variant === 2 ? 1 : 0,
     { requireRedMeat: requiresMediterraneanRedMeat },
   );
-  // Una risposta settimanale da sette ricette dettagliate viene talvolta
-  // troncata dal provider: dividiamo quindi in sette richieste GIORNALIERE.
-  // Colazione/pranzo/cena dello stesso giorno restano nello stesso blocco: i
-  // profili compatibili usano l'unione delle rispettive liste sicure e le sette
-  // richieste vengono avviate in parallelo. Questo evita sette onde seriali
-  // che facevano superare il minuto di attesa.
-  const weeklyRequests: WeeklyMealRequest[] = dates.flatMap((date, dayIndex) => {
-    const requestMealTypes = mealTypes.filter((mealType) =>
-      mealType !== "breakfast" || !usesDeterministicLactoseBreakfasts);
-    if (requestMealTypes.length === 0) return [];
-    const safeBreakfastIngredients = compatibleMealIngredients(context.preferences, "breakfast")
-      .filter((ingredient) => glutenFreeRequired || !ingredient.includes("senza glutine"));
-    const safeIngredients = allergenSafePlan
-      ? Array.from(new Set([
-          ...safeBreakfastIngredients,
-          ...compatibleMainIngredients,
-        ]))
-      : undefined;
-    return [{
-      dates: [date],
-      mealTypes: requestMealTypes,
-      ingredientNames: safeIngredients,
-      label: `${date}-daily`,
-      themeHint: `${activeDayThemes[dayIndex]} ${activeDinnerThemes[dayIndex]}`,
-      breakfastHint: requestMealTypes.includes("breakfast")
-        ? activeBreakfastThemes[dayIndex]
-        : undefined,
-      lunchFamilyTarget: requestMealTypes.includes("lunch")
-        ? lunchFamilyTargets[dayIndex]
-        : undefined,
-      lunchSemanticTarget: requestMealTypes.includes("lunch")
-        ? lunchSemanticTargets[dayIndex]
-        : undefined,
-    }];
-  });
+  // Il blueprint è totalmente locale: prima della chiamata decidiamo la
+  // rotazione di famiglie, proteine/preparazioni, colazioni e cene. Il modello
+  // riceve poi una sola richiesta con i 21 pasti della settimana, non sette
+  // richieste indipendenti che potrebbero contraddirsi tra loro.
+  const safeBreakfastIngredients = compatibleMealIngredients(context.preferences, "breakfast")
+    .filter((ingredient) => glutenFreeRequired || !ingredient.includes("senza glutine"));
+  const safeIngredients = allergenSafePlan
+    ? Array.from(new Set([...safeBreakfastIngredients, ...compatibleMainIngredients]))
+    : undefined;
+  const weeklyBlueprint = dates.map((date, dayIndex) => {
+    const breakfast = mealTypes.includes("breakfast")
+      ? `colazione: ${activeBreakfastThemes[dayIndex]}`
+      : "";
+    const lunch = mealTypes.includes("lunch")
+      ? `pranzo: famiglia ${lunchFamilyTargets[dayIndex] || "compatibile"}, proteina ${lunchSemanticTargets[dayIndex]?.mainProtein || "compatibile"}, preparazione ${lunchSemanticTargets[dayIndex]?.preparation || "diversa"}`
+      : "";
+    const dinner = mealTypes.includes("dinner")
+      ? `cena: ${activeDinnerThemes[dayIndex]}`
+      : "";
+    return `- ${date}: ${[breakfast, lunch, dinner].filter(Boolean).join("; ")}.`;
+  }).join("\n");
+  const weeklyRequests: WeeklyMealRequest[] = [{
+    dates,
+    mealTypes,
+    ingredientNames: safeIngredients,
+    label: "full-week",
+    themeHint: weeklyBlueprint,
+  }];
 
   async function fetchChunk(
     request: WeeklyMealRequest,
@@ -1657,8 +1661,8 @@ ${constrainedRecipeReferenceRule}
   ${completeDinnerRule}
      - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
-- ${variantHint}${themeHint ? `\n- Per pranzo e cena di questo giorno segui questo orientamento: ${themeHint}.` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione di questo giorno realizza questa combinazione concreta e non sostituirla con una colazione generica: ${breakfastHint}.` : ''}
- ${constraintRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}
+ - ${variantHint}${themeHint ? `\n- BLUEPRINT SETTIMANALE LOCALE: segui esattamente questi obiettivi già pianificati, senza scambiarli tra date:\n${themeHint}` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione indicata realizza questa combinazione concreta: ${breakfastHint}.` : ''}
+  ${constraintRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}${context.previousPlanJson ? `\n- JSON DEL PIANO PRECEDENTE DA CORREGGERE (non copiare gli errori; conserva ogni elemento già valido e modifica soltanto quelli necessari): ${context.previousPlanJson}` : ""}
 - Rispondi SOLO con JSON: ${responseContract}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 
@@ -1677,7 +1681,10 @@ ${constrainedRecipeReferenceRule}
         itemCount: chunkDates.length * mealsForRequest,
         ingredientNames: request.ingredientNames,
       }),
-      max_completion_tokens: 3000,
+      // 21 ricette complete richiedono più spazio di un vecchio blocco
+      // giornaliero. Il contratto resta strutturato e la risposta viene sempre
+      // validata integralmente prima della consegna.
+      max_completion_tokens: 7000,
     });
 
     const content = response.choices[0].message.content || '{"items":[]}';
@@ -1756,9 +1763,12 @@ ${constrainedRecipeReferenceRule}
   const expectedMeals = dates.length * mealTypes.length;
   const seenSlots = new Set(filtered.map((item) => `${item.date}/${item.mealType}`));
   if (filtered.length !== expectedMeals || seenSlots.size !== expectedMeals) {
-    throw new AiError(
-      "AI_BAD_RESPONSE",
-      `Piano pasti incompleto: ricevuti ${filtered.length} pasti, attesi ${expectedMeals}`,
+    throw new MealPlanRepairError(
+      filtered,
+      buildMealPlanQualityCorrection(
+        new AiError("AI_BAD_RESPONSE", `Piano pasti incompleto: ricevuti ${filtered.length} pasti, attesi ${expectedMeals}`),
+        2,
+      ),
     );
   }
   const unsuitableBreakfast = filtered.map((item) => {
@@ -1779,9 +1789,12 @@ ${constrainedRecipeReferenceRule}
         term: unsuitableBreakfast.term,
       }));
     }
-    throw new AiError(
-      "AI_BAD_RESPONSE",
-      "La risposta AI contiene un pasto non adatto alla colazione",
+    throw new MealPlanRepairError(
+      filtered,
+      buildMealPlanQualityCorrection(
+        new AiError("AI_BAD_RESPONSE", "La risposta AI contiene un pasto non adatto alla colazione"),
+        2,
+      ),
     );
   }
   const incompleteMeal = filtered.find((item) =>
@@ -1812,9 +1825,12 @@ ${constrainedRecipeReferenceRule}
         fields: incompleteFields,
       }));
     }
-    throw new AiError(
-      "AI_BAD_RESPONSE",
-      "La risposta AI contiene un pasto incompleto",
+    throw new MealPlanRepairError(
+      filtered,
+      buildMealPlanQualityCorrection(
+        new AiError("AI_BAD_RESPONSE", "La risposta AI contiene un pasto incompleto"),
+        2,
+      ),
     );
   }
   const unexpectedWholegrain = !glutenFreeRequired && !wantsWholegrain
@@ -1833,9 +1849,12 @@ ${constrainedRecipeReferenceRule}
         mealType: unexpectedWholegrain.mealType,
       }));
     }
-    throw new AiError(
-      "AI_BAD_RESPONSE",
-      "La risposta AI usa varianti integrali non richieste",
+    throw new MealPlanRepairError(
+      filtered,
+      buildMealPlanQualityCorrection(
+        new AiError("AI_BAD_RESPONSE", "La risposta AI usa varianti integrali non richieste"),
+        2,
+      ),
     );
   }
   context.onStatus?.("Controllo che ogni pasto rispetti i vincoli alimentari.");
@@ -1864,7 +1883,7 @@ ${constrainedRecipeReferenceRule}
     } catch {
       /* callback osservativa: ignora errori */
     }
-    throw new MealPlanConstraintRetryError(constraintViolations);
+    throw new MealPlanConstraintRetryError(constraintViolations, filtered);
   }
   const redMeatEvaluation = evaluateMealPlanRedMeat(filtered);
   if (requiresMediterraneanRedMeat && !redMeatEvaluation.hasRedMeat) {
@@ -1880,122 +1899,28 @@ ${constrainedRecipeReferenceRule}
         redMeatMealCount: redMeatEvaluation.redMeatMealCount,
       }));
     }
-    throw new AiError(
-      "AI_CONSTRAINT_VIOLATION",
-      "Il piano mediterraneo non include una carne rossa tra pranzo e cena",
+    throw new MealPlanRepairError(
+      filtered,
+      `- CORREZIONE OBBLIGATORIA: conserva tutti i pasti già compatibili e modifica soltanto quanto necessario per includere almeno un pranzo o una cena con manzo, vitello o agnello compatibile. Non rimuovere alcun vincolo alimentare.`,
     );
   }
 
   const repeatedSlots = findRepeatedMealSlots(disambiguateMealTitles(filtered));
-  let finalItems = disambiguateMealTitles(filtered);
-  if (repeatedSlots.length > 0 && repeatedSlots.length <= MAX_LOCAL_VARIETY_REPAIRS) {
-    const locallyRepaired = [...filtered];
-    let localRepairFailed = false;
-
-    for (const slot of repeatedSlots) {
-      if (context.modelCallBudget && !canAffordMealPlanModelCalls(context.modelCallBudget, 1)) {
-        // Sicurezza e completezza sono già state verificate. Non iniziare una
-        // correzione cosmetica quando non c'è più budget: il piano sicuro può
-        // essere consegnato con l'avviso di varietà, senza costi aggiuntivi.
-        localRepairFailed = true;
-        break;
-      }
-      const dayIndex = dates.indexOf(slot.date);
-      const forbiddenTitles = locallyRepaired
-        .filter((item) =>
-          item.mealType === slot.mealType
-          && !(item.date === slot.date && item.mealType === slot.mealType))
-        .map((item) => item.title)
-        .slice(0, 12);
-      const repairRequest: WeeklyMealRequest = {
-        dates: [slot.date],
-        mealTypes: [slot.mealType],
-        ingredientNames: slot.mealType === "breakfast"
-          ? compatibleMealIngredients(context.preferences, "breakfast")
-          : allergenSafePlan
-            ? compatibleMealIngredients(context.preferences, "main")
-            : undefined,
-        label: `${slot.date}-${slot.mealType}-variety-repair`,
-        lunchFamilyTarget: slot.mealType === "lunch"
-          ? lunchFamilyTargets[dayIndex]
-          : undefined,
-        lunchSemanticTarget: slot.mealType === "lunch"
-          ? lunchSemanticTargets[dayIndex]
-          : undefined,
-      };
-      const localCorrection = `
-- CORREZIONE VARIETÀ LOCALE OBBLIGATORIA: genera un solo ${slot.mealType} per ${slot.date}, completo e compatibile.
-- Il titolo e la ricetta devono essere realmente diversi dai pasti già presenti. Non usare questi titoli: ${forbiddenTitles.join("; ")}.${slot.semanticSignature ? ` Non ripetere questa firma semantica: ${slot.semanticSignature}.` : ""}`;
-      try {
-        const replacements = await fetchChunk(
-          repairRequest,
-          slot.mealType === "breakfast"
-            ? undefined
-            : `${activeDayThemes[dayIndex]} ${activeDinnerThemes[dayIndex]}`,
-          slot.mealType === "breakfast" ? activeBreakfastThemes[dayIndex] : undefined,
-          localCorrection,
-          buildMealPlanVarietyContext(locallyRepaired),
-        );
-        const replacement = replacements.find((item) =>
-          item.date === slot.date && item.mealType === slot.mealType);
-        const replacementText = replacement
-          ? [
-              replacement.title,
-              replacement.description,
-              ...(replacement.ingredients || []).map((ingredient) => ingredient.name),
-              ...(replacement.steps || []),
-            ].join(" ")
-          : "";
-        const replacementIsComplete = !!replacement
-          && !!replacement.title.trim()
-          && !!replacement.description?.trim()
-          && !!replacement.ingredients?.length
-          && !!replacement.steps?.length
-          && replacement.steps.length >= 3
-          && replacement.steps.length <= 6
-          && replacement.steps.every((step) => !!step?.trim())
-          && replacement.ingredients.every((ingredient) =>
-            !!ingredient.name?.trim() && !!ingredient.quantity?.trim() && !!ingredient.unit?.trim());
-        const currentItem = locallyRepaired.find((item) =>
-          item.date === slot.date && item.mealType === slot.mealType);
-        // Una riparazione cosmetica non può eliminare l'unico pasto principale
-        // che soddisfa la regola mediterranea sulla carne rossa. Conservare
-        // l'originale è preferibile a una nuova chiamata o a un piano non
-        // conforme: la varietà resta best effort, il vincolo alimentare no.
-        const replacesOnlyRedMeatMeal = requiresMediterraneanRedMeat
-          && !!currentItem
-          && evaluateMealPlanRedMeat([currentItem]).hasRedMeat
-          && evaluateMealPlanRedMeat(locallyRepaired).redMeatMealCount === 1;
-        const replacementKeepsRedMeat = !replacesOnlyRedMeatMeal
-          || (!!replacement && evaluateMealPlanRedMeat([replacement]).hasRedMeat);
-        const replacementIsSafe = !!replacement
-          && validateMealPlanConstraints([replacement], context.preferences).length === 0
-          && (replacement.mealType !== "breakfast" || !savoryBreakfastTerm(replacementText))
-          && (glutenFreeRequired || wantsWholegrain || !/\bintegral(?:e|i)?\b/i.test(replacementText))
-          && replacementKeepsRedMeat;
-        if (!replacementIsComplete || !replacementIsSafe) {
-          localRepairFailed = true;
-          break;
-        }
-        const replacementIndex = locallyRepaired.findIndex((item) =>
-          item.date === slot.date && item.mealType === slot.mealType);
-        if (replacementIndex < 0) {
-          localRepairFailed = true;
-          break;
-        }
-        locallyRepaired[replacementIndex] = replacement;
-      } catch {
-        localRepairFailed = true;
-        break;
-      }
-    }
-
-    if (!localRepairFailed && findRepeatedMealSlots(locallyRepaired).length === 0) {
-      finalItems = locallyRepaired;
-    }
-  }
-
+  const finalItems = disambiguateMealTitles(filtered);
   const repeatedConcepts = findRepeatedMealConcepts(finalItems);
+  const varietyEvaluation = evaluateMealPlanVariety(finalItems);
+  if (repeatedSlots.length > 0) {
+    const repairTargets = repeatedSlots
+      .map((slot) => `${slot.date}/${slot.mealType}`)
+      .join(", ");
+    throw new MealPlanRepairError(
+      finalItems,
+      `- CORREZIONE VARIETÀ OBBLIGATORIA: conserva tutti i pasti già validi e modifica soltanto i pasti necessari per eliminare duplicati e rispettare il blueprint locale.
+- Slot duplicati da correggere: ${repairTargets || "nessun titolo identico, correggi comunque le firme indicate"}.
+- Non ripetere la stessa firma semantica di pranzo (base, proteina, preparazione).
+- Restituisci l'intera settimana completa, con date e tipi di pasto invariati; non rimuovere vincoli alimentari né l'eventuale carne rossa mediterranea.`,
+    );
+  }
   if (repeatedConcepts.length > 0) {
     if (!context.suppressInternalLogs) {
       console.warn(JSON.stringify({
@@ -2005,7 +1930,6 @@ ${constrainedRecipeReferenceRule}
       }));
     }
   }
-  const varietyEvaluation = evaluateMealPlanVariety(finalItems);
   if (varietyEvaluation.issues.length > 0 && !context.suppressInternalLogs) {
     console.info(JSON.stringify({
       tag: "AI_MEAL_PLAN_VARIETY_ADVISORY",
@@ -2027,9 +1951,9 @@ ${constrainedRecipeReferenceRule}
         redMeatMealCount: finalRedMeatEvaluation.redMeatMealCount,
       }));
     }
-    throw new AiError(
-      "AI_CONSTRAINT_VIOLATION",
-      "Il piano mediterraneo finale non include una carne rossa tra pranzo e cena",
+    throw new MealPlanRepairError(
+      finalItems,
+      "- CORREZIONE OBBLIGATORIA: il piano finale deve mantenere almeno una carne rossa compatibile tra pranzo e cena senza modificare gli altri vincoli.",
     );
   }
 
@@ -2058,10 +1982,9 @@ export async function generateWeeklyMealPlan(
   const requestedLimit = Number.isFinite(context.maxConstraintAttempts)
     ? Math.floor(context.maxConstraintAttempts!)
     : MAX_CONSTRAINT_GENERATION_ATTEMPTS;
-  // Anche senza vincoli sanitari il piano deve superare la verifica di
-  // varietà: è consentita una sola rigenerazione interna per eliminare pasti
-  // ripetuti, senza esporre un risultato monotono al client.
-  const attempts = Math.max(1, Math.min(MAX_CONSTRAINT_GENERATION_ATTEMPTS, requestedLimit));
+  // Primo tentativo + al massimo un repair. Questo conta le chiamate
+  // applicative, indipendentemente dai retry di trasporto interni all'SDK.
+  const attempts = Math.max(1, Math.min(2, requestedLimit));
   const requestedModelCalls = Number.isFinite(context.maxModelCalls)
     ? Math.floor(context.maxModelCalls!)
     : MAX_MEAL_PLAN_MODEL_CALLS;
@@ -2070,73 +1993,52 @@ export async function generateWeeklyMealPlan(
     usedCalls: 0,
   };
   const fullAttemptCallCost = mealPlanAttemptModelCallCost(context);
-  let constraintCorrection: string | undefined;
-  let qualityCorrection: string | undefined;
+  let repair: { items: MealPlanSuggestion["items"]; correction: string } | undefined;
 
-  let constraintAttempt = 1;
-  let malformedResponseRetries = 0;
-  while (constraintAttempt <= attempts) {
-    // Non iniziare mai una settimana se non rimane spazio per completare
-    // tutte le sue chiamate: evita un tentativo parziale che sprecherebbe
-    // budget senza poter produrre un piano consegnabile.
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     if (!canAffordMealPlanModelCalls(modelCallBudget, fullAttemptCallCost)) {
       throw modelCallBudgetExhaustedError(modelCallBudget);
     }
     try {
       context.onStatus?.(
-        attempts === 1
-          ? "Creo il piano pasti."
-          : constraintAttempt === 1
-            ? "Creo un piano compatibile con i vincoli indicati."
-            : `Rigenero un piano compatibile (tentativo ${constraintAttempt} di ${attempts}).`,
+        attempt === 1
+          ? "Genero l'intera settimana e verifico i vincoli."
+          : "Correggo solo gli errori rilevati e ricontrollo il piano.",
       );
       return await generateWeeklyMealPlanAttempt({
         ...context,
-        generationAttempt: constraintAttempt + malformedResponseRetries,
-        constraintCorrection,
-        qualityCorrection,
+        generationAttempt: attempt,
+        constraintCorrection: repair?.correction,
+        previousPlanJson: repair ? JSON.stringify({ items: repair.items }) : undefined,
         modelCallBudget,
       });
     } catch (error) {
-      if (error instanceof AiError && error.code === "AI_BAD_RESPONSE") {
-        if (malformedResponseRetries >= MAX_MALFORMED_RESPONSE_RETRIES) throw error;
-        malformedResponseRetries++;
-        if (!context.suppressInternalLogs) {
-          console.warn(JSON.stringify({
-            tag: "AI_MEAL_PLAN_FORMAT_RETRY",
-            variant: context.planVariant || 1,
-            retry: malformedResponseRetries,
-          }));
+      const recoverable = error instanceof MealPlanRepairError
+        ? { items: error.items, correction: error.correction }
+        : error instanceof MealPlanConstraintRetryError
+          ? { items: error.items, correction: buildConstraintCorrection(error.violations, attempt + 1) }
+          : undefined;
+      if (!recoverable || attempt >= attempts) {
+        if (error instanceof MealPlanConstraintRetryError) {
+          throw new AiError(
+            "AI_CONSTRAINT_VIOLATION",
+            `Piano pasti rifiutato dopo ${attempt} tentativi: ${error.violations.map((violation) => violation.code).join(",")}`,
+          );
         }
-        qualityCorrection = appendMealPlanCorrection(
-          qualityCorrection,
-          buildMealPlanQualityCorrection(error, malformedResponseRetries + 1),
-        );
-        // Non esporre un ciclo di tentativi nell'interfaccia: il client riceve
-        // esclusivamente il piano già completo e validato.
-        context.onStatus?.("Completo il piano pasti verificato.");
-        continue;
+        throw error;
       }
-      if (!(error instanceof MealPlanConstraintRetryError)) throw error;
-
-      if (constraintAttempt >= attempts) {
-        throw new AiError(
-          "AI_CONSTRAINT_VIOLATION",
-          `Piano pasti rifiutato dopo ${attempts} tentativi: ${error.violations.map((violation) => violation.code).join(",")}`,
-        );
-      }
-
+      repair = recoverable;
       if (!context.suppressInternalLogs) {
         console.warn(JSON.stringify({
-          tag: "AI_MEAL_PLAN_CONSTRAINT_RETRY",
+          tag: "AI_MEAL_PLAN_SINGLE_REPAIR",
           variant: context.planVariant || 1,
-          failedAttempt: constraintAttempt,
-          nextAttempt: constraintAttempt + 1,
-          violations: Array.from(new Set(error.violations.map((violation) => violation.code))),
+          failedAttempt: attempt,
+          nextAttempt: attempt + 1,
+          correction: error instanceof MealPlanConstraintRetryError
+            ? Array.from(new Set(error.violations.map((violation) => violation.code)))
+            : ["quality_or_variety"],
         }));
       }
-      constraintCorrection = buildConstraintCorrection(error.violations, constraintAttempt + 1);
-      constraintAttempt++;
     }
   }
 
