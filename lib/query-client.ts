@@ -31,6 +31,21 @@ export function getApiUrl(): string {
   return url.href;
 }
 
+export class ApiStreamTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`API stream timed out after ${timeoutMs}ms`);
+    this.name = "ApiStreamTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+export interface ApiStreamOptions {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
 async function getAccessToken(): Promise<string | null> {
   try {
     const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
@@ -242,65 +257,94 @@ export async function apiStream(
   route: string,
   body: any,
   onLine: (obj: any) => void,
+  options?: ApiStreamOptions,
 ): Promise<void> {
   const baseUrl = getApiUrl();
   const url = new URL(route, baseUrl);
-  let token = await getAccessToken();
-
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  let res = await fetch(url.toString(), {
-    method: "POST",
-    headers,
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-
-  if (res.status === 401) {
-    const newToken = await tryRefreshToken();
-    if (newToken) {
-      headers["Authorization"] = `Bearer ${newToken}`;
-      res = await fetch(url.toString(), {
-        method: "POST",
-        headers,
-        credentials: "include",
-        body: JSON.stringify(body),
-      });
+  const timeoutMs = options?.timeoutMs && options.timeoutMs > 0 ? options.timeoutMs : undefined;
+  const controller = new AbortController();
+  let timedOut = false;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const abortFromCaller = () => controller.abort();
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      options.signal.addEventListener("abort", abortFromCaller, { once: true });
     }
   }
-
-  if (!res.ok) {
-    let errBody: any = null;
-    try { errBody = await res.json(); } catch { try { await res.text(); } catch {} }
-    throw { status: res.status, body: errBody };
+  if (timeoutMs) {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
   }
 
-  const reader = res.body?.getReader();
-  if (!reader) {
-    const text = await res.text();
-    for (const line of text.split("\n")) {
-      const t = line.trim();
-      if (t) { try { onLine(JSON.parse(t)); } catch {} }
+  try {
+    let token = await getAccessToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    let res = await fetch(url.toString(), {
+      method: "POST",
+      headers,
+      credentials: "include",
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (res.status === 401) {
+      const newToken = await tryRefreshToken();
+      if (newToken) {
+        headers["Authorization"] = `Bearer ${newToken}`;
+        res = await fetch(url.toString(), {
+          method: "POST",
+          headers,
+          credentials: "include",
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+      }
     }
-    return;
-  }
 
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      const t = line.trim();
-      if (t) { try { onLine(JSON.parse(t)); } catch {} }
+    if (!res.ok) {
+      let errBody: any = null;
+      try { errBody = await res.json(); } catch { try { await res.text(); } catch {} }
+      throw { status: res.status, body: errBody };
     }
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      const text = await res.text();
+      for (const line of text.split("\n")) {
+        const t = line.trim();
+        if (t) { try { onLine(JSON.parse(t)); } catch {} }
+      }
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const t = line.trim();
+        if (t) { try { onLine(JSON.parse(t)); } catch {} }
+      }
+    }
+    const last = buffer.trim();
+    if (last) { try { onLine(JSON.parse(last)); } catch {} }
+  } catch (error) {
+    if (timedOut) throw new ApiStreamTimeoutError(timeoutMs!);
+    throw error;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    options?.signal?.removeEventListener("abort", abortFromCaller);
   }
-  const last = buffer.trim();
-  if (last) { try { onLine(JSON.parse(last)); } catch {} }
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";

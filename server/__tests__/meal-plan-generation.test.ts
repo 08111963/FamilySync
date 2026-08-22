@@ -567,3 +567,115 @@ test(
     assert.equal(events[events.length - 1]!.items!.length, 21);
   },
 );
+
+test(
+  "la disconnessione dallo stream annulla la chiamata AI senza avviare un duplicato",
+  { skip: process.env.DATABASE_URL ? false : "DATABASE_URL non impostata" },
+  async (t) => {
+    if (!process.env.SESSION_SECRET) process.env.SESSION_SECRET = "test-secret";
+
+    const marker = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const [user] = await db.insert(users).values({
+      email: `meal-plan-disconnect-${marker}@example.com`,
+      passwordHash: "x".repeat(20),
+      name: "Meal plan disconnect test",
+      emailVerified: true,
+      termsAcceptedAt: new Date(),
+      aiFeaturesEnabled: true,
+      ageBand: "adult",
+    }).returning();
+    const [family] = await db.insert(families).values({
+      name: `Meal plan disconnect ${marker}`,
+    }).returning();
+    await db.insert(familyMembers).values({
+      familyId: family.id,
+      userId: user.id,
+      role: "adult",
+      nickname: "Test",
+      color: "#6366F1",
+      points: 0,
+    });
+
+    let server: Server | undefined;
+    t.after(async () => {
+      __setOpenAiClientForTest(null);
+      if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
+      await db.delete(aiUsage).where(eq(aiUsage.familyId, family.id));
+      await db.delete(familyMembers).where(eq(familyMembers.familyId, family.id));
+      await db.delete(families).where(eq(families.id, family.id));
+      await db.delete(users).where(eq(users.id, user.id));
+    });
+
+    let providerCalls = 0;
+    let resolveProviderAbort: (() => void) | undefined;
+    const providerAborted = new Promise<void>((resolve) => {
+      resolveProviderAbort = resolve;
+    });
+    const cancellableClient = {
+      chat: {
+        completions: {
+          create: async (_request: unknown, options?: { signal?: AbortSignal }) => {
+            providerCalls++;
+            await new Promise<never>((_resolve, reject) => {
+              const abort = () => {
+                resolveProviderAbort?.();
+                const error = new Error("client disconnected");
+                error.name = "AbortError";
+                reject(error);
+              };
+              if (options?.signal?.aborted) {
+                abort();
+              } else {
+                options?.signal?.addEventListener("abort", abort, { once: true });
+              }
+            });
+          },
+        },
+      },
+    };
+    __setOpenAiClientForTest(cancellableClient);
+
+    const app = express();
+    app.set("trust proxy", 1);
+    app.use(express.json());
+    server = await registerRoutes(app);
+    await new Promise<void>((resolve) => server!.listen(0, resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+
+    const clientAbortController = new AbortController();
+    const response = await fetch(`${baseUrl}/api/ai/${family.id}/weekly-meal-plan/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${generateAccessToken(user)}`,
+      },
+      body: JSON.stringify({
+        weekStartDate: WEEK_START,
+        requestId: "mealplan-disconnect-provider",
+        preferences: { dietProfile: "vegetarian" },
+      }),
+      signal: clientAbortController.signal,
+    });
+    assert.equal(response.status, 200);
+    assert.ok(response.body);
+    const reader = response.body!.getReader();
+    const firstEvent = await reader.read();
+    assert.equal(firstEvent.done, false, "il client deve ricevere lo stato iniziale prima della disconnessione");
+
+    await reader.cancel();
+    clientAbortController.abort();
+    await Promise.race([
+      providerAborted,
+      new Promise<void>((_resolve, reject) => setTimeout(
+        () => reject(new Error("la disconnessione non ha annullato il provider")),
+        2_000,
+      )),
+    ]);
+    assert.equal(providerCalls, 1, "la disconnessione non deve avviare un secondo tentativo AI");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const usageRows = await db.select().from(aiUsage).where(eq(aiUsage.familyId, family.id));
+    assert.equal(usageRows.length, 1, "la disconnessione deve lasciare un solo slot di utilizzo");
+    assert.equal(usageRows[0]!.status, "failed", "lo slot interrotto deve essere finalizzato");
+  },
+);

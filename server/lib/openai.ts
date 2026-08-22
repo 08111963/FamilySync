@@ -718,6 +718,8 @@ interface MealPlanGenerationContext {
    */
 
   maxModelCalls?: number;
+  /** Interrompe la chiamata al provider se il client HTTP si disconnette. */
+  signal?: AbortSignal;
   /**
    * Per sentinelle sintetiche con contratto di telemetria minimale: sopprime
    * tutti i log interni della generazione. Il chiamante registra poi un unico
@@ -1715,7 +1717,10 @@ ${constrainedRecipeReferenceRule}
         // Un retry di trasporto dell'SDK raddoppierebbe il tempo percepito al
         // timeout (e la chiamata fisica al provider) senza poter consegnare
         // output parziale sicuro al client.
-        { maxRetries: 0 },
+        {
+          maxRetries: 0,
+          ...(context.signal ? { signal: context.signal } : {}),
+        },
       );
     } finally {
       providerDurationMs += Date.now() - providerStartedAt;

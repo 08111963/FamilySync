@@ -1022,13 +1022,27 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     ? rawRequestId
     : crypto.randomUUID();
   const planVariant = rawPlanVariant === 2 ? 2 : 1;
+  let dietProfile = typeof preferences?.dietProfile === "string" ? preferences.dietProfile : "mediterranean";
 
   if (!weekStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate)) {
     return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "weekStartDate è obbligatorio (YYYY-MM-DD)" } });
   }
 
   let clientClosed = false;
-  req.on('close', () => { clientClosed = true; });
+  const generationAbortController = new AbortController();
+  const cancelGenerationForClientClose = () => {
+    // Dopo res.end() la chiusura è normale e non deve alterare l'esito già
+    // consegnato. Prima di quel momento, req/res possono notificare la
+    // disconnessione su eventi diversi a seconda del runtime/proxy.
+    if (res.writableEnded) return;
+    clientClosed = true;
+    // La chiusura del reader sul client deve cancellare anche la richiesta
+    // fisica al provider: una nuova azione "Riprova" non deve lasciare una
+    // generazione precedente in parallelo né consumare un altro slot per lei.
+    generationAbortController.abort();
+  };
+  req.on('aborted', cancelGenerationForClientClose);
+  res.on('close', cancelGenerationForClientClose);
 
   // Slot quota prenotato: va SEMPRE finalizzato (succeeded/failed), anche se
   // il client si disconnette o il setup dello stream lancia un errore, per non
@@ -1071,7 +1085,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     res.setHeader("X-Meal-Plan-Request-Id", requestId);
     res.flushHeaders();
 
-    const dietProfile = preparedPreferences.preferences?.dietProfile || "mediterranean";
+    dietProfile = preparedPreferences.preferences?.dietProfile || "mediterranean";
     const writeStatus = (message: string) => {
       if (clientClosed) return;
       try { res.write(JSON.stringify({ type: 'status', requestId, dietProfile, message }) + '\n'); } catch {}
@@ -1099,6 +1113,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
         planVariant,
         maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
         onStatus: writeStatus,
+        signal: generationAbortController.signal,
         provider: ai.provider,
       });
     } finally {
@@ -1138,7 +1153,13 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     );
   } catch (error) {
     const durationMs = Date.now() - startTime;
-    logger.error('Weekly meal plan stream error', { error: String(error), durationMs });
+    logger.error('Weekly meal plan stream error', {
+      error: String(error),
+      durationMs,
+      requestId,
+      dietProfile,
+      planVariant,
+    });
     if (clientClosed) return;
     if (!res.headersSent) {
       // Errore prima dell'inizio dello stream: rispondi con HTTP status tipizzato.
@@ -1149,7 +1170,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
         res.write(JSON.stringify({
           type: 'error',
           requestId,
-          dietProfile: preferences?.dietProfile || "mediterranean",
+          dietProfile,
           message,
         }) + '\n');
       } catch {}

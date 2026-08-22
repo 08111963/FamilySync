@@ -24,7 +24,12 @@ import { useTheme } from "@/hooks/useTheme";
 import { VoiceInput, SpeakButton, speakText, primeSpeech } from "@/components/VoiceInput";
 import { useAutoSpeak } from "@/hooks/useAutoSpeak";
 import { useFamily } from "@/context/FamilyContext";
-import { apiRequest, apiStream, getApiErrorMessage } from "@/lib/query-client";
+import {
+  apiRequest,
+  apiStream,
+  ApiStreamTimeoutError,
+  getApiErrorMessage,
+} from "@/lib/query-client";
 import { freeLimitMessage } from "@/lib/plan-limit";
 import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
 import {
@@ -104,6 +109,9 @@ function buildNotes(
 }
 
 const SPEECH_WEEKDAYS = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
+const MEAL_PLAN_STREAM_TIMEOUT_MS = 45_000;
+const MEAL_PLAN_TIMEOUT_MESSAGE =
+  "La generazione sta richiedendo più tempo del previsto. Nessun pasto parziale è stato mostrato. Puoi chiudere questo avviso o riprovare in sicurezza.";
 
 function buildPlanSpeech(title: string, items: MealPlanItem[]): string {
   const groups = new Map<string, MealPlanItem[]>();
@@ -556,6 +564,7 @@ export default function MealPlansScreen() {
     const seq = ++streamSeqRef.current;
     const requestId = `mealplan-${Date.now()}-${seq}`;
     const isActive = () => streamSeqRef.current === seq;
+    const selectedProfile = opts?.profile ?? dietProfileRef.current;
     setGenerating(true);
     setAiPlans([]);
     setSelectedPlanIndex(0);
@@ -566,7 +575,7 @@ export default function MealPlansScreen() {
 
     const notes = (opts?.voiceNotes ?? voicePrefs).trim();
     const preferences: { dietProfile: MealPlanDietProfile; notes?: string } = {
-      dietProfile: opts?.profile ?? dietProfileRef.current,
+      dietProfile: selectedProfile,
     };
     if (notes) preferences.notes = notes;
     const body: any = { weekStartDate: weekStart, requestId };
@@ -576,7 +585,7 @@ export default function MealPlansScreen() {
 
     const collectedItems: MealPlanItem[] = [];
     let doneTitle = "Piano Settimanale";
-    let started = false;
+    let streamCompleted = false;
     let streamErrorMessage: string | null = null;
     try {
       await apiStream(
@@ -592,30 +601,6 @@ export default function MealPlansScreen() {
             setGenerationStatus(obj.message);
           } else if (obj?.type === "items" && Array.isArray(obj.items)) {
             collectedItems.push(...(obj.items as MealPlanItem[]));
-            if (!started) {
-              started = true;
-              setAiPlans([{
-                title: "Piano Settimanale",
-                weekStartDate: weekStart,
-                items: obj.items,
-                        requestId,
-                preferences,
-              }]);
-            } else {
-              setAiPlans((prev) => {
-                if (prev.length === 0) {
-                  return [{
-                    title: "Piano Settimanale",
-                    weekStartDate: weekStart,
-                    items: obj.items,
-                    requestId,
-                    preferences,
-                  }];
-                }
-                const first = prev[0]!;
-                return [{ ...first, items: [...first.items, ...obj.items] }, ...prev.slice(1)];
-              });
-            }
           } else if (obj?.type === "done") {
             if (obj.title) doneTitle = obj.title;
             // Il server invia con "done" la lista FINALE (dopo la correzione
@@ -625,13 +610,15 @@ export default function MealPlansScreen() {
               collectedItems.length = 0;
               collectedItems.push(...finalItems);
             }
+            const completedItems = finalItems ?? (collectedItems.length > 0 ? collectedItems : null);
+            streamCompleted = Boolean(completedItems?.length);
             setAiPlans((prev) => {
                if (prev.length === 0) {
-                 return finalItems
+                  return completedItems
                    ? [{
                        title: obj.title || doneTitle,
                        weekStartDate: obj.weekStartDate || weekStart,
-                       items: finalItems,
+                        items: completedItems,
                         requestId,
                        preferences,
                      }]
@@ -643,17 +630,21 @@ export default function MealPlansScreen() {
                   ...first,
                   title: obj.title || first.title,
                   weekStartDate: obj.weekStartDate || weekStart,
-                  items: finalItems ?? first.items,
+                   items: completedItems ?? first.items,
                   requestId,
                 },
                 ...prev.slice(1),
               ];
             });
           }
-        }
+        },
+        { timeoutMs: MEAL_PLAN_STREAM_TIMEOUT_MS },
       );
       if (!isActive()) return;
-      if (streamErrorMessage) {
+      if (!streamCompleted && !streamErrorMessage) {
+        setGenerationError("La connessione si è interrotta prima della conclusione. Nessun pasto parziale è stato mostrato: puoi riprovare.");
+        setAiPlans([]);
+      } else if (streamErrorMessage) {
         if (opts?.speak) speakText("Non sono riuscita a generare il piano pasti. Riprova.");
         setGenerationError(streamErrorMessage);
         setAiPlans([]);
@@ -663,7 +654,9 @@ export default function MealPlansScreen() {
     } catch (err: any) {
       if (!isActive()) return;
       if (opts?.speak) speakText("Non sono riuscita a generare il piano pasti. Riprova.");
-      if (isAiDisabled(err)) {
+      if (err instanceof ApiStreamTimeoutError) {
+        setGenerationError(MEAL_PLAN_TIMEOUT_MESSAGE);
+      } else if (isAiDisabled(err)) {
         setAiDisabledError(true);
       } else {
         setGenerationError(aiErrorMessage(err, "Impossibile generare il piano pasti."));
@@ -682,13 +675,14 @@ export default function MealPlansScreen() {
     const seq = ++streamSeqRef.current;
     const requestId = `mealplan-${Date.now()}-${seq}`;
     const isActive = () => streamSeqRef.current === seq;
+    const selectedProfile = opts?.profile ?? dietProfileRef.current;
     setGeneratingAlt(true);
     setAiDisabledError(false);
     setGenerationError(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const preferences: { dietProfile: MealPlanDietProfile; notes?: string } = {
-      dietProfile: opts?.profile ?? dietProfileRef.current,
+      dietProfile: selectedProfile,
     };
     if (voicePrefs.trim()) preferences.notes = voicePrefs.trim();
     const body: any = { weekStartDate: weekStart, planVariant: 2, requestId };
@@ -696,7 +690,7 @@ export default function MealPlansScreen() {
     const isMatchingResponse = (obj: any) =>
       obj?.requestId === requestId && obj?.dietProfile === preferences.dietProfile;
 
-    let started = false;
+    let streamCompleted = false;
     let streamErrorMessage: string | null = null;
     const collectedItems: MealPlanItem[] = [];
     try {
@@ -711,36 +705,35 @@ export default function MealPlansScreen() {
               : "Impossibile generare l'alternativa.";
           } else if (obj?.type === "items" && Array.isArray(obj.items)) {
             collectedItems.push(...(obj.items as MealPlanItem[]));
-            if (!started) {
-              started = true;
-              setAiPlans((prev) => {
-                const planA = prev[0]
-                  ? { ...prev[0], title: "Piano A - Classico" }
-                  : null;
-                const planB = {
-                  title: "Piano B - Creativo",
-                  weekStartDate: weekStart,
-                  items: obj.items as MealPlanItem[],
-                  requestId,
-                  preferences,
-                };
-                return planA ? [planA, planB] : [planB];
-              });
-              setSelectedPlanIndex(1);
-            } else {
-              setAiPlans((prev) => {
-                if (prev.length < 2) return prev;
-                const planB = prev[1]!;
-                const updated = [...prev];
-                updated[1] = { ...planB, items: [...planB.items, ...obj.items] };
-                return updated;
-              });
-            }
+          } else if (obj?.type === "done") {
+            const finalItems = Array.isArray(obj.items) && obj.items.length > 0
+              ? (obj.items as MealPlanItem[])
+              : collectedItems;
+            streamCompleted = finalItems.length > 0;
+            setAiPlans((prev) => {
+              const planA = prev[0]
+                ? { ...prev[0], title: "Piano A - Classico" }
+                : null;
+              const planB = {
+                title: "Piano B - Creativo",
+                weekStartDate: obj.weekStartDate || weekStart,
+                items: finalItems,
+                requestId,
+                preferences,
+              };
+              return planA ? [planA, planB] : [planB];
+            });
+            setSelectedPlanIndex(1);
           }
-        }
+        },
+        { timeoutMs: MEAL_PLAN_STREAM_TIMEOUT_MS },
       );
       if (!isActive()) return;
-      if (streamErrorMessage) {
+      if (!streamCompleted && !streamErrorMessage) {
+        setGenerationError("La connessione si è interrotta prima della conclusione. Nessun pasto parziale è stato mostrato: puoi riprovare.");
+        setAiPlans((prev) => prev.slice(0, 1));
+        setSelectedPlanIndex(0);
+      } else if (streamErrorMessage) {
         setGenerationError(streamErrorMessage);
         setAiPlans((prev) => prev.slice(0, 1));
         setSelectedPlanIndex(0);
@@ -749,7 +742,9 @@ export default function MealPlansScreen() {
       }
     } catch (err: any) {
       if (!isActive()) return;
-      if (isAiDisabled(err)) {
+      if (err instanceof ApiStreamTimeoutError) {
+        setGenerationError(MEAL_PLAN_TIMEOUT_MESSAGE);
+      } else if (isAiDisabled(err)) {
         setAiDisabledError(true);
       } else {
         setGenerationError(aiErrorMessage(err, "Impossibile generare l'alternativa."));
@@ -772,6 +767,14 @@ export default function MealPlansScreen() {
   const handleGenerateAlternative = () => {
     if (autoSpeak) primeSpeech();
     return fetchAlternativeStream({ speak: autoSpeak, profile: dietProfileRef.current });
+  };
+
+  const dismissGenerationError = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setGenerationError(null);
+    setGenerationStatus(null);
+    setAiPlans([]);
+    setSelectedPlanIndex(0);
   };
 
   // La dettatura raccoglie preferenze culinarie aggiuntive, mai allergie:
@@ -1201,6 +1204,14 @@ export default function MealPlansScreen() {
                 >
                   <Ionicons name="refresh" size={16} color={colors.primary} />
                   <Text style={[styles.generationRetryText, { color: colors.primary }]}>Riprova</Text>
+                </Pressable>
+                <Pressable
+                  onPress={dismissGenerationError}
+                  style={styles.generationRetryButton}
+                  testID="mealplan-generation-close"
+                >
+                  <Ionicons name="close" size={16} color={colors.textSecondary} />
+                  <Text style={[styles.generationRetryText, { color: colors.textSecondary }]}>Chiudi</Text>
                 </Pressable>
               </View>
             </View>
