@@ -86,6 +86,55 @@ test('separa gli aggregati standard e vincolati e conserva solo metriche numeric
   assert.ok(!Object.keys(standard ?? {}).some((key) => /title|ingredient|preference|note|family/i.test(key)));
 });
 
+test('calcola p50 e p95 per preparazione, provider, parsing e validazione', () => {
+  const first = recordMealPlanLatency({
+    mode: 'standard',
+    durationMs: 1_000,
+    modelCalls: 1,
+    preparationDurationMs: 20,
+    providerDurationMs: 800,
+    parsingDurationMs: 30,
+    validationDurationMs: 150,
+    responseChars: 4_000,
+  });
+  const second = recordMealPlanLatency({
+    mode: 'standard',
+    durationMs: 2_000,
+    modelCalls: 1,
+    preparationDurationMs: 40,
+    providerDurationMs: 1_700,
+    parsingDurationMs: 50,
+    validationDurationMs: 210,
+    responseChars: 5_000,
+    repairAttempt: true,
+  });
+
+  assert.equal(first?.p50ProviderDurationMs, 800);
+  assert.equal(second?.normalSampleCount, 1);
+  assert.equal(second?.p50DurationMs, 1_000);
+  assert.equal(second?.p95DurationMs, 1_000);
+  assert.equal(second?.p50PreparationDurationMs, 20);
+  assert.equal(second?.p95PreparationDurationMs, 20);
+  assert.equal(second?.p50ProviderDurationMs, 800);
+  assert.equal(second?.p95ProviderDurationMs, 800);
+  assert.equal(second?.p50ParsingDurationMs, 30);
+  assert.equal(second?.p95ParsingDurationMs, 30);
+  assert.equal(second?.p50ValidationDurationMs, 150);
+  assert.equal(second?.p95ValidationDurationMs, 150);
+  assert.equal(second?.averageResponseChars, 4_000);
+  assert.equal(second?.repairSampleCount, 1);
+  assert.equal(second?.p50RepairDurationMs, 2_000);
+  assert.equal(second?.p95RepairDurationMs, 2_000);
+  assert.equal(second?.p50RepairPreparationDurationMs, 40);
+  assert.equal(second?.p95RepairPreparationDurationMs, 40);
+  assert.equal(second?.p50RepairProviderDurationMs, 1_700);
+  assert.equal(second?.p95RepairProviderDurationMs, 1_700);
+  assert.equal(second?.p50RepairParsingDurationMs, 50);
+  assert.equal(second?.p95RepairParsingDurationMs, 50);
+  assert.equal(second?.p50RepairValidationDurationMs, 210);
+  assert.equal(second?.p95RepairValidationDurationMs, 210);
+});
+
 test('apre un solo episodio operativo, lo chiude al recupero e poi può riaprirlo', async () => {
   const originalError = console.error;
   const events: string[] = [];

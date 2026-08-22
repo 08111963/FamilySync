@@ -1078,15 +1078,32 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     };
     writeStatus('Preparo un piano pasti verificato.');
 
-    const plan = await generateWeeklyMealPlan({
-      familySize: members.length || 1,
-      weekStartDate,
-      preferences: preparedPreferences.preferences,
-      planVariant,
-      maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
-      onStatus: writeStatus,
-      provider: ai.provider,
-    });
+    // La risposta può richiedere qualche decina di secondi perché viene
+    // validata per intero prima di essere consegnata. Il battito dello stream
+    // conferma subito che la richiesta è attiva, senza esporre pasti parziali.
+    let statusTick = 0;
+    const statusHeartbeat = setInterval(() => {
+      statusTick++;
+      writeStatus(
+        statusTick === 1
+          ? 'Sto ancora componendo le ricette della settimana.'
+          : 'La verifica del piano è ancora in corso: non chiudere questa schermata.',
+      );
+    }, 8_000);
+    let plan;
+    try {
+      plan = await generateWeeklyMealPlan({
+        familySize: members.length || 1,
+        weekStartDate,
+        preferences: preparedPreferences.preferences,
+        planVariant,
+        maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+        onStatus: writeStatus,
+        provider: ai.provider,
+      });
+    } finally {
+      clearInterval(statusHeartbeat);
+    }
     await finalizeUsageOnce(true);
 
     if (clientClosed) return;

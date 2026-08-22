@@ -36,13 +36,45 @@ export interface MealPlanLatencySample {
    * tentativo iniziale e un solo repair; se assente resta il default di 2.
    */
   modelCallBudget?: number;
+  preparationDurationMs?: number;
+  providerDurationMs?: number;
+  parsingDurationMs?: number;
+  validationDurationMs?: number;
+  responseChars?: number;
+  repairAttempt?: boolean;
 }
 
 export interface MealPlanLatencySnapshot {
   mode: MealPlanLatencyMode;
   sampleCount: number;
+  normalSampleCount: number;
   averageDurationMs: number;
+  p50DurationMs: number;
   p95DurationMs: number;
+  averagePreparationDurationMs: number;
+  p50PreparationDurationMs: number;
+  p95PreparationDurationMs: number;
+  averageProviderDurationMs: number;
+  p50ProviderDurationMs: number;
+  p95ProviderDurationMs: number;
+  averageParsingDurationMs: number;
+  p50ParsingDurationMs: number;
+  p95ParsingDurationMs: number;
+  averageValidationDurationMs: number;
+  p50ValidationDurationMs: number;
+  p95ValidationDurationMs: number;
+  averageResponseChars: number;
+  repairSampleCount: number;
+  p50RepairDurationMs: number;
+  p95RepairDurationMs: number;
+  p50RepairPreparationDurationMs: number;
+  p95RepairPreparationDurationMs: number;
+  p50RepairProviderDurationMs: number;
+  p95RepairProviderDurationMs: number;
+  p50RepairParsingDurationMs: number;
+  p95RepairParsingDurationMs: number;
+  p50RepairValidationDurationMs: number;
+  p95RepairValidationDurationMs: number;
   averageModelCalls: number;
   durationBudgetMs: number;
   modelCallBudget: number;
@@ -69,6 +101,12 @@ export interface MealPlanLatencyOperationalAlert {
 
 interface StoredSample {
   durationMs: number;
+  preparationDurationMs: number;
+  providerDurationMs: number;
+  parsingDurationMs: number;
+  validationDurationMs: number;
+  responseChars: number;
+  repairAttempt: boolean;
   modelCalls: number;
   modelCallBudget: number;
   overDurationBudget: boolean;
@@ -104,11 +142,15 @@ function isFiniteNonNegative(value: number): boolean {
   return Number.isFinite(value) && value >= 0;
 }
 
-function percentile95(values: number[]): number {
+function percentile(values: number[], percentileValue: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1);
+  const index = Math.min(sorted.length - 1, Math.ceil(sorted.length * percentileValue) - 1);
   return sorted[index]!;
+}
+
+function average(values: number[]): number {
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length));
 }
 
 function consecutiveCount(samples: StoredSample[], key: 'overDurationBudget' | 'overModelCallBudget'): number {
@@ -402,9 +444,24 @@ export function recordMealPlanLatency(sample: MealPlanLatencySample): MealPlanLa
   const budget = MEAL_PLAN_LATENCY_BUDGETS[sample.mode];
   const modelCallBudget = sample.modelCallBudget ?? budget.modelCalls;
   if (!Number.isInteger(modelCallBudget) || modelCallBudget < 1) return null;
+  const optionalMetrics = [
+    sample.preparationDurationMs,
+    sample.providerDurationMs,
+    sample.parsingDurationMs,
+    sample.validationDurationMs,
+    sample.responseChars,
+  ];
+  if (optionalMetrics.some((value) =>
+    value !== undefined && (!Number.isFinite(value) || value < 0))) return null;
   const modeSamples = samplesByMode[sample.mode];
   modeSamples.push({
     durationMs: Math.round(sample.durationMs),
+    preparationDurationMs: Math.round(sample.preparationDurationMs ?? 0),
+    providerDurationMs: Math.round(sample.providerDurationMs ?? 0),
+    parsingDurationMs: Math.round(sample.parsingDurationMs ?? 0),
+    validationDurationMs: Math.round(sample.validationDurationMs ?? 0),
+    responseChars: Math.round(sample.responseChars ?? 0),
+    repairAttempt: sample.repairAttempt === true,
     modelCalls: sample.modelCalls,
     modelCallBudget,
     overDurationBudget: sample.durationMs > budget.durationMs,
@@ -412,11 +469,25 @@ export function recordMealPlanLatency(sample: MealPlanLatencySample): MealPlanLa
   });
   if (modeSamples.length > MAX_SAMPLES_PER_MODE) modeSamples.shift();
 
-  const averageDurationMs = Math.round(
-    modeSamples.reduce((sum, current) => sum + current.durationMs, 0) / modeSamples.length,
-  );
+  // I percentili del percorso normale non devono incorporare i retry di
+  // repair: questi ultimi sono una serie distinta, così possiamo capire se
+  // un rallentamento nasce dal modello o dalla correzione globale.
+  const normalSamples = modeSamples.filter((current) => !current.repairAttempt);
+  const repairSamples = modeSamples.filter((current) => current.repairAttempt);
+  const durations = normalSamples.map((current) => current.durationMs);
+  const preparationDurations = normalSamples.map((current) => current.preparationDurationMs);
+  const providerDurations = normalSamples.map((current) => current.providerDurationMs);
+  const parsingDurations = normalSamples.map((current) => current.parsingDurationMs);
+  const validationDurations = normalSamples.map((current) => current.validationDurationMs);
+  const responseChars = normalSamples.map((current) => current.responseChars);
+  const repairDurations = repairSamples.map((current) => current.durationMs);
+  const repairPreparationDurations = repairSamples.map((current) => current.preparationDurationMs);
+  const repairProviderDurations = repairSamples.map((current) => current.providerDurationMs);
+  const repairParsingDurations = repairSamples.map((current) => current.parsingDurationMs);
+  const repairValidationDurations = repairSamples.map((current) => current.validationDurationMs);
+  const averageDurationMs = average(durations);
   const averageModelCalls = Number(
-    (modeSamples.reduce((sum, current) => sum + current.modelCalls, 0) / modeSamples.length).toFixed(2),
+    (normalSamples.reduce((sum, current) => sum + current.modelCalls, 0) / Math.max(1, normalSamples.length)).toFixed(2),
   );
   const consecutiveOverDurationBudget = consecutiveCount(modeSamples, 'overDurationBudget');
   const consecutiveOverModelCallBudget = consecutiveCount(modeSamples, 'overModelCallBudget');
@@ -429,8 +500,34 @@ export function recordMealPlanLatency(sample: MealPlanLatencySample): MealPlanLa
   const snapshot: MealPlanLatencySnapshot = {
     mode: sample.mode,
     sampleCount: modeSamples.length,
+    normalSampleCount: normalSamples.length,
     averageDurationMs,
-    p95DurationMs: Math.round(percentile95(modeSamples.map((current) => current.durationMs))),
+    p50DurationMs: percentile(durations, 0.5),
+    p95DurationMs: percentile(durations, 0.95),
+    averagePreparationDurationMs: average(preparationDurations),
+    p50PreparationDurationMs: percentile(preparationDurations, 0.5),
+    p95PreparationDurationMs: percentile(preparationDurations, 0.95),
+    averageProviderDurationMs: average(providerDurations),
+    p50ProviderDurationMs: percentile(providerDurations, 0.5),
+    p95ProviderDurationMs: percentile(providerDurations, 0.95),
+    averageParsingDurationMs: average(parsingDurations),
+    p50ParsingDurationMs: percentile(parsingDurations, 0.5),
+    p95ParsingDurationMs: percentile(parsingDurations, 0.95),
+    averageValidationDurationMs: average(validationDurations),
+    p50ValidationDurationMs: percentile(validationDurations, 0.5),
+    p95ValidationDurationMs: percentile(validationDurations, 0.95),
+    averageResponseChars: average(responseChars),
+    repairSampleCount: repairDurations.length,
+    p50RepairDurationMs: percentile(repairDurations, 0.5),
+    p95RepairDurationMs: percentile(repairDurations, 0.95),
+    p50RepairPreparationDurationMs: percentile(repairPreparationDurations, 0.5),
+    p95RepairPreparationDurationMs: percentile(repairPreparationDurations, 0.95),
+    p50RepairProviderDurationMs: percentile(repairProviderDurations, 0.5),
+    p95RepairProviderDurationMs: percentile(repairProviderDurations, 0.95),
+    p50RepairParsingDurationMs: percentile(repairParsingDurations, 0.5),
+    p95RepairParsingDurationMs: percentile(repairParsingDurations, 0.95),
+    p50RepairValidationDurationMs: percentile(repairValidationDurations, 0.5),
+    p95RepairValidationDurationMs: percentile(repairValidationDurations, 0.95),
     averageModelCalls,
     durationBudgetMs: budget.durationMs,
     modelCallBudget,
@@ -450,8 +547,34 @@ export function recordMealPlanLatency(sample: MealPlanLatencySample): MealPlanLa
     tag: 'AI_MEAL_PLAN_LATENCY',
     mode: snapshot.mode,
     sampleCount: snapshot.sampleCount,
+    normalSampleCount: snapshot.normalSampleCount,
     averageDurationMs: snapshot.averageDurationMs,
+    p50DurationMs: snapshot.p50DurationMs,
     p95DurationMs: snapshot.p95DurationMs,
+    averagePreparationDurationMs: snapshot.averagePreparationDurationMs,
+    p50PreparationDurationMs: snapshot.p50PreparationDurationMs,
+    p95PreparationDurationMs: snapshot.p95PreparationDurationMs,
+    averageProviderDurationMs: snapshot.averageProviderDurationMs,
+    p50ProviderDurationMs: snapshot.p50ProviderDurationMs,
+    p95ProviderDurationMs: snapshot.p95ProviderDurationMs,
+    averageParsingDurationMs: snapshot.averageParsingDurationMs,
+    p50ParsingDurationMs: snapshot.p50ParsingDurationMs,
+    p95ParsingDurationMs: snapshot.p95ParsingDurationMs,
+    averageValidationDurationMs: snapshot.averageValidationDurationMs,
+    p50ValidationDurationMs: snapshot.p50ValidationDurationMs,
+    p95ValidationDurationMs: snapshot.p95ValidationDurationMs,
+    averageResponseChars: snapshot.averageResponseChars,
+    repairSampleCount: snapshot.repairSampleCount,
+    p50RepairDurationMs: snapshot.p50RepairDurationMs,
+    p95RepairDurationMs: snapshot.p95RepairDurationMs,
+    p50RepairPreparationDurationMs: snapshot.p50RepairPreparationDurationMs,
+    p95RepairPreparationDurationMs: snapshot.p95RepairPreparationDurationMs,
+    p50RepairProviderDurationMs: snapshot.p50RepairProviderDurationMs,
+    p95RepairProviderDurationMs: snapshot.p95RepairProviderDurationMs,
+    p50RepairParsingDurationMs: snapshot.p50RepairParsingDurationMs,
+    p95RepairParsingDurationMs: snapshot.p95RepairParsingDurationMs,
+    p50RepairValidationDurationMs: snapshot.p50RepairValidationDurationMs,
+    p95RepairValidationDurationMs: snapshot.p95RepairValidationDurationMs,
     averageModelCalls: snapshot.averageModelCalls,
     durationBudgetMs: snapshot.durationBudgetMs,
     modelCallBudget: snapshot.modelCallBudget,

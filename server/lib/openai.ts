@@ -310,8 +310,8 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
             properties: {
               date: { type: 'string' },
               mealType: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
-              title: { type: 'string', minLength: 1 },
-              description: { type: 'string', minLength: 1 },
+              title: { type: 'string', minLength: 1, maxLength: 120 },
+              description: { type: 'string', minLength: 1, maxLength: 180 },
               ingredients: {
                 type: 'array',
                 minItems: 1,
@@ -329,8 +329,8 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
               steps: {
                 type: 'array',
                 minItems: 3,
-                maxItems: 6,
-                items: { type: 'string', minLength: 1 },
+                maxItems: 3,
+                items: { type: 'string', minLength: 1, maxLength: 180 },
               },
             },
             required: ['date', 'mealType', 'title', 'description', 'ingredients', 'steps'],
@@ -341,6 +341,14 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
     },
   },
 };
+
+/**
+ * La settimana resta una singola chiamata applicativa, ma non deve chiedere
+ * al modello 21 mini-articoli prolissi. Tre passaggi concreti per ricetta
+ * sono sufficienti per l'anteprima e per la ricetta salvata, mentre questo
+ * tetto lascia margine per ingredienti e vincoli dei profili chiusi.
+ */
+export const MEAL_PLAN_MAX_COMPLETION_TOKENS = 4800;
 
 /**
  * Per il glutine non ci affidiamo solo alle istruzioni in linguaggio naturale:
@@ -1349,7 +1357,7 @@ function buildMealPlanQualityCorrection(error: AiError, nextAttempt: number): st
     : "";
   const completenessCorrection = error.message.includes("incompleto")
     ? `
-- Per ogni ricetta compila tutti i campi: titolo, descrizione, almeno un ingrediente con nome/quantità/unità e da 3 a 6 passaggi non vuoti.`
+ - Per ogni ricetta compila tutti i campi: titolo, descrizione, almeno un ingrediente con nome/quantità/unità e tre passaggi non vuoti.`
     : "";
   return `
 - CORREZIONE DI QUALITÀ OBBLIGATORIA (tentativo ${nextAttempt}): il risultato precedente non era consegnabile.
@@ -1363,6 +1371,11 @@ function appendMealPlanCorrection(existing: string | undefined, next: string): s
 async function generateWeeklyMealPlanAttempt(
   context: MealPlanGenerationAttemptContext,
 ): Promise<MealPlanSuggestion> {
+  const attemptStartedAt = Date.now();
+  let firstProviderStartedAt: number | null = null;
+  let providerDurationMs = 0;
+  let parsingDurationMs = 0;
+  let responseChars = 0;
   const mealsPerDay = context.preferences?.mealsPerDay || 3;
   const mealTypes = mealsPerDay >= 4
     ? ['breakfast', 'lunch', 'dinner', 'snack']
@@ -1646,11 +1659,11 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
       ? `- snack (spuntino): piccolo e leggero, composto esclusivamente da ingredienti compatibili con TUTTI i vincoli.`
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
     const itemContract = `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano, non vuoto), description (breve, non vuota), ingredients (array), steps (array).`;
-    const preparationContract = `- steps è la RICETTA completa, passo-passo: da 3 a 6 istruzioni concrete e chiare in italiano per preparare il piatto (ogni passaggio è una stringa, senza numerazione iniziale). Indica operazioni reali come lavare, tagliare, cuocere e assemblare, usando ingredienti e tempi quando utili. NON usare frasi generiche come "cuoci e condisci con cura" o "servi subito" come unico dettaglio della ricetta.`;
+    const preparationContract = `- steps è la RICETTA completa, passo-passo: ESATTAMENTE 3 istruzioni concise e concrete in italiano (ogni passaggio è una stringa, senza numerazione iniziale, massimo circa 180 caratteri). Indica operazioni reali come lavare, tagliare, cuocere e assemblare, usando ingredienti e tempi quando utili. NON usare frasi generiche come "cuoci e condisci con cura" o "servi subito" come unico dettaglio della ricetta.`;
     const constrainedRecipeReferenceRule = constrainedPlan && !lactoseFreeRequired
       ? `- VINCOLI NELLA RICETTA: per ogni ingrediente soggetto a un vincolo usa, nel titolo, descrizione e in OGNI passaggio, il nome completo e compatibile scritto nell'array ingredients. Non abbreviare né sostituire con parole generiche un ingrediente sensibile (per esempio non scrivere "latte", "yogurt" o "formaggio" se nell'array è presente un sostituto vegetale o senza lattosio).`
       : "";
-    const responseContract = `{"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"...","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["passaggio 1","passaggio 2","passaggio 3"]}]}`;
+    const responseContract = `{"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"breve descrizione","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["prepara","cuoci","assembla"]}]}`;
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
 - Questa richiesta riguarda SOLO questi tipi di pasto: ${requestMealTypes.join(', ')}. Per ogni giorno genera esattamente ${mealsForRequest} pasti: ${requestMealTypes.join(', ')}.
@@ -1675,49 +1688,68 @@ ${constrainedRecipeReferenceRule}
 
     reserveMealPlanModelCall(context.modelCallBudget);
     modelCallsStarted++;
-    const response = await getOpenAiClient(context.provider).chat.completions.create({
-      model: 'gpt-5-mini',
-      reasoning_effort: 'minimal',
-      messages: [
-        { role: 'system', content: sysPrompt },
-        { role: 'user', content: userMsg },
-      ],
-      response_format: mealPlanResponseFormat(context.preferences, {
-        dates: chunkDates,
-        mealTypes: requestMealTypes,
-        itemCount: chunkDates.length * mealsForRequest,
-        ingredientNames: request.ingredientNames,
-      }),
-      // 21 ricette complete richiedono più spazio di un vecchio blocco
-      // giornaliero. Il contratto resta strutturato e la risposta viene sempre
-      // validata integralmente prima della consegna.
-      max_completion_tokens: 7000,
-    });
+    const providerStartedAt = Date.now();
+    firstProviderStartedAt ??= providerStartedAt;
+    let response: Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>;
+    try {
+      response = await getOpenAiClient(context.provider).chat.completions.create(
+        {
+          model: 'gpt-5-mini',
+          reasoning_effort: 'minimal',
+          messages: [
+            { role: 'system', content: sysPrompt },
+            { role: 'user', content: userMsg },
+          ],
+          response_format: mealPlanResponseFormat(context.preferences, {
+            dates: chunkDates,
+            mealTypes: requestMealTypes,
+            itemCount: chunkDates.length * mealsForRequest,
+            ingredientNames: request.ingredientNames,
+          }),
+          // Il contratto compatto riduce il tempo di generazione mantenendo tre
+          // passaggi utilizzabili per ogni ricetta. La risposta resta strutturata
+          // e viene sempre validata integralmente prima della consegna.
+          max_completion_tokens: MEAL_PLAN_MAX_COMPLETION_TOKENS,
+        },
+        // Una settimana è già la singola chiamata consentita dal contratto.
+        // Un retry di trasporto dell'SDK raddoppierebbe il tempo percepito al
+        // timeout (e la chiamata fisica al provider) senza poter consegnare
+        // output parziale sicuro al client.
+        { maxRetries: 0 },
+      );
+    } finally {
+      providerDurationMs += Date.now() - providerStartedAt;
+    }
 
     const content = response.choices[0].message.content || '{"items":[]}';
-    let parsed: unknown;
+    responseChars += content.length;
+    const parsingStartedAt = Date.now();
     try {
-      parsed = JSON.parse(content);
-    } catch {
-      // Un JSON invalido è un difetto recuperabile dell'output del Piano Pasti,
-      // non un errore di trasporto/provider: il chiamante avvierà un solo repair.
-      throw new MealPlanRepairError([], buildMealPlanFormatCorrection(context.generationAttempt + 1));
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        // Un JSON invalido è un difetto recuperabile dell'output del Piano Pasti,
+        // non un errore di trasporto/provider: il chiamante avvierà un solo repair.
+        throw new MealPlanRepairError([], buildMealPlanFormatCorrection(context.generationAttempt + 1));
+      }
+      if (
+        !parsed
+        || typeof parsed !== "object"
+        || Array.isArray(parsed)
+        || !Array.isArray((parsed as { items?: unknown }).items)
+      ) {
+        throw new MealPlanRepairError([], buildMealPlanFormatCorrection(context.generationAttempt + 1));
+      }
+      return parseMealItems(parsed);
+    } finally {
+      parsingDurationMs += Date.now() - parsingStartedAt;
     }
-    if (
-      !parsed
-      || typeof parsed !== "object"
-      || Array.isArray(parsed)
-      || !Array.isArray((parsed as { items?: unknown }).items)
-    ) {
-      throw new MealPlanRepairError([], buildMealPlanFormatCorrection(context.generationAttempt + 1));
-    }
-    return parseMealItems(parsed);
   }
 
   assertAiConfigured(context.provider);
   const validDates = new Set(dates);
 
-  const aiStartTime = Date.now();
   const allItems: MealPlanSuggestion['items'] = [...deterministicBreakfasts];
   let failedChunks = 0;
   let firstReason: unknown = null;
@@ -1758,27 +1790,8 @@ ${constrainedRecipeReferenceRule}
     return (mealOrder[a.mealType] ?? 99) - (mealOrder[b.mealType] ?? 99);
   });
 
-  const aiDurationMs = Date.now() - aiStartTime;
-  if (!context.suppressInternalLogs) {
-    recordMealPlanLatency({
-      mode: standardPlan ? 'standard' : 'constrained',
-      durationMs: aiDurationMs,
-      modelCalls: modelCallsStarted,
-      modelCallBudget: context.modelCallBudget?.maxCalls ?? MAX_MEAL_PLAN_MODEL_CALLS,
-    });
-    console.log(JSON.stringify({
-      tag: "AI_MEAL_PLAN_CALL",
-      variant,
-      mode: standardPlan ? "standard" : "constrained",
-      generationAttempt: context.generationAttempt,
-      aiDurationMs,
-      modelCalls: modelCallsStarted,
-      chunks: weeklyRequests.length,
-      failedChunks,
-      itemsCount: filtered.length,
-    }));
-  }
-
+  const validationStartedAt = Date.now();
+  try {
   if (failedChunks > 0 && firstReason !== null) {
     // Gli errori di repair sono difetti dell'output AI già classificati qui
     // sopra. Devono raggiungere il ciclo settimanale senza essere scambiati
@@ -1993,6 +2006,44 @@ ${constrainedRecipeReferenceRule}
   }
 
   return { title: 'Piano Settimanale', items: finalItems };
+  } finally {
+    const durationMs = Date.now() - attemptStartedAt;
+    const validationDurationMs = Date.now() - validationStartedAt;
+    const preparationDurationMs = firstProviderStartedAt === null
+      ? durationMs
+      : firstProviderStartedAt - attemptStartedAt;
+    if (!context.suppressInternalLogs) {
+      recordMealPlanLatency({
+        mode: standardPlan ? 'standard' : 'constrained',
+        durationMs,
+        modelCalls: modelCallsStarted,
+        modelCallBudget: context.modelCallBudget?.maxCalls ?? MAX_MEAL_PLAN_MODEL_CALLS,
+        preparationDurationMs,
+        providerDurationMs,
+        parsingDurationMs,
+        validationDurationMs,
+        responseChars,
+        repairAttempt: context.generationAttempt > 1,
+      });
+      console.log(JSON.stringify({
+        tag: "AI_MEAL_PLAN_CALL",
+        variant,
+        mode: standardPlan ? "standard" : "constrained",
+        generationAttempt: context.generationAttempt,
+        durationMs,
+        preparationDurationMs,
+        providerDurationMs,
+        parsingDurationMs,
+        validationDurationMs,
+        responseChars,
+        repairAttempt: context.generationAttempt > 1,
+        modelCalls: modelCallsStarted,
+        chunks: weeklyRequests.length,
+        failedChunks,
+        itemsCount: filtered.length,
+      }));
+    }
+  }
 }
 
 export async function generateWeeklyMealPlan(
@@ -2028,7 +2079,7 @@ export async function generateWeeklyMealPlan(
     try {
       context.onStatus?.(
         attempt === 1
-          ? "Genero l'intera settimana e verifico i vincoli."
+          ? "Compongo le 21 ricette della settimana."
           : "Correggo solo gli errori rilevati e ricontrollo il piano.",
       );
       return await generateWeeklyMealPlanAttempt({

@@ -6,6 +6,7 @@ process.env.AI_INTEGRATIONS_OPENAI_API_KEY = process.env.AI_INTEGRATIONS_OPENAI_
 import {
   __setOpenAiClientForTest,
   generateWeeklyMealPlan,
+  MEAL_PLAN_MAX_COMPLETION_TOKENS,
   MAX_MEAL_PLAN_MODEL_CALLS,
 } from "../lib/openai";
 import { validateMealPlanConstraints } from "../lib/meal-plan-constraints";
@@ -32,7 +33,10 @@ type RequestInfo = {
   dates: string[];
   mealTypes: string[];
   itemCount: number;
+  stepMinItems: number;
+  stepMaxItems: number;
   tokenLimit: number;
+  maxRetries: number | undefined;
 };
 type FakeMealPlanResponse = Meal[] | { content: string };
 
@@ -127,7 +131,7 @@ function createFakeClient(responder: (request: RequestInfo, call: number) => Fak
   const client = {
     chat: {
       completions: {
-        create: async (request: any) => {
+        create: async (request: any, options?: { maxRetries?: number }) => {
           const prompt = request.messages.find((message: any) => message.role === "system")!.content as string;
           const schema = request.response_format.json_schema.schema;
           const info: RequestInfo = {
@@ -135,7 +139,10 @@ function createFakeClient(responder: (request: RequestInfo, call: number) => Fak
             dates: datesFromPrompt(prompt),
             mealTypes: schema.properties.items.items.properties.mealType.enum,
             itemCount: schema.properties.items.minItems,
+            stepMinItems: schema.properties.items.items.properties.steps.minItems,
+            stepMaxItems: schema.properties.items.items.properties.steps.maxItems,
             tokenLimit: request.max_completion_tokens,
+            maxRetries: options?.maxRetries,
           };
           calls.push(info);
           const response = responder(info, calls.length);
@@ -171,8 +178,12 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
   assert.deepEqual(calls[0]!.dates, DATES);
   assert.deepEqual(calls[0]!.mealTypes, ["breakfast", "lunch", "dinner"]);
   assert.equal(calls[0]!.itemCount, 21);
-  assert.equal(calls[0]!.tokenLimit, 7000);
+  assert.equal(calls[0]!.tokenLimit, MEAL_PLAN_MAX_COMPLETION_TOKENS);
+  assert.equal(calls[0]!.maxRetries, 0);
+  assert.equal(calls[0]!.stepMinItems, 3);
+  assert.equal(calls[0]!.stepMaxItems, 3);
   assert.match(calls[0]!.prompt, /BLUEPRINT SETTIMANALE LOCALE/);
+  assert.match(calls[0]!.prompt, /ESATTAMENTE 3 istruzioni concise/);
   assert.match(calls[0]!.prompt, /famiglia pasta/);
   assert.match(calls[0]!.prompt, /proteina red_meat/);
   assert.equal(plan.items.length, 21);
