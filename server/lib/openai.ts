@@ -1968,10 +1968,23 @@ ${constrainedRecipeReferenceRule}
           && replacement.steps.every((step) => !!step?.trim())
           && replacement.ingredients.every((ingredient) =>
             !!ingredient.name?.trim() && !!ingredient.quantity?.trim() && !!ingredient.unit?.trim());
+        const currentItem = locallyRepaired.find((item) =>
+          item.date === slot.date && item.mealType === slot.mealType);
+        // Una riparazione cosmetica non può eliminare l'unico pasto principale
+        // che soddisfa la regola mediterranea sulla carne rossa. Conservare
+        // l'originale è preferibile a una nuova chiamata o a un piano non
+        // conforme: la varietà resta best effort, il vincolo alimentare no.
+        const replacesOnlyRedMeatMeal = requiresMediterraneanRedMeat
+          && !!currentItem
+          && evaluateMealPlanRedMeat([currentItem]).hasRedMeat
+          && evaluateMealPlanRedMeat(locallyRepaired).redMeatMealCount === 1;
+        const replacementKeepsRedMeat = !replacesOnlyRedMeatMeal
+          || (!!replacement && evaluateMealPlanRedMeat([replacement]).hasRedMeat);
         const replacementIsSafe = !!replacement
           && validateMealPlanConstraints([replacement], context.preferences).length === 0
           && (replacement.mealType !== "breakfast" || !savoryBreakfastTerm(replacementText))
-          && (glutenFreeRequired || wantsWholegrain || !/\bintegral(?:e|i)?\b/i.test(replacementText));
+          && (glutenFreeRequired || wantsWholegrain || !/\bintegral(?:e|i)?\b/i.test(replacementText))
+          && replacementKeepsRedMeat;
         if (!replacementIsComplete || !replacementIsSafe) {
           localRepairFailed = true;
           break;
@@ -2012,6 +2025,24 @@ ${constrainedRecipeReferenceRule}
       issues: varietyEvaluation.issues.map((issue) => issue.code),
       carbohydrateSources: varietyEvaluation.distinctCarbohydrateSources,
     }));
+  }
+  // Difesa finale: la verifica iniziale è eseguita prima delle riparazioni
+  // locali di varietà. Ricontrollare l'output restituito impedisce a qualunque
+  // modifica successiva di consegnare un piano mediterraneo senza carne rossa.
+  const finalRedMeatEvaluation = evaluateMealPlanRedMeat(finalItems);
+  if (requiresMediterraneanRedMeat && !finalRedMeatEvaluation.hasRedMeat) {
+    if (!context.suppressInternalLogs) {
+      console.warn(JSON.stringify({
+        tag: "AI_MEAL_PLAN_RED_MEAT_FINAL_REJECTED",
+        variant,
+        mainMealCount: finalRedMeatEvaluation.mainMealCount,
+        redMeatMealCount: finalRedMeatEvaluation.redMeatMealCount,
+      }));
+    }
+    throw new AiError(
+      "AI_CONSTRAINT_VIOLATION",
+      "Il piano mediterraneo finale non include una carne rossa tra pranzo e cena",
+    );
   }
 
   if (context.onProgress) {

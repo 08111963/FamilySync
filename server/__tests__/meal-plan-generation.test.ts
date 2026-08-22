@@ -432,6 +432,50 @@ test("mediterranea rifiuta una risposta senza carne rossa senza rigenerare la se
   assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS);
 });
 
+test("una riparazione di varietà non può sostituire l'unico pasto con carne rossa", async (t) => {
+  const { client, calls } = createFakeClient((request) => {
+    if (/CORREZIONE VARIETÀ LOCALE OBBLIGATORIA/i.test(request.sysPrompt)) {
+      return [makeMeal(request.dates[0]!, "lunch", "Pranzo riparato con tonno", [
+        { name: "riso", quantity: "80", unit: "g" },
+        { name: "tonno", quantity: "120", unit: "g" },
+        { name: "zucchine", quantity: "150", unit: "g" },
+      ])];
+    }
+
+    return mediterraneanGlutenFreeWeekItems(request).map((item) => {
+      if (item.mealType !== "lunch") return item;
+      const isRedMeatTarget = /proteina principale red_meat/i.test(request.sysPrompt);
+      const isFirstLunch = request.dates[0] === DATES[0];
+      if (!isRedMeatTarget && !isFirstLunch) return item;
+      return {
+        ...makeMeal(item.date, item.mealType, "Pranzo mediterraneo ripetuto", [
+          { name: "pasta senza glutine", quantity: "80", unit: "g" },
+          { name: "tonno", quantity: "120", unit: "g" },
+          { name: "zucchine", quantity: "150", unit: "g" },
+        ]),
+        // Solo il pranzo con target red_meat dichiara la carne rossa:
+        // il repair successivo la ignora di proposito per testare la guardia.
+        steps: isRedMeatTarget
+          ? ["Rosola il manzo.", "Aggiungi gli altri ingredienti.", "Servi caldo."]
+          : ["Prepara gli ingredienti.", "Cuoci il piatto.", "Servi caldo."],
+      };
+    });
+  });
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "mediterranean_gluten_free" },
+    maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
+  });
+
+  assert.ok(calls.some((call) => /CORREZIONE VARIETÀ LOCALE OBBLIGATORIA/i.test(call.sysPrompt)));
+  assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
+  assert.equal(evaluateMealPlanRedMeat(plan.items).hasRedMeat, true);
+});
+
 test("due pasti al giorno mantengono il contratto da 14 pasti completi", async (t) => {
   const { client, calls } = createFakeClient(weekItems);
   __setOpenAiClientForTest(client);

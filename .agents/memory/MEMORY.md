@@ -53,6 +53,7 @@
 - [Varietà concettuale dei pranzi](meal-plan-lunch-variety.md) — firma di famiglia/base/proteina, non titoli o contorni, per evitare menu fotocopia senza nuove chiamate AI.
 - [Vincoli alimentari piani pasti](meal-plan-dietary-constraints.md) — dieta e allergie sono hard constraint: fail-closed su consenso salute, output AI e ogni scrittura.
 - [Ricette con sostituti sicuri](meal-plan-safe-substitute-context.md) — validare i passaggi nel contesto degli ingredienti per evitare falsi positivi senza sbloccare altri allergeni.
+- [Vincoli dopo le correzioni del Piano Pasti](meal-plan-post-processing-constraints.md) — una riparazione di varietà non può rimuovere un vincolo nutrizionale già soddisfatto; controllare sempre l’output finale.
 - [Velocità generazione piani pasti](meal-plan-generation-speed.md) — il percorso rapido deve mantenere un dettaglio ricetta utilizzabile; i vincoli sanitari non sacrificano mai la verifica.
 - [Google Calendar direct sync](google-calendar-sync.md) — OAuth per-utente (scope calendar.events, state con userId), refresh token cifrato, fail-visibile 'expired'; nei DELETE leggere i link Google PRIMA (cascade).
 - [Anteprima dev — porte](dev-preview-routing.md) — esterna 80 → backend 5000, mai Metro 8081; Metro orfano serve bundle stantii; login Google web = redirect pagina intera, mai popup.
