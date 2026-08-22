@@ -200,7 +200,7 @@ test("body reale → route parser → prompt → mock → piano finale: ogni die
     assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS, `${scenario.name}: budget massimo invariato`);
     assert.equal(
       calls.length,
-      scenario.exclusions.includes("lactose") ? 7 : 14,
+      7,
       `${scenario.name}: chiamate mock previste senza retry`,
     );
     assert.ok(calls.every((call) =>

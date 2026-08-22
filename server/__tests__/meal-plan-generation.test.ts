@@ -367,7 +367,7 @@ test("mediterranea senza allergie riceve una famiglia-obiettivo per ogni pranzo 
   assert.ok(lunchCalls.every((call) => !/LUNCH FAMILY COUNTS/i.test(call.sysPrompt)));
   assert.ok(lunchCalls.every((call) => !/LUNCH BASE COUNTS/i.test(call.sysPrompt)));
   assert.ok(lunchCalls.every((call) => !/SEMANTIC LUNCH SIGNATURES USED/i.test(call.sysPrompt)));
-  assert.ok(lunchCalls.every((call) => /DO NOT REPEAT/i.test(call.sysPrompt)));
+  assert.ok(lunchCalls.every((call) => /OBIETTIVO FAMIGLIA PRANZO DEL GIORNO/i.test(call.sysPrompt)));
 
   const variety = evaluateMealPlanVariety(plan.items);
   assert.ok(Object.keys(variety.lunchFamilyCounts).length >= 4);

@@ -1,0 +1,623 @@
+I test reali in produzione mostrano che il Piano Pasti ha ancora problemi strutturali di affidabilità e velocità.
+
+Situazione osservata:
+
+* `Mediterranea` → funziona;
+* `Vegetariana` → funziona;
+* `Vegana` → fallisce con messaggio di impossibilità a completare il piano entro il limite;
+* `Mediterranea senza glutine` → arriva a più tentativi e poi fallisce;
+* `Mediterranea senza lattosio` → in un test ha mostrato il precedente piano Mediterranea invece del nuovo profilo;
+* in generale la generazione è troppo lenta;
+* in alcuni casi servono 2–3 tentativi;
+* l’utente può abbandonare l’app prima che il piano venga generato.
+
+NON correggere più i singoli profili uno alla volta.
+
+L’obiettivo di questo mandato è rifattorizzare il motore Piano Pasti in modo che normalmente utilizzi **UNA sola chiamata AI per l’intera settimana** e, solo in caso di errore recuperabile, **UNA sola seconda chiamata di repair**.
+
+NON fare deploy.
+
+# 1. OBIETTIVO ARCHITETTURALE
+
+Il nuovo flusso deve essere:
+
+```text
+dietProfile
+    ↓
+blueprint locale 7 giorni
+    ↓
+catalogo/pool compatibile con il profilo
+    ↓
+1 chiamata AI per tutta la settimana
+    ↓
+validazione locale
+    ↓
+PASS → mostra piano
+
+FAIL recuperabile
+    ↓
+1 sola chiamata di repair mirato
+```
+
+Target:
+
+```text
+normal generation = 1 application model call
+worst recoverable case = 2 application model calls
+```
+
+NON devono più esistere percorsi normali da 7, 14, 28 chiamate applicative per generare una settimana.
+
+# 2. UNA SOLA RISPOSTA STRUTTURATA
+
+OpenAI/Replit AI deve restituire in un’unica risposta JSON:
+
+* 7 giorni;
+* colazione;
+* pranzo;
+* cena;
+* titolo;
+* descrizione;
+* ingredienti;
+* quantità;
+* istruzioni;
+* eventuali metadata già richiesti dal frontend.
+
+Mantieni JSON Schema/Zod, ma adattali alla generazione dell’intera settimana in una sola risposta.
+
+# 3. BLUEPRINT LOCALE PRIMA DELL’AI
+
+Prima della model call costruisci deterministicamente:
+
+* famiglia del pranzo;
+* famiglia della cena;
+* target proteico;
+* rotazione carboidrati;
+* varietà;
+* semantic duplicate avoidance;
+* eventuale carne rossa;
+* sostituzioni specifiche del `dietProfile`.
+
+La model call non deve decidere da zero l’architettura della settimana.
+
+# 4. PROFILI DA SUPPORTARE E TESTARE
+
+Testa end-to-end TUTTI i profili attualmente disponibili nel dropdown:
+
+* `mediterranean`
+* `mediterranean_gluten_free`
+* `mediterranean_lactose_free`
+* `vegetarian`
+* `vegetarian_gluten_free`
+* `vegan`
+* `pescetarian`
+* `low_carb`
+* `halal`
+
+Per ogni profilo verifica:
+
+* 7 giorni completi;
+* 3 pasti al giorno;
+* nessun crash;
+* nessun loop di retry;
+* massimo 2 application model calls;
+* profilo rispettato;
+* output validato.
+
+# 5. MEDITERRANEA
+
+Mantieni:
+
+* pasta;
+* pane;
+* riso;
+* cereali;
+* patate;
+* polenta;
+* carne bianca;
+* carne rossa;
+* pesce;
+* uova;
+* formaggi;
+* latticini;
+* legumi;
+* frutta;
+* verdura;
+* olio EVO.
+
+Mantieni anche:
+
+```text
+red_meat >= 1 pasto principale a settimana
+```
+
+a pranzo oppure cena.
+
+# 6. VEGANA — CORREGGERE IL FALLIMENTO REALE
+
+Individua perché oggi `vegan` esaurisce il budget o fallisce la validazione.
+
+Verifica conflitti con:
+
+* target proteico;
+* carne rossa;
+* carne bianca;
+* pesce;
+* uova;
+* latte/formaggi;
+* blueprint mediterraneo;
+* variety checker.
+
+Per `vegan` il blueprint deve escludere PRIMA della model call:
+
+* carne rossa;
+* carne bianca;
+* pesce;
+* uova;
+* latte;
+* formaggi;
+* derivati animali non consentiti.
+
+Le proteine target devono derivare solo dal pool vegan.
+
+Nessun requisito mediterraneo sulla carne deve propagarsi a questo profilo.
+
+# 7. MEDITERRANEA SENZA GLUTINE — CORREGGERE IL FALLIMENTO REALE
+
+Non interpretare `mediterranean_gluten_free` come:
+
+```text
+elimina pasta
+elimina pane
+elimina prodotti da forno
+```
+
+Deve invece usare sostituzioni esplicite già compatibili, per esempio se presenti nel catalogo:
+
+* pasta senza glutine;
+* pane senza glutine;
+* biscotti senza glutine;
+* gnocchi senza glutine;
+* pangrattato senza glutine;
+* couscous senza glutine / di mais compatibile;
+* farine gluten-free.
+
+Mantieni anche alimenti naturalmente GF:
+
+* riso;
+* quinoa;
+* patate;
+* polenta;
+* carne;
+* pesce;
+* uova;
+* formaggi;
+* legumi;
+* frutta;
+* verdura.
+
+Il blueprint deve essere compatibile PRIMA della model call.
+
+# 8. MEDITERRANEA SENZA LATTOSIO
+
+Mantieni la distinzione:
+
+```text
+senza lattosio != senza latte
+```
+
+Usa, se supportati:
+
+* latte senza lattosio;
+* yogurt senza lattosio;
+* formaggi/prodotti esplicitamente senza lattosio.
+
+Non escludere:
+
+* pasta;
+* pane;
+* carne;
+* pesce;
+* uova;
+* legumi;
+* frutta;
+* verdura.
+
+# 9. VEGETARIANA SENZA GLUTINE
+
+Il blueprint deve applicare:
+
+```text
+vegetarian
++
+gluten-free substitutions
+```
+
+prima della model call.
+
+Nessuna carne/pesce.
+Pasta/pane consentiti solo nelle varianti GF previste.
+
+# 10. PESCETARIANA
+
+Verifica che:
+
+* carne rossa = esclusa;
+* carne bianca = esclusa;
+* pesce = consentito;
+* uova/latticini = secondo la policy esistente;
+* legumi e cereali = consentiti.
+
+# 11. LOW CARB
+
+Verifica che il blueprint riduca realmente le fonti di carboidrati principali senza creare piani monotoni o impossibili.
+
+Non applicare regole di pasta/riso obbligatorie.
+
+# 12. HALAL
+
+Usa esclusivamente la policy halal già presente nel progetto.
+
+Non introdurre nuove interpretazioni in questo mandato.
+
+# 13. VARIETÀ PRIMA DELL’AI
+
+La varietà deve essere principalmente costruita nel blueprint.
+
+Mantieni almeno:
+
+* stessa famiglia pranzo max 3 quando possibile;
+* stessa base max 2;
+* semantic duplicate avoidance;
+* proteine ruotate;
+* carboidrati ruotati;
+* almeno 4 famiglie di pranzo nei profili compatibili.
+
+Non usare nuove model call per risolvere problemi che possono essere prevenuti deterministicamente.
+
+# 14. DUPLICATI SEMANTICI
+
+Mantieni il controllo contro casi tipo:
+
+```text
+Risotto al limone con salmone
+Riso al limone con salmone
+```
+
+e:
+
+```text
+Pasta al pomodoro con tonno
+Spaghetti al pomodoro con tonno
+```
+
+Il controllo deve funzionare sulla settimana completa restituita dalla singola model call.
+
+# 15. REPAIR MIRATO
+
+Se la prima risposta è:
+
+* malformata;
+* incompleta;
+* incompatibile con il profilo;
+* semanticamente duplicata oltre i limiti;
+
+NON generare nuovamente tutta la settimana da zero con un nuovo prompt generico.
+
+La seconda e ultima call deve ricevere:
+
+* JSON precedente;
+* lista precisa degli errori deterministici;
+* istruzione di correggere solo i punti necessari.
+
+Esempio:
+
+```text
+Correggi esclusivamente:
+- giorno 3 pranzo incompatibile con vegan;
+- giorno 5 pranzo duplicato semanticamente con giorno 2;
+- giorno 7 cena mancante.
+
+Mantieni invariato tutto il resto.
+```
+
+Massimo:
+
+```text
+2 application model calls
+```
+
+# 16. SDK RETRY
+
+Il client attuale usa:
+
+```text
+maxRetries: 1
+```
+
+NON aumentarlo.
+
+Nel report distingui chiaramente:
+
+* application model calls;
+* eventuali SDK/network retries.
+
+Una application call può eventualmente generare un retry HTTP interno del client, ma non deve essere conteggiata come nuova logica applicativa.
+
+# 17. BUG GRAVE: PIANO PRECEDENTE MOSTRATO
+
+È stato osservato questo comportamento:
+
+1. genero `Mediterranea`;
+2. seleziono `Mediterranea senza lattosio`;
+3. genero;
+4. viene mostrato il precedente piano `Mediterranea`.
+
+Questo è un bug P0 funzionale.
+
+Analizza:
+
+* React state;
+* query cache;
+* mutation cache;
+* streaming state;
+* `currentPlan`;
+* `generatedPlan`;
+* stale response;
+* race condition;
+* Genera alternativa;
+* eventuali cache key non legate a `dietProfile`.
+
+# 18. REQUEST ID OBBLIGATORIO
+
+Ogni pressione di `Genera Piano` deve creare un `requestId` univoco.
+
+La richiesta deve contenere/associare:
+
+```text
+requestId
+dietProfile
+weekStartDate
+```
+
+La risposta deve riportare:
+
+```text
+requestId
+dietProfile
+```
+
+Il frontend deve mostrare il risultato SOLO se:
+
+```text
+response.requestId === activeRequestId
+AND
+response.dietProfile === selectedDietProfile
+```
+
+Una risposta tardiva di una richiesta precedente deve essere ignorata.
+
+# 19. RESET DEL PRECEDENTE RISULTATO
+
+Quando l’utente cambia profilo dieta e preme `Genera Piano`:
+
+* non mostrare il vecchio piano come nuovo;
+* imposta lo stato precedente come stale;
+* mostra loading;
+* sostituisci il piano solo quando arriva la nuova risposta valida.
+
+Non cancellare necessariamente un piano salvato.
+Questa regola riguarda il risultato temporaneo della generazione.
+
+# 20. TEST OBBLIGATORI STALE STATE
+
+Aggiungi almeno:
+
+```text
+mediterranean
+→ mediterranean_lactose_free
+```
+
+Il secondo risultato deve essere LF.
+
+```text
+mediterranean
+→ vegan
+```
+
+Il secondo risultato deve essere vegan.
+
+```text
+vegetarian
+→ mediterranean_gluten_free
+```
+
+Il secondo risultato deve essere GF.
+
+Simula anche risposta tardiva della prima richiesta dopo la seconda.
+
+La risposta vecchia deve essere ignorata.
+
+# 21. GENERA ALTERNATIVA
+
+`Genera alternativa` deve:
+
+* mantenere esattamente lo stesso `dietProfile`;
+* usare un nuovo `requestId`;
+* non recuperare il profilo della generazione precedente;
+* usare lo stesso schema single-call;
+* max 2 application calls.
+
+# 22. PERFORMANCE
+
+Misura con mock/strumentazione:
+
+* tempo backend totale esclusa rete reale;
+* numero application model calls;
+* durata della call provider quando disponibile;
+* tempo di validazione locale.
+
+Non aumentare timeout per nascondere la lentezza.
+
+Target architetturale:
+
+```text
+1 call normale
+2 solo se repair necessario
+```
+
+# 23. STREAMING
+
+Se la route streaming attuale è costruita attorno alla generazione giorno-per-giorno, rifattorizzala coerentemente.
+
+Puoi mantenere UX di progresso, ma NON simulare 14 model call.
+
+Il progresso può essere:
+
+```text
+Preparazione piano
+Generazione AI
+Verifica
+Completato
+```
+
+Non mostrare falsi “tentativo giorno X” se non esistono più.
+
+# 24. MESSAGGI UTENTE
+
+Semplifica gli errori.
+
+Non mostrare messaggi come:
+
+```text
+tentativo 2 di 2
+```
+
+se il nuovo motore usa una singola generazione + repair.
+
+Messaggi comprensibili:
+
+```text
+Generazione del piano...
+Verifica del piano...
+Correzione del piano...
+```
+
+Se fallisce dopo il repair:
+
+```text
+Non è stato possibile completare il piano. Riprova.
+```
+
+# 25. BUDGET
+
+NON aumentare:
+
+```text
+MAX_MEAL_PLAN_MODEL_CALLS = 28
+```
+
+in questo mandato.
+
+Dopo il refactor, però, documenta quale nuovo hard cap sarebbe sensato.
+
+Aspettativa:
+
+```text
+normal = 1
+repair = 2
+```
+
+Quindi 28 dovrebbe diventare sovradimensionato.
+
+NON modificarlo ancora senza test completi.
+
+# 26. PROVIDER AI
+
+NON modificare:
+
+* `OPENAI_DIRECT_PILOT_USER_IDS`;
+* routing OpenAI diretto/Replit Managed AI;
+* Secrets;
+* `OPENAI_API_KEY`;
+* `AI_INTEGRATIONS_OPENAI_*`;
+* provider selection.
+
+Il refactor Piano Pasti deve funzionare indipendentemente dal provider.
+
+# 27. NESSUNA CHIAMATA AI REALE NEI TEST
+
+Usa mock/fake.
+
+Non consumare crediti Replit o OpenAI per i test se non indispensabile.
+
+# 28. TEST COMPLETI
+
+Esegui:
+
+```bash
+npm run typecheck
+npm run test:ai
+```
+
+più tutti i test Piano Pasti e i nuovi test profilo/stale state/single-call.
+
+Per ogni profilo riporta:
+
+* calls;
+* result;
+* validation;
+* repair usato sì/no.
+
+# 29. REPORT
+
+Crea:
+
+`MEAL_PLAN_SINGLE_CALL_REFACTOR_REPORT.md`
+
+Tabella obbligatoria:
+
+| Profilo         | Prima application calls | Dopo normale | Dopo con repair | Esito |
+| --------------- | ----------------------: | -----------: | --------------: | ----- |
+| Mediterranea    |                     ~14 |            1 |           max 2 | ...   |
+| Mediterranea GF |          fino a 28/fail |            1 |           max 2 | ...   |
+| Mediterranea LF |               variabile |            1 |           max 2 | ...   |
+| Vegetariana     |                     ~14 |            1 |           max 2 | ...   |
+| Vegetariana GF  |               variabile |            1 |           max 2 | ...   |
+| Vegana          |                    fail |            1 |           max 2 | ...   |
+| Pescetariana    |                     ... |            1 |           max 2 | ...   |
+| Low carb        |                     ... |            1 |           max 2 | ...   |
+| Halal           |                     ... |            1 |           max 2 | ...   |
+
+Riporta inoltre:
+
+* causa del fallimento vegan;
+* causa del fallimento Mediterranean GF;
+* causa dello stale plan LF;
+* nuova gestione requestId;
+* nuovo schema retry;
+* eventuali SDK retry;
+* nuovo hard cap consigliato.
+
+# 30. NON FARE DEPLOY
+
+NON fare deploy.
+
+NON modificare database.
+
+NON modificare pagamenti o altri moduli FamilySync.
+
+Genera:
+
+`familysync-meal-plan-single-call-refactor-20260822.zip`
+
+ZIP minimale con:
+
+* soli file modificati;
+* test;
+* report;
+* manifest esatto.
+
+Esegui secret scan e verifica manifest/ZIP.
+
+Fermati dopo lo ZIP e attendi il controllo esterno.
