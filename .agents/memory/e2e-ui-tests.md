@@ -15,4 +15,5 @@ description: Convenzioni per i test UI in e2e/ e perché un run del tester subag
 - Rate limiter in-memory (login per-email, /api globale): un riavvio del backend li azzera se il tester subagent incappa in 429.
 - Per catture reali multi-route, mantenere una sola sessione SPA: i reload completi rimontano tutte le query condivise, saturano `/api` e un 429 su auth può svuotare la schermata. Bloccare analytics dev e cambiare route senza reload.
 - Nascondere banner di sviluppo solo tramite il loro wrapper/testID esatto: risalire genericamente gli antenati può occultare l'intera root dell'app e produrre screenshot bianchi.
+- Il controllo versione globale non passa da `/api`: nei test UI isolati, rispondere non-OK a `/build-version` evita che il banner di aggiornamento riappaia e intercetti tap estranei al flusso verificato.
 - Per testare il rollback transazionale lato server: un `recipeId` UUID valido ma inesistente passa Zod e viola la FK DENTRO la transazione (dopo la delete) → rollback reale.
