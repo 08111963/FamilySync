@@ -761,9 +761,12 @@ function mealPlanAttemptModelCallCost(context: MealPlanGenerationContext): numbe
   const usesDeterministicLactoseBreakfasts = includesBreakfast
     && mealPlanHasExclusion(context.preferences, "lactose")
     && !mealPlanRequiresGlutenFree(context.preferences);
-  const requestsPerDay = (includesBreakfast && !usesDeterministicLactoseBreakfasts ? 1 : 0)
-    + (hasMainRequest ? 1 : 0);
-  return requestsPerDay * 7;
+  // Colazione, pranzo e cena dello stesso giorno condividono una sola risposta
+  // piccola. Le colazioni senza lattosio restano determinate, ma il blocco
+  // pranzo/cena giornaliero esiste sempre.
+  return hasMainRequest || (includesBreakfast && !usesDeterministicLactoseBreakfasts)
+    ? 7
+    : 0;
 }
 interface MealPlanGenerationAttemptContext extends MealPlanGenerationContext {
   constraintCorrection?: string;
@@ -965,8 +968,8 @@ const MAX_LOCAL_VARIETY_REPAIRS = 3;
 /**
  * Tetto cumulativo per una generazione utente: include blocchi giornalieri,
  * retry obbligatori di formato/vincolo e riparazioni locali. 28 è il minimo
- * sostenibile: una settimana standard richiede 14 chiamate e deve poter
- * completare una seconda settimana intera quando formato o sicurezza falliscono.
+ * sostenibile: una settimana usa una richiesta giornaliera per sette giorni e
+ * lascia spazio a rigenerazioni complete quando formato o sicurezza falliscono.
  * La varietà non può consumare una rigenerazione completa aggiuntiva.
  */
 export const MAX_MEAL_PLAN_MODEL_CALLS = 28;
@@ -1551,41 +1554,39 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     { requireRedMeat: requiresMediterraneanRedMeat },
   );
   // Una risposta settimanale da sette ricette dettagliate viene talvolta
-  // troncata dal provider: il risultato sembra JSON valido ma contiene solo
-  // una parte del piano. Dividiamo quindi la settimana in richieste GIORNALIERE
-  // piccole. La colazione resta separata da pranzo/cena per mantenere la sua
-  // allow-list specifica anche in presenza di allergie.
+  // troncata dal provider: dividiamo quindi in sette richieste GIORNALIERE.
+  // Colazione/pranzo/cena dello stesso giorno restano nello stesso blocco: i
+  // profili compatibili usano l'unione delle rispettive liste sicure e le sette
+  // richieste vengono avviate in parallelo. Questo evita sette onde seriali
+  // che facevano superare il minuto di attesa.
   const weeklyRequests: WeeklyMealRequest[] = dates.flatMap((date, dayIndex) => {
-    const requests: WeeklyMealRequest[] = [];
-    if (mealTypes.includes("breakfast") && !usesDeterministicLactoseBreakfasts) {
-      requests.push({
-        dates: [date],
-        mealTypes: ["breakfast"],
-        ingredientNames: compatibleMealIngredients(context.preferences, "breakfast"),
-        label: `${date}-breakfast`,
-        breakfastHint: activeBreakfastThemes[dayIndex],
-      });
-    }
-
-    const mainMealTypes = mealTypes.filter((mealType) => mealType !== "breakfast");
-    if (mainMealTypes.length > 0) {
-      requests.push({
-        dates: [date],
-        mealTypes: mainMealTypes,
-        ingredientNames: allergenSafePlan
-          ? compatibleMainIngredients
-          : undefined,
-        label: `${date}-main`,
-        themeHint: `${activeDayThemes[dayIndex]} ${activeDinnerThemes[dayIndex]}`,
-        lunchFamilyTarget: mainMealTypes.includes("lunch")
-          ? lunchFamilyTargets[dayIndex]
-          : undefined,
-        lunchSemanticTarget: mainMealTypes.includes("lunch")
-          ? lunchSemanticTargets[dayIndex]
-          : undefined,
-      });
-    }
-    return requests;
+    const requestMealTypes = mealTypes.filter((mealType) =>
+      mealType !== "breakfast" || !usesDeterministicLactoseBreakfasts);
+    if (requestMealTypes.length === 0) return [];
+    const safeBreakfastIngredients = compatibleMealIngredients(context.preferences, "breakfast")
+      .filter((ingredient) => glutenFreeRequired || !ingredient.includes("senza glutine"));
+    const safeIngredients = allergenSafePlan
+      ? Array.from(new Set([
+          ...safeBreakfastIngredients,
+          ...compatibleMainIngredients,
+        ]))
+      : undefined;
+    return [{
+      dates: [date],
+      mealTypes: requestMealTypes,
+      ingredientNames: safeIngredients,
+      label: `${date}-daily`,
+      themeHint: `${activeDayThemes[dayIndex]} ${activeDinnerThemes[dayIndex]}`,
+      breakfastHint: requestMealTypes.includes("breakfast")
+        ? activeBreakfastThemes[dayIndex]
+        : undefined,
+      lunchFamilyTarget: requestMealTypes.includes("lunch")
+        ? lunchFamilyTargets[dayIndex]
+        : undefined,
+      lunchSemanticTarget: requestMealTypes.includes("lunch")
+        ? lunchSemanticTargets[dayIndex]
+        : undefined,
+    }];
   });
 
   async function fetchChunk(
@@ -1676,7 +1677,7 @@ ${constrainedRecipeReferenceRule}
         itemCount: chunkDates.length * mealsForRequest,
         ingredientNames: request.ingredientNames,
       }),
-      max_completion_tokens: 4000,
+      max_completion_tokens: 3000,
     });
 
     const content = response.choices[0].message.content || '{"items":[]}';
@@ -1692,37 +1693,24 @@ ${constrainedRecipeReferenceRule}
   let failedChunks = 0;
   let firstReason: unknown = null;
   let modelCallsStarted = 0;
-  const results: PromiseSettledResult<MealPlanSuggestion["items"]>[] = [];
-  // Le richieste dello stesso giorno restano parallele; i giorni successivi
-  // ricevono però un riepilogo di sole categorie già usate. Così la varietà
-  // migliora senza una singola chiamata OpenAI supplementare né il JSON intero
-  // delle ricette precedenti.
-  for (const date of dates) {
-    const dayRequests = weeklyRequests.filter((request) => request.dates[0] === date);
-    const priorVarietyContext = buildMealPlanVarietyContext(allItems);
-    const dayResults = await Promise.allSettled(
-      dayRequests.map((request) => fetchChunk(
-        request,
-        request.themeHint,
-        request.breakfastHint,
-        "",
-        priorVarietyContext,
-      )),
-    );
-    const budgetFailure = dayResults.find((result) =>
-      result.status === "rejected"
-      && result.reason instanceof AiError
-      && result.reason.code === "AI_MODEL_CALL_BUDGET_EXHAUSTED");
-    if (budgetFailure?.status === "rejected") {
-      // Non attraversare gli altri giorni dopo un esaurimento: non potrebbe
-      // partire alcuna chiamata aggiuntiva e non deve esistere un piano
-      // parziale da validare o consegnare.
-      throw budgetFailure.reason;
-    }
-    results.push(...dayResults);
-    for (const result of dayResults) {
-      if (result.status === "fulfilled") allItems.push(...result.value);
-    }
+  // I temi, le famiglie-obiettivo e le firme proteiche vengono pianificati
+  // prima delle chiamate: tutti i sette giorni possono partire in parallelo.
+  // La validazione fail-closed e le riparazioni locali restano a valle, quindi
+  // nessun output incompatibile arriva al client.
+  const results = await Promise.allSettled(
+    weeklyRequests.map((request) => fetchChunk(
+      request,
+      request.themeHint,
+      request.breakfastHint,
+    )),
+  );
+  const budgetFailure = results.find((result) =>
+    result.status === "rejected"
+    && result.reason instanceof AiError
+    && result.reason.code === "AI_MODEL_CALL_BUDGET_EXHAUSTED");
+  if (budgetFailure?.status === "rejected") throw budgetFailure.reason;
+  for (const result of results) {
+    if (result.status === "fulfilled") allItems.push(...result.value);
   }
   for (const result of results) {
     if (result.status === "rejected") {

@@ -16,7 +16,7 @@ const DATES = Array.from({ length: 7 }, (_, i) => {
   d.setDate(d.getDate() + i);
   return d.toISOString().split("T")[0]!;
 });
-const THREE_MEAL_WEEK_REQUESTS = 14;
+const THREE_MEAL_WEEK_REQUESTS = 7;
 const CONSTRAINED_WEEK_REQUESTS = 7;
 
 type Ingredient = { name: string; quantity: string; unit: string };
@@ -64,7 +64,10 @@ function requestedDates(sysPrompt: string): string[] {
   return match![1]!.split(",").map((value) => value.trim()).filter(Boolean);
 }
 
-function createFakeClient(buildItems: (request: RequestInfo) => Meal[]) {
+function createFakeClient(
+  buildItems: (request: RequestInfo) => Meal[],
+  beforeResponse?: () => Promise<void>,
+) {
   const calls: RequestInfo[] = [];
   const client = {
     chat: {
@@ -88,6 +91,7 @@ function createFakeClient(buildItems: (request: RequestInfo) => Meal[]) {
             maxCompletionTokens: request.max_completion_tokens,
           };
           calls.push(info);
+          if (beforeResponse) await beforeResponse();
           return {
             choices: [{ message: { content: JSON.stringify({ items: buildItems(info) }) }, finish_reason: "stop" }],
           };
@@ -276,7 +280,7 @@ function assertCompleteWeek(items: Array<{ date: string; mealType: string }>, me
   }
 }
 
-test("senza vincoli: richieste giornaliere piccole mantengono ricette leggibili", async (t) => {
+test("senza vincoli: sette richieste giornaliere complete mantengono ricette leggibili", async (t) => {
   const { client, calls } = createFakeClient(weekItems);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
@@ -288,16 +292,14 @@ test("senza vincoli: richieste giornaliere piccole mantengono ricette leggibili"
     onProgress: (items) => progress.push(items as Meal[]),
   });
 
-  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, "una colazione e un blocco pranzo/cena per ogni giorno");
-  assert.equal(calls.filter((call) => call.mealTypes[0] === "breakfast").length, 7);
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, "un blocco completo per ogni giorno");
+  assert.equal(calls.filter((call) => call.mealTypes.includes("breakfast")).length, 7);
   assert.equal(calls.filter((call) => call.mealTypes.includes("lunch")).length, 7);
   assert.ok(calls.every((call) => call.dates.length === 1));
   assert.ok(calls.every((call) =>
-    call.mealTypes[0] === "breakfast"
-      ? call.mealTypes.length === 1
-      : JSON.stringify(call.mealTypes) === JSON.stringify(["lunch", "dinner"])));
+    JSON.stringify(call.mealTypes) === JSON.stringify(["breakfast", "lunch", "dinner"])));
   assert.ok(calls.every((call) => !call.compact));
-  assert.ok(calls.every((call) => call.maxCompletionTokens === 4000));
+  assert.ok(calls.every((call) => call.maxCompletionTokens === 3000));
   assert.ok(calls.every((call) => call.stepMinItems === 3));
   assert.ok(calls.every((call) => call.stepMaxItems === 6));
   assert.ok(calls.every((call) => /da 3 a 6 istruzioni concrete e chiare/i.test(call.sysPrompt)));
@@ -305,6 +307,33 @@ test("senza vincoli: richieste giornaliere piccole mantengono ricette leggibili"
   assert.ok(plan.items.every((item) => (item.steps?.length || 0) >= 3));
   assert.ok(plan.items.every((item) => (item.steps?.length || 0) <= 6));
   assert.equal(progress.length, 7, "l'interfaccia riceve comunque gli aggiornamenti per giorno");
+});
+
+test("la settimana avvia tutti i sette blocchi giornalieri prima della prima risposta", async (t) => {
+  let releaseResponses!: () => void;
+  const responseGate = new Promise<void>((resolve) => {
+    releaseResponses = resolve;
+  });
+  const { client, calls } = createFakeClient(weekItems, () => responseGate);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const generation = generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+  });
+  for (let attempt = 0; attempt < 20 && calls.length < THREE_MEAL_WEEK_REQUESTS; attempt++) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  assert.equal(
+    calls.length,
+    THREE_MEAL_WEEK_REQUESTS,
+    "tutti i giorni devono essere già in volo: nessuno aspetta la risposta del giorno precedente",
+  );
+
+  releaseResponses();
+  const plan = await generation;
+  assertCompleteWeek(plan.items, 3);
 });
 
 test("mediterranea senza allergie riceve una famiglia-obiettivo per ogni pranzo senza nuove chiamate", async (t) => {
@@ -335,10 +364,10 @@ test("mediterranea senza allergie riceve una famiglia-obiettivo per ogni pranzo 
     1,
     "il blueprint deve assegnare una sola carne rossa a uno dei quattordici pasti principali",
   );
-  assert.ok(lunchCalls.slice(1).every((call) => /LUNCH FAMILY COUNTS/i.test(call.sysPrompt)));
-  assert.ok(lunchCalls.slice(1).every((call) => /LUNCH BASE COUNTS/i.test(call.sysPrompt)));
-  assert.ok(lunchCalls.slice(1).every((call) => /SEMANTIC LUNCH SIGNATURES USED/i.test(call.sysPrompt)));
-  assert.ok(lunchCalls.slice(1).every((call) => /DO NOT REPEAT/i.test(call.sysPrompt)));
+  assert.ok(lunchCalls.every((call) => !/LUNCH FAMILY COUNTS/i.test(call.sysPrompt)));
+  assert.ok(lunchCalls.every((call) => !/LUNCH BASE COUNTS/i.test(call.sysPrompt)));
+  assert.ok(lunchCalls.every((call) => !/SEMANTIC LUNCH SIGNATURES USED/i.test(call.sysPrompt)));
+  assert.ok(lunchCalls.every((call) => /DO NOT REPEAT/i.test(call.sysPrompt)));
 
   const variety = evaluateMealPlanVariety(plan.items);
   assert.ok(Object.keys(variety.lunchFamilyCounts).length >= 4);
@@ -552,11 +581,10 @@ test("senza glutine: richieste giornaliere mirate mantengono colazioni dolci e p
   });
 
   assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS);
-  const breakfastCall = calls.find((call) => call.mealTypes.length === 1 && call.mealTypes[0] === "breakfast")!;
-  assert.ok(breakfastCall.ingredientNames);
-  for (const invalidBreakfastIngredient of ["riso", "polenta di mais", "zucchine", "melanzane", "pomodori", "ceci"]) {
-    assert.ok(!breakfastCall.ingredientNames!.includes(invalidBreakfastIngredient), invalidBreakfastIngredient);
-  }
+  const dailyCall = calls.find((call) => call.mealTypes.includes("breakfast"))!;
+  assert.ok(dailyCall.ingredientNames);
+  assert.ok(dailyCall.ingredientNames!.includes("yogurt bianco"));
+  assert.ok(dailyCall.ingredientNames!.includes("riso"));
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_gluten_free" }), []);
   assert.ok(plan.items.filter((item) => item.mealType === "breakfast").every((item) => !/\b(?:riso|polenta|zucchine|melanzane|pomodori|ceci)\b/i.test(item.title)));
@@ -621,7 +649,7 @@ test("mediterranea senza glutine amplia il prompt e passa il contesto di variet�
   assert.ok(mainCalls.every((call) => call.ingredientNames?.includes("pasta di mais senza glutine")));
   assert.ok(mainCalls.every((call) => call.ingredientNames?.includes("pasta di riso senza glutine")));
   assert.ok(mainCalls.every((call) => call.ingredientNames?.includes("pane senza glutine")));
-  assert.ok(calls.slice(2).every((call) => /CONTESTO VARIETÀ DEI GIORNI GIÀ GENERATI/i.test(call.sysPrompt)));
+  assert.ok(calls.every((call) => !/CONTESTO VARIETÀ DEI GIORNI GIÀ GENERATI/i.test(call.sysPrompt)));
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_gluten_free" }), []);
 });
@@ -638,7 +666,7 @@ test("mediterranea senza glutine genera un piano completo sicuro con target pran
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
-  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, "il percorso mediterraneo+glutine usa le 14 richieste giornaliere previste");
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS, "il percorso mediterraneo+glutine usa sette richieste giornaliere complete");
   assert.ok(calls.length <= MAX_MEAL_PLAN_MODEL_CALLS);
   assertCompleteWeek(plan.items, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean_gluten_free" }), []);
@@ -856,8 +884,7 @@ test("solo lattosio usa quattro famiglie di pranzo e passa firme ai giorni succe
   assert.ok(calls.every((call) => call.ingredientNames?.includes("farro")));
   assert.ok(calls.every((call) => call.ingredientNames?.includes("ricotta senza lattosio")));
   assert.match(calls[0]!.sysPrompt, /stesso schema.*massimo 2 volte/i);
-  assert.ok(calls.slice(1).every((call) => /SEMANTIC LUNCH SIGNATURES USED/i.test(call.sysPrompt)));
-  assert.ok(calls.slice(1).some((call) => /pasta \+ tomato \+ tuna \+ pasta_main/i.test(call.sysPrompt)));
+  assert.ok(calls.every((call) => !/SEMANTIC LUNCH SIGNATURES USED/i.test(call.sysPrompt)));
   const evaluation = evaluateMealPlanVariety(plan.items);
   assert.ok(Object.keys(evaluation.lunchFamilyCounts).length >= 4);
   assert.ok(!evaluation.issues.some((issue) => issue.code === "low_lunch_family_variety"));
@@ -1367,9 +1394,9 @@ test("una risposta incompleta non viene consegnata come settimana valida", async
 
   await assert.rejects(
     generateWeeklyMealPlan({ familySize: 4, weekStartDate: WEEK_START }),
-    (error: unknown) => (error as { code?: string }).code === "AI_MODEL_CALL_BUDGET_EXHAUSTED",
+    (error: unknown) => (error as { code?: string }).code === "AI_BAD_RESPONSE",
   );
-  assert.equal(calls.length, MAX_MEAL_PLAN_MODEL_CALLS);
+  assert.equal(calls.length, THREE_MEAL_WEEK_REQUESTS * 3);
 });
 
 test("una risposta incompleta viene rigenerata una sola volta senza inviare piani parziali", async (t) => {

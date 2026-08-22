@@ -410,6 +410,14 @@ export default function MealPlansScreen() {
     setWeekStartInput(isoToDisplay(iso));
   };
   const [dietProfile, setDietProfile] = useState<MealPlanDietProfile>("mediterranean");
+  // Il menu e il pulsante possono essere premuti nello stesso frame su web:
+  // il ref viene aggiornato sincronicamente così la richiesta usa sempre
+  // l'ultimo profilo scelto, non quello della closure del render precedente.
+  const dietProfileRef = useRef<MealPlanDietProfile>(dietProfile);
+  const selectDietProfile = (profile: MealPlanDietProfile) => {
+    dietProfileRef.current = profile;
+    setDietProfile(profile);
+  };
   const [showDietProfilePicker, setShowDietProfilePicker] = useState(false);
   // Preferenze passate dall'assistente AI della Home (es. "mediterraneo"):
   // precompilano le note, la generazione parte solo col pulsante "Genera Piano".
@@ -426,7 +434,7 @@ export default function MealPlansScreen() {
     if (assistantParam === "1" || notes) setActiveTab("generate");
     if (assistantParam === "1" && currentFamily && !assistantAutoRunRef.current) {
       assistantAutoRunRef.current = true;
-      fetchMealPlanStream(notes ? { voiceNotes: notes } : undefined);
+      fetchMealPlanStream(notes ? { voiceNotes: notes, profile: dietProfileRef.current } : { profile: dietProfileRef.current });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notesParam, assistantParam, currentFamily]);
@@ -555,7 +563,9 @@ export default function MealPlansScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const notes = (opts?.voiceNotes ?? voicePrefs).trim();
-    const preferences: { dietProfile: MealPlanDietProfile; notes?: string } = { dietProfile: opts?.profile ?? dietProfile };
+    const preferences: { dietProfile: MealPlanDietProfile; notes?: string } = {
+      dietProfile: opts?.profile ?? dietProfileRef.current,
+    };
     if (notes) preferences.notes = notes;
     const body: any = { weekStartDate: weekStart };
     if (Object.keys(preferences).length > 0) body.preferences = preferences;
@@ -659,14 +669,18 @@ export default function MealPlansScreen() {
     }
   };
 
-  const fetchAlternativeStream = async (opts?: { speak?: boolean }) => {
+  const fetchAlternativeStream = async (opts?: { speak?: boolean; profile?: MealPlanDietProfile }) => {
     if (!currentFamily || generating || generatingAlt) return;
+    const seq = ++streamSeqRef.current;
+    const isActive = () => streamSeqRef.current === seq;
     setGeneratingAlt(true);
     setAiDisabledError(false);
     setGenerationError(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    const preferences: { dietProfile: MealPlanDietProfile; notes?: string } = { dietProfile };
+    const preferences: { dietProfile: MealPlanDietProfile; notes?: string } = {
+      dietProfile: opts?.profile ?? dietProfileRef.current,
+    };
     if (voicePrefs.trim()) preferences.notes = voicePrefs.trim();
     const body: any = { weekStartDate: weekStart, planVariant: 2 };
     if (Object.keys(preferences).length > 0) body.preferences = preferences;
@@ -679,6 +693,7 @@ export default function MealPlansScreen() {
         `/api/ai/${currentFamily.id}/weekly-meal-plan/stream`,
         body,
         (obj) => {
+          if (!isActive()) return;
           if (obj?.type === "error") {
             streamErrorMessage = typeof obj.message === "string"
               ? obj.message
@@ -712,6 +727,7 @@ export default function MealPlansScreen() {
           }
         }
       );
+      if (!isActive()) return;
       if (streamErrorMessage) {
         setGenerationError(streamErrorMessage);
         setAiPlans((prev) => prev.slice(0, 1));
@@ -720,6 +736,7 @@ export default function MealPlansScreen() {
         speakText(buildPlanSpeech("Piano B - Creativo", collectedItems));
       }
     } catch (err: any) {
+      if (!isActive()) return;
       if (isAiDisabled(err)) {
         setAiDisabledError(true);
       } else {
@@ -728,7 +745,7 @@ export default function MealPlansScreen() {
       setAiPlans((prev) => prev.slice(0, 1));
       setSelectedPlanIndex(0);
     } finally {
-      setGeneratingAlt(false);
+      if (isActive()) setGeneratingAlt(false);
     }
   };
 
@@ -738,11 +755,11 @@ export default function MealPlansScreen() {
     // primeSpeech va chiamato DENTRO il tocco: sblocca la voce del browser
     // (Chrome Android) così la lettura a fine generazione non viene bloccata.
     if (autoSpeak) primeSpeech();
-    return fetchMealPlanStream({ speak: autoSpeak });
+    return fetchMealPlanStream({ speak: autoSpeak, profile: dietProfileRef.current });
   };
   const handleGenerateAlternative = () => {
     if (autoSpeak) primeSpeech();
-    return fetchAlternativeStream({ speak: autoSpeak });
+    return fetchAlternativeStream({ speak: autoSpeak, profile: dietProfileRef.current });
   };
 
   // La dettatura raccoglie preferenze culinarie aggiuntive, mai allergie:
@@ -752,7 +769,7 @@ export default function MealPlansScreen() {
     const spoken = text.trim();
     if (!spoken) return;
     const spokenProfile = detectMealPlanDietProfileFromText(spoken);
-    if (spokenProfile) setDietProfile(spokenProfile);
+    if (spokenProfile) selectDietProfile(spokenProfile);
     setVoicePrefs(spoken);
     // Il testo resta una preferenza culinaria; il profilo è estratto soltanto
     // da espressioni canoniche e non da allergie generiche.
@@ -1037,7 +1054,7 @@ export default function MealPlansScreen() {
                       <Pressable
                         key={profile}
                         onPress={() => {
-                          setDietProfile(profile);
+                          selectDietProfile(profile);
                           setShowDietProfilePicker(false);
                         }}
                         accessibilityRole="menuitem"
