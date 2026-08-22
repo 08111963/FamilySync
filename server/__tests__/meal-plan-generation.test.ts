@@ -1,5 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import express from "express";
+import type { Server } from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { eq } from "drizzle-orm";
 
 process.env.AI_INTEGRATIONS_OPENAI_API_KEY = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "test-key";
 
@@ -11,6 +16,11 @@ import {
 } from "../lib/openai";
 import { validateMealPlanConstraints } from "../lib/meal-plan-constraints";
 import { MEAL_PLAN_DIET_PROFILES, type MealPlanDietProfile } from "../../shared/meal-plan-diet-profiles";
+import { db } from "../db";
+import { aiUsage, familyMembers, families, users } from "../../shared/schema";
+import { registerRoutes } from "../routes";
+import { generateAccessToken } from "../lib/jwt";
+import { recipeImageCacheKey } from "../lib/recipe-image-prewarm";
 
 const WEEK_START = "2026-08-03";
 const DATES = Array.from({ length: 7 }, (_, index) => {
@@ -346,3 +356,214 @@ test("un budget applicativo di una chiamata non avvia il repair", async (t) => {
   );
   assert.equal(calls.length, 1);
 });
+
+test(
+  "lo stream invia heartbeat senza pasti mentre il provider è lento e consegna solo il piano validato",
+  { skip: process.env.DATABASE_URL ? false : "DATABASE_URL non impostata" },
+  async (t) => {
+    if (!process.env.SESSION_SECRET) process.env.SESSION_SECRET = "test-secret";
+
+    const marker = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const email = `meal-plan-stream-${marker}@example.com`;
+    const validPlan = fullWeek("vegetarian").map((item) => ({
+      ...item,
+      title: `${item.title} ${marker}`,
+    }));
+    const invalidPlan = fullWeek("vegetarian", true).map((item) => ({
+      ...item,
+      title: `${item.title} ${marker}`,
+    }));
+    // La rotta avvia il prewarm delle immagini dopo res.end(). Per mantenere
+    // il test focalizzato sullo stream (e non inviare richieste immagini),
+    // rendiamo disponibili solo le cache sintetiche dei titoli finali.
+    const cachedRecipeImagePaths = Array.from(new Set(
+      validPlan.map((item) => path.resolve(
+        "uploads",
+        "recipe-images",
+        `${recipeImageCacheKey(item.title)}.webp`,
+      )),
+    ));
+    for (const imagePath of cachedRecipeImagePaths) {
+      fs.writeFileSync(imagePath, "");
+    }
+    const [user] = await db.insert(users).values({
+      email,
+      passwordHash: "x".repeat(20),
+      name: "Meal plan stream test",
+      emailVerified: true,
+      termsAcceptedAt: new Date(),
+      aiFeaturesEnabled: true,
+      ageBand: "adult",
+    }).returning();
+    const [family] = await db.insert(families).values({ name: `Meal plan stream ${marker}` }).returning();
+    await db.insert(familyMembers).values({
+      familyId: family.id,
+      userId: user.id,
+      role: "adult",
+      nickname: "Test",
+      color: "#6366F1",
+      points: 0,
+    });
+
+    let server: Server | undefined;
+    let baseUrl = "";
+    const providerStartedAt: number[] = [];
+    const providerResolvedAt: number[] = [];
+    let providerCalls = 0;
+
+    t.after(async () => {
+      __setOpenAiClientForTest(null);
+      if (server) {
+        await new Promise<void>((resolve) => server!.close(() => resolve()));
+      }
+      // Consente al fire-and-forget del prewarm di osservare i cache-hit prima
+      // di rimuovere gli utenti/famiglia sintetici.
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      await db.delete(aiUsage).where(eq(aiUsage.familyId, family.id));
+      await db.delete(familyMembers).where(eq(familyMembers.familyId, family.id));
+      await db.delete(families).where(eq(families.id, family.id));
+      await db.delete(users).where(eq(users.id, user.id));
+      for (const imagePath of cachedRecipeImagePaths) {
+        fs.rmSync(imagePath, { force: true });
+      }
+    });
+
+    const slowClient = {
+      chat: {
+        completions: {
+          create: async (request: any) => {
+            providerCalls++;
+            if (providerCalls === 1) {
+              providerStartedAt.push(Date.now());
+              // Deve superare il battito di 8 secondi della rotta, non solo
+              // l'aggiornamento iniziale scritto prima della chiamata AI.
+              await new Promise((resolve) => setTimeout(resolve, 8_400));
+            }
+            providerResolvedAt.push(Date.now());
+            const responseItems = providerCalls === 1 ? invalidPlan : validPlan;
+            return {
+              choices: [{
+                message: {
+                  content: JSON.stringify({ items: responseItems }),
+                },
+                finish_reason: "stop",
+              }],
+            };
+          },
+        },
+      },
+    };
+    __setOpenAiClientForTest(slowClient);
+
+    const app = express();
+    app.set("trust proxy", 1);
+    app.use(express.json());
+    server = await registerRoutes(app);
+    await new Promise<void>((resolve) => server!.listen(0, resolve));
+    const address = server.address();
+    baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+
+    const requestId = "mealplan-slow-provider";
+    const dietProfile = "vegetarian";
+    const requestStartedAt = Date.now();
+    const response = await fetch(`${baseUrl}/api/ai/${family.id}/weekly-meal-plan/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${generateAccessToken(user)}`,
+      },
+      body: JSON.stringify({
+        weekStartDate: WEEK_START,
+        requestId,
+        preferences: { dietProfile },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "application/x-ndjson; charset=utf-8");
+    assert.equal(response.headers.get("x-meal-plan-request-id"), requestId);
+    assert.ok(response.body);
+
+    type StreamEvent = {
+      type?: string;
+      requestId?: string;
+      dietProfile?: string;
+      message?: string;
+      items?: unknown[];
+      title?: string;
+    };
+    const events: StreamEvent[] = [];
+    const eventTimes: number[] = [];
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        events.push(JSON.parse(line) as StreamEvent);
+        eventTimes.push(Date.now());
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      events.push(JSON.parse(buffer) as StreamEvent);
+      eventTimes.push(Date.now());
+    }
+
+    assert.equal(providerCalls, 2, "il primo output non valido deve causare un solo repair");
+    assert.ok(events.length >= 4, "lo stream deve contenere stato iniziale, heartbeat, repair e risultato");
+    const statusEvents = events.filter((event) => event.type === "status");
+    assert.ok(statusEvents.length >= 2, "un provider lento deve produrre almeno un heartbeat oltre allo stato iniziale");
+    const heartbeatDuringSlowProviderIndex = events.findIndex(
+      (event, index) =>
+        event.type === "status"
+        && event.message === "Sto ancora componendo le ricette della settimana."
+        // Margine di 500ms: il timer della rotta scatta a 8s, mentre il
+        // provider di test risponde a 8,4s. Senza setInterval non può esistere
+        // uno stato in questa finestra, perché gli altri stati sono inviati
+        // prima della prima chiamata o dopo la sua risposta.
+        && eventTimes[index]! >= providerStartedAt[0]! + 7_500
+        && eventTimes[index]! >= requestStartedAt + 7_500
+        && eventTimes[index]! < providerResolvedAt[0]!,
+    );
+    assert.ok(
+      heartbeatDuringSlowProviderIndex >= 0,
+      "deve arrivare un heartbeat circa 8 secondi dopo l'avvio, prima della risposta lenta del provider",
+    );
+    for (const event of events) {
+      assert.equal(event.requestId, requestId);
+      assert.equal(event.dietProfile, dietProfile);
+    }
+    for (const event of statusEvents) {
+      assert.deepEqual(
+        Object.keys(event).sort(),
+        ["dietProfile", "message", "requestId", "type"],
+        "gli stati devono contenere solo metadati e messaggio, mai contenuto generato",
+      );
+      assert.equal("items" in event, false, "gli stati non devono contenere pasti");
+      assert.equal("title" in event, false, "gli stati non devono contenere contenuto generato");
+      assert.equal(typeof event.message, "string");
+    }
+
+    const firstMealsIndex = events.findIndex(
+      (event) => event.type === "items" && Array.isArray(event.items) && event.items.length > 0,
+    );
+    assert.ok(firstMealsIndex >= 0, "lo stream deve consegnare il piano finale");
+    assert.ok(
+      events.slice(0, firstMealsIndex).every((event) => event.type === "status"),
+      "nessun evento con pasti deve precedere la validazione finale",
+    );
+    assert.equal(events[firstMealsIndex]!.items!.length, 21);
+    assert.ok(
+      eventTimes[firstMealsIndex]! >= providerResolvedAt[1]!,
+      "il primo evento con pasti arriva dopo il secondo tentativo del provider, quello validato",
+    );
+    assert.equal(events[events.length - 1]!.type, "done");
+    assert.equal(events[events.length - 1]!.items!.length, 21);
+  },
+);
