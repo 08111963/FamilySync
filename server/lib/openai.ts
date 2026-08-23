@@ -314,11 +314,12 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
             properties: {
               date: { type: 'string' },
               mealType: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
-              title: { type: 'string', minLength: 1, maxLength: 120 },
-              description: { type: 'string', minLength: 1, maxLength: 180 },
+              title: { type: 'string', minLength: 1, maxLength: 80 },
+              description: { type: 'string', minLength: 1, maxLength: 80 },
               ingredients: {
                 type: 'array',
-                minItems: 1,
+                minItems: 3,
+                maxItems: 4,
                 items: {
                   type: 'object',
                   additionalProperties: false,
@@ -334,7 +335,7 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
                 type: 'array',
                 minItems: 3,
                 maxItems: 3,
-                items: { type: 'string', minLength: 1, maxLength: 180 },
+                items: { type: 'string', minLength: 1, maxLength: 90 },
               },
             },
             required: ['date', 'mealType', 'title', 'description', 'ingredients', 'steps'],
@@ -382,6 +383,37 @@ function mealPlanResponseFormat(
   const itemCount = options?.itemCount || 3;
   const allowedDates = options?.dates || [];
   const allowedMealTypes = options?.mealTypes || ["breakfast", "lunch", "dinner"];
+  // Il gateway Replit gestisce correttamente le proprietà obbligatorie, ma in
+  // produzione ha lasciato passare `items: []` nonostante minItems=21. Per una
+  // settimana usiamo quindi una chiave obbligatoria per ogni pasto e
+  // ricomponiamo l'array solo dopo la risposta: il provider non può più
+  // soddisfare lo schema con un piano vuoto.
+  const slotKeys = Array.from(
+    { length: itemCount },
+    (_, index) => `meal_${String(index + 1).padStart(2, "0")}`,
+  );
+  const configuredItemSchema = {
+    ...itemSchema,
+    properties: {
+      ...itemSchema.properties,
+      date: { type: "string", enum: allowedDates },
+      mealType: { type: "string", enum: allowedMealTypes },
+      ingredients: {
+        ...itemSchema.properties.ingredients,
+        items: {
+          ...ingredientSchema,
+          properties: {
+            ...ingredientSchema.properties,
+            // La stessa lista chiusa ripetuta su 21 slot supera il limite
+            // provider di 1.000 valori enum nello schema strutturato. Il
+            // prompt mantiene la lista completa e validateMealPlanConstraints
+            // la verifica in modo fail-closed prima di ogni risposta/salvataggio.
+            name: ingredientSchema.properties.name,
+          },
+        },
+      },
+    },
+  };
 
   return {
     type: "json_schema" as const,
@@ -391,35 +423,12 @@ function mealPlanResponseFormat(
         ? "allergen_safe_meal_plan_response"
         : "weekly_meal_plan_response",
       schema: {
-        ...schema,
-        properties: {
-          ...schema.properties,
-          items: {
-            ...schema.properties.items,
-            minItems: itemCount,
-            maxItems: itemCount,
-            items: {
-              ...itemSchema,
-              properties: {
-                ...itemSchema.properties,
-                date: { type: "string", enum: allowedDates },
-                mealType: { type: "string", enum: allowedMealTypes },
-                ingredients: {
-                  ...itemSchema.properties.ingredients,
-                  items: {
-                    ...ingredientSchema,
-                    properties: {
-                      ...ingredientSchema.properties,
-                      name: ingredientNames
-                        ? { type: "string", enum: ingredientNames }
-                        : ingredientSchema.properties.name,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+        type: "object",
+        additionalProperties: false,
+        properties: Object.fromEntries(
+          slotKeys.map((slotKey) => [slotKey, configuredItemSchema]),
+        ),
+        required: slotKeys,
       },
     },
   };
@@ -1567,6 +1576,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   type WeeklyMealRequest = {
     dates: string[];
     mealTypes: string[];
+    slotKeys: string[];
     ingredientNames?: string[];
     label: string;
     themeHint?: string;
@@ -1614,6 +1624,10 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   const weeklyRequests: WeeklyMealRequest[] = [{
     dates,
     mealTypes,
+    slotKeys: Array.from(
+      { length: dates.length * mealTypes.length },
+      (_, index) => `meal_${String(index + 1).padStart(2, "0")}`,
+    ),
     ingredientNames: safeIngredients,
     label: "full-week",
     themeHint: weeklyBlueprint,
@@ -1664,16 +1678,17 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     const snackMealRule = constrainedPlan
       ? `- snack (spuntino): piccolo e leggero, composto esclusivamente da ingredienti compatibili con TUTTI i vincoli.`
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
-    const itemContract = `- Ogni item ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano, non vuoto), description (breve, non vuota), ingredients (array), steps (array).`;
-    const preparationContract = `- steps è la RICETTA completa, passo-passo: ESATTAMENTE 3 istruzioni concise e concrete in italiano (ogni passaggio è una stringa, senza numerazione iniziale, massimo circa 180 caratteri). Indica operazioni reali come lavare, tagliare, cuocere e assemblare, usando ingredienti e tempi quando utili. NON usare frasi generiche come "cuoci e condisci con cura" o "servi subito" come unico dettaglio della ricetta.`;
+    const itemContract = `- Ogni pasto ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano, non vuoto), description (una frase utile di massimo 12 parole), ingredients (ESATTAMENTE 3 o 4 ingredienti essenziali), steps (array).`;
+    const preparationContract = `- steps è la RICETTA completa, passo-passo: ESATTAMENTE 3 istruzioni concise e concrete in italiano (ogni passaggio è una stringa, senza numerazione iniziale, massimo 90 caratteri). Indica operazioni reali come lavare, tagliare, cuocere e assemblare. Non aggiungere ingredienti opzionali o condimenti generici solo per allungare l'output.`;
     const constrainedRecipeReferenceRule = constrainedPlan && !lactoseFreeRequired
       ? `- VINCOLI NELLA RICETTA: per ogni ingrediente soggetto a un vincolo usa, nel titolo, descrizione e in OGNI passaggio, il nome completo e compatibile scritto nell'array ingredients. Non abbreviare né sostituire con parole generiche un ingrediente sensibile (per esempio non scrivere "latte", "yogurt" o "formaggio" se nell'array è presente un sostituto vegetale o senza lattosio).`
       : "";
-    const responseContract = `{"items":[{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"breve descrizione","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["prepara","cuoci","assembla"]}]}`;
+    const responseContract = `{"meal_01":{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"breve descrizione","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["prepara","cuoci","assembla"]},"meal_02":{...},"...":"..."}`;
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
 - Questa richiesta riguarda SOLO questi tipi di pasto: ${requestMealTypes.join(', ')}. Per ogni giorno genera esattamente ${mealsForRequest} pasti: ${requestMealTypes.join(', ')}.
 ${itemContract}
+- Il JSON top-level DEVE contenere TUTTE e SOLO queste ${request.slotKeys.length} chiavi obbligatorie: ${request.slotKeys.join(", ")}. Non usare un array "items" e non omettere nessuna chiave.
 - Ogni ingrediente ha name, quantity e unit NON VUOTI. quantity deve essere concreta (es. "200", "1") e unit deve essere presente (es. "g", "ml", "pezzi"); per una quantità realmente non misurabile scrivi quantity "q.b." e unit "per condire", mai una stringa vuota.
 ${preparationContract}
 ${constrainedRecipeReferenceRule}
@@ -1731,7 +1746,10 @@ ${constrainedRecipeReferenceRule}
       providerDurationMs += Date.now() - providerStartedAt;
     }
 
-    const content = response.choices[0].message.content || '{"items":[]}';
+    const choice = response.choices[0];
+    const finishReason = choice?.finish_reason || "unknown";
+    const content = choice?.message.content || "";
+    finishReasons.push(finishReason);
     responseChars += content.length;
     const parsingStartedAt = Date.now();
     try {
@@ -1743,15 +1761,16 @@ ${constrainedRecipeReferenceRule}
         // non un errore di trasporto/provider: il chiamante avvierà un solo repair.
         throw new MealPlanRepairError([], buildMealPlanFormatCorrection(context.generationAttempt + 1));
       }
-      if (
-        !parsed
-        || typeof parsed !== "object"
-        || Array.isArray(parsed)
-        || !Array.isArray((parsed as { items?: unknown }).items)
-      ) {
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new MealPlanRepairError([], buildMealPlanFormatCorrection(context.generationAttempt + 1));
       }
-      return parseMealItems(parsed);
+        const slotResponse = parsed as Record<string, unknown>;
+        if (!request.slotKeys.every((slotKey) => Object.hasOwn(slotResponse, slotKey))) {
+          throw new MealPlanRepairError([], buildMealPlanFormatCorrection(context.generationAttempt + 1));
+        }
+        return parseMealItems({
+          items: request.slotKeys.map((slotKey) => slotResponse[slotKey]),
+        });
     } finally {
       parsingDurationMs += Date.now() - parsingStartedAt;
     }
@@ -1764,6 +1783,7 @@ ${constrainedRecipeReferenceRule}
   let failedChunks = 0;
   let firstReason: unknown = null;
   let modelCallsStarted = 0;
+  const finishReasons: string[] = [];
   // I temi, le famiglie-obiettivo e le firme proteiche vengono pianificati
   // prima delle chiamate: tutti i sette giorni possono partire in parallelo.
   // La validazione fail-closed e le riparazioni locali restano a valle, quindi
@@ -2051,6 +2071,7 @@ ${constrainedRecipeReferenceRule}
         chunks: weeklyRequests.length,
         failedChunks,
         itemsCount: filtered.length,
+        finishReasons: Array.from(new Set(finishReasons)),
       }));
     }
   }
@@ -2110,6 +2131,12 @@ export async function generateWeeklyMealPlan(
           throw new AiError(
             "AI_CONSTRAINT_VIOLATION",
             `Piano pasti rifiutato dopo ${attempt} tentativi: ${error.violations.map((violation) => violation.code).join(",")}`,
+          );
+        }
+        if (error instanceof MealPlanRepairError) {
+          throw new AiError(
+            "AI_BAD_RESPONSE",
+            `Piano pasti non valido dopo ${attempt} tentativi`,
           );
         }
         throw error;

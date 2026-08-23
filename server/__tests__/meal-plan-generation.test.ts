@@ -48,8 +48,13 @@ type RequestInfo = {
   dates: string[];
   mealTypes: string[];
   itemCount: number;
+  slotKeys: string[];
+  ingredientNamesAreEnumerated: boolean;
+  ingredientMaxItems: number;
   stepMinItems: number;
   stepMaxItems: number;
+  stepMaxLength: number;
+  descriptionMaxLength: number;
   tokenLimit: number;
   maxRetries: number | undefined;
   timeout: number | undefined;
@@ -150,13 +155,22 @@ function createFakeClient(responder: (request: RequestInfo, call: number) => Fak
         create: async (request: any, options?: { maxRetries?: number; timeout?: number }) => {
           const prompt = request.messages.find((message: any) => message.role === "system")!.content as string;
           const schema = request.response_format.json_schema.schema;
+          const slotKeys = schema.required as string[];
+          const firstSlotSchema = schema.properties[slotKeys[0]!];
           const info: RequestInfo = {
             prompt,
             dates: datesFromPrompt(prompt),
-            mealTypes: schema.properties.items.items.properties.mealType.enum,
-            itemCount: schema.properties.items.minItems,
-            stepMinItems: schema.properties.items.items.properties.steps.minItems,
-            stepMaxItems: schema.properties.items.items.properties.steps.maxItems,
+            mealTypes: firstSlotSchema.properties.mealType.enum,
+            itemCount: slotKeys.length,
+            slotKeys,
+            ingredientNamesAreEnumerated: Array.isArray(
+              firstSlotSchema.properties.ingredients.items.properties.name.enum,
+            ),
+            ingredientMaxItems: firstSlotSchema.properties.ingredients.maxItems,
+            stepMinItems: firstSlotSchema.properties.steps.minItems,
+            stepMaxItems: firstSlotSchema.properties.steps.maxItems,
+            stepMaxLength: firstSlotSchema.properties.steps.items.maxLength,
+            descriptionMaxLength: firstSlotSchema.properties.description.maxLength,
             tokenLimit: request.max_completion_tokens,
             maxRetries: options?.maxRetries,
             timeout: options?.timeout,
@@ -167,7 +181,9 @@ function createFakeClient(responder: (request: RequestInfo, call: number) => Fak
             choices: [{
               message: {
                 content: Array.isArray(response)
-                  ? JSON.stringify({ items: response })
+                  ? JSON.stringify(Object.fromEntries(
+                    info.slotKeys.map((slotKey, index) => [slotKey, response[index]]),
+                  ))
                   : response.content,
               },
               finish_reason: "stop",
@@ -195,6 +211,12 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
   assert.deepEqual(calls[0]!.dates, DATES);
   assert.deepEqual(calls[0]!.mealTypes, ["breakfast", "lunch", "dinner"]);
   assert.equal(calls[0]!.itemCount, 21);
+  assert.deepEqual(calls[0]!.slotKeys, Array.from({ length: 21 }, (_, index) => `meal_${String(index + 1).padStart(2, "0")}`));
+  assert.equal(
+    calls[0]!.ingredientNamesAreEnumerated,
+    false,
+    "la lista ingredienti chiusa è validata server-side, non duplicata 21 volte nello schema provider",
+  );
   assert.equal(calls[0]!.tokenLimit, MEAL_PLAN_MAX_COMPLETION_TOKENS);
   assert.equal(calls[0]!.maxRetries, 0);
   assert.equal(calls[0]!.timeout, MEAL_PLAN_PROVIDER_ATTEMPT_TIMEOUT_MS);
@@ -204,8 +226,12 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
   );
   assert.equal(calls[0]!.stepMinItems, 3);
   assert.equal(calls[0]!.stepMaxItems, 3);
+  assert.equal(calls[0]!.stepMaxLength, 90);
+  assert.equal(calls[0]!.ingredientMaxItems, 4);
+  assert.equal(calls[0]!.descriptionMaxLength, 80);
   assert.match(calls[0]!.prompt, /BLUEPRINT SETTIMANALE LOCALE/);
   assert.match(calls[0]!.prompt, /ESATTAMENTE 3 istruzioni concise/);
+  assert.match(calls[0]!.prompt, /ESATTAMENTE 3 o 4 ingredienti essenziali/);
   assert.match(calls[0]!.prompt, /famiglia pasta/);
   assert.match(calls[0]!.prompt, /proteina red_meat/);
   assert.equal(plan.items.length, 21);
@@ -259,7 +285,7 @@ test("due JSON non parsabili falliscono dopo due sole chiamate", async (t) => {
       weekStartDate: WEEK_START,
       preferences: { dietProfile: "mediterranean" },
     }),
-    /piano completo richiede una correzione/i,
+    /Piano pasti non valido dopo 2 tentativi/i,
   );
   assert.equal(calls.length, 2);
 });
@@ -327,7 +353,7 @@ test("dopo un repair ancora duplicato fallisce senza una terza chiamata", async 
       weekStartDate: WEEK_START,
       preferences: { dietProfile: "mediterranean" },
     }),
-    /piano completo richiede una correzione/i,
+    /Piano pasti non valido dopo 2 tentativi/i,
   );
   assert.equal(calls.length, 2);
 });
@@ -453,10 +479,13 @@ test(
             }
             providerResolvedAt.push(Date.now());
             const responseItems = providerCalls === 1 ? invalidPlan : validPlan;
+            const slotKeys = request.response_format.json_schema.schema.required as string[];
             return {
               choices: [{
                 message: {
-                  content: JSON.stringify({ items: responseItems }),
+                  content: JSON.stringify(Object.fromEntries(
+                    slotKeys.map((slotKey, index) => [slotKey, responseItems[index]]),
+                  )),
                 },
                 finish_reason: "stop",
               }],
