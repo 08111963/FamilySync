@@ -20,6 +20,7 @@ import {
   MEAL_PLAN_STREAM_SAFETY_TIMEOUT_MS,
 } from "../../shared/meal-plan-generation-timeouts";
 import { validateMealPlanConstraints } from "../lib/meal-plan-constraints";
+import { evaluateMediterraneanMealPlan } from "../lib/meal-plan-variety";
 import { MEAL_PLAN_DIET_PROFILES, type MealPlanDietProfile } from "../../shared/meal-plan-diet-profiles";
 import { db } from "../db";
 import { aiUsage, familyMembers, families, users } from "../../shared/schema";
@@ -142,11 +143,72 @@ function ingredientsFor(
 }
 
 function fullWeek(profile?: MealPlanDietProfile, duplicate = false, includeRedMeat = true): Meal[] {
+  if (
+    profile === "mediterranean" ||
+    profile === "mediterranean_gluten_free" ||
+    profile === "mediterranean_lactose_free"
+  ) {
+    return balancedMediterraneanWeek(profile, duplicate, includeRedMeat);
+  }
   return DATES.flatMap((date, day) => [
     meal(date, "breakfast", duplicate ? "Colazione ripetuta" : `Colazione ${day + 1}`, ingredientsFor(profile, day, "breakfast", includeRedMeat)),
     meal(date, "lunch", profile === "low_carb" ? `Pranzo low carb ${day + 1}` : `Pranzo ${day + 1}`, ingredientsFor(profile, day, "lunch", includeRedMeat)),
     meal(date, "dinner", `Cena ${day + 1}`, ingredientsFor(profile, day, "dinner", includeRedMeat)),
   ]);
+}
+
+function balancedMediterraneanWeek(
+  profile: Extract<MealPlanDietProfile, "mediterranean" | "mediterranean_gluten_free" | "mediterranean_lactose_free">,
+  duplicate = false,
+  includeRedMeat = true,
+): Meal[] {
+  const glutenFree = profile === "mediterranean_gluten_free";
+  const pasta = glutenFree ? "pasta senza glutine" : "pasta";
+  const couscous = glutenFree ? "couscous di mais senza glutine" : "couscous";
+  const farro = glutenFree ? "quinoa" : "farro";
+  const lunches: Array<{ title: string; ingredients: Ingredient[] }> = [
+    { title: `${pasta} al pomodoro con pollo`, ingredients: [{ name: pasta, quantity: "320", unit: "g" }, { name: "pollo", quantity: "320", unit: "g" }, { name: "zucchine", quantity: "400", unit: "g" }] },
+    { title: `${pasta} con tonno e melanzane`, ingredients: [{ name: pasta, quantity: "320", unit: "g" }, { name: "tonno", quantity: "240", unit: "g" }, { name: "melanzane", quantity: "400", unit: "g" }] },
+    { title: "Riso con merluzzo e spinaci", ingredients: [{ name: "riso", quantity: "320", unit: "g" }, { name: "merluzzo", quantity: "360", unit: "g" }, { name: "spinaci", quantity: "400", unit: "g" }] },
+    { title: `${couscous} con ceci e peperoni`, ingredients: [{ name: couscous, quantity: "320", unit: "g" }, { name: "ceci", quantity: "300", unit: "g" }, { name: "peperoni", quantity: "400", unit: "g" }] },
+    { title: `${farro} con uova e zucchine`, ingredients: [{ name: farro, quantity: "320", unit: "g" }, { name: "uova", quantity: "6", unit: "pezzi" }, { name: "zucchine", quantity: "400", unit: "g" }] },
+    { title: includeRedMeat ? "Patate con manzo e bietole" : "Patate con zucchine e bietole", ingredients: [{ name: "patate", quantity: "700", unit: "g" }, { name: includeRedMeat ? "manzo" : "zucchine", quantity: "320", unit: "g" }, { name: "bietole", quantity: "400", unit: "g" }] },
+    { title: "Quinoa con zucchine e carote", ingredients: [{ name: "quinoa", quantity: "320", unit: "g" }, { name: "zucchine", quantity: "400", unit: "g" }, { name: "carote", quantity: "400", unit: "g" }] },
+  ];
+  const dinners: Array<{ title: string; ingredients: Ingredient[] }> = [
+    { title: "Salmone al forno con patate", ingredients: [{ name: "salmone", quantity: "360", unit: "g" }, { name: "patate", quantity: "700", unit: "g" }, { name: "fagiolini", quantity: "400", unit: "g" }] },
+    { title: "Uova con spinaci e patate", ingredients: [{ name: "uova", quantity: "6", unit: "pezzi" }, { name: "spinaci", quantity: "400", unit: "g" }, { name: "patate", quantity: "700", unit: "g" }] },
+    { title: "Polenta con zucchine e peperoni", ingredients: [{ name: "polenta di mais", quantity: "320", unit: "g" }, { name: "zucchine", quantity: "400", unit: "g" }, { name: "peperoni", quantity: "400", unit: "g" }] },
+    { title: "Riso con melanzane e spinaci", ingredients: [{ name: "riso", quantity: "280", unit: "g" }, { name: "melanzane", quantity: "400", unit: "g" }, { name: "spinaci", quantity: "400", unit: "g" }] },
+    { title: "Patate con zucca e carote", ingredients: [{ name: "patate", quantity: "700", unit: "g" }, { name: "zucca", quantity: "400", unit: "g" }, { name: "carote", quantity: "400", unit: "g" }] },
+    { title: "Quinoa con zucchine e pomodori", ingredients: [{ name: "quinoa", quantity: "280", unit: "g" }, { name: "zucchine", quantity: "400", unit: "g" }, { name: "pomodori", quantity: "400", unit: "g" }] },
+    { title: "Riso con funghi e bietole", ingredients: [{ name: "riso", quantity: "280", unit: "g" }, { name: "funghi", quantity: "400", unit: "g" }, { name: "bietole", quantity: "400", unit: "g" }] },
+  ];
+  return DATES.flatMap((date, day) => [
+    meal(date, "breakfast", duplicate ? "Colazione ripetuta" : `Colazione mediterranea ${day + 1}`, ingredientsFor(profile, day, "breakfast")),
+    meal(date, "lunch", duplicate ? "Pranzo ripetuto" : lunches[day]!.title, lunches[day]!.ingredients),
+    meal(date, "dinner", duplicate ? "Cena ripetuta" : dinners[day]!.title, dinners[day]!.ingredients),
+  ]);
+}
+
+function cloneMeals(items: Meal[]): Meal[] {
+  return items.map((item) => ({
+    ...item,
+    ingredients: item.ingredients.map((ingredient) => ({ ...ingredient })),
+    steps: [...item.steps],
+  }));
+}
+
+function withoutMediterraneanPasta(items: Meal[]): Meal[] {
+  const copy = cloneMeals(items);
+  for (const item of copy.filter((entry) => entry.mealType === "lunch")) {
+    item.title = item.title.replace(/pasta(?: senza glutine)?/i, "riso");
+    item.ingredients = item.ingredients.map((ingredient) =>
+      /pasta/i.test(ingredient.name)
+        ? { ...ingredient, name: "riso" }
+        : ingredient);
+  }
+  return copy;
 }
 
 function createFakeClient(responder: (request: RequestInfo, call: number) => FakeMealPlanResponse) {
@@ -240,8 +302,245 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
   assert.match(calls[0]!.prompt, /ESATTAMENTE 3 ingredienti essenziali/);
   assert.match(calls[0]!.prompt, /famiglia pasta/);
   assert.match(calls[0]!.prompt, /proteina red_meat/);
+  assert.match(calls[0]!.prompt, /almeno 2 pranzi con pasta/);
   assert.equal(plan.items.length, 21);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
+  assert.deepEqual(evaluateMediterraneanMealPlan(plan.items).issues, []);
+});
+
+test("la validazione mediterranea rifiuta pasta, carne, legumi, termini generici e poca varietà", () => {
+  const valid = balancedMediterraneanWeek("mediterranean");
+  assert.deepEqual(evaluateMediterraneanMealPlan(valid).issues, []);
+
+  const withoutPasta = withoutMediterraneanPasta(valid);
+  assert.ok(
+    evaluateMediterraneanMealPlan(withoutPasta).issues.some((issue) =>
+      issue.code === "mediterranean-pasta-minimum"),
+  );
+
+  const withoutRedMeat = cloneMeals(valid);
+  const redMeatLunch = withoutRedMeat.find((item) => item.ingredients.some((ingredient) => ingredient.name === "manzo"))!;
+  redMeatLunch.title = "Quinoa con pollo e carote";
+  redMeatLunch.ingredients = redMeatLunch.ingredients.map((ingredient) =>
+    ingredient.name === "manzo" ? { ...ingredient, name: "pollo" } : ingredient);
+  assert.ok(
+    evaluateMediterraneanMealPlan(withoutRedMeat).issues.some((issue) =>
+      issue.code === "mediterranean-red-meat-minimum"),
+  );
+
+  const withoutFish = cloneMeals(valid);
+  for (const item of withoutFish) {
+    if (!/(salmone|merluzzo|tonno)/i.test(item.title)) continue;
+    item.title = item.title.replace(/salmone|merluzzo|tonno/gi, "zucchine");
+    item.ingredients = item.ingredients.map((ingredient) =>
+      /^(salmone|merluzzo|tonno)$/i.test(ingredient.name)
+        ? { ...ingredient, name: "zucchine" }
+        : ingredient);
+  }
+  assert.ok(
+    evaluateMediterraneanMealPlan(withoutFish).issues.some((issue) =>
+      issue.code === "mediterranean-fish-minimum"),
+  );
+
+  const fishOnlyInText = cloneMeals(valid);
+  for (const item of fishOnlyInText) {
+    item.ingredients = item.ingredients.map((ingredient) =>
+      /^(salmone|merluzzo|tonno)$/i.test(ingredient.name)
+        ? { ...ingredient, name: "zucchine" }
+        : ingredient);
+  }
+  assert.ok(
+    evaluateMediterraneanMealPlan(fishOnlyInText).issues.some((issue) =>
+      issue.code === "mediterranean-fish-minimum"),
+    "il pesce citato solo nel titolo o nei passaggi non deve contare",
+  );
+
+  const tooMuchFish = cloneMeals(valid);
+  const fishExtra = tooMuchFish.find((item) => item.title === "Polenta con zucchine e peperoni")!;
+  fishExtra.title = "Tonno con polenta e peperoni";
+  fishExtra.ingredients[0] = { name: "tonno", quantity: "280", unit: "g" };
+  assert.ok(
+    evaluateMediterraneanMealPlan(tooMuchFish).issues.some((issue) =>
+      issue.code === "mediterranean-fish-maximum"),
+  );
+
+  const withoutWhiteMeat = cloneMeals(valid);
+  const chickenLunch = withoutWhiteMeat.find((item) => item.title.includes("pollo"))!;
+  chickenLunch.title = chickenLunch.title.replace("pollo", "zucchine");
+  chickenLunch.ingredients = chickenLunch.ingredients.map((ingredient) =>
+    ingredient.name === "pollo" ? { ...ingredient, name: "zucchine" } : ingredient);
+  assert.ok(
+    evaluateMediterraneanMealPlan(withoutWhiteMeat).issues.some((issue) =>
+      issue.code === "mediterranean-white-meat-minimum"),
+  );
+
+  const whiteMeatOnlyInText = cloneMeals(valid);
+  const chickenOnlyInText = whiteMeatOnlyInText.find((item) => item.title.includes("pollo"))!;
+  chickenOnlyInText.ingredients = chickenOnlyInText.ingredients.map((ingredient) =>
+    ingredient.name === "pollo" ? { ...ingredient, name: "zucchine" } : ingredient);
+  assert.ok(
+    evaluateMediterraneanMealPlan(whiteMeatOnlyInText).issues.some((issue) =>
+      issue.code === "mediterranean-white-meat-minimum"),
+    "la carne bianca citata solo nel titolo o nei passaggi non deve contare",
+  );
+
+  const tooMuchWhiteMeat = cloneMeals(valid);
+  for (const dinner of tooMuchWhiteMeat.filter((item) => item.mealType === "dinner").slice(2, 5)) {
+    dinner.title = `Pollo con ${dinner.ingredients[1]!.name} e ${dinner.ingredients[2]!.name}`;
+    dinner.ingredients[0] = { name: "pollo", quantity: "320", unit: "g" };
+  }
+  assert.ok(
+    evaluateMediterraneanMealPlan(tooMuchWhiteMeat).issues.some((issue) =>
+      issue.code === "mediterranean-white-meat-maximum"),
+  );
+
+  const withoutEggs = cloneMeals(valid);
+  for (const item of withoutEggs) {
+    if (!/uova/i.test(item.title)) continue;
+    item.title = item.title.replace(/uova/gi, "zucchine");
+    item.ingredients = item.ingredients.map((ingredient) =>
+      ingredient.name === "uova" ? { ...ingredient, name: "zucchine" } : ingredient);
+  }
+  assert.ok(
+    evaluateMediterraneanMealPlan(withoutEggs).issues.some((issue) =>
+      issue.code === "mediterranean-eggs-minimum"),
+  );
+
+  const egglessFrittata = cloneMeals(valid);
+  for (const item of egglessFrittata) {
+    if (!/uova/i.test(item.title)) continue;
+    item.title = "Frittata di ceci con zucchine";
+    item.ingredients = item.ingredients.map((ingredient) =>
+      ingredient.name === "uova" ? { ...ingredient, name: "ceci" } : ingredient);
+  }
+  assert.ok(
+    evaluateMediterraneanMealPlan(egglessFrittata).issues.some((issue) =>
+      issue.code === "mediterranean-eggs-minimum"),
+    "una frittata di ceci senza uova non deve contare come pasto con uova",
+  );
+
+  const tooManyEggs = cloneMeals(valid);
+  const eggExtra = tooManyEggs.find((item) => item.title === "Polenta con zucchine e peperoni")!;
+  eggExtra.title = "Uova con polenta e peperoni";
+  eggExtra.ingredients[0] = { name: "uova", quantity: "6", unit: "pezzi" };
+  assert.ok(
+    evaluateMediterraneanMealPlan(tooManyEggs).issues.some((issue) =>
+      issue.code === "mediterranean-eggs-maximum"),
+  );
+
+  const tooManyLegumes = cloneMeals(valid);
+  for (const [index, dinner] of tooManyLegumes.filter((item) => item.mealType === "dinner").entries()) {
+    if (index >= 3) break;
+    dinner.title = `Ceci in umido con ortaggi ${index + 1}`;
+    dinner.ingredients[0] = { name: "ceci", quantity: "300", unit: "g" };
+  }
+  assert.ok(
+    evaluateMediterraneanMealPlan(tooManyLegumes).issues.some((issue) =>
+      issue.code === "mediterranean-legume-maximum"),
+  );
+
+  const singularLegumes = cloneMeals(valid);
+  for (const [index, dinner] of singularLegumes.filter((item) => item.mealType === "dinner").entries()) {
+    if (index >= 3) break;
+    dinner.ingredients[0] = {
+      name: ["cece nero", "lenticchia rossa", "fagiolo cannellino"][index]!,
+      quantity: "300",
+      unit: "g",
+    };
+  }
+  assert.ok(
+    evaluateMediterraneanMealPlan(singularLegumes).issues.some((issue) =>
+      issue.code === "mediterranean-legume-maximum"),
+    "anche i legumi al singolare devono concorrere al massimo settimanale",
+  );
+
+  for (const forbiddenTerm of [
+    "Proteina",
+    "Carboidrato",
+    "Verdura",
+    "Cereale",
+    "Verdure miste",
+    "Ortaggi di stagione",
+    "Cereali misti",
+    "Legumi misti",
+    "Fonte proteica",
+    "Alimento proteico",
+  ]) {
+    const genericTerm = cloneMeals(valid);
+    genericTerm[0]!.ingredients[0] = {
+      ...genericTerm[0]!.ingredients[0]!,
+      name: forbiddenTerm,
+    };
+    assert.ok(
+      evaluateMediterraneanMealPlan(genericTerm).issues.some((issue) =>
+        issue.code === "mediterranean-generic-term"),
+      `${forbiddenTerm} deve essere rifiutato`,
+    );
+  }
+
+  const lowVariety = cloneMeals(valid);
+  for (const [index, lunch] of lowVariety.filter((item) => item.mealType === "lunch").entries()) {
+    lunch.title = `Pasta al pomodoro con pollo ${index + 1}`;
+    lunch.ingredients = [
+      { name: "pasta", quantity: "320", unit: "g" },
+      { name: "pollo", quantity: "320", unit: "g" },
+      { name: "zucchine", quantity: "400", unit: "g" },
+    ];
+  }
+  assert.ok(
+    evaluateMediterraneanMealPlan(lowVariety).issues.some((issue) =>
+      issue.code === "mediterranean-lunch-variety"),
+  );
+});
+
+test("i tre profili mediterranei ricevono un solo repair mirato e restano compatibili", async (t) => {
+  for (const profile of [
+    "mediterranean",
+    "mediterranean_gluten_free",
+    "mediterranean_lactose_free",
+  ] as const) {
+    const valid = balancedMediterraneanWeek(profile);
+    const { client, calls } = createFakeClient((_request, call) =>
+      call === 1 ? withoutMediterraneanPasta(valid) : valid);
+    __setOpenAiClientForTest(client);
+
+    const plan = await generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      preferences: { dietProfile: profile },
+    });
+
+    assert.equal(calls.length, 2, profile);
+    assert.match(calls[1]!.prompt, /CORREZIONE MEDITERRANEA OBBLIGATORIA/);
+    assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: profile }), [], profile);
+    assert.deepEqual(evaluateMediterraneanMealPlan(plan.items).issues, [], profile);
+  }
+  t.after(() => __setOpenAiClientForTest(null));
+});
+
+test("un repair mediterraneo si attiva anche quando il pesce è citato solo nel testo", async (t) => {
+  const valid = balancedMediterraneanWeek("mediterranean");
+  const fishOnlyInText = cloneMeals(valid);
+  for (const item of fishOnlyInText) {
+    item.ingredients = item.ingredients.map((ingredient) =>
+      /^(salmone|merluzzo|tonno)$/i.test(ingredient.name)
+        ? { ...ingredient, name: "zucchine" }
+        : ingredient);
+  }
+  const { client, calls } = createFakeClient((_request, call) =>
+    call === 1 ? fishOnlyInText : valid);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "mediterranean" },
+  });
+
+  assert.equal(calls.length, 2);
+  assert.match(calls[1]!.prompt, /CORREZIONE MEDITERRANEA OBBLIGATORIA/);
+  assert.deepEqual(evaluateMediterraneanMealPlan(plan.items).issues, []);
 });
 
 test("un output interrotto per limite non avvia un repair vuoto", async (t) => {

@@ -116,6 +116,188 @@ export interface MealPlanRedMeatEvaluation {
   hasRedMeat: boolean;
 }
 
+export type MediterraneanMealPlanIssueCode =
+  | "mediterranean-generic-term"
+  | "mediterranean-pasta-minimum"
+  | "mediterranean-red-meat-minimum"
+  | "mediterranean-legume-maximum"
+  | "mediterranean-fish-minimum"
+  | "mediterranean-fish-maximum"
+  | "mediterranean-white-meat-minimum"
+  | "mediterranean-white-meat-maximum"
+  | "mediterranean-eggs-minimum"
+  | "mediterranean-eggs-maximum"
+  | "mediterranean-lunch-variety"
+  | "mediterranean-repeated-lunch";
+
+export interface MediterraneanMealPlanIssue {
+  code: MediterraneanMealPlanIssueCode;
+  matched?: string;
+  count?: number;
+}
+
+export interface MediterraneanMealPlanEvaluation {
+  pastaLunchCount: number;
+  redMeatMealCount: number;
+  legumeMainMealCount: number;
+  fishMainMealCount: number;
+  whiteMeatMainMealCount: number;
+  eggMainMealCount: number;
+  distinctLunchFamilies: number;
+  issues: MediterraneanMealPlanIssue[];
+}
+
+const MEDITERRANEAN_PASTA_PATTERN =
+  /\b(?:pasta|spaghetti|penne|fusilli|maccheroni|rigatoni|linguine|tagliatelle|orecchiette|lasagne|cannelloni)\b/;
+const MEDITERRANEAN_RED_MEAT_PATTERN = /\b(?:manzo|vitello|maiale|suino|agnello)\b/;
+const MEDITERRANEAN_LEGUME_PATTERN =
+  /\b(?:cec[ei]|lenticchi[ae]|fagiol[io]|pisell[io])\b/;
+const MEDITERRANEAN_FISH_PATTERN =
+  /\b(?:salmone|merluzzo|tonno|orata|spigola|branzino|sardine?|alici|sgombro|trota|pesce spada|polpo|calamari)\b/;
+const MEDITERRANEAN_WHITE_MEAT_PATTERN = /\b(?:pollo|tacchino|coniglio)\b/;
+const MEDITERRANEAN_EGG_PATTERN = /\b(?:uovo|uova)\b/;
+const MEDITERRANEAN_ALWAYS_GENERIC_PATTERN =
+  /\b(?:proteina|proteine|carboidrato|carboidrati|fonte proteica|alimento proteico)\b/;
+const MEDITERRANEAN_GENERIC_INGREDIENT_PATTERN =
+  /^(?:verdura|verdure|ortaggio|ortaggi|cereale|cereali|legume|legumi)\b|^(?:fonte proteica|alimento proteico|proteina|carboidrato)$/;
+
+function mealText(item: MealPlanVarietyItem): string {
+  return [
+    item.title || "",
+    item.description || "",
+    ...(item.ingredients || []).map((ingredient) => ingredient.name || ""),
+    ...(item.steps || []),
+  ].join(" ");
+}
+
+function genericMediterraneanTerm(item: MealPlanVarietyItem): string | undefined {
+  const text = normalize(mealText(item));
+  const alwaysGeneric = text.match(MEDITERRANEAN_ALWAYS_GENERIC_PATTERN)?.[0];
+  if (alwaysGeneric) return alwaysGeneric;
+
+  const genericIngredient = (item.ingredients || [])
+    .map((ingredient) => normalize(ingredient.name || ""))
+    .find((name) => MEDITERRANEAN_GENERIC_INGREDIENT_PATTERN.test(name));
+  return genericIngredient;
+}
+
+function hasConcreteIngredient(
+  item: MealPlanVarietyItem,
+  pattern: RegExp,
+): boolean {
+  return (item.ingredients || []).some((ingredient) =>
+    pattern.test(normalize(ingredient.name || "")));
+}
+
+/**
+ * Contratto qualitativo minimo per i tre profili mediterranei. È separato
+ * dalla sicurezza degli allergeni: un piano può essere sicuro ma comunque
+ * troppo generico o sbilanciato per essere consegnato come Mediterraneo.
+ */
+export function evaluateMediterraneanMealPlan(
+  items: MealPlanVarietyItem[],
+): MediterraneanMealPlanEvaluation {
+  const lunches = items.filter((item) => item.mealType === "lunch");
+  const mainMeals = items.filter((item) =>
+    item.mealType === "lunch" || item.mealType === "dinner");
+  const pastaLunchCount = lunches.filter((item) =>
+    hasConcreteIngredient(item, MEDITERRANEAN_PASTA_PATTERN)).length;
+  const redMeatMealCount = mainMeals.filter((item) =>
+    hasConcreteIngredient(item, MEDITERRANEAN_RED_MEAT_PATTERN)).length;
+  const legumeMainMealCount = mainMeals.filter((item) =>
+    hasConcreteIngredient(item, MEDITERRANEAN_LEGUME_PATTERN)).length;
+  const fishMainMealCount = mainMeals.filter((item) =>
+    hasConcreteIngredient(item, MEDITERRANEAN_FISH_PATTERN)).length;
+  const whiteMeatMainMealCount = mainMeals.filter((item) =>
+    hasConcreteIngredient(item, MEDITERRANEAN_WHITE_MEAT_PATTERN)).length;
+  const eggMainMealCount = mainMeals.filter((item) =>
+    hasConcreteIngredient(item, MEDITERRANEAN_EGG_PATTERN)).length;
+  const variety = evaluateMealPlanVariety(items);
+  const issues: MediterraneanMealPlanIssue[] = [];
+
+  const genericItem = items.find((item) => genericMediterraneanTerm(item));
+  if (genericItem) {
+    issues.push({
+      code: "mediterranean-generic-term",
+      matched: genericMediterraneanTerm(genericItem),
+    });
+  }
+  if (pastaLunchCount < 2) {
+    issues.push({
+      code: "mediterranean-pasta-minimum",
+      count: pastaLunchCount,
+    });
+  }
+  if (redMeatMealCount < 1) {
+    issues.push({
+      code: "mediterranean-red-meat-minimum",
+      count: redMeatMealCount,
+    });
+  }
+  if (legumeMainMealCount > 3) {
+    issues.push({
+      code: "mediterranean-legume-maximum",
+      count: legumeMainMealCount,
+    });
+  }
+  if (fishMainMealCount < 2) {
+    issues.push({
+      code: "mediterranean-fish-minimum",
+      count: fishMainMealCount,
+    });
+  } else if (fishMainMealCount > 3) {
+    issues.push({
+      code: "mediterranean-fish-maximum",
+      count: fishMainMealCount,
+    });
+  }
+  if (whiteMeatMainMealCount < 1) {
+    issues.push({
+      code: "mediterranean-white-meat-minimum",
+      count: whiteMeatMainMealCount,
+    });
+  } else if (whiteMeatMainMealCount > 2) {
+    issues.push({
+      code: "mediterranean-white-meat-maximum",
+      count: whiteMeatMainMealCount,
+    });
+  }
+  if (eggMainMealCount < 1) {
+    issues.push({
+      code: "mediterranean-eggs-minimum",
+      count: eggMainMealCount,
+    });
+  } else if (eggMainMealCount > 2) {
+    issues.push({
+      code: "mediterranean-eggs-maximum",
+      count: eggMainMealCount,
+    });
+  }
+  const distinctLunchFamilies = Object.keys(variety.lunchFamilyCounts).length;
+  if (lunches.length >= 6 && distinctLunchFamilies < 4) {
+    issues.push({
+      code: "mediterranean-lunch-variety",
+      count: distinctLunchFamilies,
+    });
+  }
+  if (variety.issues.some((issue) =>
+    issue.code === "repeated_lunch_semantic_signature" ||
+    issue.code === "consecutive_lunch_pattern")) {
+    issues.push({ code: "mediterranean-repeated-lunch" });
+  }
+
+  return {
+    pastaLunchCount,
+    redMeatMealCount,
+    legumeMainMealCount,
+    fishMainMealCount,
+    whiteMeatMainMealCount,
+    eggMainMealCount,
+    distinctLunchFamilies,
+    issues,
+  };
+}
+
 /**
  * Controllo locale sull'intera settimana: pranzo e cena sono entrambi pasti
  * principali. Gli ingredienti sono la fonte primaria, ma titolo, descrizione e
@@ -341,6 +523,7 @@ export function planMealPlanLunchFamilies(
   ingredientNames: string[],
   days = 7,
   rotationOffset = 0,
+  options?: { minimumPastaLunches?: number },
 ): Array<string | undefined> {
   const normalizedIngredients = ingredientNames.map(normalize);
   const available = LUNCH_FAMILY_ROTATION
@@ -362,6 +545,18 @@ export function planMealPlanLunchFamilies(
     const target = rotated.find((family) => (counts.get(family) || 0) === minimumCount)!;
     counts.set(target, (counts.get(target) || 0) + 1);
     targets.push(target);
+  }
+  const minimumPastaLunches = Math.min(
+    Math.max(0, options?.minimumPastaLunches || 0),
+    days,
+  );
+  if (minimumPastaLunches > 0 && available.includes("pasta")) {
+    let pastaCount = targets.filter((family) => family === "pasta").length;
+    for (let index = 0; index < targets.length && pastaCount < minimumPastaLunches; index++) {
+      if (targets[index] === "pasta") continue;
+      targets[index] = "pasta";
+      pastaCount++;
+    }
   }
   return targets;
 }

@@ -22,6 +22,7 @@ import {
 import { recordMealPlanLatency } from './meal-plan-latency-monitor';
 import {
   buildMealPlanVarietyContext,
+  evaluateMediterraneanMealPlan,
   evaluateMealPlanRedMeat,
   evaluateMealPlanVariety,
   mealPlanLunchSemanticSignature,
@@ -1391,6 +1392,17 @@ function buildMealPlanQualityCorrection(error: AiError, nextAttempt: number): st
 - Restituisci esclusivamente tutti i pasti richiesti, completi e coerenti con il loro tipo.${breakfastCorrection}${wholegrainCorrection}${completenessCorrection}`;
 }
 
+function buildMediterraneanQualityCorrection(
+  issueCodes: string[],
+  nextAttempt: number,
+): string {
+  return `
+- CORREZIONE MEDITERRANEA OBBLIGATORIA (tentativo ${nextAttempt}): correggi soltanto la qualità indicata, mantenendo tutti i vincoli di sicurezza.
+- Settimana richiesta: almeno 2 pranzi con pasta concreta, pesce 2-3 volte, carne bianca 1-2 volte, uova 1-2 volte, almeno un pranzo o cena con manzo/vitello/agnello e massimo 3 pasti principali con ceci/lenticchie/fagioli/piselli.
+- Non usare mai Proteina, Carboidrato, Fonte proteica o Alimento proteico; nei campi ingredients indica sempre alimenti concreti. Varia davvero pranzi e cene italiani.
+- Problemi rilevati: ${issueCodes.join(", ")}. Restituisci di nuovo tutti i 21 pasti completi.`;
+}
+
 function appendMealPlanCorrection(existing: string | undefined, next: string): string {
   return existing ? `${existing}\n${next}` : next;
 }
@@ -1430,13 +1442,10 @@ async function generateWeeklyMealPlanAttempt(
   const redMeatWeeklyRule = requiresMediterraneanRedMeat
     ? " Includi almeno un pasto principale con carne rossa nella settimana, preferibilmente uno."
     : "";
-  const mediterraneanRule = mediterraneanDiet && glutenFreeRequired
-    ? `\n- DIETA MEDITERRANEA SENZA GLUTINE: varia le fonti di carboidrati tra riso o risotti, patate, polenta, quinoa e prodotti esplicitamente senza glutine della lista chiusa, come pasta senza glutine, couscous di mais senza glutine, gnocchi senza glutine o pane senza glutine. Verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte; carne bianca 1-2 volte; olio extravergine d'oliva e frutta.${redMeatWeeklyRule}`
-    : mediterraneanDiet && constrainedPlan
-      ? `\n- DIETA MEDITERRANEA CON VINCOLI: verdure in OGNI pranzo e cena, olio extravergine d'oliva e frutta; scegli ogni componente soltanto tra quelli compatibili con tutti i vincoli indicati.${redMeatWeeklyRule}`
-    : mediterraneanDiet
-      ? `\n- DIETA MEDITERRANEA VERA: alterna a pranzo pasta, riso/risotti, cereali in chicco, legumi, patate o polenta secondo la famiglia-obiettivo del giorno; verdure o contorno di verdure in OGNI pranzo e cena; pesce 2-3 volte a settimana; legumi al massimo 2-3 volte a settimana (NON di più); carne bianca 1-2 volte; includi almeno un pasto principale con carne rossa nella settimana, preferibilmente uno, mantenendo la varietà delle fonti proteiche; olio extravergine d'oliva e frutta.`
-      : '';
+  const mediterraneanRule = mediterraneanDiet
+    ? `\n- DIETA MEDITERRANEA OBBLIGATORIA: ogni settimana deve includere almeno 2 pranzi con pasta${glutenFreeRequired ? " senza glutine" : ""}, pesce 2-3 volte, carne bianca 1-2 volte, uova 1-2 volte e almeno un pranzo o cena con manzo, vitello o agnello. Ceci, lenticchie, fagioli e piselli in massimo 3 pranzi/cene totali.
+- Ogni ingrediente deve essere concreto. Non scrivere mai “Proteina”, “Carboidrato”, “Fonte proteica” o “Alimento proteico”; non usare “verdura” o “cereale” come nome di ingrediente. Varia davvero pranzi e cene italiani, non solo i contorni.${redMeatWeeklyRule}`
+    : '';
   const weeklyVarietyRule = `
 - VARIETÀ SETTIMANALE (best effort, mai in contrasto con i vincoli): sui pranzi e sulle cene cerca almeno 4 fonti di carboidrati diverse nella settimana e non usare la stessa più di 3 volte quando sono disponibili alternative compatibili.
 - Alterna le proteine principali: evita la stessa proteina specifica più di 2 volte quando possibile; il pesce può comparire più volte, ma non ripetere sempre lo stesso tipo.
@@ -1494,24 +1503,24 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   // famiglia concreta del pranzo viene pianificata separatamente più sotto.
   // Così un tema non può riportare pasta quasi ogni giorno.
   const mediterraneanDayThemes = [
-    'a pranzo pasta con ricotta o sugo di pesce e verdure di stagione più contorno; a cena pesce azzurro (es. alla griglia o al forno) con verdure e pane',
-    'a pranzo un risotto o riso con tonno o uova e verdure; a cena una zuppa di legumi con verdure e pane',
+    'a pranzo pasta al pomodoro con tonno e zucchine; a cena pesce azzurro al forno con verdure e pane',
+    'a pranzo pasta con zucchine e pollo; a cena riso con merluzzo e verdure',
     'a pranzo un piatto di legumi completo con verdure; a cena carne bianca (pollo o tacchino) con verdure e patate o farro',
-    'a pranzo couscous con pesce o proteine compatibili e verdure; a cena pesce con verdure e pane',
-    'a pranzo un cereale in chicco (farro o orzo) con proteine e verdure; a cena uova o formaggio fresco con verdure e pane o patate',
-    'a pranzo patate o polenta con proteine e verdure; a cena insalata o polpette di legumi con verdure e pane',
-    'a pranzo quinoa o una zuppa mediterranea completa; a cena pesce oppure una piccola porzione di carne rossa magra con verdure e patate o pane',
+    'a pranzo couscous con pesce e verdure; a cena uova con spinaci e patate',
+    'a pranzo farro con tacchino e verdure; a cena pesce con verdure e pane',
+    'a pranzo patate al forno con uova e verdure; a cena pollo con verdure e riso',
+    'a pranzo quinoa con manzo e verdure; a cena minestra leggera con verdure e pane',
   ];
   // Piano B mediterraneo: stessa rotazione strutturale, con combinazioni e
   // tecniche diverse dal piano A.
   const mediterraneanDayThemesB = [
-    'a pranzo riso con verdure e una fonte proteica; a cena polpo o calamari con patate e verdure',
+    'a pranzo pasta al pesto leggero con tonno e verdure; a cena polpo o calamari con patate e verdure',
     'a pranzo legumi in umido con verdure e una fonte di carboidrati; a cena minestra di lenticchie con verdure e pane',
-    'a pranzo couscous con ortaggi e proteine compatibili; a cena tacchino o coniglio in umido con verdure e pane',
-    'a pranzo orzo o farro con verdure e pesce; a cena pesce spada o salmone alla griglia con verdure e patate',
-    'a pranzo patate al forno con proteine e verdure; a cena parmigiana leggera o uova in purgatorio con pane e verdure',
-    'a pranzo quinoa con verdure e una fonte proteica; a cena burger o polpette di ceci con verdure e pane',
-    'a pranzo pasta con condimento diverso dai giorni precedenti; a cena alici al forno oppure una tagliata magra con verdure e patate',
+    'a pranzo couscous con ortaggi e tacchino; a cena pesce spada alla griglia con verdure e patate',
+    'a pranzo orzo con verdure e pesce; a cena uova in purgatorio con pane e verdure',
+    'a pranzo patate al forno con pollo e verdure; a cena salmone con verdure e riso',
+    'a pranzo quinoa con zucchine e uova; a cena ceci in umido con verdure e pane',
+    'a pranzo pasta al ragù leggero di manzo e verdure; a cena alici al forno con verdure e patate',
   ];
   // Quando è richiesto il senza glutine, i temi normali diventano istruzioni
   // contraddittorie (pasta, pane, farro, orzo, biscotti). Non basta chiedere
@@ -1546,11 +1555,11 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   ];
   const activeDayThemes = glutenFreeRequired
     ? (variant === 2 ? glutenFreeDayThemesB : glutenFreeDayThemes)
-    : constrainedPlan
-    ? (variant === 2 ? [...compatibleDayThemes.slice(3), ...compatibleDayThemes.slice(0, 3)] : compatibleDayThemes)
-    : mediterraneanRule
-    ? (variant === 2 ? mediterraneanDayThemesB : mediterraneanDayThemes)
-    : (variant === 2 ? [...dayThemes.slice(3), ...dayThemes.slice(0, 3)] : dayThemes);
+    : mediterraneanDiet
+      ? (variant === 2 ? mediterraneanDayThemesB : mediterraneanDayThemes)
+      : constrainedPlan
+        ? (variant === 2 ? [...compatibleDayThemes.slice(3), ...compatibleDayThemes.slice(0, 3)] : compatibleDayThemes)
+        : (variant === 2 ? [...dayThemes.slice(3), ...dayThemes.slice(0, 3)] : dayThemes);
   const activeDinnerThemes = buildDinnerThemes(context.preferences);
 
   // Anche le colazioni ruotano: senza un tema per giorno il modello propone
@@ -1605,6 +1614,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     // Il Piano B parte dal riso: riso → legumi → couscous → cereale →
     // patate → quinoa → pasta, mantenendo un'alternativa strutturale al Piano A.
     variant === 2 ? 1 : 0,
+    { minimumPastaLunches: mediterraneanDiet ? 2 : 0 },
   );
   const lunchSemanticTargets = planMealPlanLunchSemanticTargets(
     compatibleMainIngredients,
@@ -1972,6 +1982,30 @@ ${constrainedRecipeReferenceRule}
     }
     throw new MealPlanConstraintRetryError(constraintViolations, filtered);
   }
+  const mediterraneanQuality = mediterraneanDiet
+    ? evaluateMediterraneanMealPlan(filtered)
+    : undefined;
+  if (mediterraneanQuality?.issues.length) {
+    const issueCodes = mediterraneanQuality.issues.map((issue) => issue.code);
+    if (!context.suppressInternalLogs) {
+      console.warn(JSON.stringify({
+        tag: "AI_MEAL_PLAN_MEDITERRANEAN_REJECTED",
+        variant,
+        issues: issueCodes,
+        pastaLunchCount: mediterraneanQuality.pastaLunchCount,
+        redMeatMealCount: mediterraneanQuality.redMeatMealCount,
+        legumeMainMealCount: mediterraneanQuality.legumeMainMealCount,
+        fishMainMealCount: mediterraneanQuality.fishMainMealCount,
+        whiteMeatMainMealCount: mediterraneanQuality.whiteMeatMainMealCount,
+        eggMainMealCount: mediterraneanQuality.eggMainMealCount,
+        distinctLunchFamilies: mediterraneanQuality.distinctLunchFamilies,
+      }));
+    }
+    throw new MealPlanRepairError(
+      filtered,
+      buildMediterraneanQualityCorrection(issueCodes, context.generationAttempt + 1),
+    );
+  }
   const redMeatEvaluation = evaluateMealPlanRedMeat(filtered);
   if (requiresMediterraneanRedMeat && !redMeatEvaluation.hasRedMeat) {
     // Il blueprint imposta sempre il target red_meat prima della generazione.
@@ -2024,6 +2058,23 @@ ${constrainedRecipeReferenceRule}
       issues: varietyEvaluation.issues.map((issue) => issue.code),
       carbohydrateSources: varietyEvaluation.distinctCarbohydrateSources,
     }));
+  }
+  const finalMediterraneanQuality = mediterraneanDiet
+    ? evaluateMediterraneanMealPlan(finalItems)
+    : undefined;
+  if (finalMediterraneanQuality?.issues.length) {
+    const issueCodes = finalMediterraneanQuality.issues.map((issue) => issue.code);
+    if (!context.suppressInternalLogs) {
+      console.warn(JSON.stringify({
+        tag: "AI_MEAL_PLAN_MEDITERRANEAN_FINAL_REJECTED",
+        variant,
+        issues: issueCodes,
+      }));
+    }
+    throw new MealPlanRepairError(
+      finalItems,
+      buildMediterraneanQualityCorrection(issueCodes, context.generationAttempt + 1),
+    );
   }
   // Difesa finale: la verifica iniziale è eseguita prima delle riparazioni
   // locali di varietà. Ricontrollare l'output restituito impedisce a qualunque
