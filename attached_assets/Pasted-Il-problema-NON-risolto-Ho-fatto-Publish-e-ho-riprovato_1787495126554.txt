@@ -1,0 +1,183 @@
+Il problema NON è risolto.
+
+Ho fatto Publish e ho riprovato su familiesync.eu nella schermata:
+
+Piano Pasti → Genera con AI → Genera Piano
+
+Risultato attuale in produzione:
+
+“L'AI ci sta mettendo troppo tempo. Riprova tra poco.”
+
+Quindi la correzione precedente NON è sufficiente. Non accetto più verifiche locali, sonde fittizie o test teorici: il problema va verificato sul flusso reale pubblicato.
+
+Punto importante:
+lo screenshot dimostra che la nuova build è almeno in parte arrivata, perché il messaggio è cambiato. Però la generazione continua a fallire in produzione.
+
+Devi ora individuare la causa reale della differenza tra:
+
+- test locale dichiarato: 21 pasti in 26,2 secondi;
+- produzione reale: timeout/errore “L'AI ci sta mettendo troppo tempo”.
+
+Azioni obbligatorie:
+
+1. Controlla i log reali della richiesta in produzione
+
+Devi verificare la richiesta reale generata da:
+
+https://familysync.eu/meal-plans
+
+quando premo “Genera Piano”.
+
+Per quella richiesta devi indicare:
+
+- endpoint chiamato;
+- status HTTP;
+- durata reale;
+- codice errore backend;
+- codice errore frontend;
+- request id/log id se disponibile;
+- se la chiamata arriva davvero al backend;
+- se la chiamata arriva davvero al provider AI;
+- se il provider termina con `stop`, `length`, timeout, errore o risposta vuota;
+- se il backend interrompe prima il flusso;
+- se il frontend interrompe prima del backend.
+
+2. Non fare molte chiamate AI inutili
+
+Non fare ripetuti tentativi costosi.
+
+Usa al massimo una richiesta reale controllata, con logging mirato, oppure strumenti diagnostici senza consumare AI.
+
+Ogni tentativo che arriva al provider può consumare quota, quindi evita prove ripetitive.
+
+3. Verifica differenza tra locale e produzione
+
+Il test locale/fittizio non basta.
+
+Confronta:
+
+- variabili ambiente locali;
+- variabili ambiente produzione;
+- provider AI usato in locale;
+- provider AI usato in produzione;
+- modello effettivo;
+- timeout effettivo;
+- maxRetries effettivo;
+- max_completion_tokens effettivo;
+- dominio backend effettivo chiamato dal frontend;
+- versione del bundle pubblicato;
+- eventuale cache;
+- eventuale vecchio backend ancora attivo;
+- eventuale server non riavviato dopo Publish.
+
+4. Aggiungi diagnostica visibile solo al proprietario app
+
+Se necessario, aggiungi un endpoint admin temporaneo, protetto da `APP_OWNER_EMAILS`, per vedere l’ultimo errore AI del Piano Pasti senza esporre dati personali.
+
+Esempio:
+
+GET /api/admin/ai/meal-plan-last-error
+
+Deve mostrare solo metadati tecnici:
+
+- createdAt;
+- endpoint;
+- durata;
+- provider;
+- modello;
+- finish_reason;
+- error_code;
+- error_message tecnico sintetico;
+- validation_error sintetico;
+- numero pasti ricevuti;
+- numero slot validi;
+- timeout frontend/backend/provider.
+
+Non deve mostrare:
+- contenuti del piano;
+- prompt;
+- dati familiari;
+- allergie dettagliate;
+- email;
+- dati sensibili.
+
+5. Verifica se il frontend sta interrompendo troppo presto
+
+Il messaggio “L'AI ci sta mettendo troppo tempo” potrebbe venire dal frontend prima che il backend abbia finito.
+
+Controlla:
+
+- timer frontend;
+- AbortController;
+- query timeout;
+- fetch timeout;
+- streaming timeout;
+- React Query timeout;
+- gestione dello stato loading;
+- pulsante retry;
+- eventuale chiusura dello stream;
+- differenze web/mobile.
+
+6. Verifica se il backend risponde troppo tardi o non risponde
+
+Controlla se:
+
+- il backend completa la generazione ma il frontend ha già abortito;
+- il backend va in timeout;
+- il provider risponde dopo il limite;
+- il backend classifica male l’errore;
+- il server Replit/proxy interrompe la connessione;
+- lo streaming non viene flushato correttamente in produzione.
+
+7. Criterio di accettazione
+
+Il lavoro è riuscito solo se, su `familysync.eu`, con l’app pubblicata:
+
+- apro Piano Pasti;
+- scelgo Dieta Mediterranea;
+- premo Genera Piano;
+- entro un tempo accettabile viene mostrato un piano completo;
+- il piano contiene 21 pasti;
+- il piano viene validato;
+- il piano può essere salvato;
+- non compare “L'AI ci sta mettendo troppo tempo”.
+
+Se il test riesce solo in locale o con famiglia fittizia, NON è sufficiente.
+
+8. Non modificare altro
+
+Non modificare:
+
+- Privacy Policy;
+- Termini d’Uso;
+- Premium;
+- bollette;
+- chat;
+- microfono;
+- analytics;
+- calendario;
+- login;
+- funzioni non collegate.
+
+Intervieni solo su Piano Pasti AI, diagnostica tecnica, timeout, endpoint, frontend/backend e configurazione AI.
+
+9. Output finale obbligatorio
+
+Prepara uno ZIP finale e riepiloga chiaramente:
+
+- causa reale del fallimento in produzione;
+- perché il test locale riusciva ma familiesync.eu fallisce;
+- file modificati;
+- endpoint coinvolti;
+- timeout corretti;
+- eventuale diagnostica admin aggiunta;
+- test reale eseguito sul deployment pubblicato;
+- durata della generazione;
+- numero pasti generati;
+- conferma che il Piano Pasti genera davvero su familiesync.eu;
+- istruzioni precise per Publish o riavvio, se necessario.
+
+Non chiudere il task dicendo che “funziona nel codice”.
+Il criterio è solo produzione reale:
+
+familysync.eu → Piano Pasti → Genera Piano → piano completo mostrato.

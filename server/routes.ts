@@ -34,6 +34,7 @@ import supportRoutes from "./routes/support";
 import profileRoutes from "./routes/profile";
 import { testAnalyticsEventsRouter, testAnalyticsAdminRouter, requireTestAnalyticsFlag } from "./routes/test-analytics";
 import { feedbackRouter, feedbackAdminRouter } from "./routes/feedback";
+import { adminAiRouter } from "./routes/admin-ai";
 import maintenanceRoutes from "./routes/maintenance";
 import clientErrorsRoutes, { clientErrorLimiter } from "./routes/client-errors";
 
@@ -149,6 +150,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // verificati, consultazione riservata al proprietario (APP_OWNER_EMAILS).
   app.use('/api/feedback', authenticate, requireEmailVerified, blockChildAccount, feedbackRouter);
   app.use('/api/admin/feedback', authenticate, feedbackAdminRouter);
+  // Diagnostica tecnica transitoria Piano Pasti: solo proprietario app.
+  app.use('/api/admin/ai', authenticate, adminAiRouter);
 
   // Manutenzione dati token-gated (MIGRATE_TOKEN): 404 se il token non è
   // impostato nell'ambiente. Unico canale di scrittura consentito verso prod.

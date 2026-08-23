@@ -14,7 +14,7 @@ import { eq, and, gte, desc, inArray, lt } from 'drizzle-orm';
 import { authenticate } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { requireAiEnabled } from '../middleware/ai-guard';
-import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateBudgetInsights, generateRecipeSuggestions, generateWeeklyMealPlan, MAX_MEAL_PLAN_MODEL_CALLS, searchRecipesByQuery, transcribeAudio, generateRecipeImage, parseEventFromText, parseExpenseFromText, parseChoreFromText, parseAssistantActionsFromText, type ShoppingSuggestionItem } from '../lib/openai';
+import { generateShoppingSuggestions, optimizeChoreSchedule, generateFamilyInsights, generateBudgetInsights, generateRecipeSuggestions, generateWeeklyMealPlan, MAX_MEAL_PLAN_MODEL_CALLS, MEAL_PLAN_MODEL, searchRecipesByQuery, transcribeAudio, generateRecipeImage, parseEventFromText, parseExpenseFromText, parseChoreFromText, parseAssistantActionsFromText, type MealPlanAttemptTelemetry, type ShoppingSuggestionItem } from '../lib/openai';
 import { normalizeItemName } from '../lib/normalize';
 import { logger } from '../lib/logger';
 import { recipes, recipeIngredients } from '../../shared/schema';
@@ -41,6 +41,7 @@ import {
   legacyMealPlanDietToProfile,
   type MealPlanDietProfile,
 } from '../../shared/meal-plan-diet-profiles';
+import { recordMealPlanLastError } from "../lib/meal-plan-diagnostics";
 
 const router = Router();
 
@@ -1057,6 +1058,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
   // lasciare record "started" orfani che continuerebbero a consumare quota.
   let usageId: string | null = null;
   let usageFinalized = false;
+  const attemptTelemetry: MealPlanAttemptTelemetry[] = [];
   const finalizeUsageOnce = async (success: boolean) => {
     if (usageId && !usageFinalized) {
       usageFinalized = true;
@@ -1145,6 +1147,9 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
         onStatus: writeStatus,
         signal: generationAbortController.signal,
         provider: ai.provider,
+        onAttemptTelemetry: (report) => {
+          attemptTelemetry.push(report);
+        },
       });
     } finally {
       clearInterval(statusHeartbeat);
@@ -1201,6 +1206,22 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
   } catch (error) {
     const durationMs = Date.now() - startTime;
     const aiError = isAiError(error) ? error : mapOpenAiError(error);
+    const finishReasons = Array.from(new Set(attemptTelemetry.flatMap((report) => report.finishReasons)));
+    const lastAttempt = attemptTelemetry.at(-1);
+    recordMealPlanLastError({
+      endpoint: "/api/ai/:familyId/weekly-meal-plan/stream",
+      requestId,
+      durationMs,
+      provider: ai.provider,
+      model: MEAL_PLAN_MODEL,
+      finishReasons,
+      errorCode: aiError.code,
+      errorMessage: aiError.code === "AI_TIMEOUT" ? "provider_timeout" : "structured_output_or_validation_failure",
+      validationError: aiError.code === "AI_BAD_RESPONSE" ? "structured_output_incomplete" : null,
+      itemsReceived: lastAttempt?.itemsCount ?? 0,
+      validSlots: lastAttempt?.itemsCount ?? 0,
+      attempts: attemptTelemetry,
+    });
     logger.error('Weekly meal plan stream error', {
       tag: "AI_MEAL_PLAN_STREAM",
       stage: clientClosed ? "client_disconnected" : "generation_failed",

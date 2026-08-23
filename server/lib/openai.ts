@@ -314,19 +314,19 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
             properties: {
               date: { type: 'string' },
               mealType: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
-              title: { type: 'string', minLength: 1, maxLength: 80 },
-              description: { type: 'string', minLength: 1, maxLength: 80 },
+              title: { type: 'string', minLength: 1, maxLength: 55 },
+              description: { type: 'string', minLength: 1, maxLength: 45 },
               ingredients: {
                 type: 'array',
                 minItems: 3,
-                maxItems: 4,
+                maxItems: 3,
                 items: {
                   type: 'object',
                   additionalProperties: false,
                   properties: {
-                    name: { type: 'string', minLength: 1 },
-                    quantity: { type: 'string', minLength: 1 },
-                    unit: { type: 'string', minLength: 1 },
+                    name: { type: 'string', minLength: 1, maxLength: 40 },
+                    quantity: { type: 'string', minLength: 1, maxLength: 8 },
+                    unit: { type: 'string', minLength: 1, maxLength: 12 },
                   },
                   required: ['name', 'quantity', 'unit'],
                 },
@@ -335,7 +335,7 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
                 type: 'array',
                 minItems: 3,
                 maxItems: 3,
-                items: { type: 'string', minLength: 1, maxLength: 90 },
+                items: { type: 'string', minLength: 1, maxLength: 55 },
               },
             },
             required: ['date', 'mealType', 'title', 'description', 'ingredients', 'steps'],
@@ -354,6 +354,7 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
  * tetto lascia margine per ingredienti e vincoli dei profili chiusi.
  */
 export const MEAL_PLAN_MAX_COMPLETION_TOKENS = 4800;
+export const MEAL_PLAN_MODEL = "gpt-5-mini";
 
 /**
  * Per il glutine non ci affidiamo solo alle istruzioni in linguaggio naturale:
@@ -699,6 +700,15 @@ export interface MealPlanConstraintAttemptReport {
   /** Solo codici di regola: non contiene titoli, ingredienti o preferenze. */
   violationCodes: string[];
 }
+export interface MealPlanAttemptTelemetry {
+  generationAttempt: number;
+  durationMs: number;
+  providerDurationMs: number;
+  responseChars: number;
+  finishReasons: string[];
+  itemsCount: number;
+  failedChunks: number;
+}
 interface MealPlanGenerationContext {
   familySize: number;
   /** Scelto dalla rotta per l'utente; i job senza utente restano Replit. */
@@ -719,6 +729,8 @@ interface MealPlanGenerationContext {
   onStatus?: (message: string) => void;
 
   onConstraintViolation?: (report: MealPlanConstraintAttemptReport) => void;
+  /** Metadati tecnici allow-listed per la diagnostica owner-only. */
+  onAttemptTelemetry?: (report: MealPlanAttemptTelemetry) => void;
   /**
    * Limite ulteriore opzionale per un chiamante interno. Non può mai innalzare
    * il tetto applicativo standard di tentativi.
@@ -1678,8 +1690,8 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     const snackMealRule = constrainedPlan
       ? `- snack (spuntino): piccolo e leggero, composto esclusivamente da ingredienti compatibili con TUTTI i vincoli.`
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
-    const itemContract = `- Ogni pasto ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (nome piatto in italiano, non vuoto), description (una frase utile di massimo 12 parole), ingredients (ESATTAMENTE 3 o 4 ingredienti essenziali), steps (array).`;
-    const preparationContract = `- steps è la RICETTA completa, passo-passo: ESATTAMENTE 3 istruzioni concise e concrete in italiano (ogni passaggio è una stringa, senza numerazione iniziale, massimo 90 caratteri). Indica operazioni reali come lavare, tagliare, cuocere e assemblare. Non aggiungere ingredienti opzionali o condimenti generici solo per allungare l'output.`;
+    const itemContract = `- Ogni pasto ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (massimo 8 parole), description (una frase utile di massimo 7 parole), ingredients (ESATTAMENTE 3 ingredienti essenziali), steps (array).`;
+    const preparationContract = `- steps è la RICETTA completa, passo-passo: ESATTAMENTE 3 istruzioni concrete in italiano (ogni passaggio è una stringa, senza numerazione iniziale, massimo 55 caratteri). Usa verbi diretti: prepara, cuoci, servi. Non aggiungere ingredienti opzionali, condimenti generici o spiegazioni.`;
     const constrainedRecipeReferenceRule = constrainedPlan && !lactoseFreeRequired
       ? `- VINCOLI NELLA RICETTA: per ogni ingrediente soggetto a un vincolo usa, nel titolo, descrizione e in OGNI passaggio, il nome completo e compatibile scritto nell'array ingredients. Non abbreviare né sostituire con parole generiche un ingrediente sensibile (per esempio non scrivere "latte", "yogurt" o "formaggio" se nell'array è presente un sostituto vegetale o senza lattosio).`
       : "";
@@ -1715,7 +1727,7 @@ ${constrainedRecipeReferenceRule}
     try {
       response = await getOpenAiClient(context.provider).chat.completions.create(
         {
-          model: 'gpt-5-mini',
+          model: MEAL_PLAN_MODEL,
           reasoning_effort: 'minimal',
           messages: [
             { role: 'system', content: sysPrompt },
@@ -1751,6 +1763,12 @@ ${constrainedRecipeReferenceRule}
     const content = choice?.message.content || "";
     finishReasons.push(finishReason);
     responseChars += content.length;
+    // Il gateway non consegna JSON parziale quando structured output chiude per
+    // limite. Senza alcun elemento un repair ripete la stessa settimana e non
+    // può recuperare il risultato: fermiamo la spesa dopo una sola chiamata.
+    if (finishReason === "length") {
+      throw new AiError("AI_BAD_RESPONSE", "Piano pasti: output strutturato interrotto per limite di lunghezza");
+    }
     const parsingStartedAt = Date.now();
     try {
       let parsed: unknown;
@@ -2042,6 +2060,17 @@ ${constrainedRecipeReferenceRule}
     const preparationDurationMs = firstProviderStartedAt === null
       ? durationMs
       : firstProviderStartedAt - attemptStartedAt;
+    try {
+      context.onAttemptTelemetry?.({
+        generationAttempt: context.generationAttempt,
+        durationMs,
+        providerDurationMs,
+        responseChars,
+        finishReasons: Array.from(new Set(finishReasons)),
+        itemsCount: filtered.length,
+        failedChunks,
+      });
+    } catch {}
     if (!context.suppressInternalLogs) {
       recordMealPlanLatency({
         mode: standardPlan ? 'standard' : 'constrained',

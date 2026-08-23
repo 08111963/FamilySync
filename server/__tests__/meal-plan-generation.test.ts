@@ -50,10 +50,12 @@ type RequestInfo = {
   itemCount: number;
   slotKeys: string[];
   ingredientNamesAreEnumerated: boolean;
+  ingredientMinItems: number;
   ingredientMaxItems: number;
   stepMinItems: number;
   stepMaxItems: number;
   stepMaxLength: number;
+  titleMaxLength: number;
   descriptionMaxLength: number;
   tokenLimit: number;
   maxRetries: number | undefined;
@@ -166,10 +168,12 @@ function createFakeClient(responder: (request: RequestInfo, call: number) => Fak
             ingredientNamesAreEnumerated: Array.isArray(
               firstSlotSchema.properties.ingredients.items.properties.name.enum,
             ),
+            ingredientMinItems: firstSlotSchema.properties.ingredients.minItems,
             ingredientMaxItems: firstSlotSchema.properties.ingredients.maxItems,
             stepMinItems: firstSlotSchema.properties.steps.minItems,
             stepMaxItems: firstSlotSchema.properties.steps.maxItems,
             stepMaxLength: firstSlotSchema.properties.steps.items.maxLength,
+            titleMaxLength: firstSlotSchema.properties.title.maxLength,
             descriptionMaxLength: firstSlotSchema.properties.description.maxLength,
             tokenLimit: request.max_completion_tokens,
             maxRetries: options?.maxRetries,
@@ -226,16 +230,48 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
   );
   assert.equal(calls[0]!.stepMinItems, 3);
   assert.equal(calls[0]!.stepMaxItems, 3);
-  assert.equal(calls[0]!.stepMaxLength, 90);
-  assert.equal(calls[0]!.ingredientMaxItems, 4);
-  assert.equal(calls[0]!.descriptionMaxLength, 80);
+  assert.equal(calls[0]!.stepMaxLength, 55);
+  assert.equal(calls[0]!.ingredientMinItems, 3);
+  assert.equal(calls[0]!.ingredientMaxItems, 3);
+  assert.equal(calls[0]!.titleMaxLength, 55);
+  assert.equal(calls[0]!.descriptionMaxLength, 45);
   assert.match(calls[0]!.prompt, /BLUEPRINT SETTIMANALE LOCALE/);
-  assert.match(calls[0]!.prompt, /ESATTAMENTE 3 istruzioni concise/);
-  assert.match(calls[0]!.prompt, /ESATTAMENTE 3 o 4 ingredienti essenziali/);
+  assert.match(calls[0]!.prompt, /ESATTAMENTE 3 istruzioni concrete/);
+  assert.match(calls[0]!.prompt, /ESATTAMENTE 3 ingredienti essenziali/);
   assert.match(calls[0]!.prompt, /famiglia pasta/);
   assert.match(calls[0]!.prompt, /proteina red_meat/);
   assert.equal(plan.items.length, 21);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
+});
+
+test("un output interrotto per limite non avvia un repair vuoto", async (t) => {
+  let calls = 0;
+  __setOpenAiClientForTest({
+    chat: {
+      completions: {
+        create: async () => {
+          calls++;
+          return {
+            choices: [{
+              message: { content: "" },
+              finish_reason: "length",
+            }],
+          };
+        },
+      },
+    },
+  });
+  t.after(() => __setOpenAiClientForTest(null));
+
+  await assert.rejects(
+    generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      preferences: { dietProfile: "mediterranean" },
+    }),
+    (error: unknown) => (error as { code?: string }).code === "AI_BAD_RESPONSE",
+  );
+  assert.equal(calls, 1, "un repair senza output parziale ripeterebbe inutilmente la stessa settimana");
 });
 
 test("un duplicato deterministico esegue un solo repair con il JSON precedente", async (t) => {
