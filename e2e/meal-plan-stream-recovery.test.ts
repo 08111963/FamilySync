@@ -42,6 +42,9 @@ type StreamRequest = {
 };
 
 const streamRequests: StreamRequest[] = [];
+type StreamMode = "recovery" | "hold" | "provider-error";
+let streamMode: StreamMode = "recovery";
+let releaseHeldStream: (() => void) | null = null;
 
 let browser: Browser;
 let context: BrowserContext;
@@ -109,6 +112,37 @@ async function stubApi(pg: Page) {
 
       const requestId = record.requestId;
       const dietProfile = body.preferences?.dietProfile || "mediterranean";
+      if (streamMode === "hold") {
+        // Mantiene la fetch aperta: serve a verificare che un secondo tap non
+        // possa avviare una seconda generazione mentre la prima è attiva.
+        await new Promise<void>((resolve) => {
+          releaseHeldStream = resolve;
+        });
+        record.ended = true;
+        return route.fulfill({
+          status: 200,
+          contentType: "application/x-ndjson",
+          body: `${JSON.stringify({
+            type: "error",
+            requestId,
+            dietProfile,
+            message: "Generazione di test interrotta.",
+          })}\n`,
+        });
+      }
+      if (streamMode === "provider-error") {
+        record.ended = true;
+        return route.fulfill({
+          status: 200,
+          contentType: "application/x-ndjson",
+          body: `${JSON.stringify({
+            type: "error",
+            requestId,
+            dietProfile,
+            message: "Servizio AI temporaneamente non disponibile. Riprova tra poco.",
+          })}\n`,
+        });
+      }
       if (record.attempt <= 2) {
         // EOF dopo "items", senza "done": simula una connessione streaming
         // interrotta. L'app deve tenere i pasti solo nel buffer locale e non
@@ -196,7 +230,8 @@ describe("Recupero Piano Pasti dopo interruzione dello stream", () => {
     const bundle = await fetch(`${BASE_URL}/${bundleMatch[0]}`).then((res) => res.text());
     assert.ok(
       bundle.includes("mealplan-generation-retry") &&
-        bundle.includes("Nessun pasto parziale"),
+        bundle.includes("Nessun pasto parziale") &&
+        bundle.includes("2 minuti e 30 secondi"),
       "La web-build servita non contiene il recupero dello stream: rigenerare la web-build (anteprima vecchia)",
     );
 
@@ -240,6 +275,33 @@ describe("Recupero Piano Pasti dopo interruzione dello stream", () => {
   after(async () => {
     await context?.close();
     await browser?.close();
+  });
+
+  test("blocca il doppio invio e mantiene visibile lo stato di caricamento", async () => {
+    streamMode = "hold";
+    await page.getByText("Genera Piano").first().tap();
+    await waitForStreamAttempt(1);
+    await page.getByText("Generazione in corso...").first().waitFor({ timeout: 5_000 });
+    assert.equal(
+      await page.getByTestId("mealplan-generation-status").count(),
+      1,
+      "durante la richiesta deve restare visibile uno stato di avanzamento",
+    );
+
+    // Il pulsante è sostituito dal testo di caricamento e non esiste un secondo
+    // controllo "Genera Piano" azionabile. Aspettare un giro del browser prova
+    // inoltre che non parte una fetch aggiuntiva in autonomia.
+    assert.equal(await page.getByText("Genera Piano", { exact: true }).count(), 0);
+    await page.waitForTimeout(250);
+    assert.equal(streamRequests.length, 1, "due tocchi non devono avviare due stream");
+
+    releaseHeldStream?.();
+    releaseHeldStream = null;
+    await page.getByTestId("mealplan-generation-error").waitFor({ state: "visible", timeout: 5_000 });
+    await page.getByTestId("mealplan-generation-close").tap();
+    await page.getByTestId("mealplan-generation-error").waitFor({ state: "detached", timeout: 5_000 });
+    streamRequests.splice(0, streamRequests.length);
+    streamMode = "recovery";
   });
 
   test("mostra il recupero, non mostra pasti parziali e consente Chiudi/Riprova in ordine", async () => {
@@ -310,5 +372,25 @@ describe("Recupero Piano Pasti dopo interruzione dello stream", () => {
       0,
       "il piano completato non deve reintrodurre il pasto parziale",
     );
+  });
+
+  test("mostra un errore provider recuperabile senza esporre pasti", async () => {
+    streamMode = "provider-error";
+    await page.getByText("Genera Piano").first().tap();
+    const errorBox = page.getByTestId("mealplan-generation-error");
+    await errorBox.waitFor({ state: "visible", timeout: 10_000 });
+    assert.match(
+      await errorBox.innerText(),
+      /Servizio AI temporaneamente non disponibile/,
+      "l'errore del provider deve essere comprensibile e recuperabile",
+    );
+    assert.equal(
+      await page.getByText(PARTIAL_MEAL_TITLE, { exact: true }).count(),
+      0,
+      "un errore provider non deve visualizzare pasti parziali",
+    );
+    assert.equal(await page.getByTestId("mealplan-generation-retry").count(), 1);
+    await page.getByTestId("mealplan-generation-close").tap();
+    streamMode = "recovery";
   });
 });

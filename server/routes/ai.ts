@@ -25,6 +25,7 @@ import {
   AiError,
   isAiError,
   isOpenAiDirectPilotUser,
+  mapOpenAiError,
   resolveAiProviderForUserId,
   type AiProvider,
 } from '../lib/ai-errors';
@@ -1024,6 +1025,13 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
   const planVariant = rawPlanVariant === 2 ? 2 : 1;
   let dietProfile = typeof preferences?.dietProfile === "string" ? preferences.dietProfile : "mediterranean";
 
+  logger.info('Meal plan stream received', {
+    tag: "AI_MEAL_PLAN_STREAM",
+    stage: "received",
+    requestId,
+    planVariant,
+  });
+
   if (!weekStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate)) {
     return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "weekStartDate è obbligatorio (YYYY-MM-DD)" } });
   }
@@ -1062,6 +1070,15 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     if (!preparedPreferences.ok) {
       return res.status(preparedPreferences.status).json(preparedPreferences.body);
     }
+    dietProfile = preparedPreferences.preferences?.dietProfile || "mediterranean";
+    logger.info('Meal plan stream input validated', {
+      tag: "AI_MEAL_PLAN_STREAM",
+      stage: "input_validated",
+      requestId,
+      dietProfile,
+      planVariant,
+      mode: hasMealPlanConstraints(preparedPreferences.preferences) ? "constrained" : "standard",
+    });
 
     // Prenotazione quota PRIMA di aprire lo stream: così su 429/503 possiamo
     // ancora rispondere con uno status HTTP (headers non ancora inviati).
@@ -1071,6 +1088,13 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     }
     if (reservation.status === 'unavailable') return sendUsageUnavailable(res);
     usageId = reservation.usageId;
+    logger.info('Meal plan stream quota reserved', {
+      tag: "AI_MEAL_PLAN_STREAM",
+      stage: "quota_reserved",
+      requestId,
+      dietProfile,
+      planVariant,
+    });
 
     // Se il client si è già disconnesso, non chiamare OpenAI: niente costi inutili.
     // Lo slot prenotato viene marcato "failed" dal finally.
@@ -1085,7 +1109,6 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     res.setHeader("X-Meal-Plan-Request-Id", requestId);
     res.flushHeaders();
 
-    dietProfile = preparedPreferences.preferences?.dietProfile || "mediterranean";
     const writeStatus = (message: string) => {
       if (clientClosed) return;
       try { res.write(JSON.stringify({ type: 'status', requestId, dietProfile, message }) + '\n'); } catch {}
@@ -1106,6 +1129,13 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     }, 8_000);
     let plan;
     try {
+      logger.info('Meal plan stream provider started', {
+        tag: "AI_MEAL_PLAN_STREAM",
+        stage: "provider_started",
+        requestId,
+        dietProfile,
+        planVariant,
+      });
       plan = await generateWeeklyMealPlan({
         familySize: members.length || 1,
         weekStartDate,
@@ -1119,6 +1149,14 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     } finally {
       clearInterval(statusHeartbeat);
     }
+    logger.info('Meal plan stream plan validated', {
+      tag: "AI_MEAL_PLAN_STREAM",
+      stage: "plan_validated",
+      requestId,
+      dietProfile,
+      planVariant,
+      itemsCount: plan.items.length,
+    });
     await finalizeUsageOnce(true);
 
     if (clientClosed) return;
@@ -1144,6 +1182,15 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
       items: plan.items,
     }) + '\n');
     res.end();
+    logger.info('Meal plan stream response completed', {
+      tag: "AI_MEAL_PLAN_STREAM",
+      stage: "response_completed",
+      requestId,
+      dietProfile,
+      planVariant,
+      durationMs,
+      itemsCount: plan.items.length,
+    });
 
     // Prewarm in background anche per lo stream: titoli già noti a fine piano.
     prewarmRecipeImages(
@@ -1153,8 +1200,11 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     );
   } catch (error) {
     const durationMs = Date.now() - startTime;
+    const aiError = isAiError(error) ? error : mapOpenAiError(error);
     logger.error('Weekly meal plan stream error', {
-      error: String(error),
+      tag: "AI_MEAL_PLAN_STREAM",
+      stage: clientClosed ? "client_disconnected" : "generation_failed",
+      errorCode: aiError.code,
       durationMs,
       requestId,
       dietProfile,
@@ -1163,9 +1213,9 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
     if (clientClosed) return;
     if (!res.headersSent) {
       // Errore prima dell'inizio dello stream: rispondi con HTTP status tipizzato.
-      sendAiError(res, error, "Errore nella generazione del piano pasti");
+      sendAiError(res, aiError, "Errore nella generazione del piano pasti");
     } else {
-      const message = isAiError(error) ? error.userMessage : "Errore nella generazione del piano pasti";
+      const message = aiError.userMessage;
       try {
         res.write(JSON.stringify({
           type: 'error',

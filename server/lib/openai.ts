@@ -28,6 +28,10 @@ import {
   planMealPlanLunchFamilies,
   planMealPlanLunchSemanticTargets,
 } from './meal-plan-variety';
+import {
+  MEAL_PLAN_MAX_GENERATION_ATTEMPTS,
+  MEAL_PLAN_PROVIDER_ATTEMPT_TIMEOUT_MS,
+} from '../../shared/meal-plan-generation-timeouts';
 
 // Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
 // SDK lancia se la chiave manca, e ciò impedirebbe l'avvio del server.
@@ -43,7 +47,7 @@ function getOpenAiClient(provider: AiProvider = "replit_managed"): OpenAI {
     openaiClients[provider] = new OpenAI({
       apiKey,
       ...(baseURL ? { baseURL } : {}),
-      timeout: 60_000,
+      timeout: MEAL_PLAN_PROVIDER_ATTEMPT_TIMEOUT_MS,
       maxRetries: 1,
     });
   }
@@ -1719,6 +1723,7 @@ ${constrainedRecipeReferenceRule}
         // output parziale sicuro al client.
         {
           maxRetries: 0,
+          timeout: MEAL_PLAN_PROVIDER_ATTEMPT_TIMEOUT_MS,
           ...(context.signal ? { signal: context.signal } : {}),
         },
       );
@@ -2066,7 +2071,7 @@ export async function generateWeeklyMealPlan(
     : MAX_CONSTRAINT_GENERATION_ATTEMPTS;
   // Primo tentativo + al massimo un repair. Questo conta le chiamate
   // applicative, indipendentemente dai retry di trasporto interni all'SDK.
-  const attempts = Math.max(1, Math.min(2, requestedLimit));
+  const attempts = Math.max(1, Math.min(MEAL_PLAN_MAX_GENERATION_ATTEMPTS, requestedLimit));
   const requestedModelCalls = Number.isFinite(context.maxModelCalls)
     ? Math.floor(context.maxModelCalls!)
     : MAX_MEAL_PLAN_MODEL_CALLS;

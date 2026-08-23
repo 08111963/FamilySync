@@ -139,6 +139,7 @@ function constraintErrorResponse(message = "Il pasto è incompatibile con la die
 }
 
 router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  let saveContext: { itemCount: number; replace: boolean; dietProfile: string } | null = null;
   try {
     const familyId = getParam(req, 'familyId');
     const parsed = createMealPlanSchema.safeParse(req.body);
@@ -151,6 +152,16 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
 
     const { items, replace, ...planData } = parsed.data;
     const preferences = canonicalMealPlanPreferences(planData.preferences);
+    saveContext = {
+      itemCount: items.length,
+      replace: replace === true,
+      dietProfile: preferences.dietProfile || "mediterranean",
+    };
+    logger.info('Meal plan save received', {
+      tag: "MEAL_PLAN_SAVE",
+      stage: "received",
+      ...saveContext,
+    });
     const unsupportedHealthNote = unsupportedMealPlanHealthNote(preferences);
     if (unsupportedHealthNote) {
       return res.status(422).json(constraintErrorResponse(unsupportedHealthNote));
@@ -237,8 +248,19 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
     }
 
     res.status(201).json({ ...safePlanResponse(result.plan), items: result.insertedItems });
+    logger.info('Meal plan saved', {
+      tag: "MEAL_PLAN_SAVE",
+      stage: "completed",
+      ...saveContext,
+      insertedItems: result.insertedItems.length,
+    });
   } catch (error) {
-    logger.error('Create meal plan error', { error: String(error) });
+    logger.error('Create meal plan error', {
+      tag: "MEAL_PLAN_SAVE",
+      stage: "failed",
+      ...(saveContext || {}),
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nella creazione del piano pasti" } });
   }
 });

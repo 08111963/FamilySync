@@ -38,6 +38,7 @@ import {
   mealPlanDietProfileLabel,
   type MealPlanDietProfile,
 } from "@/shared/meal-plan-diet-profiles";
+import { MEAL_PLAN_STREAM_SAFETY_TIMEOUT_MS } from "@/shared/meal-plan-generation-timeouts";
 
 interface MealPlanIngredient {
   name: string;
@@ -109,9 +110,12 @@ function buildNotes(
 }
 
 const SPEECH_WEEKDAYS = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
-const MEAL_PLAN_STREAM_TIMEOUT_MS = 45_000;
-const MEAL_PLAN_TIMEOUT_MESSAGE =
-  "La generazione sta richiedendo più tempo del previsto. Nessun pasto parziale è stato mostrato. Puoi chiudere questo avviso o riprovare in sicurezza.";
+// Il backend può eseguire una richiesta settimanale completa e UN solo repair
+// globale. Il timeout del browser deve quindi essere una rete di sicurezza
+// successiva al budget di entrambi i tentativi, non interrompere il repair a
+// metà (come accadeva a 45 secondi nella build pubblicata).
+const MEAL_PLAN_STREAM_TIMEOUT_MESSAGE =
+  "La generazione ha superato il tempo massimo di 2 minuti e 30 secondi e si è interrotta. Nessun piano è stato creato o salvato: puoi riprovare.";
 
 function buildPlanSpeech(title: string, items: MealPlanItem[]): string {
   const groups = new Map<string, MealPlanItem[]>();
@@ -638,7 +642,7 @@ export default function MealPlansScreen() {
             });
           }
         },
-        { timeoutMs: MEAL_PLAN_STREAM_TIMEOUT_MS },
+        { timeoutMs: MEAL_PLAN_STREAM_SAFETY_TIMEOUT_MS },
       );
       if (!isActive()) return;
       if (!streamCompleted && !streamErrorMessage) {
@@ -655,7 +659,7 @@ export default function MealPlansScreen() {
       if (!isActive()) return;
       if (opts?.speak) speakText("Non sono riuscita a generare il piano pasti. Riprova.");
       if (err instanceof ApiStreamTimeoutError) {
-        setGenerationError(MEAL_PLAN_TIMEOUT_MESSAGE);
+        setGenerationError(MEAL_PLAN_STREAM_TIMEOUT_MESSAGE);
       } else if (isAiDisabled(err)) {
         setAiDisabledError(true);
       } else {
@@ -726,7 +730,7 @@ export default function MealPlansScreen() {
             setSelectedPlanIndex(1);
           }
         },
-        { timeoutMs: MEAL_PLAN_STREAM_TIMEOUT_MS },
+        { timeoutMs: MEAL_PLAN_STREAM_SAFETY_TIMEOUT_MS },
       );
       if (!isActive()) return;
       if (!streamCompleted && !streamErrorMessage) {
@@ -743,7 +747,7 @@ export default function MealPlansScreen() {
     } catch (err: any) {
       if (!isActive()) return;
       if (err instanceof ApiStreamTimeoutError) {
-        setGenerationError(MEAL_PLAN_TIMEOUT_MESSAGE);
+        setGenerationError(MEAL_PLAN_STREAM_TIMEOUT_MESSAGE);
       } else if (isAiDisabled(err)) {
         setAiDisabledError(true);
       } else {

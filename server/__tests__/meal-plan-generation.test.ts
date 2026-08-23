@@ -14,6 +14,11 @@ import {
   MEAL_PLAN_MAX_COMPLETION_TOKENS,
   MAX_MEAL_PLAN_MODEL_CALLS,
 } from "../lib/openai";
+import {
+  MEAL_PLAN_MAX_GENERATION_ATTEMPTS,
+  MEAL_PLAN_PROVIDER_ATTEMPT_TIMEOUT_MS,
+  MEAL_PLAN_STREAM_SAFETY_TIMEOUT_MS,
+} from "../../shared/meal-plan-generation-timeouts";
 import { validateMealPlanConstraints } from "../lib/meal-plan-constraints";
 import { MEAL_PLAN_DIET_PROFILES, type MealPlanDietProfile } from "../../shared/meal-plan-diet-profiles";
 import { db } from "../db";
@@ -47,6 +52,7 @@ type RequestInfo = {
   stepMaxItems: number;
   tokenLimit: number;
   maxRetries: number | undefined;
+  timeout: number | undefined;
 };
 type FakeMealPlanResponse = Meal[] | { content: string };
 
@@ -141,7 +147,7 @@ function createFakeClient(responder: (request: RequestInfo, call: number) => Fak
   const client = {
     chat: {
       completions: {
-        create: async (request: any, options?: { maxRetries?: number }) => {
+        create: async (request: any, options?: { maxRetries?: number; timeout?: number }) => {
           const prompt = request.messages.find((message: any) => message.role === "system")!.content as string;
           const schema = request.response_format.json_schema.schema;
           const info: RequestInfo = {
@@ -153,6 +159,7 @@ function createFakeClient(responder: (request: RequestInfo, call: number) => Fak
             stepMaxItems: schema.properties.items.items.properties.steps.maxItems,
             tokenLimit: request.max_completion_tokens,
             maxRetries: options?.maxRetries,
+            timeout: options?.timeout,
           };
           calls.push(info);
           const response = responder(info, calls.length);
@@ -190,6 +197,11 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
   assert.equal(calls[0]!.itemCount, 21);
   assert.equal(calls[0]!.tokenLimit, MEAL_PLAN_MAX_COMPLETION_TOKENS);
   assert.equal(calls[0]!.maxRetries, 0);
+  assert.equal(calls[0]!.timeout, MEAL_PLAN_PROVIDER_ATTEMPT_TIMEOUT_MS);
+  assert.ok(
+    MEAL_PLAN_STREAM_SAFETY_TIMEOUT_MS > MEAL_PLAN_PROVIDER_ATTEMPT_TIMEOUT_MS * MEAL_PLAN_MAX_GENERATION_ATTEMPTS,
+    "il timeout del browser deve consentire il primo tentativo e l'unico repair",
+  );
   assert.equal(calls[0]!.stepMinItems, 3);
   assert.equal(calls[0]!.stepMaxItems, 3);
   assert.match(calls[0]!.prompt, /BLUEPRINT SETTIMANALE LOCALE/);
