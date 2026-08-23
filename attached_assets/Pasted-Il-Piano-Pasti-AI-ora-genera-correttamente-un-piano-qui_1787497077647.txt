@@ -1,0 +1,222 @@
+Il Piano Pasti AI ora genera correttamente un piano, quindi il problema tecnico di timeout sembra superato.
+
+Ora però c’è un problema qualitativo importante nel contenuto generato, soprattutto con il profilo Dieta Mediterranea.
+
+Dagli screenshot del piano generato vedo questi problemi:
+
+* non compare quasi mai la pasta nei pranzi principali;
+* non compare carne rossa almeno una volta nella settimana;
+* ci sono troppi legumi, il piano è sbilanciato verso legumi e piatti simili;
+* compare la parola generica “Proteina”, per esempio “Proteina in umido con ortaggi e polenta”;
+* il piano sembra più una sequenza di piatti generici che una vera dieta mediterranea equilibrata;
+* alcuni pasti sono poco naturali o poco italiani;
+* la varietà dei pranzi e delle cene non è sufficiente.
+
+Obiettivo:
+correggere il profilo “Mediterranea” del Piano Pasti AI, mantenendo stabile la generazione già ottenuta, senza reintrodurre timeout o output troppo lunghi.
+
+Non modificare timeout, provider AI, Premium, bollette, chat, microfono, analytics, login, Privacy Policy o Termini d’Uso.
+
+Intervieni solo sulla qualità del contenuto generato dal Piano Pasti AI e sui relativi test.
+
+Requisiti specifici per Dieta Mediterranea:
+
+1. Niente ingredienti generici
+
+Il piano non deve mai usare parole generiche come:
+
+* “Proteina”;
+* “Carboidrato”;
+* “Verdura” da sola;
+* “Cereale” da solo;
+* “Fonte proteica”;
+* “Alimento proteico”.
+
+Ogni piatto deve indicare ingredienti reali e concreti.
+
+Esempi corretti:
+
+* “Manzo alla pizzaiola con patate e insalata”;
+* “Pasta al pomodoro e basilico”;
+* “Riso con zucchine e pollo”;
+* “Orata al forno con verdure”;
+* “Uova con spinaci e pane integrale”.
+
+Esempio sbagliato:
+
+* “Proteina in umido con ortaggi e polenta”.
+
+2. Pasta nei pranzi principali
+
+Nel profilo Mediterranea devono comparire almeno 2 pranzi con pasta durante la settimana.
+
+Esempi:
+
+* pasta al pomodoro;
+* pasta con verdure;
+* pasta e ceci;
+* pasta al pesto leggero;
+* pasta con tonno e pomodoro;
+* pasta al forno leggera;
+* pasta con zucchine;
+* pasta con melanzane.
+
+La pasta deve comparire soprattutto a pranzo, non solo in modo occasionale.
+
+3. Carne rossa almeno una volta
+
+Nel profilo Mediterranea deve comparire carne rossa almeno 1 volta nella settimana, preferibilmente in un pranzo principale o in una cena strutturata.
+
+Esempi ammessi:
+
+* manzo alla pizzaiola;
+* spezzatino magro con verdure;
+* ragù leggero con pasta;
+* polpette di manzo al sugo;
+* fettina di manzo con verdure e pane.
+
+Non eccedere con la carne rossa: deve comparire almeno una volta, ma non diventare dominante.
+
+4. Legumi equilibrati, non eccessivi
+
+I legumi sono corretti nella dieta mediterranea, ma non devono dominare il piano.
+
+Limite consigliato:
+
+* massimo 2 o 3 pasti principali con legumi nella settimana.
+
+Evitare ripetizioni troppo ravvicinate come:
+
+* zuppa di legumi a pranzo;
+* zuppa di legumi a cena;
+* couscous con legumi;
+* burger di legumi;
+* legumi ripetuti in più giorni consecutivi.
+
+5. Varietà settimanale mediterranea
+
+Il piano Mediterranea deve avere una distribuzione più equilibrata:
+
+* pasta: almeno 2 pranzi;
+* riso/orzo/farro/couscous: 1–2 volte;
+* pesce: almeno 2 volte;
+* carne bianca: 1–2 volte;
+* carne rossa: almeno 1 volta;
+* uova: 1–2 volte;
+* legumi: massimo 2–3 pasti principali;
+* verdure presenti ogni giorno;
+* frutta nelle colazioni o spuntini;
+* latticini semplici/yogurt in modo equilibrato.
+
+6. Piatti italiani e realistici
+
+Il profilo Mediterranea deve generare piatti realistici per una famiglia italiana.
+
+Preferire esempi come:
+
+* pasta al pomodoro e basilico;
+* pasta con zucchine;
+* risotto leggero con verdure;
+* pollo al forno con patate;
+* orata o merluzzo con verdure;
+* frittata con spinaci;
+* manzo alla pizzaiola;
+* minestrone con crostini;
+* insalata di farro;
+* yogurt con frutta;
+* pane e marmellata;
+* frutta fresca.
+
+Evitare piatti strani, troppo generici o combinazioni poco naturali.
+
+7. Colazioni più naturali
+
+Le colazioni devono essere semplici e realistiche:
+
+* yogurt con frutta;
+* pane e marmellata;
+* latte e biscotti;
+* fette biscottate con miele o marmellata;
+* frutta fresca;
+* cereali semplici.
+
+Evitare combinazioni troppo ripetitive o poco appetibili.
+
+8. Validazione server
+
+Aggiungi una validazione specifica per il profilo Mediterranea prima di accettare il piano.
+
+Il server deve rifiutare il piano se:
+
+* contiene parole generiche vietate come “Proteina”;
+* non contiene almeno 2 pranzi con pasta;
+* non contiene almeno 1 pasto con carne rossa;
+* contiene troppi pasti principali con legumi;
+* contiene duplicati evidenti;
+* ha meno di 21 pasti;
+* i pasti sono troppo generici.
+
+La validazione deve essere fail-closed: se il piano non rispetta i criteri minimi, non viene mostrato né salvato.
+
+9. Retry mirato
+
+Se il piano fallisce solo per qualità mediterranea, puoi fare al massimo un retry mirato con istruzioni correttive brevi.
+
+Non reintrodurre retry costosi o loop lunghi.
+
+Il retry deve correggere precisamente:
+
+* aggiungi pasta nei pranzi;
+* aggiungi una carne rossa;
+* riduci legumi;
+* sostituisci termini generici;
+* aumenta varietà.
+
+10. Non aumentare troppo i token
+
+Mantieni il formato compatto già usato per evitare nuovi timeout.
+
+Non tornare a descrizioni lunghe.
+
+I piatti possono restare sintetici, ma devono essere concreti e corretti.
+
+Esempio sintetico corretto:
+
+“Pasta al pomodoro con basilico e insalata”
+
+Esempio sintetico sbagliato:
+
+“Proteina con verdure”.
+
+11. Test obbligatori
+
+Aggiungi o aggiorna test per il profilo Mediterranea:
+
+* genera 21 pasti;
+* almeno 2 pranzi contengono pasta;
+* almeno 1 pasto contiene carne rossa;
+* massimo 2–3 pasti principali con legumi;
+* nessun pasto contiene “Proteina”;
+* nessun pasto contiene ingredienti generici;
+* nessun piano sbilanciato verso legumi;
+* validazione fallisce se manca la pasta;
+* validazione fallisce se manca carne rossa;
+* validazione fallisce se appare “Proteina”;
+* validazione fallisce se i legumi sono eccessivi;
+* il piano resta compatto e non supera i limiti già impostati.
+
+12. Output finale
+
+Prepara uno ZIP del lavoro effettuato.
+
+Nel riepilogo indica chiaramente:
+
+* causa del problema qualitativo;
+* file modificati;
+* regole aggiunte per Dieta Mediterranea;
+* parole generiche vietate;
+* limiti sui legumi;
+* requisiti minimi su pasta e carne rossa;
+* test eseguiti;
+* risultato dei test;
+* conferma che il Piano Pasti Mediterranea genera una settimana equilibrata, non sbilanciata sui legumi.
