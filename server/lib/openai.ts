@@ -1089,7 +1089,7 @@ const SAFE_BREAKFAST_INGREDIENTS = [
   "fragole", "mirtilli", "lamponi", "uva", "kiwi",
   "yogurt bianco", "latte", "caffè", "cacao amaro", "miele", "marmellata",
   "pane", "fette biscottate",
-  "pane senza glutine", "fette biscottate senza glutine", "biscotti senza glutine",
+  "pane senza glutine", "fette biscottate senza glutine", "biscotti senza glutine", "biscotti vegani",
   "gallette di riso", "gallette di riso senza glutine",
   "bevanda di riso", "bevanda di cocco", "yogurt vegetale di cocco",
 ];
@@ -1165,7 +1165,8 @@ function buildCompatibleBreakfastThemes(
   const spread = first("marmellata", "miele") || "una confettura compatibile";
   const bread = first("pane", "pane senza glutine") || "";
   const rusk = first("fette biscottate", "fette biscottate senza glutine") || "";
-  const biscuits = first("biscotti senza glutine") || "";
+  const vegan = mealPlanHasDietaryPattern(preferences, "vegan");
+  const biscuits = first(...(vegan ? ["biscotti vegani"] : ["biscotti senza glutine"])) || "";
   const yogurt = first("yogurt bianco", "yogurt vegetale di cocco") || "";
   const crispbread = first("gallette di riso", "gallette di riso senza glutine") || (rusk || bread || drink);
 
@@ -1199,6 +1200,7 @@ function buildLactoseSafeBreakfasts(
   const jamG = String(people * 20);
   const bread = glutenFree ? "pane senza glutine" : "pane";
   const riceCakes = glutenFree ? "gallette di riso senza glutine" : "gallette di riso";
+  const drink = glutenFree ? "latte" : "bevanda di riso";
   const entries = [
     {
       title: `${bread[0]!.toUpperCase()}${bread.slice(1)} tostato con marmellata e mela`,
@@ -1229,16 +1231,16 @@ function buildLactoseSafeBreakfasts(
       ],
     },
     {
-      title: "Frullato di pera e bevanda di riso",
-      description: "Frullato dolce alla pera con cacao amaro per una colazione fresca.",
+      title: `Frullato di pera e ${drink}`,
+      description: `Frullato dolce alla pera con ${drink} e cacao amaro per una colazione fresca.`,
       ingredients: [
         { name: "pera", quantity: fruitPieces, unit: "pezzi" },
-        { name: "bevanda di riso", quantity: drinkMl, unit: "ml" },
+        { name: drink, quantity: drinkMl, unit: "ml" },
         { name: "cacao amaro", quantity: String(people * 5), unit: "g" },
       ],
       steps: [
         "Lava le pere, elimina il torsolo e tagliale a pezzi.",
-        "Versa pere e bevanda di riso nel frullatore.",
+        `Versa pere e ${drink} nel frullatore.`,
         "Frulla con il cacao amaro fino a ottenere una consistenza liscia.",
       ],
     },
@@ -1285,16 +1287,16 @@ function buildLactoseSafeBreakfasts(
       ],
     },
     {
-      title: "Bevanda di riso con albicocche e cacao",
-      description: "Colazione fresca con bevanda di riso, albicocche e cacao amaro.",
+      title: `${drink[0]!.toUpperCase()}${drink.slice(1)} con albicocche e cacao`,
+      description: `Colazione fresca con ${drink}, albicocche e cacao amaro.`,
       ingredients: [
-        { name: "bevanda di riso", quantity: drinkMl, unit: "ml" },
+        { name: drink, quantity: drinkMl, unit: "ml" },
         { name: "albicocca", quantity: String(people * 2), unit: "pezzi" },
         { name: "cacao amaro", quantity: String(people * 5), unit: "g" },
       ],
       steps: [
         "Lava le albicocche, elimina il nocciolo e tagliale a spicchi.",
-        "Versa la bevanda di riso nei bicchieri.",
+        `Versa ${drink} nei bicchieri.`,
         "Aggiungi il cacao amaro alla bevanda e servi con le albicocche.",
       ],
     },
@@ -1338,7 +1340,7 @@ function buildDinnerThemes(
       "A CENA prepara tempeh in padella con verdure e patate.",
       "A CENA prepara fagioli con ortaggi e polenta di mais.",
       "A CENA prepara tofu alla griglia con verdure e riso.",
-      "A CENA prepara burger di ceci con insalata e patate.",
+      "A CENA prepara tofu affumicato con broccoli e polenta di mais.",
     ];
   }
 
@@ -1349,7 +1351,7 @@ function buildDinnerThemes(
     canUseEggs ? "A CENA prepara uova compatibili con verdure e patate." : `A CENA usa ${protein} con verdure e patate.`,
     `A CENA usa ${protein} in umido con ortaggi e polenta o riso.`,
     canUseFish ? "A CENA usa un pesce compatibile preparato in modo diverso dalla prima cena, con verdure e riso." : `A CENA usa ${protein} alla griglia con verdure e riso.`,
-    canUseLegumes ? "A CENA prepara polpette o burger di legumi compatibili con insalata e patate." : `A CENA usa ${protein} con insalata e patate.`,
+    canUseEggs ? "A CENA prepara uova al forno con spinaci e patate." : `A CENA usa ${protein} con spinaci e patate.`,
   ];
 }
 
@@ -1496,6 +1498,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     ? glutenFreeRequired
       ? `
 - DISTRIBUZIONE SENZA GLUTINE DEI PRANZI: segui nell'ordine esatto le famiglie del BLUEPRINT SETTIMANALE LOCALE. Alterna basi naturalmente prive di glutine concrete come riso, quinoa, patate, polenta di mais e legumi.
+- Inserisci almeno una volta nella settimana un pranzo con pasta senza glutine (pasta senza glutine, di mais o di riso).
 - Non usare mai pasta, couscous, pane, biscotti, farro, orzo o avena generici. Non trasformare una base sicura in una categoria generica: ogni ingrediente deve avere un nome concreto.
 - Quando il pranzo è riso, quinoa, polenta, patate o legumi, la cena dello stesso giorno deve usare una combinazione diversa con verdure e una base naturalmente priva di glutine.`
       : `
@@ -1503,6 +1506,10 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
 - Non sostituire patate o legumi con couscous, farro, orzo, quinoa o polenta: fuori dai due pranzi di pasta usa al massimo un pranzo a base di riso/cereali nella settimana.
 - La pasta è sempre un primo asciutto: non scrivere né proporre mai “pasta in umido”, “pasta stufata” o “pasta brasata”.
 - Quando il pranzo è pasta o riso/cereali, la cena dello stesso giorno deve essere un secondo con verdure e patate o pane, mai ancora riso, couscous, farro, orzo, quinoa o polenta.`
+    : "";
+  const glutenFreeWeeklyPastaRule = glutenFreeRequired && !mediterraneanDiet
+    ? `
+- OBBLIGO SETTIMANALE SENZA GLUTINE: inserisci almeno un pranzo con pasta senza glutine (pasta senza glutine, di mais o di riso). In tutti gli altri casi continua a usare soltanto basi compatibili.`
     : "";
   const lactoseLunchVarietyRule = lactoseFreeRequired
     ? `
@@ -1581,7 +1588,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   // al modello di ignorarli: sostituiamoli con alternative naturalmente prive
   // di glutine, così il primo tentativo è già praticabile per il validatore.
   const glutenFreeDayThemes = [
-    'a pranzo riso con pollo e zucchine; a cena salmone con patate e fagiolini',
+    'a pranzo pasta senza glutine con pollo e zucchine; a cena salmone con patate e fagiolini',
     'a pranzo quinoa con merluzzo e spinaci; a cena tacchino con patate e carote',
     'a pranzo ceci con riso e peperoni; a cena uova con patate e spinaci',
     'a pranzo polenta di mais con tonno e zucchine; a cena lenticchie con riso e carote',
@@ -1590,7 +1597,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     'a pranzo quinoa con tacchino e carote; a cena salmone con patate e fagiolini',
   ];
   const glutenFreeDayThemesB = [
-    'a pranzo riso con tonno e pomodori; a cena polpo con patate e zucchine',
+    'a pranzo pasta senza glutine con tonno e pomodori; a cena polpo con patate e zucchine',
     'a pranzo lenticchie con quinoa e carote; a cena merluzzo con patate e spinaci',
     'a pranzo polenta di mais con tacchino e peperoni; a cena salmone con riso e fagiolini',
     'a pranzo ceci con patate e zucchine; a cena uova con quinoa e spinaci',
@@ -1622,12 +1629,12 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   ];
   const glutenFreeBreakfastThemes = [
     'yogurt bianco con banana e miele',
-    'frullato di banana, bevanda di riso e cacao amaro',
+    'frullato di banana, latte e cacao amaro',
     'pane senza glutine con marmellata e arancia',
     'caffellatte con biscotti senza glutine',
     'yogurt bianco con pera e cacao amaro',
     'gallette di riso senza glutine con miele e kiwi',
-    'smoothie di frutta con bevanda di cocco',
+    'smoothie di frutta con latte',
   ];
   const compatibleBreakfastThemes = buildCompatibleBreakfastThemes(context.preferences);
   const activeBreakfastThemes = glutenFreeRequired
@@ -1666,7 +1673,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   const glutenFreeNaturalMainIngredients = compatibleMainIngredients.filter((ingredient) =>
     !/\b(?:pasta|pane|couscous|fette biscottate|biscotti|farro|orzo|avena|cereali|gnocchi)\b/i.test(ingredient));
   const blueprintMainIngredients = glutenFreeRequired
-    ? glutenFreeNaturalMainIngredients
+    ? [...glutenFreeNaturalMainIngredients, "pasta senza glutine", "pasta di mais senza glutine", "pasta di riso senza glutine"]
     : compatibleMainIngredients;
   const lunchFamilyTargets = planMealPlanLunchFamilies(
     blueprintMainIngredients,
@@ -1738,7 +1745,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     const mealsForRequest = requestMealTypes.length;
     const requestGlutenRule = glutenFreeRequired
       ? `\n- PIANO SENZA GLUTINE: scegli OGNI ingrediente solamente da questa lista chiusa per questa richiesta: ${(request.ingredientNames || compatibleMealIngredients(context.preferences, "main")).join(", ")}. Non aggiungere ingredienti esterni.
- - Per pranzi e cene usa prima di tutto le basi naturalmente prive di glutine concrete indicate dal BLUEPRINT (riso, quinoa, patate, polenta di mais, ceci, lenticchie, fagioli o piselli). Non usare pasta, couscous, pane, biscotti, farro, orzo o avena generici in nessun campo.`
+ - Per pranzi e cene usa prima di tutto le basi naturalmente prive di glutine concrete indicate dal BLUEPRINT (riso, quinoa, patate, polenta di mais, ceci, lenticchie, fagioli o piselli), con l'unica eccezione della pasta senza glutine espressamente prevista. Non usare pasta, couscous, pane, biscotti, farro, orzo o avena generici in nessun campo.`
       : "";
     const lactosePastaRule = lactoseAllowsGluten && requestMealTypes.includes("lunch")
       ? "\n- Il vincolo lattosio/latte NON richiede di evitare il glutine: pasta di semola classica e gli altri cereali con glutine restano compatibili, purché non contengano latte o derivati incompatibili."
@@ -1794,7 +1801,7 @@ ${constrainedRecipeReferenceRule}
   ${completeLunchRule}
   ${completeDinnerRule}
         - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${mediterraneanDistributionRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
-- Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
+- Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.${glutenFreeWeeklyPastaRule}
  - ${variantHint}${themeHint ? `\n- BLUEPRINT SETTIMANALE LOCALE: segui esattamente questi obiettivi già pianificati, senza scambiarli tra date:\n${themeHint}` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione indicata realizza questa combinazione concreta: ${breakfastHint}.` : ''}
   ${constraintRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}${context.previousPlanJson ? `\n- JSON DEL PIANO PRECEDENTE DA CORREGGERE (non copiare gli errori; conserva ogni elemento già valido e modifica soltanto quelli necessari): ${context.previousPlanJson}` : ""}
 - Rispondi SOLO con JSON: ${responseContract}`;
@@ -2034,6 +2041,23 @@ ${constrainedRecipeReferenceRule}
       /* callback osservativa: ignora errori */
     }
     throw new MealPlanConstraintRetryError(constraintViolations, filtered);
+  }
+  const glutenFreePastaPattern = /\bpasta(?:\s+di\s+(?:mais|riso))?\s+(?:senza\s+glutine|gluten\s+free)\b/i;
+  const hasWeeklyGlutenFreePasta = !glutenFreeRequired || filtered.some((item) =>
+    item.mealType === "lunch" &&
+    glutenFreePastaPattern.test([
+      item.title,
+      item.description,
+      ...(item.ingredients || []).map((ingredient) => ingredient.name),
+      ...(item.steps || []),
+    ].join(" ")),
+  );
+  if (!hasWeeklyGlutenFreePasta) {
+    throw new MealPlanRepairError(
+      filtered,
+      `
+- CORREZIONE DIETETICA OBBLIGATORIA: il piano senza glutine deve contenere almeno un pranzo con pasta senza glutine. Usa “pasta senza glutine”, “pasta di mais senza glutine” oppure “pasta di riso senza glutine” in titolo e ingredienti.`,
+    );
   }
   const mediterraneanQuality = mediterraneanDiet
     ? evaluateMediterraneanMealPlan(filtered)

@@ -332,6 +332,39 @@ test("i profili esclusivi chiedono 14 slot AI e ricompongono 7 colazioni locali 
         "la bevanda di riso resta una colazione dolce già verificata",
       );
     }
+    if (profile === "gluten_free") {
+      const breakfasts = plan.items.filter((item) => item.mealType === "breakfast");
+      assert.ok(
+        breakfasts.some((item) => /\blatte\b/i.test([item.title, ...(item.ingredients || []).map((ingredient) => ingredient.name)].join(" "))),
+        "il senza glutine usa latte nelle colazioni locali",
+      );
+      assert.ok(
+        breakfasts.every((item) => !/bevanda di riso/i.test([item.title, ...(item.ingredients || []).map((ingredient) => ingredient.name)].join(" "))),
+        "il senza glutine non sostituisce il latte con bevanda di riso",
+      );
+      assert.match(calls[0]!.prompt, /pranzo: pasta senza glutine con pollo e zucchine/i);
+    }
+  }
+  t.after(() => __setOpenAiClientForTest(null));
+});
+
+test("tutti i cinque blueprint evitano il burger di ceci del sabato e quello vegano usa biscotti vegani", async (t) => {
+  for (const profile of MEAL_PLAN_DIET_PROFILES) {
+    const { client, calls } = createFakeClient(() => fullWeek(profile));
+    __setOpenAiClientForTest(client);
+
+    const plan = await generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      preferences: { dietProfile: profile },
+    });
+
+    assert.equal(plan.items.length, 21, profile);
+    assert.doesNotMatch(calls[0]!.prompt, /burger di ceci con insalata(?: mista)? e patate/i, profile);
+    if (profile === "vegan") {
+      assert.match(calls[0]!.prompt, /bevanda di riso con biscotti vegani/i);
+      assert.doesNotMatch(calls[0]!.prompt, /biscotti senza glutine/i);
+    }
   }
   t.after(() => __setOpenAiClientForTest(null));
 });
@@ -455,6 +488,39 @@ test("il repair gluten-free riceve i termini generici esatti e consegna solo il 
   assert.equal(plan.items.length, 21);
   assert.equal(new Set(plan.items.map((item) => `${item.date}/${item.mealType}`)).size, 21);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "gluten_free" }), []);
+});
+
+test("il senza glutine rigenera una sola volta se manca la pasta senza glutine settimanale", async (t) => {
+  const valid = fullWeek("gluten_free");
+  const withoutGlutenFreePasta = cloneMeals(valid);
+  for (const item of withoutGlutenFreePasta) {
+    if (item.mealType !== "lunch") continue;
+    item.ingredients = item.ingredients.map((ingredient) =>
+      /pasta(?: di (?:mais|riso))? senza glutine/i.test(ingredient.name)
+        ? { ...ingredient, name: "riso" }
+        : ingredient,
+    );
+  }
+  const { client, calls } = createFakeClient((_request, call) =>
+    call === 1 ? withoutGlutenFreePasta : valid);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "gluten_free" },
+  });
+
+  assert.equal(calls.length, 2, "un solo repair ripristina la pasta senza glutine");
+  assert.match(calls[1]!.prompt, /CORREZIONE DIETETICA OBBLIGATORIA/i);
+  assert.ok(
+    plan.items.some((item) =>
+      item.mealType === "lunch" &&
+      /pasta(?: di (?:mais|riso))? senza glutine/i.test(
+        [item.title, ...(item.ingredients || []).map((ingredient) => ingredient.name)].join(" "),
+      )),
+  );
 });
 
 test("un output AI incompleto per un profilo esclusivo non espone pasti parziali", async (t) => {
