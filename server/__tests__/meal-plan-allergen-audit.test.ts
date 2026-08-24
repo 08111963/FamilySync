@@ -171,8 +171,8 @@ function createAllergenAuditClient(
                 unit: "pezzo",
               })),
               steps: [
-                "Prepara l'ingrediente indicato.",
-                "Cuocilo con cura.",
+                "Prepara e taglia l'ingrediente indicato.",
+                "Cuocilo a 180 °C per 20 minuti.",
                 "Servi il pasto.",
               ],
               });

@@ -81,11 +81,17 @@ function meal(date: string, mealType: Meal["mealType"], title: string, ingredien
     title,
     description: "Ricetta completa e compatibile.",
     ingredients,
-    steps: [
-      "Lava e prepara gli ingredienti indicati.",
-      "Cuoci gli ingredienti con la tecnica prevista.",
-      "Assembla il piatto e servilo caldo.",
-    ],
+    steps: mealType === "breakfast"
+      ? [
+        "Prepara gli ingredienti indicati.",
+        "Assembla la colazione in una ciotola.",
+        "Servi subito a tavola.",
+      ]
+      : [
+        "Lava e taglia gli ingredienti indicati.",
+        "Cuoci a 180 °C per 20 minuti.",
+        "Assembla il piatto e servilo caldo.",
+      ],
   };
 }
 
@@ -276,11 +282,13 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
   );
   assert.equal(calls[0]!.stepMinItems, 3);
   assert.equal(calls[0]!.stepMaxItems, 3);
-  assert.equal(calls[0]!.stepMaxLength, 55);
+  assert.equal(calls[0]!.stepMaxLength, 80);
   assert.equal(calls[0]!.ingredientMinItems, 3);
   assert.equal(calls[0]!.ingredientMaxItems, 3);
   assert.equal(calls[0]!.titleMaxLength, 55);
   assert.equal(calls[0]!.descriptionMaxLength, 45);
+  assert.match(calls[0]!.prompt, /servings \(intero, sempre 4\)/);
+  assert.ok(plan.items.every((item) => item.servings === 4));
   assert.match(calls[0]!.prompt, /BLUEPRINT SETTIMANALE LOCALE/);
   assert.match(calls[0]!.prompt, /ESATTAMENTE 3 istruzioni concrete/);
   assert.match(calls[0]!.prompt, /ESATTAMENTE 3 ingredienti essenziali/);
@@ -455,7 +463,7 @@ test("il repair gluten-free riceve i termini generici esatti e consegna solo il 
       const term = unsafeTerms[index]!;
       item.title = `${term} con pollo e zucchine`;
       item.ingredients[0] = { name: term, quantity: "80", unit: "g" };
-      item.steps[1] = `Cuoci ${term} con le zucchine.`;
+      item.steps[1] = `Cuoci ${term} con le zucchine per 20 minuti a 180 °C.`;
     });
   const { client, calls } = createFakeClient((_request, call) => call === 1 ? unsafe : valid);
   __setOpenAiClientForTest(client);

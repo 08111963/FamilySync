@@ -24,6 +24,7 @@ interface PlanItem {
   recipeId?: string | null;
   recipeTitle?: string | null;
   titleOverride?: string | null;
+  servings?: number | null;
   notes?: string | null;
 }
 
@@ -78,13 +79,14 @@ function MealRow({ item, colors }: { item: PlanItem; colors: ReturnType<typeof u
   const mealColor = getMealTypeColor(item.mealType, colors.primary, colors.secondary);
   const title = item.titleOverride || item.recipeTitle || "Pasto";
   const notes = (item.notes ?? "").trim();
-  const hasNotes = notes.length > 0;
+  const servings = typeof item.servings === "number" && item.servings > 0 ? item.servings : null;
+  const hasDetails = notes.length > 0 || servings !== null;
 
   return (
     <View style={[styles.mealRow, { borderLeftColor: mealColor }]}>
       <Pressable
         onPress={() => {
-          if (!hasNotes) return;
+          if (!hasDetails) return;
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           setExpanded((e) => !e);
         }}
@@ -97,7 +99,7 @@ function MealRow({ item, colors }: { item: PlanItem; colors: ReturnType<typeof u
           </Text>
         </View>
         <Text style={[styles.mealTitle, { color: colors.text }]}>{title}</Text>
-        {hasNotes && (
+        {hasDetails && (
           <Ionicons
             name={expanded ? "chevron-up" : "chevron-down"}
             size={18}
@@ -105,9 +107,16 @@ function MealRow({ item, colors }: { item: PlanItem; colors: ReturnType<typeof u
           />
         )}
       </Pressable>
-      {hasNotes && expanded && (
+      {hasDetails && expanded && (
         <View style={styles.notesBox}>
-          <Text style={[styles.notesText, { color: colors.textSecondary }]}>{notes}</Text>
+          {servings !== null && (
+            <Text style={[styles.servingsText, { color: colors.primary }]}>
+              Ricetta per {servings} {servings === 1 ? "persona" : "persone"}
+            </Text>
+          )}
+          {notes.length > 0 && (
+            <Text style={[styles.notesText, { color: colors.textSecondary }]}>{notes}</Text>
+          )}
         </View>
       )}
     </View>
@@ -263,6 +272,11 @@ const styles = StyleSheet.create({
   notesBox: {
     marginTop: 8,
     paddingLeft: 4,
+  },
+  servingsText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 5,
   },
   notesText: {
     fontSize: 13,

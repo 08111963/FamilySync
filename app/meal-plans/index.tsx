@@ -383,6 +383,11 @@ function PreviewMealRow({ meal, colors }: { meal: MealPlanItem; colors: ThemeCol
               {meal.description}
             </Text>
           ) : null}
+          {meal.servings ? (
+            <Text style={[styles.recipeServings, { color: colors.primary }]}>
+              Ricetta per {meal.servings} {meal.servings === 1 ? "persona" : "persone"}
+            </Text>
+          ) : null}
           {recipeIngredients.length > 0 && (
             <View style={styles.ingredientsBox}>
               <Text style={[styles.recipeHeading, { color: colors.text }]}>Ingredienti</Text>
@@ -829,6 +834,7 @@ export default function MealPlansScreen() {
           date: i.date,
           mealType: i.mealType,
           titleOverride: i.title,
+          servings: i.servings,
           notes: buildNotes(i.description, i.steps, i.ingredients),
           ingredients: i.ingredients || null,
         })),
@@ -1941,6 +1947,11 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontStyle: "italic",
     marginBottom: 4,
+  },
+  recipeServings: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 2,
   },
   recipeHeading: {
     fontSize: 13,

@@ -320,6 +320,7 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
               mealType: { type: 'string', enum: ['breakfast', 'lunch', 'dinner', 'snack'] },
               title: { type: 'string', minLength: 1, maxLength: 55 },
               description: { type: 'string', minLength: 1, maxLength: 45 },
+              servings: { type: 'integer', minimum: 1, maximum: 50 },
               ingredients: {
                 type: 'array',
                 minItems: 3,
@@ -339,10 +340,10 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
                 type: 'array',
                 minItems: 3,
                 maxItems: 3,
-                items: { type: 'string', minLength: 1, maxLength: 55 },
+                items: { type: 'string', minLength: 1, maxLength: 80 },
               },
             },
-            required: ['date', 'mealType', 'title', 'description', 'ingredients', 'steps'],
+            required: ['date', 'mealType', 'title', 'description', 'servings', 'ingredients', 'steps'],
           },
         },
       },
@@ -660,6 +661,8 @@ export interface MealPlanSuggestion {
     mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
     title: string;
     description?: string;
+    /** Sempre impostato dal server in base ai membri della famiglia. */
+    servings?: number;
     ingredients?: MealPlanIngredient[];
     steps?: string[];
   }>;
@@ -676,6 +679,7 @@ const mealItemSchema = z.object({
   mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
   title: z.coerce.string().trim().min(1),
   description: z.coerce.string().trim().min(1).optional(),
+  servings: z.coerce.number().int().positive().optional(),
   ingredients: z.array(mealPlanIngredientSchema).optional().catch([]),
   steps: z.array(z.coerce.string().trim().min(1)).optional().catch([]),
 }).catchall(z.unknown());
@@ -1437,9 +1441,13 @@ function buildMealPlanQualityCorrection(error: AiError, nextAttempt: number): st
     ? `
  - Per ogni ricetta compila tutti i campi: titolo, descrizione, almeno un ingrediente con nome/quantità/unità e tre passaggi non vuoti.`
     : "";
+  const cookingDetailCorrection = error.message.includes("tempo o temperatura")
+    ? `
+- Per ogni pranzo e cena, indica in almeno un passaggio un tempo di cottura in minuti oppure una temperatura in °C. Evita istruzioni vaghe come “cuoci” senza una durata o temperatura.`
+    : "";
   return `
 - CORREZIONE DI QUALITÀ OBBLIGATORIA (tentativo ${nextAttempt}): il risultato precedente non era consegnabile.
-- Restituisci esclusivamente tutti i pasti richiesti, completi e coerenti con il loro tipo.${breakfastCorrection}${wholegrainCorrection}${completenessCorrection}`;
+- Restituisci esclusivamente tutti i pasti richiesti, completi e coerenti con il loro tipo.${breakfastCorrection}${wholegrainCorrection}${completenessCorrection}${cookingDetailCorrection}`;
 }
 
 function appendMealPlanCorrection(existing: string | undefined, next: string): string {
@@ -1456,6 +1464,7 @@ async function generateWeeklyMealPlanAttempt(
   let responseChars = 0;
   const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
   const lactoseFreeRequired = mealPlanHasExclusion(context.preferences, "lactose");
+  const servings = Math.max(1, Math.floor(context.familySize) || 1);
   // I profili esclusivi hanno un contratto chiuso: 7 colazioni locali sicure
   // + 14 slot AI di pranzo/cena. Anche una preferenza legacy da 2 o 4 pasti
   // non può trasformare questo percorso in un piano parziale o far generare
@@ -1649,9 +1658,9 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   const hasDeterministicBreakfasts =
     glutenFreeRequired || lactoseFreeRequired;
   const deterministicBreakfasts: MealPlanSuggestion["items"] =
-    hasDeterministicBreakfasts
+    (hasDeterministicBreakfasts
       ? buildLactoseSafeBreakfasts(dates, context.familySize, glutenFreeRequired)
-      : [];
+      : []).map((item) => ({ ...item, servings }));
   const modelMealTypes = hasDeterministicBreakfasts
     ? mealTypes.filter((mealType) => mealType !== "breakfast")
     : mealTypes;
@@ -1778,18 +1787,19 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     const snackMealRule = constrainedPlan
       ? `- snack (spuntino): piccolo e leggero, composto esclusivamente da ingredienti compatibili con TUTTI i vincoli.`
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
-    const itemContract = `- Ogni pasto ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (massimo 8 parole), description (una frase utile di massimo 7 parole), ingredients (ESATTAMENTE 3 ingredienti essenziali), steps (array).`;
-    const preparationContract = `- steps è la RICETTA completa, passo-passo: ESATTAMENTE 3 istruzioni concrete in italiano (ogni passaggio è una stringa, senza numerazione iniziale, massimo 55 caratteri). Usa verbi diretti: prepara, cuoci, servi. Non aggiungere ingredienti opzionali, condimenti generici o spiegazioni.`;
+    const itemContract = `- Ogni pasto ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (massimo 8 parole), description (una frase utile di massimo 7 parole), servings (intero, sempre ${servings}), ingredients (ESATTAMENTE 3 ingredienti essenziali), steps (array).`;
+    const preparationContract = `- steps è la RICETTA completa, passo-passo: ESATTAMENTE 3 istruzioni concrete in italiano (ogni passaggio è una stringa, senza numerazione iniziale, massimo 80 caratteri). Specifica taglio/preparazione e, per pranzo o cena, un tempo in minuti o una temperatura in °C. Non aggiungere ingredienti opzionali, condimenti generici o spiegazioni.`;
     const constrainedRecipeReferenceRule = constrainedPlan && !lactoseFreeRequired
       ? `- VINCOLI NELLA RICETTA: per ogni ingrediente soggetto a un vincolo usa, nel titolo, descrizione e in OGNI passaggio, il nome completo e compatibile scritto nell'array ingredients. Non abbreviare né sostituire con parole generiche un ingrediente sensibile (per esempio non scrivere "latte", "yogurt" o "formaggio" se nell'array è presente un sostituto vegetale o senza lattosio).`
       : "";
-    const responseContract = `{"meal_01":{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"breve descrizione","ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["prepara","cuoci","assembla"]},"meal_02":{...},"...":"..."}`;
+    const responseContract = `{"meal_01":{"date":"YYYY-MM-DD","mealType":"...","title":"...","description":"breve descrizione","servings":${servings},"ingredients":[{"name":"...","quantity":"...","unit":"..."}],"steps":["prepara","cuoci","assembla"]},"meal_02":{...},"...":"..."}`;
     const sysPrompt = `Sei un nutrizionista italiano. Genera i pasti SOLO per questi giorni: ${chunkDates.join(', ')}.
 REGOLE:
 - Questa richiesta riguarda SOLO questi tipi di pasto: ${requestMealTypes.join(', ')}. Per ogni giorno genera esattamente ${mealsForRequest} pasti: ${requestMealTypes.join(', ')}.
 ${itemContract}
 - Il JSON top-level DEVE contenere TUTTE e SOLO queste ${request.slotKeys.length} chiavi obbligatorie: ${request.slotKeys.join(", ")}. Non usare un array "items" e non omettere nessuna chiave.
 - Ogni ingrediente ha name, quantity e unit NON VUOTI. quantity deve essere concreta (es. "200", "1") e unit deve essere presente (es. "g", "ml", "pezzi"); per una quantità realmente non misurabile scrivi quantity "q.b." e unit "per condire", mai una stringa vuota.
+- Le quantità degli ingredienti devono essere calibrate per ESATTAMENTE ${servings} persone. Non usare quantità generiche o porzioni individuali.
 ${preparationContract}
 ${constrainedRecipeReferenceRule}
 - IMPORTANTE: ogni piatto DEVE essere adatto al suo tipo di pasto secondo le abitudini italiane:
@@ -1876,7 +1886,7 @@ ${constrainedRecipeReferenceRule}
         }
         return parseMealItems({
           items: request.slotKeys.map((slotKey) => slotResponse[slotKey]),
-        });
+        }).map((item) => ({ ...item, servings }));
     } finally {
       parsingDurationMs += Date.now() - parsingStartedAt;
     }
@@ -1995,6 +2005,26 @@ ${constrainedRecipeReferenceRule}
       filtered,
       buildMealPlanQualityCorrection(
         new AiError("AI_BAD_RESPONSE", "La risposta AI contiene un pasto incompleto"),
+        2,
+      ),
+    );
+  }
+  const impreciseMainMeal = filtered.find((item) =>
+    (item.mealType === "lunch" || item.mealType === "dinner") &&
+    !(item.steps ?? []).some((step) => /\b\d+\s*(?:min(?:uto|uti)?|°\s*c|gradi)\b/i.test(step)),
+  );
+  if (impreciseMainMeal) {
+    if (!context.suppressInternalLogs) {
+      console.error(JSON.stringify({
+        tag: "AI_MEAL_PLAN_IMPRECISE_RECIPE_REJECTED",
+        variant,
+        mealType: impreciseMainMeal.mealType,
+      }));
+    }
+    throw new MealPlanRepairError(
+      filtered,
+      buildMealPlanQualityCorrection(
+        new AiError("AI_BAD_RESPONSE", "La ricetta non indica un tempo o temperatura di cottura"),
         2,
       ),
     );
