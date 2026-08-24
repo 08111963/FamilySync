@@ -1,0 +1,392 @@
+Correzione Piano Pasti AI in FamilySync.
+
+Non inviare più correzioni basate sui profili combinati:
+
+* Mediterranea senza glutine
+* Mediterranea senza lattosio
+
+Queste voci stanno creando confusione nella generazione AI e nella validazione.
+
+Scelta definitiva:
+voglio mantenere un unico menu a tendina per il profilo alimentare, senza campo separato per intolleranze/allergie.
+
+Il menu deve contenere solo queste voci:
+
+* Mediterranea
+* Equilibrata
+* Vegetariana
+* Leggera
+* Sportiva
+* Senza glutine
+* Senza lattosio
+
+Rimuovere dal menu o non usare più:
+
+* Mediterranea senza glutine
+* Mediterranea senza lattosio
+
+Se nel codice o nei dati esistono ancora questi vecchi valori, gestirli in compatibilità così:
+
+* “Mediterranea senza glutine” → trattare come “Senza glutine”
+* “Mediterranea senza lattosio” → trattare come “Senza lattosio”
+
+ma nella UI nuova devono comparire solo “Senza glutine” e “Senza lattosio”.
+
+Problemi rilevati in produzione:
+
+1. Con il profilo “Mediterranea” il piano è stato generato, ma la qualità non è accettabile:
+
+* troppi legumi;
+* poca pasta nei pranzi principali;
+* carne rossa assente o quasi assente;
+* piatti poco mediterranei;
+* uso di termini generici come “Proteina”.
+
+2. Con il profilo “Mediterranea senza lattosio” sono comparsi:
+
+* “Bevanda di riso con biscotti senza glutine”
+* “Fette biscottate senza glutine con marmellata”
+
+Questo dimostra che “senza lattosio” viene confuso con “senza glutine”.
+
+3. Con il profilo “Mediterranea senza glutine” la generazione è fallita con:
+   “Non è stato possibile creare un piano verificato dopo più tentativi.”
+
+Questo probabilmente dipende da conflitti di validazione tra regole mediterranee e regole senza glutine.
+
+Obiettivo:
+sistemare i profili del Piano Pasti AI, migliorare la qualità dei piani e separare correttamente glutine e lattosio, senza modificare timeout, provider AI o altre aree dell’app.
+
+Non modificare:
+
+* timeout;
+* provider AI;
+* Premium;
+* bollette;
+* chat;
+* microfono;
+* analytics;
+* calendario;
+* login;
+* Privacy Policy;
+* Termini d’Uso.
+
+Intervieni solo su:
+
+* Piano Pasti AI;
+* menu profilo dieta;
+* prompt AI;
+* validazione alimentare;
+* test collegati.
+
+1. Profilo “Mediterranea”
+
+Deve generare una dieta mediterranea equilibrata e realistica per una famiglia italiana.
+
+Requisiti minimi:
+
+* almeno 2 pranzi con pasta;
+* almeno 2 pasti con pesce;
+* almeno 1 pasto con carne rossa;
+* 1–2 pasti con carne bianca;
+* 1–2 pasti con uova;
+* massimo 2–3 pasti principali con legumi;
+* verdure presenti ogni giorno;
+* frutta nelle colazioni o negli spuntini;
+* piatti concreti, italiani e naturali.
+
+Esempi corretti:
+
+* pasta al pomodoro e basilico;
+* pasta con zucchine;
+* pollo al forno con patate;
+* orata al forno con verdure;
+* manzo alla pizzaiola;
+* frittata con spinaci;
+* yogurt con frutta;
+* pane e marmellata.
+
+Esempi sbagliati:
+
+* “Proteina in umido”;
+* “Carboidrato con verdure”;
+* “Fonte proteica con cereali”;
+* troppi piatti consecutivi a base di legumi.
+
+2. Profilo “Senza lattosio”
+
+Il profilo “Senza lattosio” deve generare un piano equilibrato di base familiare/mediterranea, ma senza lattosio.
+
+Deve evitare:
+
+* latte normale;
+* yogurt normale;
+* formaggi non dichiarati senza lattosio;
+* burro;
+* panna;
+* latticini generici.
+
+Può usare:
+
+* latte senza lattosio;
+* yogurt senza lattosio;
+* bevanda vegetale, senza abusarne;
+* pane normale;
+* pasta normale;
+* fette biscottate normali;
+* biscotti senza latte/burro, se necessario;
+* riso;
+* orzo;
+* farro;
+* couscous;
+* carne;
+* pesce;
+* uova;
+* verdure;
+* frutta.
+
+Regola fondamentale:
+“Senza lattosio” NON significa “senza glutine”.
+
+Nel profilo “Senza lattosio” non devono comparire automaticamente:
+
+* senza glutine;
+* biscotti senza glutine;
+* fette biscottate senza glutine;
+* pane senza glutine;
+* pasta senza glutine.
+
+Queste diciture sono ammesse solo nel profilo “Senza glutine”.
+
+3. Profilo “Senza glutine”
+
+Il profilo “Senza glutine” deve generare un piano equilibrato di base familiare/mediterranea, ma senza glutine.
+
+Deve evitare, salvo versione esplicitamente senza glutine:
+
+* pasta normale;
+* pane normale;
+* fette biscottate normali;
+* biscotti normali;
+* couscous;
+* farro;
+* orzo;
+* seitan;
+* prodotti con frumento, orzo, farro, segale.
+
+Può usare:
+
+* pasta senza glutine;
+* pane senza glutine;
+* fette biscottate senza glutine;
+* biscotti senza glutine;
+* riso;
+* mais;
+* patate;
+* polenta;
+* quinoa;
+* grano saraceno;
+* carne;
+* pesce;
+* uova;
+* verdure;
+* frutta;
+* latte e yogurt normali, perché “senza glutine” non significa “senza lattosio”.
+
+Il profilo “Senza glutine” non deve diventare sbilanciato sui legumi.
+
+Requisiti:
+
+* massimo 2–3 pasti principali con legumi;
+* almeno 2 pasti con pesce;
+* almeno 1 pasto con carne rossa;
+* 1–2 pasti con carne bianca;
+* 1–2 pasti con uova;
+* almeno 1–2 pranzi con pasta senza glutine o cereali consentiti;
+* piatti concreti e realistici.
+
+4. Profilo “Vegetariana”
+
+Deve essere vegetariano, ma non tutto a base di legumi.
+
+Usare varietà:
+
+* uova;
+* latticini, se compatibili;
+* verdure;
+* cereali;
+* pasta;
+* riso;
+* legumi in modo equilibrato;
+* frutta.
+
+Non usare pesce, carne bianca o carne rossa.
+
+5. Profilo “Leggera”
+
+Deve generare pasti semplici, digeribili e non eccessivamente calorici, ma completi.
+
+Non deve eliminare intere categorie alimentari senza motivo.
+
+6. Profilo “Sportiva”
+
+Deve generare pasti più ricchi di proteine concrete e carboidrati complessi, ma sempre naturali e realistici.
+
+Non usare parole generiche come:
+
+* “proteina”;
+* “fonte proteica”;
+* “carboidrato”.
+
+Usare ingredienti reali:
+
+* pollo;
+* tacchino;
+* uova;
+* pesce;
+* legumi;
+* yogurt;
+* riso;
+* pasta;
+* patate;
+* avena;
+* verdure.
+
+7. Termini generici vietati in tutti i profili
+
+Nessun piano deve contenere parole generiche al posto degli ingredienti.
+
+Vietare:
+
+* “Proteina”;
+* “Carboidrato”;
+* “Verdura” da sola;
+* “Cereale” da solo;
+* “Fonte proteica”;
+* “Alimento proteico”.
+
+Ogni pasto deve indicare ingredienti reali e concreti.
+
+8. Validazione server
+
+Aggiorna la validazione server in modo context-aware per ogni profilo.
+
+Il server deve rifiutare il piano se:
+
+* contiene termini generici vietati;
+* il profilo “Senza lattosio” genera diciture “senza glutine” non richieste;
+* il profilo “Senza lattosio” contiene latticini normali non consentiti;
+* il profilo “Senza glutine” contiene glutine non consentito;
+* il profilo “Senza glutine” non usa alternative corrette quando servono;
+* il profilo “Mediterranea” è sbilanciato verso i legumi;
+* il profilo “Mediterranea” non contiene almeno 2 pranzi con pasta;
+* il profilo “Mediterranea” non contiene almeno 1 pasto con carne rossa;
+* il piano ha meno di 21 pasti;
+* ci sono duplicati evidenti;
+* i piatti sono troppo generici.
+
+La validazione deve essere fail-closed: se il piano non rispetta il profilo selezionato, non deve essere mostrato né salvato.
+
+9. Retry mirato
+
+Se un piano fallisce solo per qualità alimentare, fare al massimo un retry mirato e breve.
+
+Il retry deve correggere solo il problema rilevato, per esempio:
+
+* riduci legumi;
+* aggiungi pasta;
+* aggiungi carne rossa;
+* sostituisci termini generici;
+* rimuovi “senza glutine” se il profilo è “Senza lattosio”;
+* usa alternative senza glutine se il profilo è “Senza glutine”.
+
+Non reintrodurre retry lunghi o loop costosi.
+
+10. Diagnostica owner-only
+
+Mantieni o aggiorna la diagnostica owner-only già prevista.
+
+Nel riepilogo tecnico devono essere visibili solo metadati, non contenuti sensibili:
+
+* profilo selezionato;
+* regola di validazione fallita;
+* giorno/pasto coinvolto;
+* numero pasti generati;
+* numero slot validi;
+* motivo sintetico del rifiuto;
+* durata;
+* eventuale retry eseguito.
+
+Non loggare:
+
+* prompt completo;
+* dati familiari;
+* preferenze personali dettagliate;
+* allergie personali testuali;
+* email;
+* contenuti completi dei pasti.
+
+11. Test obbligatori
+
+Aggiungi o aggiorna test per verificare:
+
+Menu:
+
+* il menu contiene solo:
+  Mediterranea, Equilibrata, Vegetariana, Leggera, Sportiva, Senza glutine, Senza lattosio;
+* non esistono più nel menu:
+  Mediterranea senza glutine, Mediterranea senza lattosio.
+
+Mediterranea:
+
+* genera 21 pasti;
+* contiene almeno 2 pranzi con pasta;
+* contiene almeno 1 pasto con carne rossa;
+* contiene almeno 2 pasti con pesce;
+* non supera 2–3 pasti principali con legumi;
+* non contiene “Proteina” o altri termini generici.
+
+Senza lattosio:
+
+* non genera automaticamente “senza glutine”;
+* permette pasta normale;
+* permette pane normale;
+* permette fette biscottate normali;
+* sostituisce latte/yogurt/formaggi con versioni senza lattosio o alternative corrette;
+* non contiene latticini normali non consentiti.
+
+Senza glutine:
+
+* genera 21 pasti;
+* usa pasta/pane/fette/biscotti senza glutine quando necessari;
+* non contiene pasta normale;
+* non contiene pane normale;
+* non contiene fette/biscotti normali se non specificati senza glutine;
+* non contiene couscous, farro, orzo o seitan;
+* contiene almeno 1 carne rossa;
+* contiene almeno 2 pasti con pesce;
+* non supera 2–3 pasti principali con legumi;
+* non contiene “Proteina” o termini generici.
+
+Differenza lattosio/glutine:
+
+* “Senza lattosio” non viene confuso con “Senza glutine”;
+* “Senza glutine” non viene confuso con “Senza lattosio”.
+
+12. Output finale
+
+Prepara uno ZIP finale e riepiloga:
+
+* causa reale delle incongruenze;
+* file modificati;
+* nuovo elenco del menu dieta;
+* profili rimossi;
+* regole applicate a Mediterranea;
+* regole applicate a Senza lattosio;
+* regole applicate a Senza glutine;
+* validazioni aggiunte;
+* test aggiunti;
+* risultato dei test;
+* conferma che “Senza lattosio” non genera più prodotti “senza glutine”;
+* conferma che “Senza glutine” genera un piano completo senza fallire la validazione;
+* conferma che “Mediterranea” è equilibrata e non sbilanciata sui legumi.
