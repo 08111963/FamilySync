@@ -12,7 +12,7 @@ const allowedConsent = async () => true;
 test("body reale dietProfile senza glutine attraversa parser route e normalizzazione", async () => {
   const body = {
     weekStartDate: "2026-08-24",
-    preferences: { dietProfile: "mediterranean_gluten_free" },
+    preferences: { dietProfile: "gluten_free" },
   };
   const prepared = await prepareMealPlanPreferences(userId, body.preferences, allowedConsent);
 
@@ -30,7 +30,7 @@ test("body reale dietProfile senza glutine attraversa parser route e normalizzaz
 test("body reale dietProfile senza lattosio attraversa parser route e normalizzazione", async () => {
   const body = {
     weekStartDate: "2026-08-24",
-    preferences: { dietProfile: "mediterranean_lactose_free" },
+    preferences: { dietProfile: "lactose_free" },
   };
   const prepared = await prepareMealPlanPreferences(userId, body.preferences, allowedConsent);
 
@@ -45,16 +45,39 @@ test("body reale dietProfile senza lattosio attraversa parser route e normalizza
   );
 });
 
-test("diet e allergies legacy non creano esclusioni dal body frontend", async () => {
+test("i valori legacy combinati vengono normalizzati senza leggere allergies", async () => {
   const [diet, allergies] = await Promise.all([
-    prepareMealPlanPreferences(userId, { diet: "senza glutine" }, allowedConsent),
+    prepareMealPlanPreferences(userId, { dietProfile: "mediterranean_gluten_free" }, allowedConsent),
     prepareMealPlanPreferences(userId, { allergies: "glutine" }, allowedConsent),
   ]);
   assert.equal(diet.ok, true);
   assert.equal(allergies.ok, true);
   if (!diet.ok || !allergies.ok) return;
-  assert.deepEqual(normalizeMealPlanConstraints(diet.preferences).exclusions, []);
+  assert.deepEqual(normalizeMealPlanConstraints(diet.preferences).exclusions, ["gluten"]);
   assert.deepEqual(normalizeMealPlanConstraints(allergies.preferences).exclusions, []);
-  assert.deepEqual(diet.preferences, { dietProfile: "mediterranean" });
+  assert.deepEqual(diet.preferences, { dietProfile: "gluten_free" });
   assert.deepEqual(allergies.preferences, { dietProfile: "mediterranean" });
+});
+
+test("i vecchi profili non rappresentabili richiedono una nuova selezione e non diventano permissivi", async () => {
+  for (const field of ["dietProfile", "diet"] as const) {
+    for (const legacyProfile of [
+      "vegetarian_gluten_free",
+      "vegan",
+      "pescetarian",
+      "halal",
+      "low_carb",
+    ]) {
+      const prepared = await prepareMealPlanPreferences(
+        userId,
+        { [field]: legacyProfile },
+        allowedConsent,
+      );
+      assert.equal(prepared.ok, false, `${field}=${legacyProfile}`);
+      if (prepared.ok) continue;
+      assert.equal(prepared.status, 422, `${field}=${legacyProfile}`);
+      assert.equal(prepared.body.error.code, "UNSUPPORTED_DIET_PROFILE", `${field}=${legacyProfile}`);
+      assert.match(prepared.body.error.message, /scegli.*profilo/i, `${field}=${legacyProfile}`);
+    }
+  }
 });

@@ -549,7 +549,7 @@ La schermata ha due sezioni, accessibili tramite le tab in alto:
 Per generare un nuovo piano settimanale:
 1. Tocca la tab **Genera con AI**
 2. Imposta la **data di inizio settimana**
-3. Scegli il **Profilo Dieta**: Mediterranea, Mediterranea senza glutine, Mediterranea senza lattosio, Vegetariana, Vegetariana senza glutine, Vegana, Pescetariana, Low carb o Halal.
+3. Scegli il **Profilo Dieta**: Mediterranea, Equilibrata, Vegetariana, Leggera, Sportiva, Senza glutine o Senza lattosio.
 4. Aggiungi solo preferenze culinarie pratiche nelle note, ad esempio tempi o ingredienti graditi: allergie e intolleranze non sono un campo del Piano Pasti.
 5. Tocca il pulsante **Genera Piano Pasti** per avviare la generazione AI
 6. L'AI creerà un piano completo per 7 giorni con colazione, pranzo, cena e spuntini

@@ -34,7 +34,7 @@ const USER = {
   emailVerified: true,
 };
 
-const SELECTED_PROFILE: MealPlanDietProfile = "vegetarian_gluten_free";
+const SELECTED_PROFILE: MealPlanDietProfile = "lactose_free";
 const AI_STREAM_PATH = `/api/ai/${FAMILY_ID}/weekly-meal-plan/stream`;
 const SAVE_PATH = `/api/meal-plans/${FAMILY_ID}/meal-plans`;
 const DEMO_ITEMS = [{
@@ -146,11 +146,21 @@ async function waitForAiRequest() {
 }
 
 async function dismissWebUpdateBanner(pg: Page) {
-  for (const testId of ["web-stale-dismiss", "web-update-dismiss"]) {
-    const dismiss = pg.getByTestId(testId);
-    if (await dismiss.count()) {
-      await dismiss.tap();
+  // Il controllo staleness arriva in background e può montare il banner subito
+  // dopo il primo dismiss. Aspettiamo due giri consecutivi senza banner prima
+  // di proseguire con i tap del flusso sotto test.
+  let idleRounds = 0;
+  for (let round = 0; round < 8 && idleRounds < 2; round++) {
+    let dismissed = false;
+    for (const testId of ["web-stale-dismiss", "web-update-dismiss"]) {
+      const dismiss = pg.getByTestId(testId);
+      if (await dismiss.isVisible().catch(() => false)) {
+        await dismiss.tap({ force: true });
+        dismissed = true;
+      }
     }
+    idleRounds = dismissed ? 0 : idleRounds + 1;
+    await pg.waitForTimeout(150);
   }
 }
 
@@ -168,8 +178,8 @@ describe("Selettore Dieta nel Piano Pasti", () => {
     assert.ok(bundleMatch, "bundle Expo non trovato nella pagina servita");
     const bundle = await fetch(`${BASE_URL}/${bundleMatch[0]}`).then((res) => res.text());
     assert.ok(
-      bundle.includes("Mediterranea senza glutine"),
-      "La web-build servita non contiene il selettore Dieta: rigenerare la web-build (anteprima vecchia)",
+      bundle.includes("Senza lattosio"),
+      "La web-build servita non contiene il nuovo selettore Dieta: rigenerare la web-build (anteprima vecchia)",
     );
 
     browser = await chromium.launch({
@@ -234,7 +244,7 @@ describe("Selettore Dieta nel Piano Pasti", () => {
     );
   });
 
-  test("apre il dropdown, seleziona Vegetariana senza glutine e ignora risposte stale", async () => {
+  test("apre il dropdown, mostra solo sette profili, seleziona Senza lattosio e ignora risposte stale", async () => {
     await page.getByTestId("mealplan-diet-selector").tap();
     for (const profile of MEAL_PLAN_DIET_PROFILES) {
       const option = page.getByTestId(`mealplan-diet-option-${profile}`);
@@ -242,6 +252,18 @@ describe("Selettore Dieta nel Piano Pasti", () => {
       assert.ok(
         (await option.innerText()).includes(mealPlanDietProfileLabel(profile)),
         `etichetta corretta per ${profile}`,
+      );
+    }
+    assert.equal(
+      await page.locator('[data-testid^="mealplan-diet-option-"]').count(),
+      7,
+      "il menu deve mostrare esattamente i sette profili definitivi",
+    );
+    for (const retired of ["mediterranean_gluten_free", "mediterranean_lactose_free", "vegetarian_gluten_free"]) {
+      assert.equal(
+        await page.getByTestId(`mealplan-diet-option-${retired}`).count(),
+        0,
+        `${retired} non deve più comparire nel menu`,
       );
     }
 

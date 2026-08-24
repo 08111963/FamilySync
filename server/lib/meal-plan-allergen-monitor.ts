@@ -11,7 +11,7 @@ import { claimScheduledJobRun } from './scheduled-jobs';
  * Sentinella periodica contro regressioni del modello sui vincoli allergeni.
  *
  * Genera esclusivamente un piano sintetico con il profilo chiuso
- * "mediterranea senza glutine". Non registra né passa al logging preferenze reali, titoli,
+ * "senza glutine". Non registra né passa al logging preferenze reali, titoli,
  * ingredienti o contenuti dei pasti: conserva solo l'esito, i tentativi e i
  * codici emessi da validateMealPlanConstraints, cioè lo stesso validatore che
  * protegge i piani utente.
@@ -26,7 +26,7 @@ const POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000;
 
 /** Un solo profilo chiuso noto: nessun dato sanitario reale o campo libero. */
-export const ALLERGEN_MONITOR_DIET_PROFILE = 'mediterranean_gluten_free' as const;
+export const ALLERGEN_MONITOR_DIET_PROFILE = 'gluten_free' as const;
 export const ALLERGEN_MONITOR_EXPECTED_VIOLATION_CODE = 'gluten';
 /** Massimo tentativi completi del generatore; non configurabile da env. */
 export const ALLERGEN_MONITOR_MAX_GENERATION_ATTEMPTS = 2;

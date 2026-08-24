@@ -6,22 +6,19 @@
  */
 export const MEAL_PLAN_DIET_PROFILES = [
   "mediterranean",
-  "mediterranean_gluten_free",
-  "mediterranean_lactose_free",
+  "balanced",
   "vegetarian",
-  "vegetarian_gluten_free",
-  "vegan",
-  // Profili già pubblicati: restano opzioni fisse per non eliminare funzioni.
-  "pescetarian",
-  "low_carb",
-  "halal",
+  "light",
+  "sport",
+  "gluten_free",
+  "lactose_free",
 ] as const;
 
 export type MealPlanDietProfile = typeof MEAL_PLAN_DIET_PROFILES[number];
 
 export type MealPlanDietProfileDefinition = {
   label: { it: string; en: string };
-  dietaryPattern: "mediterranean" | "vegetarian" | "vegan" | "pescetarian" | "low-carb" | "halal";
+  dietaryPattern: "mediterranean" | "balanced" | "vegetarian" | "light" | "sport";
   excludes: Array<"gluten" | "lactose">;
 };
 
@@ -34,45 +31,35 @@ export const MEAL_PLAN_DIET_PROFILE_DEFINITIONS: Record<
     dietaryPattern: "mediterranean",
     excludes: [],
   },
-  mediterranean_gluten_free: {
-    label: { it: "Mediterranea senza glutine", en: "Mediterranean gluten-free" },
-    dietaryPattern: "mediterranean",
-    excludes: ["gluten"],
-  },
-  mediterranean_lactose_free: {
-    label: { it: "Mediterranea senza lattosio", en: "Mediterranean lactose-free" },
-    dietaryPattern: "mediterranean",
-    excludes: ["lactose"],
+  balanced: {
+    label: { it: "Equilibrata", en: "Balanced" },
+    dietaryPattern: "balanced",
+    excludes: [],
   },
   vegetarian: {
     label: { it: "Vegetariana", en: "Vegetarian" },
     dietaryPattern: "vegetarian",
     excludes: [],
   },
-  vegetarian_gluten_free: {
-    label: { it: "Vegetariana senza glutine", en: "Vegetarian gluten-free" },
-    dietaryPattern: "vegetarian",
+  light: {
+    label: { it: "Leggera", en: "Light" },
+    dietaryPattern: "light",
+    excludes: [],
+  },
+  sport: {
+    label: { it: "Sportiva", en: "Sport" },
+    dietaryPattern: "sport",
+    excludes: [],
+  },
+  gluten_free: {
+    label: { it: "Senza glutine", en: "Gluten-free" },
+    dietaryPattern: "mediterranean",
     excludes: ["gluten"],
   },
-  vegan: {
-    label: { it: "Vegana", en: "Vegan" },
-    dietaryPattern: "vegan",
-    excludes: [],
-  },
-  pescetarian: {
-    label: { it: "Pescetariana", en: "Pescetarian" },
-    dietaryPattern: "pescetarian",
-    excludes: [],
-  },
-  low_carb: {
-    label: { it: "Low carb", en: "Low carb" },
-    dietaryPattern: "low-carb",
-    excludes: [],
-  },
-  halal: {
-    label: { it: "Halal", en: "Halal" },
-    dietaryPattern: "halal",
-    excludes: [],
+  lactose_free: {
+    label: { it: "Senza lattosio", en: "Lactose-free" },
+    dietaryPattern: "mediterranean",
+    excludes: ["lactose"],
   },
 };
 
@@ -89,8 +76,9 @@ export function mealPlanDietProfileLabel(
 }
 
 /**
- * Compatibilità controllata solo per client pubblicati prima del menu chiuso.
- * Il campo legacy allergies non partecipa mai alla conversione.
+ * Compatibilità controllata per i valori che erano già pubblicati prima del
+ * menu a sette voci. Il campo legacy allergies non partecipa mai alla
+ * conversione: i dati sanitari restano fuori dal Piano Pasti.
  */
 export function legacyMealPlanDietToProfile(value: unknown): MealPlanDietProfile | undefined {
   if (typeof value !== "string") return undefined;
@@ -98,39 +86,90 @@ export function legacyMealPlanDietToProfile(value: unknown): MealPlanDietProfile
   const exact: Record<string, MealPlanDietProfile> = {
     mediterranea: "mediterranean",
     mediterranean: "mediterranean",
+    equilibrata: "balanced",
+    balanced: "balanced",
     vegetariana: "vegetarian",
     vegetarian: "vegetarian",
-    vegana: "vegan",
-    vegan: "vegan",
-    pescetariana: "pescetarian",
-    pescetarian: "pescetarian",
-    "low carb": "low_carb",
-    chetogenica: "low_carb",
-    keto: "low_carb",
-    halal: "halal",
-    "mediterranea senza glutine": "mediterranean_gluten_free",
-    "mediterranean gluten free": "mediterranean_gluten_free",
-    "mediterranea senza lattosio": "mediterranean_lactose_free",
-    "mediterranean lactose free": "mediterranean_lactose_free",
-    "vegetariana senza glutine": "vegetarian_gluten_free",
-    "vegetarian gluten free": "vegetarian_gluten_free",
+    leggera: "light",
+    light: "light",
+    sportiva: "sport",
+    sport: "sport",
+    "mediterranea senza glutine": "gluten_free",
+    "mediterranean gluten free": "gluten_free",
+    mediterranean_gluten_free: "gluten_free",
+    "mediterranea senza lattosio": "lactose_free",
+    "mediterranean lactose free": "lactose_free",
+    mediterranean_lactose_free: "lactose_free",
   };
   return exact[normalized];
 }
 
+/**
+ * La dettatura può nominare una dieta storica/combinata che il catalogo chiuso
+ * non riesce a rappresentare senza perdere vincoli. In quel caso il chiamante
+ * deve chiedere una scelta manuale e non avviare una generazione.
+ */
+export function mealPlanVoiceDietRequiresReselection(value: string): boolean {
+  const text = value.toLocaleLowerCase("it-IT");
+  const legacyPattern = /\b(?:vegan\w*|pescetar\w*|halal|low[\s-]?carb|chetogenic\w*|keto)\b/;
+  const mentionedProfiles = new Set<MealPlanDietProfile>();
+  const profileMentions: Array<[MealPlanDietProfile, RegExp]> = [
+    ["mediterranean", /\b(?:mediterrane\w*|mediterranean)\b/],
+    ["balanced", /\b(?:equilibrat\w*|balanced)\b/],
+    ["vegetarian", /\bvegetarian\w*\b/],
+    ["light", /\b(?:legger\w*|light)\b/],
+    ["sport", /\b(?:sportiv\w*|sport)\b/],
+    ["gluten_free", /\b(?:senza glutine|gluten free)\b/],
+    ["lactose_free", /\b(?:senza lattosio|lactose free)\b/],
+  ];
+  for (const [profile, pattern] of profileMentions) {
+    if (pattern.test(text)) mentionedProfiles.add(profile);
+  }
+  const representableMediterraneanVariant =
+    mentionedProfiles.size === 2 &&
+    mentionedProfiles.has("mediterranean") &&
+    (mentionedProfiles.has("gluten_free") || mentionedProfiles.has("lactose_free"));
+  return legacyPattern.test(text) ||
+    (mentionedProfiles.size > 1 && !representableMediterraneanVariant);
+}
+
 /** Riconosce solo espressioni dei profili chiusi nella dettatura del Piano Pasti. */
 export function detectMealPlanDietProfileFromText(value: string): MealPlanDietProfile | undefined {
+  if (mealPlanVoiceDietRequiresReselection(value)) return undefined;
   const text = value.toLocaleLowerCase("it-IT");
   const matches: Array<[RegExp, MealPlanDietProfile]> = [
-    [/\b(?:mediterranea|mediterranean).*(?:senza glutine|gluten free)\b|\b(?:senza glutine|gluten free).*(?:mediterranea|mediterranean)\b/, "mediterranean_gluten_free"],
-    [/\b(?:mediterranea|mediterranean).*(?:senza lattosio|lactose free)\b|\b(?:senza lattosio|lactose free).*(?:mediterranea|mediterranean)\b/, "mediterranean_lactose_free"],
-    [/\b(?:vegetariana|vegetarian).*(?:senza glutine|gluten free)\b|\b(?:senza glutine|gluten free).*(?:vegetariana|vegetarian)\b/, "vegetarian_gluten_free"],
-    [/\bvegana?\b|\bvegan\b/, "vegan"],
-    [/\bpescetarian[ao]?\b/, "pescetarian"],
-    [/\b(?:low carb|chetogenic[ao]?|keto)\b/, "low_carb"],
-    [/\bhalal\b/, "halal"],
+    [/\b(?:mediterranea|mediterranean).*(?:senza glutine|gluten free)\b|\b(?:senza glutine|gluten free).*(?:mediterranea|mediterranean)\b/, "gluten_free"],
+    [/\b(?:mediterranea|mediterranean).*(?:senza lattosio|lactose free)\b|\b(?:senza lattosio|lactose free).*(?:mediterranea|mediterranean)\b/, "lactose_free"],
+    [/\b(?:senza glutine|gluten free)\b/, "gluten_free"],
+    [/\b(?:senza lattosio|lactose free)\b/, "lactose_free"],
+    [/\b(?:equilibrata|balanced)\b/, "balanced"],
+    [/\b(?:leggera|light)\b/, "light"],
+    [/\b(?:sportiva|sport)\b/, "sport"],
     [/\bvegetarian[ao]?\b/, "vegetarian"],
     [/\bmediterrane[ao]?\b|\bmediterranean\b/, "mediterranean"],
   ];
   return matches.find(([pattern]) => pattern.test(text))?.[1];
+}
+
+export type MealPlanVoiceDietResolution = {
+  requiresReselection: boolean;
+  profile?: MealPlanDietProfile;
+  voiceNotes: string;
+};
+
+/**
+ * Mantiene separati il profilo estraibile e il testo da inoltrare come nota:
+ * quando la frase contiene vincoli non esprimibili, le note devono essere
+ * svuotate prima che l'utente scelga manualmente un profilo.
+ */
+export function resolveMealPlanVoiceDiet(value: string): MealPlanVoiceDietResolution {
+  const spoken = value.trim();
+  if (mealPlanVoiceDietRequiresReselection(spoken)) {
+    return { requiresReselection: true, voiceNotes: "" };
+  }
+  return {
+    requiresReselection: false,
+    profile: detectMealPlanDietProfileFromText(spoken),
+    voiceNotes: spoken,
+  };
 }

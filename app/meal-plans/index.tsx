@@ -34,8 +34,8 @@ import { freeLimitMessage } from "@/lib/plan-limit";
 import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
 import {
   MEAL_PLAN_DIET_PROFILES,
-  detectMealPlanDietProfileFromText,
   mealPlanDietProfileLabel,
+  resolveMealPlanVoiceDiet,
   type MealPlanDietProfile,
 } from "@/shared/meal-plan-diet-profiles";
 import { MEAL_PLAN_STREAM_SAFETY_TIMEOUT_MS } from "@/shared/meal-plan-generation-timeouts";
@@ -785,18 +785,29 @@ export default function MealPlansScreen() {
   // il profilo selezionato resta l'unico vincolo della generazione.
   // al rilascio si genera subito il piano e a fine generazione viene letto ad alta voce.
   const handleVoiceGenerate = (text: string) => {
-    const spoken = text.trim();
-    if (!spoken) return;
-    const spokenProfile = detectMealPlanDietProfileFromText(spoken);
+    const resolution = resolveMealPlanVoiceDiet(text);
+    if (!text.trim()) return;
+    if (resolution.requiresReselection) {
+      // La frase contiene un vincolo non rappresentabile: non conservarla come
+      // nota, altrimenti la generazione dopo la scelta manuale verrebbe respinta
+      // dal backend come dato sanitario.
+      setVoicePrefs(resolution.voiceNotes);
+      setGenerationStatus(null);
+      setGenerationError(
+        "Questa combinazione alimentare non è disponibile nel Piano Pasti. Scegli manualmente un profilo dal menu prima di generare.",
+      );
+      return;
+    }
+    const spokenProfile = resolution.profile;
     if (spokenProfile) selectDietProfile(spokenProfile);
-    setVoicePrefs(spoken);
+    setVoicePrefs(resolution.voiceNotes);
     // Il testo resta una preferenza culinaria; il profilo è estratto soltanto
     // da espressioni canoniche e non da allergie generiche.
     if (spokenProfile) {
-      void fetchMealPlanStream({ voiceNotes: spoken, speak: autoSpeak, profile: spokenProfile });
+      void fetchMealPlanStream({ voiceNotes: resolution.voiceNotes, speak: autoSpeak, profile: spokenProfile });
       return;
     }
-    fetchMealPlanStream({ voiceNotes: spoken, speak: autoSpeak });
+    fetchMealPlanStream({ voiceNotes: resolution.voiceNotes, speak: autoSpeak });
   };
 
   const handleSavePlan = async () => {

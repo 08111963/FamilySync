@@ -92,46 +92,26 @@ function ingredientsFor(
   includeRedMeat = true,
 ): Ingredient[] {
   if (mealType === "breakfast") {
-    if (profile === "mediterranean_lactose_free" || profile === "vegan") {
+    if (profile === "lactose_free") {
       return [{ name: "mela", quantity: "1", unit: "pezzo" }, { name: "bevanda di riso", quantity: "200", unit: "ml" }];
     }
     return [{ name: "mela", quantity: "1", unit: "pezzo" }, { name: "yogurt bianco", quantity: "125", unit: "g" }];
   }
-  if (profile === "low_carb") {
-    return [
-      { name: day % 2 ? "uova" : "pollo", quantity: "120", unit: "g" },
-      { name: day % 3 ? "zucchine" : "broccoli", quantity: "180", unit: "g" },
-    ];
-  }
-  if (profile === "vegan") {
-    return [
-      { name: ["ceci", "lenticchie", "fagioli"][day % 3]!, quantity: "120", unit: "g" },
-      { name: ["quinoa", "patate", "riso"][day % 3]!, quantity: "80", unit: "g" },
-      { name: "zucchine", quantity: "150", unit: "g" },
-    ];
-  }
-  if (profile === "vegetarian" || profile === "vegetarian_gluten_free") {
+  if (profile === "vegetarian") {
     return [
       { name: ["ceci", "uova", "lenticchie"][day % 3]!, quantity: "120", unit: "g" },
-      { name: profile === "vegetarian_gluten_free" ? ["riso", "quinoa", "patate"][day % 3]! : ["pasta", "riso", "patate"][day % 3]!, quantity: "80", unit: "g" },
+      { name: ["pasta", "riso", "patate"][day % 3]!, quantity: "80", unit: "g" },
       { name: "zucchine", quantity: "150", unit: "g" },
     ];
   }
-  if (profile === "pescetarian") {
+  if (profile === "sport") {
     return [
-      { name: ["merluzzo", "salmone", "tonno"][day % 3]!, quantity: "120", unit: "g" },
-      { name: ["riso", "patate", "quinoa"][day % 3]!, quantity: "80", unit: "g" },
-      { name: "spinaci", quantity: "150", unit: "g" },
-    ];
-  }
-  if (profile === "halal") {
-    return [
-      { name: ["pollo", "tacchino", "ceci"][day % 3]!, quantity: "120", unit: "g" },
-      { name: ["riso", "patate", "quinoa"][day % 3]!, quantity: "80", unit: "g" },
+      { name: ["pollo", "tonno", "uova", "ceci", "tacchino", "salmone", "lenticchie"][day]!, quantity: "120", unit: "g" },
+      { name: ["riso integrale", "quinoa", "patate", "farro", "polenta", "pasta integrale", "fagioli"][day]!, quantity: "80", unit: "g" },
       { name: "zucchine", quantity: "150", unit: "g" },
     ];
   }
-  const glutenFree = profile === "mediterranean_gluten_free";
+  const glutenFree = profile === "gluten_free";
   const carbohydrate = glutenFree
     ? ["pasta senza glutine", "riso", "quinoa", "patate", "couscous di mais senza glutine", "polenta di mais", "lenticchie"][day]!
     : ["pasta", "riso", "quinoa", "patate", "couscous", "farro", "lenticchie"][day]!;
@@ -145,24 +125,24 @@ function ingredientsFor(
 function fullWeek(profile?: MealPlanDietProfile, duplicate = false, includeRedMeat = true): Meal[] {
   if (
     profile === "mediterranean" ||
-    profile === "mediterranean_gluten_free" ||
-    profile === "mediterranean_lactose_free"
+    profile === "gluten_free" ||
+    profile === "lactose_free"
   ) {
     return balancedMediterraneanWeek(profile, duplicate, includeRedMeat);
   }
   return DATES.flatMap((date, day) => [
     meal(date, "breakfast", duplicate ? "Colazione ripetuta" : `Colazione ${day + 1}`, ingredientsFor(profile, day, "breakfast", includeRedMeat)),
-    meal(date, "lunch", profile === "low_carb" ? `Pranzo low carb ${day + 1}` : `Pranzo ${day + 1}`, ingredientsFor(profile, day, "lunch", includeRedMeat)),
+    meal(date, "lunch", `Pranzo ${day + 1}`, ingredientsFor(profile, day, "lunch", includeRedMeat)),
     meal(date, "dinner", `Cena ${day + 1}`, ingredientsFor(profile, day, "dinner", includeRedMeat)),
   ]);
 }
 
 function balancedMediterraneanWeek(
-  profile: Extract<MealPlanDietProfile, "mediterranean" | "mediterranean_gluten_free" | "mediterranean_lactose_free">,
+  profile: Extract<MealPlanDietProfile, "mediterranean" | "gluten_free" | "lactose_free">,
   duplicate = false,
   includeRedMeat = true,
 ): Meal[] {
-  const glutenFree = profile === "mediterranean_gluten_free";
+  const glutenFree = profile === "gluten_free";
   const pasta = glutenFree ? "pasta senza glutine" : "pasta";
   const couscous = glutenFree ? "couscous di mais senza glutine" : "couscous";
   const farro = glutenFree ? "quinoa" : "farro";
@@ -496,8 +476,8 @@ test("la validazione mediterranea rifiuta pasta, carne, legumi, termini generici
 test("i tre profili mediterranei ricevono un solo repair mirato e restano compatibili", async (t) => {
   for (const profile of [
     "mediterranean",
-    "mediterranean_gluten_free",
-    "mediterranean_lactose_free",
+    "gluten_free",
+    "lactose_free",
   ] as const) {
     const valid = balancedMediterraneanWeek(profile);
     const { client, calls } = createFakeClient((_request, call) =>
@@ -693,15 +673,26 @@ test("dopo un repair ancora duplicato fallisce senza una terza chiamata", async 
   assert.equal(calls.length, 2);
 });
 
-test("tutti i nove profili chiusi usano un solo contratto completo e restano sicuri", async (t) => {
+test("tutti i sette profili chiusi usano un solo contratto completo e restano sicuri", async (t) => {
   for (const profile of MEAL_PLAN_DIET_PROFILES) {
-    const { client, calls } = createFakeClient(() => fullWeek(profile));
+    const fixture = fullWeek(profile);
+    assert.deepEqual(
+      validateMealPlanConstraints(fixture, { dietProfile: profile }),
+      [],
+      `${profile}: fixture compatibile`,
+    );
+    const { client, calls } = createFakeClient(() => fixture);
     __setOpenAiClientForTest(client);
-    const plan = await generateWeeklyMealPlan({
-      familySize: 4,
-      weekStartDate: WEEK_START,
-      preferences: { dietProfile: profile },
-    });
+    let plan;
+    try {
+      plan = await generateWeeklyMealPlan({
+        familySize: 4,
+        weekStartDate: WEEK_START,
+        preferences: { dietProfile: profile },
+      });
+    } catch (error) {
+      throw new Error(`${profile}: ${(error as Error).message}`, { cause: error });
+    }
     assert.equal(calls.length, 1, `${profile}: una chiamata`);
     assert.equal(plan.items.length, 21, `${profile}: settimana completa`);
     assert.deepEqual(
@@ -709,6 +700,12 @@ test("tutti i nove profili chiusi usano un solo contratto completo e restano sic
       [],
       `${profile}: piano sicuro`,
     );
+    if (profile === "light") {
+      assert.match(calls[0]!.prompt, /PROFILO LEGGERO/i);
+    }
+    if (profile === "sport") {
+      assert.match(calls[0]!.prompt, /PROFILO SPORTIVO/i);
+    }
   }
   t.after(() => __setOpenAiClientForTest(null));
 });

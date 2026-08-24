@@ -16,6 +16,7 @@ import {
 import { registerRoutes } from "../routes";
 import { generateAccessToken } from "../lib/jwt";
 import { prepareMealPlanPreferences } from "../routes/ai";
+import { MEAL_PLAN_DIET_PROFILES } from "../../shared/meal-plan-diet-profiles";
 
 /**
  * Test di INTEGRAZIONE della sostituzione del piano pasti (task: verifica che
@@ -199,7 +200,7 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
   test("3c) replace incompatibile con il profilo senza glutine: 422 e vecchio piano intatto", async () => {
     const res = await savePlan({
       replace: true,
-      preferences: { dietProfile: "mediterranean_gluten_free" },
+      preferences: { dietProfile: "gluten_free" },
       items: [{
         date: "2030-03-04",
         mealType: "lunch",
@@ -218,6 +219,91 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     assert.equal(rows[0].id, firstPlanId);
     const items = await db.select().from(mealPlanItems).where(eq(mealPlanItems.mealPlanId, firstPlanId));
     assert.equal(items.length, validItems.length);
+  });
+
+  test("3d) nessun profilo consente di salvare termini alimentari generici non verificabili", async () => {
+    for (const dietProfile of MEAL_PLAN_DIET_PROFILES) {
+      const res = await savePlan({
+        replace: true,
+        preferences: { dietProfile },
+        items: [{
+          date: "2030-03-04",
+          mealType: "lunch",
+          titleOverride: "Proteina con verdure",
+          ingredients: [
+            { name: "Carboidrato", quantity: "80", unit: "g" },
+            { name: "Fonte proteica", quantity: "120", unit: "g" },
+            { name: "Verdure", quantity: "150", unit: "g" },
+          ],
+        }],
+      });
+      assert.equal(res.status, 422, dietProfile);
+      const body = await res.json();
+      assert.equal(body.error.code, "MEAL_PLAN_CONSTRAINT_VIOLATION", dietProfile);
+    }
+    const rows = await plansForWeek();
+    assert.equal(rows.length, 1, "nessun salvataggio generico può sostituire il piano esistente");
+    assert.equal(rows[0].id, firstPlanId);
+  });
+
+  test("3e) il salvataggio manuale applica anche i contratti leggero e sportivo", async () => {
+    const cases = [
+      {
+        dietProfile: "light",
+        titleOverride: "Pollo fritto con patate",
+        ingredients: [
+          { name: "Pollo fritto", quantity: "120", unit: "g" },
+          { name: "Patate", quantity: "150", unit: "g" },
+          { name: "Zucchine", quantity: "150", unit: "g" },
+        ],
+      },
+      {
+        dietProfile: "sport",
+        titleOverride: "Riso bianco e zucchine",
+        ingredients: [
+          { name: "Riso", quantity: "80", unit: "g" },
+          { name: "Zucchine", quantity: "150", unit: "g" },
+          { name: "Carote", quantity: "100", unit: "g" },
+        ],
+      },
+    ] as const;
+    for (const scenario of cases) {
+      const res = await savePlan({
+        replace: true,
+        preferences: { dietProfile: scenario.dietProfile },
+        items: [{
+          date: "2030-03-04",
+          mealType: "lunch",
+          titleOverride: scenario.titleOverride,
+          ingredients: scenario.ingredients,
+        }],
+      });
+      assert.equal(res.status, 422, scenario.dietProfile);
+    }
+    const rows = await plansForWeek();
+    assert.equal(rows[0].id, firstPlanId);
+  });
+
+  test("3f) i profili legacy non rappresentabili non possono creare o sostituire un piano", async () => {
+    for (const legacyProfile of [
+      "vegetarian_gluten_free",
+      "vegan",
+      "pescetarian",
+      "halal",
+      "low_carb",
+    ]) {
+      const res = await savePlan({
+        replace: true,
+        preferences: { dietProfile: legacyProfile },
+      });
+      assert.equal(res.status, 422, legacyProfile);
+      const body = await res.json();
+      assert.equal(body.error.code, "MEAL_PLAN_CONSTRAINT_VIOLATION", legacyProfile);
+      assert.match(body.error.message, /scegli.*profilo/i, legacyProfile);
+    }
+    const rows = await plansForWeek();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, firstPlanId);
   });
 
   test("4) replace=true: sostituzione atomica con nuovo id e items", async () => {
@@ -243,7 +329,7 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     const res = await request("POST", `/api/meal-plans/${familyId}/meal-plans`, {
       title: "Piano senza glutine",
       weekStartDate: "2030-03-11",
-      preferences: { dietProfile: "mediterranean_gluten_free" },
+      preferences: { dietProfile: "gluten_free" },
       items: [{
         date: "2030-03-11",
         mealType: "lunch",
@@ -316,9 +402,7 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     assert.equal(after[0]?.titleOverride, before[0]?.titleOverride);
   });
 
-  test("7) campo diet legacy non verificabile viene salvato solo come profilo mediterraneo di compatibilità", async () => {
-    // Compatibilità con client precedenti: un valore diet fuori dal catalogo
-    // chiuso non crea un vincolo libero; il piano conserva solo il default chiuso.
+  test("7) un campo diet legacy non rappresentabile richiede una nuova selezione", async () => {
     const res = await request("POST", `/api/meal-plans/${familyId}/meal-plans`, {
       title: "Piano non verificabile",
       weekStartDate: "2030-03-18",
@@ -330,13 +414,41 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
         ingredients: [{ name: "Ingrediente generico", quantity: "1", unit: "pz" }],
       }],
     });
-    assert.equal(res.status, 201);
+    assert.equal(res.status, 422);
     const body = await res.json();
-    assert.deepEqual(body.preferences, { dietProfile: "mediterranean" });
+    assert.match(body.error.message, /scegli.*profilo/i);
     const rows = await db.select().from(mealPlans).where(and(
       eq(mealPlans.familyId, familyId),
       eq(mealPlans.weekStartDate, "2030-03-18"),
     ));
-    assert.equal(rows.length, 1);
+    assert.equal(rows.length, 0);
+  });
+
+  test("8) un piano storico non rappresentabile richiede una nuova selezione prima di lettura o modifica", async () => {
+    const [legacyPlan] = await db.insert(mealPlans).values({
+      familyId,
+      createdByUserId: userId,
+      weekStartDate: "2030-04-01",
+      title: "Piano storico",
+      // Simula un record creato prima della chiusura del catalogo.
+      preferences: { dietProfile: "vegan" } as never,
+    }).returning();
+    try {
+      const detail = await request("GET", `/api/meal-plans/${familyId}/meal-plans/${legacyPlan.id}`);
+      assert.equal(detail.status, 422);
+      const detailBody = await detail.json();
+      assert.match(detailBody.error.message, /scegli.*profilo/i);
+
+      const addItem = await request(
+        "POST",
+        `/api/meal-plans/${familyId}/meal-plans/${legacyPlan.id}/items`,
+        { date: "2030-04-01", mealType: "lunch", titleOverride: "Pasta al pomodoro" },
+      );
+      assert.equal(addItem.status, 422);
+      const rows = await db.select().from(mealPlanItems).where(eq(mealPlanItems.mealPlanId, legacyPlan.id));
+      assert.equal(rows.length, 0);
+    } finally {
+      await db.delete(mealPlans).where(eq(mealPlans.id, legacyPlan.id));
+    }
   });
 });

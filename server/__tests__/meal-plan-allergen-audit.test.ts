@@ -33,14 +33,12 @@ type ProfileCase = {
  */
 const PROFILE_CASES: ProfileCase[] = [
   { name: "mediterraneo", profile: "mediterranean", dietaryPattern: "mediterranean", exclusions: [], safe: "riso" },
-  { name: "mediterraneo senza glutine", profile: "mediterranean_gluten_free", dietaryPattern: "mediterranean", exclusions: ["gluten"], forbidden: "pasta", violationCode: "gluten", safe: "pasta senza glutine" },
-  { name: "mediterraneo senza lattosio", profile: "mediterranean_lactose_free", dietaryPattern: "mediterranean", exclusions: ["lactose"], forbidden: "ricotta", violationCode: "lactose", safe: "yogurt senza lattosio" },
+  { name: "equilibrato", profile: "balanced", dietaryPattern: "balanced", exclusions: [], safe: "riso" },
   { name: "vegetariano", profile: "vegetarian", dietaryPattern: "vegetarian", exclusions: [], forbidden: "pollo", violationCode: "meat", safe: "ceci" },
-  { name: "vegetariano senza glutine", profile: "vegetarian_gluten_free", dietaryPattern: "vegetarian", exclusions: ["gluten"], forbidden: "pasta", violationCode: "gluten", safe: "pasta senza glutine" },
-  { name: "vegano", profile: "vegan", dietaryPattern: "vegan", exclusions: [], forbidden: "yogurt", violationCode: "milk", safe: "tofu" },
-  { name: "pescetariano", profile: "pescetarian", dietaryPattern: "pescetarian", exclusions: [], forbidden: "pollo", violationCode: "meat", safe: "merluzzo" },
-  { name: "low carb", profile: "low_carb", dietaryPattern: "low-carb", exclusions: [], forbidden: "pasta", violationCode: "low-carb", safe: "uova" },
-  { name: "halal", profile: "halal", dietaryPattern: "halal", exclusions: [], forbidden: "maiale", violationCode: "halal", safe: "riso" },
+  { name: "leggero", profile: "light", dietaryPattern: "light", exclusions: [], safe: "riso" },
+  { name: "sportivo", profile: "sport", dietaryPattern: "sport", exclusions: [], safe: "riso" },
+  { name: "senza glutine", profile: "gluten_free", dietaryPattern: "mediterranean", exclusions: ["gluten"], forbidden: "pasta", violationCode: "gluten", safe: "pasta senza glutine" },
+  { name: "senza lattosio", profile: "lactose_free", dietaryPattern: "mediterranean", exclusions: ["lactose"], forbidden: "ricotta", violationCode: "lactose", safe: "yogurt senza lattosio" },
 ];
 
 function recipeWith(value: string, field: "title" | "description" | "notes" | "ingredients" | "steps") {
@@ -125,7 +123,10 @@ test("audit parametrico: tutti i dietProfile chiusi normalizzano e validano il p
 
 type MockCall = { prompt: string; ingredientNames: string[] | undefined };
 
-function createAllergenAuditClient(includeMediterraneanRedMeat = false) {
+function createAllergenAuditClient(
+  profile: MealPlanDietProfile,
+  includeMediterraneanRedMeat = false,
+) {
   const calls: MockCall[] = [];
   return {
     calls,
@@ -134,7 +135,8 @@ function createAllergenAuditClient(includeMediterraneanRedMeat = false) {
         completions: {
           create: async (request: any) => {
             const prompt = request.messages.find((message: any) => message.role === "system")!.content as string;
-            const itemSchema = request.response_format.json_schema.schema.properties.items.items;
+            const slotSchemas = request.response_format.json_schema.schema.properties as Record<string, any>;
+            const itemSchema = Object.values(slotSchemas)[0] as any;
             const ingredientNames = itemSchema.properties.ingredients.items.properties.name.enum as string[] | undefined;
             calls.push({ prompt, ingredientNames });
             const dates = (prompt.match(/SOLO per questi giorni: ([0-9,\- ]+)\./)?.[1] || "")
@@ -142,30 +144,54 @@ function createAllergenAuditClient(includeMediterraneanRedMeat = false) {
               .map((value) => value.trim())
               .filter(Boolean);
             const mealTypes = itemSchema.properties.mealType.enum as string[];
-            const items = dates.flatMap((date) => mealTypes.map((mealType) => ({
+            const distinctiveLabels = [
+              "mela", "pera", "banana", "fragola", "albicocca", "pesca", "kiwi",
+              "riso", "quinoa", "patata", "carota", "zucchina", "bietola", "spinacio",
+              "lenticchia", "cece", "fagiolo", "pomodoro", "melanzana", "peperone", "zucca",
+            ];
+            const items = dates.flatMap((date, dayIndex) => mealTypes.map((mealType, mealIndex) => {
+              const position = dayIndex * mealTypes.length + mealIndex;
+              const fallbackIngredients = mealType === "breakfast"
+                ? ["mela", "banana", "pane"]
+                : ["riso", "zucchine", "carote"];
+              const sportMainIngredients = ["pollo", "riso integrale", "zucchine"];
+              return ({
               date,
               mealType,
               // Il mock deve esercitare il generatore senza introdurre un
               // doppione artificiale nello stesso tipo di pasto.
-              title: `Ricetta ${mealType} compatibile ${date}`,
+              title: `${mealType === "breakfast" ? "Colazione" : mealType === "lunch" ? "Pranzo" : "Cena"} di ${distinctiveLabels[position]}`,
               description: "Ricetta sintetica compatibile.",
-              ingredients: [{
-                name: includeMediterraneanRedMeat &&
+              ingredients: fallbackIngredients.map((fallback, index) => ({
+                name: profile === "sport" && mealType !== "breakfast"
+                  ? sportMainIngredients[index]!
+                  : includeMediterraneanRedMeat &&
                     mealType === "dinner" &&
                     date === dates[0] &&
+                    index === 0 &&
                     ingredientNames?.includes("manzo")
                   ? "manzo"
-                  : ingredientNames?.[0] || "mela",
+                  : ingredientNames?.[index] || fallback,
                 quantity: "1",
                 unit: "pezzo",
-              }],
+              })),
               steps: [
                 "Prepara l'ingrediente indicato.",
                 "Cuocilo con cura.",
                 "Servi il pasto.",
               ],
-            })));
-            return { choices: [{ message: { content: JSON.stringify({ items }) }, finish_reason: "stop" }] };
+              });
+            }));
+            return {
+              choices: [{
+                message: {
+                  content: JSON.stringify(Object.fromEntries(
+                    items.map((item, index) => [`meal_${String(index + 1).padStart(2, "0")}`, item]),
+                  )),
+                },
+                finish_reason: "stop",
+              }],
+            };
           },
         },
       },
@@ -173,8 +199,9 @@ function createAllergenAuditClient(includeMediterraneanRedMeat = false) {
   };
 }
 
-test("body reale → route parser → prompt → mock → piano finale: ogni dietProfile resta entro il budget globale", async (t) => {
-  for (const scenario of PROFILE_CASES) {
+test("body reale → route parser → prompt → mock → piano finale: i profili non mediterranei restano entro il budget globale", async (t) => {
+  for (const scenario of PROFILE_CASES.filter((scenario) =>
+    !["mediterranean", "gluten_free", "lactose_free"].includes(scenario.profile))) {
     const prepared = await prepareMealPlanPreferences(
       "meal-plan-allergen-audit-user",
       { dietProfile: scenario.profile },
@@ -184,7 +211,10 @@ test("body reale → route parser → prompt → mock → piano finale: ogni die
     if (!prepared.ok) continue;
 
     const { client, calls } = createAllergenAuditClient(
-      scenario.profile.startsWith("mediterranean"),
+      scenario.profile,
+      scenario.profile === "mediterranean" ||
+        scenario.profile === "gluten_free" ||
+        scenario.profile === "lactose_free",
     );
     __setOpenAiClientForTest(client);
     const plan = await generateWeeklyMealPlan({

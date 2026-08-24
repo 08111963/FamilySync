@@ -156,9 +156,9 @@ const MEDITERRANEAN_FISH_PATTERN =
   /\b(?:salmone|merluzzo|tonno|orata|spigola|branzino|sardine?|alici|sgombro|trota|pesce spada|polpo|calamari)\b/;
 const MEDITERRANEAN_WHITE_MEAT_PATTERN = /\b(?:pollo|tacchino|coniglio)\b/;
 const MEDITERRANEAN_EGG_PATTERN = /\b(?:uovo|uova)\b/;
-const MEDITERRANEAN_ALWAYS_GENERIC_PATTERN =
+const GENERIC_MEAL_PLAN_TERM_PATTERN =
   /\b(?:proteina|proteine|carboidrato|carboidrati|fonte proteica|alimento proteico)\b/;
-const MEDITERRANEAN_GENERIC_INGREDIENT_PATTERN =
+const GENERIC_MEAL_PLAN_INGREDIENT_PATTERN =
   /^(?:verdura|verdure|ortaggio|ortaggi|cereale|cereali|legume|legumi)\b|^(?:fonte proteica|alimento proteico|proteina|carboidrato)$/;
 
 function mealText(item: MealPlanVarietyItem): string {
@@ -170,14 +170,18 @@ function mealText(item: MealPlanVarietyItem): string {
   ].join(" ");
 }
 
-function genericMediterraneanTerm(item: MealPlanVarietyItem): string | undefined {
+/**
+ * Un piano con ingredienti o componenti generici non è verificabile: questa
+ * regola è condivisa da tutti i profili, non solo da quello Mediterraneo.
+ */
+export function findGenericMealPlanTerm(item: MealPlanVarietyItem): string | undefined {
   const text = normalize(mealText(item));
-  const alwaysGeneric = text.match(MEDITERRANEAN_ALWAYS_GENERIC_PATTERN)?.[0];
+  const alwaysGeneric = text.match(GENERIC_MEAL_PLAN_TERM_PATTERN)?.[0];
   if (alwaysGeneric) return alwaysGeneric;
 
   const genericIngredient = (item.ingredients || [])
     .map((ingredient) => normalize(ingredient.name || ""))
-    .find((name) => MEDITERRANEAN_GENERIC_INGREDIENT_PATTERN.test(name));
+    .find((name) => GENERIC_MEAL_PLAN_INGREDIENT_PATTERN.test(name));
   return genericIngredient;
 }
 
@@ -215,11 +219,11 @@ export function evaluateMediterraneanMealPlan(
   const variety = evaluateMealPlanVariety(items);
   const issues: MediterraneanMealPlanIssue[] = [];
 
-  const genericItem = items.find((item) => genericMediterraneanTerm(item));
+  const genericItem = items.find((item) => findGenericMealPlanTerm(item));
   if (genericItem) {
     issues.push({
       code: "mediterranean-generic-term",
-      matched: genericMediterraneanTerm(genericItem),
+      matched: findGenericMealPlanTerm(genericItem),
     });
   }
   if (pastaLunchCount < 2) {

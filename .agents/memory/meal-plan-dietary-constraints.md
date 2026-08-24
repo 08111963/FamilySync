@@ -21,6 +21,12 @@ La dieta, le allergie e le note devono attraversare una sola normalizzazione can
 
 **How to apply:** usa le esclusioni canoniche per consenso, prompt, schema, allowlist e validazione. I prodotti trasformati a rischio glutine sono ammessi soltanto con dicitura esplicita “senza glutine”; una scelta personale “senza glutine” non è di per sé dato sanitario, mentre celiachia e allergie dichiarate richiedono il consenso salute.
 
+Il menu del Piano Pasti resta chiuso ai sette profili definiti dal prodotto. Glutine e lattosio sono vincoli indipendenti: il solo senza glutine richiede sostituti espliciti, mentre il solo senza lattosio mantiene pasta, pane e fette biscottate normali e non deve introdurre diciture senza glutine.
+
+**Why:** combinare o far ereditare implicitamente le due esclusioni restringe inutilmente il menu e può fare passare prodotti con glutine nel profilo sbagliato.
+
+**How to apply:** converti un identificatore storico soltanto quando conserva integralmente i suoi vincoli; un profilo storico non rappresentabile deve richiedere una nuova scelta esplicita, mai ricadere su un profilo più permissivo. Applica la regola anche agli ingressi client come la dettatura: una frase bloccata non deve né avviare lo stream né restare nelle note della scelta manuale successiva.
+
 La varietà culinaria è una preferenza best-effort separata dalla sicurezza: i blocchi giornalieri possono ricevere solo categorie aggregate già usate per ridurre le ripetizioni, ma non devono allentare la closed allowlist né trasformare monotonia in una violazione alimentare.
 
 **Why:** un prompt sicuro ma troppo ristretto tende a ripetere riso e una singola proteina; rigenerare con ulteriori chiamate costa quota e non dà garanzie migliori.

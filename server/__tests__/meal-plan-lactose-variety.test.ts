@@ -16,8 +16,8 @@ const lunch = (date: string, title: string, ingredients: string[]) => ({
   ingredients: ingredients.map((name) => ({ name })),
 });
 
-test("solo lattosio conserva un pool ampio e separa i prodotti senza lattosio dall'allergia al latte", () => {
-  const preferences = { dietProfile: "mediterranean_lactose_free" } as const;
+test("solo lattosio conserva pasta, pane e fette normali senza introdurre il senza glutine", () => {
+  const preferences = { dietProfile: "lactose_free" } as const;
   const breakfast = compatibleMealIngredients(preferences, "breakfast");
   const main = compatibleMealIngredients(preferences, "main");
 
@@ -28,6 +28,9 @@ test("solo lattosio conserva un pool ampio e separa i prodotti senza lattosio da
     assert.ok(main.includes(ingredient), `${ingredient} deve restare nel pool principale lactose`);
   }
   assert.ok(breakfast.includes("yogurt senza lattosio"));
+  assert.ok(breakfast.includes("pane"));
+  assert.ok(breakfast.includes("fette biscottate"));
+  assert.ok(!breakfast.some((ingredient) => /senza glutine|gluten free/i.test(ingredient)));
   assert.ok(main.includes("ricotta senza lattosio"));
   assert.ok(main.includes("mozzarella senza lattosio"));
   assert.ok(!main.includes("latte"));
@@ -94,5 +97,5 @@ test("il fixture reale lactose 7/7 viene segnalato in modo esplicito", () => {
   assert.match(context, /SEMANTIC LUNCH SIGNATURES USED/i);
   assert.match(context, /pasta \+ tomato \+ tuna \+ pasta_main/i);
   assert.match(context, /EVITA una firma semantica già usata/i);
-  assert.deepEqual(validateMealPlanConstraints(lunches, { dietProfile: "mediterranean_lactose_free" }), []);
+  assert.deepEqual(validateMealPlanConstraints(lunches, { dietProfile: "lactose_free" }), []);
 });

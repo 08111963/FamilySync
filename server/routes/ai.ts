@@ -125,17 +125,27 @@ export async function prepareMealPlanPreferences(
   }
   const rawPreferences = parsed.data || {};
   const requestedProfile = rawPreferences.dietProfile;
-  if (requestedProfile && !isMealPlanDietProfile(requestedProfile)) {
+  const requestedOrLegacyProfile = isMealPlanDietProfile(requestedProfile)
+    ? requestedProfile
+    : legacyMealPlanDietToProfile(requestedProfile);
+  if (requestedProfile && !requestedOrLegacyProfile) {
     return {
       ok: false,
       status: 422,
       body: { error: { code: "UNSUPPORTED_DIET_PROFILE", message: "Scegli un profilo dieta disponibile dal menu." } },
     };
   }
-  const legacyProfile = legacyMealPlanDietToProfile(rawPreferences.diet);
-  const dietProfile: MealPlanDietProfile = isMealPlanDietProfile(requestedProfile)
-    ? requestedProfile
-    : legacyProfile || "mediterranean";
+  const legacyDietProfile = legacyMealPlanDietToProfile(rawPreferences.diet);
+  if (!requestedOrLegacyProfile && rawPreferences.diet && !legacyDietProfile) {
+    return {
+      ok: false,
+      status: 422,
+      body: { error: { code: "UNSUPPORTED_DIET_PROFILE", message: "Il profilo dieta precedente non è più disponibile: scegli di nuovo un profilo dal menu." } },
+    };
+  }
+  const dietProfile: MealPlanDietProfile = requestedOrLegacyProfile ||
+    legacyDietProfile ||
+    "mediterranean";
   const preferences: MealPlanConstraintPreferences & { maxTimeMinutes?: number; mealsPerDay?: number } = {
     dietProfile,
     ...(rawPreferences.notes ? { notes: rawPreferences.notes } : {}),

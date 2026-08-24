@@ -1051,6 +1051,10 @@ const SAFE_GLUTEN_FREE_MAIN_INGREDIENTS = [
   "couscous di mais senza glutine", "gnocchi senza glutine", "gallette di riso senza glutine",
 ];
 
+const SAFE_NATURALLY_GLUTEN_FREE_MAIN_INGREDIENTS = SAFE_MAIN_INGREDIENTS.filter(
+  (ingredient) => !/\b(?:pasta|pane|couscous|farro|orzo|avena|cereali)\b/.test(ingredient),
+);
+
 // Questi alimenti sono compatibili SOLTANTO con l'intolleranza al lattosio
 // quando riportano la dicitura esplicita. Non entrano mai nel pool in caso di
 // allergia alle proteine del latte.
@@ -1103,13 +1107,11 @@ export function compatibleMealIngredients(
 ): string[] {
   const isGlutenFree = mealPlanHasExclusion(preferences, "gluten");
   const avoidsLactose = mealPlanHasExclusion(preferences, "lactose");
-  const vegetarian = mealPlanHasDietaryPattern(preferences, "vegetarian") ||
-    mealPlanHasDietaryPattern(preferences, "vegan");
-  const vegan = mealPlanHasDietaryPattern(preferences, "vegan");
+  const vegetarian = mealPlanHasDietaryPattern(preferences, "vegetarian");
   const base = mealType === "breakfast"
     ? SAFE_BREAKFAST_INGREDIENTS
     : isGlutenFree
-      ? [...SAFE_MAIN_INGREDIENTS, ...SAFE_GLUTEN_FREE_MAIN_INGREDIENTS]
+      ? [...SAFE_NATURALLY_GLUTEN_FREE_MAIN_INGREDIENTS, ...SAFE_GLUTEN_FREE_MAIN_INGREDIENTS]
       : SAFE_MAIN_INGREDIENTS;
 
   return [...base, ...(avoidsLactose ? SAFE_LACTOSE_FREE_DAIRY_INGREDIENTS : [])]
@@ -1120,9 +1122,9 @@ export function compatibleMealIngredients(
       // lessicale: pasta/pane/biscotti esplicitamente compatibili devono
       // restare disponibili quando il vincolo canonico è glutine.
       if (isGlutenFree && /\b(?:pane|fette biscottate|biscotti|cornetto|pancake|avena|granola)\b/.test(normalizedIngredient) && !normalizedIngredient.includes("senza glutine")) return false;
-       if (avoidsLactose && /\b(?:latte|yogurt|biscotti|fette biscottate)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso|senza glutine|senza lattosio|delattosat)\b/.test(normalizedIngredient)) return false;
+       if (avoidsLactose && /\b(?:latte|yogurt|biscotti)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso|senza lattosio|delattosat)\b/.test(normalizedIngredient)) return false;
+       if (avoidsLactose && !isGlutenFree && /\b(?:senza glutine|gluten free)\b/.test(normalizedIngredient)) return false;
       if (vegetarian && /\b(?:pollo|tacchino)\b/.test(normalizedIngredient)) return false;
-      if (vegan && /\b(?:uova?|miele|latte|yogurt)\b/.test(normalizedIngredient) && !/\b(?:vegetale|cocco|riso)\b/.test(normalizedIngredient)) return false;
       if (mealPlanConstraintsHaveViolation(ingredient, preferences)) return false;
       return true;
     });
@@ -1357,7 +1359,7 @@ function buildConstraintCorrection(
     : "";
   const lactoseCorrection = violations.some((violation) => violation.code === "lactose")
     ? `
-- VINCOLO LATTOSIO: ricrea il piano con ingredienti naturalmente privi di latticini. Non scrivere mai lattosio, latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone in titolo, descrizione, ingredienti o passaggi, neppure con formule come "senza lattosio". Per la colazione usa solo bevande vegetali dichiarate (di riso o di cocco), frutta, pane o gallette e marmellata; per pranzo e cena usa pasta di semola, riso, patate, legumi, carne, pesce, uova e verdure compatibili.`
+- VINCOLO LATTOSIO: ricrea il piano senza latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone ordinari. Se serve un latticino usa soltanto una versione esplicitamente “senza lattosio” o vegetale. Pasta di semola, pane e fette biscottate normali restano compatibili: non sostituirli con prodotti senza glutine e non scrivere “senza glutine” o “gluten free”.`
     : "";
   const hasLactoseViolation = violations.some((violation) => violation.code === "lactose");
   const exactCorrection = `
@@ -1432,12 +1434,11 @@ async function generateWeeklyMealPlanAttempt(
   // poche verdure": ancoriamo la distribuzione settimanale reale della dieta.
   const dietLower = (context.preferences?.dietProfile || '').toLowerCase();
   const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
-  const mediterraneanDiet = mealPlanHasDietaryPattern(context.preferences, "mediterranean");
   const requiresMediterraneanRedMeat = mealPlanRequiresMediterraneanRedMeat(context.preferences);
+  const mediterraneanDiet = requiresMediterraneanRedMeat;
   const constrainedPlan = hasMealPlanConstraints(context.preferences);
   const lactoseAllowsGluten = !glutenFreeRequired &&
-    mealPlanHasExclusion(context.preferences, "lactose") &&
-    !mealPlanHasDietaryPattern(context.preferences, "low-carb");
+    mealPlanHasExclusion(context.preferences, "lactose");
   const lactoseFreeRequired = mealPlanHasExclusion(context.preferences, "lactose");
   const redMeatWeeklyRule = requiresMediterraneanRedMeat
     ? " Includi almeno un pasto principale con carne rossa nella settimana, preferibilmente uno."
@@ -1468,7 +1469,12 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
 
   // Piatti tradizionali: il modello tende a "salutizzare" tutto proponendo
   // pasta/pane integrali ovunque. Niente varianti integrali salvo richiesta.
-  const wantsWholegrain = dietLower.includes('integral') || rawNotes.toLowerCase().includes('integral');
+  // Il profilo sportivo richiede carboidrati complessi a pranzo e cena:
+  // le varianti integrali sono quindi compatibili, senza renderle obbligatorie
+  // quando il piano usa patate, polenta o legumi.
+  const wantsWholegrain = dietLower.includes('integral') ||
+    rawNotes.toLowerCase().includes('integral') ||
+    mealPlanHasDietaryPattern(context.preferences, "sport");
   const wholegrainRule = glutenFreeRequired || wantsWholegrain
     ? ''
     : `\n- Pasta, riso e pane: usa quelli CLASSICI (pasta di semola, riso bianco, pane comune). NON proporre varianti "integrali" a meno che l'utente non le chieda espressamente. Questo vale anche se sono presenti allergie, intolleranze o altri vincoli: tali vincoli non implicano mai prodotti integrali.`;
@@ -1672,6 +1678,12 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     const lactosePastaRule = lactoseAllowsGluten && requestMealTypes.includes("lunch")
       ? "\n- Il vincolo lattosio/latte NON richiede di evitare il glutine: pasta di semola classica e gli altri cereali con glutine restano compatibili, purché non contengano latte o derivati incompatibili."
       : "";
+    const lightProfileRule = mealPlanHasDietaryPattern(context.preferences, "light")
+      ? "\n- PROFILO LEGGERO: per pranzo e cena usa cotture al forno, al vapore o in padella leggera; non usare fritture, impanature, panna, besciamella, maionese, pancetta o salsiccia."
+      : "";
+    const sportProfileRule = mealPlanHasDietaryPattern(context.preferences, "sport")
+      ? "\n- PROFILO SPORTIVO: in OGNI pranzo e cena dichiara negli ingredienti una fonte proteica concreta e un carboidrato complesso concreto (riso o pasta integrali, quinoa, farro, orzo, patate, polenta o legumi). Non usare parole generiche come “proteina”, “carboidrato” o “verdure”."
+      : "";
     const lunchFamilyTargetRule = requestMealTypes.includes("lunch") && request.lunchFamilyTarget
       ? `\n- OBIETTIVO FAMIGLIA PRANZO DEL GIORNO: ${request.lunchFamilyTarget}. Il pranzo DEVE appartenere a questa famiglia, salvo conflitto con un vincolo di sicurezza. Non sostituirla con pasta o un'altra famiglia solo cambiando condimento, contorno, olio o erbe.`
       : "";
@@ -1680,7 +1692,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
       ? `\n- OBIETTIVO PROFILO PRANZO DEL GIORNO: proteina principale ${request.lunchSemanticTarget?.mainProtein === "red_meat" ? "red_meat (carne rossa: manzo, vitello, maiale o agnello compatibile)" : request.lunchSemanticTarget?.mainProtein || "compatibile"}; profilo/preparazione ${request.lunchSemanticTarget?.preparation || "diverso dai giorni già usati"}. Quando compatibile, seguilo senza ripetere una coppia proteina + profilo già presente nel contesto.`
       : "";
     const lactoseFreeOutputRule = lactoseFreeRequired
-      ? `\n- PIANO SENZA LATTOSIO: in TUTTI i campi dell'output non scrivere né usare lattosio, latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone, salvo un prodotto della lista chiusa che riporti esplicitamente “senza lattosio”. Non usare mai un prodotto lattiero-caseario implicito. A colazione scegli bevanda vegetale, frutta, pane o gallette e marmellata, oppure un prodotto esplicitamente senza lattosio della lista; negli altri pasti usa solo gli ingredienti compatibili della lista chiusa.`
+    ? `\n- PIANO SENZA LATTOSIO: evita latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino e mascarpone ordinari. Se servono, usa solo prodotti esplicitamente “senza lattosio” o vegetali. Pasta di semola, pane e fette biscottate normali sono consentiti. Non aggiungere mai “senza glutine” o “gluten free” a titoli, ingredienti o passaggi: questo profilo non richiede vincoli sul glutine.`
       : "";
     const breakfastMealRule = constrainedPlan
       ? `- breakfast (colazione): SOLO una colazione leggera composta esclusivamente da ingredienti compatibili con TUTTI i vincoli.${glutenFreeRequired ? ' Se usi un prodotto a base di cereali o farina, deve essere dichiarato esplicitamente senza glutine in titolo, ingredienti e passaggi.' : ''} Non usare esempi standard né sostituti impliciti.`
@@ -1722,7 +1734,7 @@ ${constrainedRecipeReferenceRule}
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}
-     - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
+      - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}${lightProfileRule}${sportProfileRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
  - ${variantHint}${themeHint ? `\n- BLUEPRINT SETTIMANALE LOCALE: segui esattamente questi obiettivi già pianificati, senza scambiarli tra date:\n${themeHint}` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione indicata realizza questa combinazione concreta: ${breakfastHint}.` : ''}
   ${constraintRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}${context.previousPlanJson ? `\n- JSON DEL PIANO PRECEDENTE DA CORREGGERE (non copiare gli errori; conserva ogni elemento già valido e modifica soltanto quelli necessari): ${context.previousPlanJson}` : ""}
