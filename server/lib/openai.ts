@@ -1362,6 +1362,17 @@ function buildConstraintCorrection(
 - VINCOLO LATTOSIO: ricrea il piano senza latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino o mascarpone ordinari. Se serve un latticino usa soltanto una versione esplicitamente “senza lattosio” o vegetale. Pasta di semola, pane e fette biscottate normali restano compatibili: non sostituirli con prodotti senza glutine e non scrivere “senza glutine” o “gluten free”.`
     : "";
   const hasLactoseViolation = violations.some((violation) => violation.code === "lactose");
+  const genericTerms = Array.from(new Set(
+    violations
+      .filter((violation) => violation.code === "generic-meal-term")
+      .map((violation) => violation.matched)
+      .filter((term): term is string => Boolean(term)),
+  )).slice(0, 12);
+  const genericTermCorrection = genericTerms.length > 0
+    ? `
+- CATEGORIE GENERICHE VIETATE: elimina letteralmente ${genericTerms.map((term) => `“${term}”`).join(", ")} da titoli, descrizioni, ingredienti e passaggi.
+- Nell'array ingredients scrivi sempre il nome di un singolo alimento concreto: per esempio “zucchine”, “carote” o “spinaci”, mai “verdure”, “verdure miste”, “ortaggi”, “cereali”, “legumi”, “proteine” o “carboidrati”.`
+    : "";
   const exactCorrection = `
 - Non scrivere gli alimenti o i termini rilevati come incompatibili in nessun campo del nuovo piano, nemmeno come esempio o descrizione.
 - Sostituisci ogni componente incompatibile con un ingrediente di tipo diverso e compatibile con tutti i vincoli indicati.`;
@@ -1372,7 +1383,7 @@ function buildConstraintCorrection(
   return `
 - CORREZIONE AUTOMATICA OBBLIGATORIA (tentativo ${nextAttempt}): il piano precedente è stato scartato perché incompatibile.
 - Incompatibilità rilevate dal controllo: ${detected.join("; ")}.
-${correctionIngredientRule}${exactCorrection}
+${correctionIngredientRule}${genericTermCorrection}${exactCorrection}
 - Prima di rispondere esegui un secondo controllo completo contro dieta e allergie.${glutenCorrection}${lactoseCorrection}`;
 }
 
@@ -1445,7 +1456,7 @@ async function generateWeeklyMealPlanAttempt(
     : "";
   const mediterraneanRule = mediterraneanDiet
     ? `\n- DIETA MEDITERRANEA OBBLIGATORIA: ogni settimana deve includere almeno 2 pranzi con pasta${glutenFreeRequired ? " senza glutine" : ""}, pesce 2-3 volte, carne bianca 1-2 volte, uova 1-2 volte e almeno un pranzo o cena con manzo, vitello o agnello. Ceci, lenticchie, fagioli e piselli in massimo 3 pranzi/cene totali.
-- Ogni ingrediente deve essere concreto. Non scrivere mai “Proteina”, “Carboidrato”, “Fonte proteica” o “Alimento proteico”; non usare “verdura” o “cereale” come nome di ingrediente. Varia davvero pranzi e cene italiani, non solo i contorni.${redMeatWeeklyRule}`
+- Ogni ingrediente deve essere concreto. Nell'array ingredients usa il nome di un singolo alimento, per esempio “zucchine”, “carote” o “spinaci”: non scrivere mai “Proteina”, “Carboidrato”, “Fonte proteica”, “Alimento proteico”, “verdure”, “verdure miste”, “ortaggi”, “cereali” o “legumi”. Varia davvero pranzi e cene italiani, non solo i contorni.${redMeatWeeklyRule}`
     : '';
   const weeklyVarietyRule = `
 - VARIETÀ SETTIMANALE (best effort, mai in contrasto con i vincoli): sui pranzi e sulle cene cerca almeno 4 fonti di carboidrati diverse nella settimana e non usare la stessa più di 3 volte quando sono disponibili alternative compatibili.

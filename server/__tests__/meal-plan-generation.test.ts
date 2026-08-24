@@ -498,6 +498,32 @@ test("i tre profili mediterranei ricevono un solo repair mirato e restano compat
   t.after(() => __setOpenAiClientForTest(null));
 });
 
+test("un ingrediente generico rilevato in produzione riceve un repair puntuale e valido", async (t) => {
+  const valid = balancedMediterraneanWeek("mediterranean");
+  const generic = cloneMeals(valid);
+  const genericDinner = generic.find((item) => item.mealType === "dinner")!;
+  genericDinner.ingredients[2] = {
+    ...genericDinner.ingredients[2]!,
+    name: "verdure miste per umido",
+  };
+  const { client, calls } = createFakeClient((_request, call) =>
+    call === 1 ? generic : valid);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "mediterranean" },
+  });
+
+  assert.equal(calls.length, 2, "un solo repair deve correggere il termine generico");
+  assert.match(calls[0]!.prompt, /“verdure miste”/);
+  assert.match(calls[1]!.prompt, /CATEGORIE GENERICHE VIETATE/);
+  assert.match(calls[1]!.prompt, /“verdure miste per umido”/);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
+});
+
 test("un repair mediterraneo si attiva anche quando il pesce è citato solo nel testo", async (t) => {
   const valid = balancedMediterraneanWeek("mediterranean");
   const fishOnlyInText = cloneMeals(valid);
