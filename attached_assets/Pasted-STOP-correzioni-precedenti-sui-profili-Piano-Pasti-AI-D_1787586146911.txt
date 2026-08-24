@@ -1,0 +1,419 @@
+STOP correzioni precedenti sui profili Piano Pasti AI.
+
+Dopo gli ultimi interventi il Piano Pasti è peggiorato: diversi profili non generano più o risultano ancora sbilanciati. Non continuare a correggere Sportiva, Equilibrata e Leggera.
+
+Nuova decisione di prodotto:
+semplificare definitivamente il menu dieta.
+
+Il menu Piano Pasti deve contenere solo questi 5 profili:
+
+- Mediterranea
+- Vegetariana
+- Vegana
+- Senza glutine
+- Senza lattosio
+
+Rimuovere dalla UI:
+- Equilibrata
+- Leggera
+- Sportiva
+
+Non devono più comparire nel selettore.
+
+Mantenere eventualmente compatibilità legacy solo per vecchi dati già salvati, senza mostrarli nel menu:
+- balanced / Equilibrata → mediterranean
+- light / Leggera → mediterranean
+- sport / Sportiva → mediterranean
+- mediterranean_gluten_free → gluten_free
+- mediterranean_lactose_free → lactose_free
+- vegetarian_gluten_free → gluten_free oppure vegetarian se la compatibilità esistente lo richiede, ma non mostrarlo come profilo nuovo
+
+Obiettivo principale:
+ripristinare una generazione stabile e chiara del Piano Pasti.
+
+Non creare più profili ambigui.
+Non creare validatori nutrizionali troppo rigidi.
+Non bloccare un piano solo perché non rispetta perfettamente una preferenza qualitativa.
+Il validatore deve bloccare solo:
+- formato incompleto;
+- meno di 21 pasti;
+- struttura non valida;
+- violazione di vincoli alimentari fondamentali;
+- presenza di ingredienti vietati per quel profilo.
+
+Il prompt deve guidare la qualità, ma la validazione non deve rendere fragile la generazione.
+
+PROFILO 1 — Mediterranea
+
+Descrizione:
+dieta mediterranea italiana, varia e realistica, adatta a una famiglia.
+
+Deve includere:
+- pasta o riso più volte nella settimana;
+- pesce;
+- carne bianca;
+- carne rossa almeno una volta;
+- uova;
+- verdure;
+- frutta;
+- legumi, ma senza esagerare;
+- piatti concreti e italiani.
+
+Regole:
+- massimo 2-3 pasti principali con legumi nella settimana;
+- evitare che i legumi dominino il piano;
+- evitare parole generiche come “Proteina”, “Fonte proteica”, “Carboidrato”, “Cereale”;
+- usare nomi di piatti concreti.
+
+Esempi corretti:
+- pasta al pomodoro e basilico con insalata;
+- riso con zucchine e pollo;
+- merluzzo al forno con patate;
+- frittata con spinaci;
+- manzo magro con verdure;
+- minestra di verdure con crostini.
+
+PROFILO 2 — Vegetariana
+
+Descrizione:
+dieta vegetariana vera, senza carne e senza pesce.
+
+Vietati:
+- carne rossa;
+- carne bianca;
+- pollo;
+- tacchino;
+- manzo;
+- maiale;
+- salumi;
+- pesce;
+- tonno;
+- salmone;
+- merluzzo;
+- frutti di mare.
+
+Ammessi:
+- pasta;
+- riso;
+- pane;
+- cereali;
+- uova;
+- latte;
+- yogurt;
+- formaggi;
+- legumi;
+- verdure;
+- frutta;
+- frutta secca.
+
+Regole:
+- non trasformare la dieta vegetariana in una dieta fatta quasi solo di legumi;
+- massimo 3-4 pasti principali con legumi nella settimana;
+- usare anche uova, formaggi, cereali, verdure, pasta e riso;
+- niente carne e niente pesce;
+- niente parole generiche come “Proteina”.
+
+Esempi corretti:
+- pasta al pomodoro con ricotta;
+- risotto con zucchine;
+- frittata con verdure;
+- insalata di farro con mozzarella e pomodori;
+- polpette di ceci con verdure;
+- lasagne vegetariane.
+
+PROFILO 3 — Vegana
+
+Descrizione:
+dieta vegana vera, senza ingredienti animali.
+
+Vietati:
+- carne;
+- pesce;
+- salumi;
+- uova;
+- latte;
+- yogurt;
+- formaggi;
+- burro;
+- panna;
+- ricotta;
+- miele;
+- ingredienti di origine animale.
+
+Ammessi:
+- pasta;
+- riso;
+- pane;
+- cereali;
+- legumi;
+- tofu;
+- tempeh;
+- seitan, salvo profilo senza glutine non combinato;
+- verdure;
+- frutta;
+- frutta secca;
+- semi;
+- bevande vegetali.
+
+Regole:
+- non usare latte, yogurt, formaggi o uova;
+- non usare carne o pesce;
+- evitare ripetizioni eccessive di legumi;
+- massimo 4 pasti principali con legumi nella settimana;
+- alternare con pasta, riso, cereali, tofu, verdure, patate, frutta secca;
+- niente parole generiche come “Proteina”.
+
+Esempi corretti:
+- pasta al pomodoro con verdure;
+- riso con tofu e zucchine;
+- couscous con verdure e ceci;
+- vellutata di zucca con crostini;
+- burger vegetale con patate e insalata;
+- yogurt vegetale con frutta.
+
+PROFILO 4 — Senza glutine
+
+Descrizione:
+dieta familiare equilibrata senza glutine. Non è vegetariana e non è senza lattosio.
+
+Vietati salvo dicitura esplicita “senza glutine”:
+- pasta normale;
+- pane normale;
+- fette biscottate normali;
+- biscotti normali;
+- couscous;
+- farro;
+- orzo;
+- seitan;
+- frumento;
+- segale;
+- prodotti da forno non dichiarati senza glutine.
+
+Ammessi:
+- pasta senza glutine;
+- pane senza glutine;
+- fette biscottate senza glutine;
+- biscotti senza glutine;
+- riso;
+- mais;
+- patate;
+- polenta;
+- quinoa;
+- grano saraceno;
+- carne rossa;
+- carne bianca;
+- pesce;
+- uova;
+- latte;
+- yogurt;
+- formaggi;
+- verdure;
+- frutta.
+
+Regola fondamentale:
+Senza glutine riguarda solo il glutine.
+Non deve diventare senza lattosio.
+Non deve diventare vegetariana.
+Carne, pesce, uova e latticini sono ammessi.
+
+Regole:
+- generare un piano completo e realistico;
+- non usare glutine non consentito;
+- usare alternative senza glutine dove necessario;
+- non riempire il piano di legumi;
+- massimo 2-3 pasti principali con legumi;
+- niente parole generiche come “Proteina”.
+
+Esempi corretti:
+- pasta senza glutine al pomodoro;
+- riso con pollo e verdure;
+- merluzzo con patate;
+- uova con spinaci;
+- pane senza glutine con marmellata;
+- yogurt con frutta.
+
+PROFILO 5 — Senza lattosio
+
+Descrizione:
+dieta familiare equilibrata senza lattosio. Non è senza glutine e non è vegetariana.
+
+Vietati:
+- latte normale;
+- yogurt normale;
+- burro;
+- panna;
+- ricotta normale;
+- formaggi non dichiarati senza lattosio;
+- latticini generici.
+
+Ammessi:
+- latte senza lattosio;
+- yogurt senza lattosio;
+- formaggi senza lattosio;
+- bevande vegetali;
+- pasta normale;
+- pane normale;
+- fette biscottate normali;
+- biscotti senza latte/burro se necessario;
+- riso;
+- farro;
+- orzo;
+- couscous;
+- carne rossa;
+- carne bianca;
+- pesce;
+- uova;
+- verdure;
+- frutta.
+
+Regola fondamentale:
+Senza lattosio riguarda solo il lattosio.
+Non deve generare automaticamente prodotti senza glutine.
+Non deve diventare vegetariana.
+Pasta, pane, fette biscottate e cereali normali sono ammessi.
+
+Regole:
+- non usare latticini normali;
+- usare alternative senza lattosio quando servono;
+- non scrivere “senza glutine” se il profilo è solo senza lattosio;
+- non riempire il piano di legumi;
+- massimo 2-3 pasti principali con legumi;
+- niente parole generiche come “Proteina”.
+
+Esempi corretti:
+- pasta al pomodoro;
+- pane con marmellata;
+- fette biscottate con marmellata;
+- pollo con riso e verdure;
+- pesce con patate;
+- yogurt senza lattosio con frutta.
+
+VALIDAZIONE SERVER
+
+Semplificare la validazione.
+
+Il validatore deve essere fail-closed solo sui vincoli fondamentali.
+
+Deve rifiutare:
+- piano con meno di 21 pasti;
+- JSON o formato non valido;
+- giorni o pasti mancanti;
+- carne o pesce nella Vegetariana;
+- qualunque ingrediente animale nella Vegana;
+- glutine non consentito nel Senza glutine;
+- lattosio non consentito nel Senza lattosio;
+- parole generiche al posto del piatto, per esempio “Proteina”, “Fonte proteica”, “Carboidrato”.
+
+Non deve rifiutare:
+- un piano mediterraneo solo perché non ha una rotazione perfetta;
+- un piano senza glutine solo perché non contiene carne rossa;
+- un piano senza lattosio solo perché non contiene carne rossa;
+- un piano vegetariano perché contiene più legumi degli altri;
+- un piano vegano perché usa tofu, seitan o legumi;
+- un piano valido ma non perfetto dal punto di vista qualitativo.
+
+I limiti sui legumi devono essere linee guida forti nel prompt, non blocchi rigidi che fanno fallire continuamente la generazione, tranne quando il piano è chiaramente dominato dai legumi in modo eccessivo.
+
+ERRORI DA EVITARE
+
+Non reintrodurre:
+- Sportiva;
+- Equilibrata;
+- Leggera;
+- Mediterranea senza glutine;
+- Mediterranea senza lattosio;
+- Vegetariana senza glutine;
+- Pescetariana;
+- Low carb;
+- Halal.
+
+Non creare combinazioni.
+Non creare menu con allergeni separati.
+Non modificare timeout.
+Non modificare provider AI.
+Non modificare la strategia di generazione.
+Non modificare Premium.
+Non modificare bollette.
+Non modificare chat.
+Non modificare microfono.
+Non modificare analytics.
+Non modificare calendario.
+Non modificare login.
+Non modificare Privacy Policy.
+Non modificare Termini d’Uso.
+
+TEST OBBLIGATORI
+
+Aggiorna i test per verificare:
+
+1. Menu
+Il selettore mostra solo:
+- Mediterranea
+- Vegetariana
+- Vegana
+- Senza glutine
+- Senza lattosio
+
+2. Profili rimossi
+Non compaiono più:
+- Equilibrata
+- Leggera
+- Sportiva
+
+3. Mediterranea
+- carne rossa ammessa e consigliata almeno una volta;
+- carne bianca ammessa;
+- pesce ammesso;
+- legumi non dominanti;
+- nessuna parola generica.
+
+4. Vegetariana
+- carne vietata;
+- pesce vietato;
+- uova e latticini ammessi;
+- piano vario;
+- non solo legumi.
+
+5. Vegana
+- carne vietata;
+- pesce vietato;
+- uova vietate;
+- latte e latticini vietati;
+- alimenti vegetali ammessi;
+- piano vario;
+- non solo legumi.
+
+6. Senza glutine
+- glutine vietato;
+- pasta/pane ammessi solo se senza glutine;
+- carne, pesce, uova e latticini ammessi;
+- non deve diventare senza lattosio;
+- non deve diventare vegetariana.
+
+7. Senza lattosio
+- lattosio vietato;
+- pasta, pane e fette biscottate normali ammessi;
+- carne, pesce e uova ammessi;
+- non deve generare prodotti senza glutine;
+- non deve diventare vegetariana.
+
+8. Robustezza
+Una risposta formalmente valida e senza violazioni fondamentali non deve essere respinta per regole qualitative troppo rigide.
+
+COSTI
+
+Non fare chiamate AI reali durante i test.
+Usa solo mock locali.
+Non consumare budget OpenAI/Replit per prove ripetute.
+
+OUTPUT FINALE
+
+Prepara ZIP finale e riepiloga:
+- file modificati;
+- profili rimossi;
+- profilo Vegana aggiunto;
+- menu finale a 5 profili;
+- regole definitive per ogni profilo;
+- validazione semplificata;
+- test eseguiti;
+- conferma che non sono state toccate altre aree dell’app.
