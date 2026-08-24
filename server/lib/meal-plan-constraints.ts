@@ -22,7 +22,9 @@ export type MealPlanDietaryPattern =
   | "balanced"
   | "vegetarian"
   | "light"
-  | "sport";
+  | "sport"
+  | "gluten_free"
+  | "lactose_free";
 
 export type MealPlanExclusion =
   | "gluten" | "lactose" | "milk" | "egg" | "peanut" | "nuts" | "fish"
@@ -128,9 +130,9 @@ const LIGHT_HEAVY_PREPARATION_RULE: FoodRule = {
 };
 
 const SPORT_PROTEIN_PATTERN =
-  /\b(?:pollo|tacchino|manzo|vitello|agnello|maiale|suino|salmone|merluzzo|tonno|orata|spigola|branzino|uova?|ceci|lenticchie|fagioli|piselli|tofu|tempeh|yogurt greco|ricotta|mozzarella)\b/;
+  /\b(?:pollo|tacchino|manzo|vitello|agnello|maiale|suino|bresaola|coniglio|salmone|merluzzo|tonno|orata|spigola|branzino|sgombro|trota|uova?|ceci|lenticchie|fagioli|piselli|lupini|edamame|tofu|tempeh|seitan|yogurt greco|fiocchi di latte|ricotta|mozzarella)\b/;
 const SPORT_COMPLEX_CARBOHYDRATE_PATTERN =
-  /\b(?:pasta integrale|riso integrale|pane integrale|farro|orzo|avena|quinoa|patate?|patata dolce|batata|polenta|pasta di legumi|ceci|lenticchie|fagioli|piselli)\b/;
+  /\b(?:pasta(?: integrale| di semola| di legumi)?|riso(?: integrale| basmati| venere)?|pane(?: integrale)?|farro|orzo|avena|quinoa|couscous|bulgur|patate?|patata dolce|batata|polenta|pasta di legumi|ceci|lenticchie|fagioli|piselli)\b/;
 
 const MILK_RULE: FoodRule = {
   code: "milk",
@@ -406,9 +408,7 @@ export function mealPlanRequiresMediterraneanRedMeat(
   preferences?: MealPlanConstraintPreferences,
 ): boolean {
   const profile = normalizeMealPlanConstraints(preferences).source.dietProfile;
-  return profile === "mediterranean"
-    || profile === "gluten_free"
-    || profile === "lactose_free";
+  return profile === "mediterranean";
 }
 
 export function unsupportedMealPlanHealthNote(
@@ -488,7 +488,11 @@ export function buildMealPlanConstraintPrompt(
     ? `- PROFILO LEGGERO: per pranzo e cena scegli preparazioni semplici e leggere; evita fritture, impanature, panna, besciamella, maionese, pancetta e salsiccia.`
     : normalized.dietaryPatterns.includes("sport")
       ? `- PROFILO SPORTIVO: ogni pranzo e cena deve contenere una fonte proteica concreta e un carboidrato complesso concreto (per esempio riso o pasta integrali, quinoa, farro, orzo, patate, polenta o legumi). Non usare mai parole-segnaposto come “proteina”, “carboidrato” o “verdure”.`
-      : "";
+      : normalized.dietaryPatterns.includes("vegetarian")
+        ? `- PROFILO VEGETARIANO: non usare carne né pesce; alterna uova, latticini, cereali e verdure senza trasformare tutta la settimana in soli legumi.`
+        : normalized.dietaryPatterns.includes("balanced")
+          ? `- PROFILO EQUILIBRATO: varia pasta, riso, cereali, carne, pesce, uova, legumi, verdure e frutta senza applicare quote mediterranee obbligatorie.`
+          : "";
   return `
 - VINCOLI ALIMENTARI OBBLIGATORI E PRIORITARI: prevalgono su QUALSIASI tema, esempio, regola nutrizionale o richiesta di varietà precedente.
 ${canonicalPatterns ? `- Pattern alimentari canonici applicati: ${canonicalPatterns}.` : ""}

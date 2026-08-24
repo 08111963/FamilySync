@@ -5,6 +5,7 @@ import {
   mealPlanPreferencesContainHealthData,
   normalizeMealPlanConstraints,
   extractMealPlanHealthConstraints,
+  mealPlanRequiresMediterraneanRedMeat,
   unsupportedMealPlanHealthNote,
   unsupportedMealPlanDiet,
   validateMealPlanConstraints,
@@ -21,8 +22,8 @@ test("i sette dietProfile chiusi normalizzano nei soli pattern ed esclusioni sup
     ["vegetarian", ["vegetarian"], []],
     ["light", ["light"], []],
     ["sport", ["sport"], []],
-    ["gluten_free", ["mediterranean"], ["gluten"]],
-    ["lactose_free", ["mediterranean"], ["lactose"]],
+    ["gluten_free", ["gluten_free"], ["gluten"]],
+    ["lactose_free", ["lactose_free"], ["lactose"]],
   ] as const;
 
   for (const [dietProfile, dietaryPatterns, exclusions] of cases) {
@@ -33,6 +34,14 @@ test("i sette dietProfile chiusi normalizzano nei soli pattern ed esclusioni sup
   }
   assert.equal(mealPlanHasExclusion({ dietProfile: "gluten_free" }, "gluten"), true);
   assert.equal(mealPlanHasExclusion({ dietProfile: "lactose_free" }, "lactose"), true);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "mediterranean" }), true);
+  for (const dietProfile of MEAL_PLAN_DIET_PROFILES.filter((profile) => profile !== "mediterranean")) {
+    assert.equal(
+      mealPlanRequiresMediterraneanRedMeat({ dietProfile }),
+      false,
+      `${dietProfile}: non eredita la carne rossa mediterranea`,
+    );
+  }
 });
 
 test("diet e allergies legacy non vengono propagati come vincoli", () => {
@@ -252,6 +261,14 @@ test("profilo leggero rifiuta solo preparazioni esplicitamente pesanti", () => {
     }],
     { dietProfile: "light" },
   ), []);
+  assert.deepEqual(validateMealPlanConstraints(
+    [{
+      mealType: "lunch",
+      title: "Bresaola con riso basmati",
+      ingredients: [ingredient("Bresaola"), ingredient("Riso basmati"), ingredient("Zucchine")],
+    }],
+    { dietProfile: "sport" },
+  ), [], "le fonti sportive concrete non devono essere scartate per un vocabolario troppo ristretto");
 });
 
 test("profilo sportivo richiede proteine e carboidrati complessi concreti a pranzo e cena", () => {

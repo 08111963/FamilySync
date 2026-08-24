@@ -50,7 +50,8 @@
 - [Redazione log di produzione](log-redaction.md) — in prod console.* è patchato per redigere email/token/JWT; mai fallback all'oggetto originale, mai loggare URL con token o body OAuth.
 - [ZIP di consegna pulito](delivery-zip-export.md) — usare scripts/export-consegna.sh (esclusioni + doppia scansione anti-segreti), mai zip manuale.
 - [Meal plan balance monitor](meal-plan-balance-monitor.md) — eval AI reale settimanale opt-in (MEAL_PLAN_BALANCE_MONITOR=true, solo prod); riusare runMealPlanBalanceEvalOnce, mai duplicare la logica.
-- [Qualità Piano Pasti Mediterraneo](meal-plan-mediterranean-quality.md) — quote di equilibrio e varietà sono fail-closed e contano solo ingredienti concreti, prima e dopo l'unico repair.
+- [Qualità Piano Pasti Mediterraneo](meal-plan-mediterranean-quality.md) — quote e varietà mediterranee sono advisory; restano bloccanti sicurezza, ingredienti concreti e formato.
+- [Indipendenza dei profili Piano Pasti](meal-plan-profile-independence.md) — ciascuno dei sette profili ha pattern proprio; quote e rotazioni mediterranee non filtrano nei profili “senza”.
 - [Limiti structured output Piano Pasti](meal-plan-provider-schema-limits.md) — 21 pasti richiedono chiavi obbligatorie compatte; non duplicare enum ingredienti e restare entro 4.800 token.
 - [Varietà concettuale dei pranzi](meal-plan-lunch-variety.md) — firma di famiglia/base/proteina, non titoli o contorni, per evitare menu fotocopia senza nuove chiamate AI.
 - [Vincoli alimentari piani pasti](meal-plan-dietary-constraints.md) — dieta e allergie sono hard constraint: fail-closed su consenso salute, output AI e ogni scrittura.

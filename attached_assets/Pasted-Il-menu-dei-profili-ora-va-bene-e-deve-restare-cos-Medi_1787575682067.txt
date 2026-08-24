@@ -1,0 +1,457 @@
+Il menu dei profili ora va bene e deve restare così:
+
+- Mediterranea
+- Equilibrata
+- Vegetariana
+- Leggera
+- Sportiva
+- Senza glutine
+- Senza lattosio
+
+Non modificare di nuovo il menu.
+
+Il problema adesso è un altro: il Piano Pasti AI non distingue davvero i profili alimentari.
+
+Problemi rilevati in produzione dopo Republish:
+
+1. Dieta Equilibrata
+La dieta Equilibrata risulta troppo simile alla Mediterranea e sembra comunque sbilanciata verso i legumi.
+
+2. Dieta Leggera
+La dieta Leggera è troppo simile alla Mediterranea e contiene ancora troppi legumi.
+
+3. Dieta Sportiva
+Con profilo “Sportiva”, la generazione fallisce con il messaggio:
+
+“Non è stato possibile creare un piano verificato dopo più tentativi. Le preferenze sono rimaste compilate: riprova.”
+
+Quindi il piano Sportiva non viene validato.
+
+4. Problema generale
+Il prompt dato all’AI e/o il validatore sembrano non distinguere realmente tra:
+- Mediterranea;
+- Equilibrata;
+- Leggera;
+- Sportiva;
+- Vegetariana;
+- Senza glutine;
+- Senza lattosio.
+
+Sembra che molte regole siano globali o derivate dalla Mediterranea, invece ogni profilo deve avere regole proprie.
+
+Obiettivo:
+rendere realmente distinti i 7 profili alimentari, senza modificare timeout, provider AI, menu, login, Premium, bollette, chat, microfono, analytics, calendario, Privacy Policy o Termini d’Uso.
+
+Intervieni solo su:
+- Piano Pasti AI;
+- prompt alimentare;
+- profili dieta;
+- validazione server;
+- diagnostica owner-only;
+- test collegati.
+
+1. Prima verifica il fallimento di Sportiva
+
+Non fare tentativi AI ripetuti.
+
+Controlla l’ultimo errore tramite log reali e/o endpoint owner-only:
+
+GET /api/admin/ai/meal-plan-last-error
+
+Per il profilo Sportiva devi indicare:
+- quale regola di validazione fallisce;
+- se il piano era incompleto;
+- se il problema è output AI, validatore o prompt;
+- se il validatore sta applicando regole di Mediterranea anche a Sportiva;
+- se il retry fallisce per lo stesso motivo.
+
+2. Separare le regole per profilo
+
+Il sistema deve avere regole diverse per ogni profilo.
+
+Non usare una sola lista di requisiti uguale per tutti.
+
+In particolare, queste regole NON devono essere globali:
+- almeno 2 pranzi con pasta;
+- carne rossa almeno 1 volta;
+- pesce almeno 2 volte;
+- massimo 2–3 legumi;
+- pasta obbligatoria.
+
+Queste regole possono valere per Mediterranea o per alcuni profili, ma non devono bloccare profili dove non hanno senso.
+
+3. Profilo Mediterranea
+
+Deve essere una vera dieta mediterranea italiana equilibrata.
+
+Requisiti:
+- almeno 2 pranzi con pasta;
+- almeno 2 pasti con pesce;
+- almeno 1 pasto con carne rossa;
+- 1–2 pasti con carne bianca;
+- 1–2 pasti con uova;
+- massimo 2–3 pasti principali con legumi;
+- verdure ogni giorno;
+- frutta in colazioni o spuntini;
+- piatti concreti e realistici.
+
+Non deve contenere:
+- “Proteina”;
+- “Carboidrato”;
+- “Fonte proteica”;
+- “Cereale”;
+- termini generici al posto degli ingredienti.
+
+4. Profilo Equilibrata
+
+Non deve essere una copia della Mediterranea.
+
+Deve essere un piano bilanciato generale, con varietà tra:
+- cereali;
+- pasta o riso;
+- carne bianca;
+- pesce;
+- uova;
+- legumi;
+- verdure;
+- frutta;
+- latticini se consentiti.
+
+Regole:
+- non obbligare sempre pasta come nella Mediterranea;
+- non obbligare la struttura mediterranea classica;
+- non eccedere con i legumi;
+- massimo 2–3 pasti principali con legumi;
+- alternare fonti proteiche concrete;
+- niente termini generici come “Proteina”.
+
+Esempi corretti:
+- riso con pollo e verdure;
+- pasta con pomodoro e tonno;
+- uova con spinaci e pane;
+- merluzzo con patate e insalata;
+- tacchino con verdure e riso.
+
+5. Profilo Leggera
+
+Non deve essere una copia della Mediterranea.
+
+Deve generare pasti più semplici, digeribili e leggeri.
+
+Caratteristiche:
+- piatti poco elaborati;
+- cotture semplici: forno, vapore, piastra, bollito, umido leggero;
+- pochi fritti o intingoli;
+- porzioni più leggere;
+- verdure presenti spesso;
+- carboidrati semplici ma non eccessivi;
+- proteine concrete e magre.
+
+Regole:
+- legumi massimo 1–2 pasti principali nella settimana, perché possono risultare pesanti;
+- evitare zuppe di legumi ripetute;
+- evitare piatti troppo ricchi;
+- non usare “Proteina” o termini generici;
+- non copiare la struttura di Mediterranea.
+
+Esempi corretti:
+- riso con zucchine e pollo;
+- merluzzo al vapore con patate;
+- frittata leggera con spinaci;
+- tacchino ai ferri con verdure;
+- pasta semplice al pomodoro;
+- yogurt con frutta.
+
+6. Profilo Sportiva
+
+Il profilo Sportiva deve funzionare e generare 21 pasti validi.
+
+Non deve fallire la validazione.
+
+Deve essere più ricco di:
+- proteine concrete;
+- carboidrati complessi;
+- pasti adatti a energia e recupero.
+
+Non usare mai termini generici come:
+- “Proteina”;
+- “Fonte proteica”;
+- “Carboidrato”.
+
+Usare ingredienti concreti:
+- pollo;
+- tacchino;
+- manzo magro;
+- uova;
+- salmone;
+- tonno;
+- merluzzo;
+- yogurt;
+- latte;
+- ricotta o formaggi se compatibili;
+- riso;
+- pasta;
+- patate;
+- avena;
+- pane;
+- verdure;
+- frutta.
+
+Regole:
+- deve contenere fonti proteiche varie;
+- deve contenere carboidrati utili: pasta, riso, patate, avena, pane;
+- non deve essere solo legumi;
+- legumi massimo 2–3 pasti principali;
+- deve generare 21 pasti;
+- deve passare la validazione.
+
+Esempi corretti:
+- riso con pollo e zucchine;
+- pasta al pomodoro con tonno;
+- uova con patate e spinaci;
+- salmone con riso e verdure;
+- tacchino con pane integrale e insalata;
+- yogurt con avena e frutta.
+
+7. Profilo Vegetariana
+
+Deve essere vegetariano vero.
+
+Non deve contenere:
+- carne;
+- pesce;
+- salumi;
+- tonno;
+- salmone;
+- merluzzo;
+- pollo;
+- tacchino;
+- manzo.
+
+Può usare:
+- uova;
+- latticini, se non ci sono altri vincoli;
+- legumi;
+- pasta;
+- riso;
+- cereali;
+- verdure;
+- frutta.
+
+Non deve però diventare tutto legumi.
+
+Regole:
+- legumi ammessi, ma non ripetuti in modo eccessivo;
+- usare anche uova, latticini, cereali e verdure;
+- niente termini generici.
+
+8. Profilo Senza glutine
+
+Deve essere equilibrato e familiare, ma senza glutine.
+
+Vietati salvo dicitura esplicita “senza glutine”:
+- pasta normale;
+- pane normale;
+- fette biscottate normali;
+- biscotti normali;
+- couscous;
+- farro;
+- orzo;
+- seitan;
+- frumento;
+- segale.
+
+Ammessi:
+- pasta senza glutine;
+- pane senza glutine;
+- fette biscottate senza glutine;
+- biscotti senza glutine;
+- riso;
+- mais;
+- patate;
+- polenta;
+- quinoa;
+- grano saraceno;
+- carne;
+- pesce;
+- uova;
+- verdure;
+- frutta;
+- latticini normali, perché senza glutine non significa senza lattosio.
+
+Non deve fallire la validazione.
+
+9. Profilo Senza lattosio
+
+Deve essere equilibrato e familiare, ma senza lattosio.
+
+Vietati:
+- latte normale;
+- yogurt normale;
+- burro;
+- panna;
+- ricotta normale;
+- formaggi non dichiarati senza lattosio;
+- latticini generici.
+
+Ammessi:
+- latte senza lattosio;
+- yogurt senza lattosio;
+- bevanda vegetale, senza abusarne;
+- pasta normale;
+- pane normale;
+- fette biscottate normali;
+- biscotti senza latte/burro se necessario;
+- riso;
+- orzo;
+- farro;
+- couscous;
+- carne;
+- pesce;
+- uova;
+- verdure;
+- frutta.
+
+Regola fondamentale:
+“Senza lattosio” NON deve generare automaticamente prodotti “senza glutine”.
+
+Quindi nel profilo Senza lattosio non devono comparire:
+- pasta senza glutine;
+- pane senza glutine;
+- biscotti senza glutine;
+- fette biscottate senza glutine;
+
+a meno che esista anche un vincolo glutine, che però in questo menu unico non è selezionato insieme.
+
+10. Validatore context-aware
+
+Aggiorna il validatore server perché usi regole diverse per ogni profilo.
+
+Il validatore deve sapere quale profilo è attivo e applicare solo regole coerenti.
+
+Esempi:
+- non richiedere carne rossa nel profilo Vegetariana;
+- non richiedere pasta normale nel profilo Senza glutine;
+- non bloccare pane/pasta normali nel profilo Senza lattosio;
+- non applicare alla Sportiva le regole rigide della Mediterranea se fanno fallire la validazione;
+- non applicare alla Leggera una quota eccessiva di legumi;
+- non far diventare Equilibrata uguale a Mediterranea.
+
+11. Diagnostica owner-only
+
+Mantieni la diagnostica owner-only.
+
+Quando una generazione fallisce, la diagnostica deve indicare:
+- profilo selezionato;
+- regola fallita;
+- giorno/pasto coinvolto;
+- numero pasti generati;
+- numero slot validi;
+- motivo sintetico del rifiuto;
+- se è stato fatto retry;
+- se il retry ha fallito per lo stesso motivo.
+
+Non loggare prompt completo, dati familiari, email, contenuti personali o dati sensibili.
+
+12. Test obbligatori
+
+Aggiungi o aggiorna test per tutti i profili.
+
+Menu:
+- il menu contiene solo 7 voci:
+  Mediterranea, Equilibrata, Vegetariana, Leggera, Sportiva, Senza glutine, Senza lattosio.
+
+Mediterranea:
+- genera 21 pasti;
+- almeno 2 pranzi con pasta;
+- almeno 1 pasto con carne rossa;
+- almeno 2 pasti con pesce;
+- massimo 2–3 pasti principali con legumi;
+- niente “Proteina” o termini generici.
+
+Equilibrata:
+- genera 21 pasti;
+- non è identica o quasi identica a Mediterranea;
+- non è sbilanciata sui legumi;
+- usa fonti proteiche diverse;
+- niente termini generici.
+
+Leggera:
+- genera 21 pasti;
+- non è identica o quasi identica a Mediterranea;
+- contiene piatti più semplici e digeribili;
+- legumi massimo 1–2 pasti principali;
+- niente termini generici.
+
+Sportiva:
+- genera 21 pasti;
+- non fallisce la validazione;
+- contiene fonti proteiche concrete;
+- contiene carboidrati complessi;
+- non usa “Proteina” o “Fonte proteica”;
+- non è sbilanciata sui legumi.
+
+Vegetariana:
+- genera 21 pasti;
+- non contiene carne o pesce;
+- non è fatta solo di legumi;
+- usa uova/latticini/cereali/verdure in modo vario;
+- niente termini generici.
+
+Senza glutine:
+- genera 21 pasti;
+- non contiene glutine non consentito;
+- usa alternative senza glutine dove serve;
+- non fallisce la validazione;
+- non è sbilanciata sui legumi.
+
+Senza lattosio:
+- genera 21 pasti;
+- non contiene latticini normali;
+- non genera automaticamente prodotti senza glutine;
+- permette pasta, pane e fette biscottate normali;
+- niente termini generici.
+
+13. Test produzione dopo Publish
+
+Dopo la correzione, il test reale da fare sarà:
+
+- Mediterranea;
+- Equilibrata;
+- Leggera;
+- Sportiva;
+- Senza glutine;
+- Senza lattosio.
+
+Ogni profilo deve generare un piano valido e distinguibile dagli altri.
+
+14. Non modificare altro
+
+Non modificare:
+- timeout;
+- provider AI;
+- strategia di generazione settimanale;
+- Premium;
+- bollette;
+- chat;
+- microfono;
+- analytics;
+- calendario;
+- login;
+- Privacy Policy;
+- Termini d’Uso.
+
+15. Output finale
+
+Prepara uno ZIP finale e riepiloga:
+
+- causa reale del problema;
+- perché i profili risultavano simili;
+- perché Sportiva falliva;
+- file modificati;
+- regole specifiche per ogni profilo;
+- validazioni aggiunte;
+- test aggiunti;
+- risultato dei test;
+- conferma che la generazione settimanale resta invariata;
+- conferma che i 7 profili sono realmente distinti.
