@@ -1032,9 +1032,9 @@ const SAFE_MAIN_INGREDIENTS = [
   "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
   "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
   "patate", "patate dolci", "ceci", "lenticchie", "fagioli", "piselli",
-  // Carni rosse già riconosciute dalle regole del Piano Pasti. Sono necessarie
-  // anche alla lista chiusa dei profili mediterranei senza glutine/lattosio,
-  // perché il loro target proteico settimanale possa restare verificabile.
+  // Carni rosse già riconosciute dalle regole del Piano Pasti. Sono disponibili
+  // anche nei pool indipendenti senza glutine/lattosio, dove non implicano
+  // l'obbligo settimanale specifico del profilo Mediterranea.
   "uova", "pollo", "tacchino", "manzo", "vitello", "maiale", "agnello",
   "salmone", "merluzzo", "tonno",
   "olio extravergine di oliva",
@@ -1475,22 +1475,22 @@ async function generateWeeklyMealPlanAttempt(
     : "";
   const profileIdentityRule = dietProfile === "balanced"
     ? `
-- PROFILO EQUILIBRATO: costruisci una varietà generale tra pasta, riso, cereali, carne, pesce, uova, legumi, verdure e frutta. Limita i legumi a 2-3 pasti principali. Non applicare la rotazione, la carne rossa obbligatoria o le quote della Mediterranea.`
+ - PROFILO EQUILIBRATO: costruisci una varietà generale tra pasta, riso, cereali, carne rossa e bianca, pesce, uova, legumi, verdure e frutta, con carni in quantità moderate. Limita i legumi a 2-3 pasti principali. Non applicare la rotazione, la carne rossa obbligatoria o le quote della Mediterranea.`
     : dietProfile === "vegetarian"
       ? `
 - PROFILO VEGETARIANO: carne e pesce sono vietati. Alterna davvero uova, latticini, cereali, verdure e legumi; usa i legumi in al massimo 2-3 pasti principali, senza fare una settimana di sole zuppe o legumi.`
       : dietProfile === "light"
         ? `
-- PROFILO LEGGERO: usa ricette semplici e digeribili, soprattutto al forno, al vapore o in padella leggera, con proteine magre. Limita i legumi a 1-2 pasti principali e non applicare quote Mediterranee.`
+ - PROFILO LEGGERO: usa ricette semplici e digeribili, soprattutto al forno, al vapore o in padella leggera, privilegiando carne bianca, pesce e altre proteine magre. La carne rossa magra è ammessa con moderazione. Limita i legumi a 1-2 pasti principali e non applicare quote Mediterranee.`
         : dietProfile === "sport"
           ? `
-- PROFILO SPORTIVO: genera tutti i 21 pasti. In OGNI pranzo e cena indica esplicitamente ingredienti concreti: una proteina (es. pollo, salmone, uova, tofu, ceci) e un carboidrato complesso (es. riso integrale o basmati, pasta, quinoa, farro, patate, polenta o legumi). Limita i legumi a 2-3 pasti principali; non usare mai “proteina”, “carboidrato” o “verdure” come ingredienti.`
+ - PROFILO SPORTIVO: genera tutti i 21 pasti. In OGNI pranzo e cena indica esplicitamente ingredienti concreti: una proteina (es. pollo, tacchino, manzo magro, salmone, altro pesce, uova, tofu, ceci) e un carboidrato complesso (es. riso integrale o basmati, pasta, quinoa, farro, patate, polenta o legumi). Limita i legumi a 2-3 pasti principali; non usare mai “proteina”, “carboidrato” o “verdure” come ingredienti.`
           : dietProfile === "gluten_free"
             ? `
-- PROFILO SENZA GLUTINE: usa soltanto alimenti naturalmente privi di glutine o prodotti dichiarati esplicitamente “senza glutine”. Non applicare rotazioni o quote Mediterranee.`
+ - PROFILO SENZA GLUTINE: usa soltanto alimenti naturalmente privi di glutine o prodotti dichiarati esplicitamente “senza glutine”. Carne rossa, carne bianca, pesce e uova restano ammessi: il vincolo riguarda il glutine, non queste fonti proteiche. Non applicare rotazioni o quote Mediterranee.`
             : dietProfile === "lactose_free"
               ? `
-- PROFILO SENZA LATTOSIO: evita i latticini ordinari ma pasta, pane e cereali normali restano consentiti. Non introdurre prodotti senza glutine e non applicare quote Mediterranee.`
+ - PROFILO SENZA LATTOSIO: evita i latticini ordinari ma pasta, pane e cereali normali restano consentiti. Carne rossa, carne bianca, pesce e uova restano ammessi: il vincolo riguarda il lattosio, non queste fonti proteiche. Non introdurre prodotti senza glutine e non applicare quote Mediterranee.`
               : "";
   const glutenFreeTitleRule = glutenFreeRequired
     ? `\n- Nei titoli non aggiungere meccanicamente “senza glutine” a piatti naturalmente privi di glutine. Mantieni la dicitura soltanto quando identifica davvero un prodotto sostitutivo, per esempio pasta o pane senza glutine.`

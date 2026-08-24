@@ -1,0 +1,35 @@
+Correzione importante sul prompt precedente.
+
+Quando dico che Senza glutine e Senza lattosio devono essere indipendenti dalla Mediterranea, NON significa che carne rossa o carne bianca siano vietate.
+
+Significa solo che non devono ereditare obblighi rigidi specifici della Mediterranea, per esempio “carne rossa obbligatoria almeno una volta” se quella regola è pensata solo per Mediterranea.
+
+Regola corretta:
+
+- Mediterranea: carne rossa almeno 1 volta, carne bianca ammessa.
+- Equilibrata: carne rossa e carne bianca ammesse, senza obbligo rigido.
+- Leggera: carne bianca ammessa e preferibile; carne rossa ammessa con moderazione.
+- Sportiva: carne bianca e carne rossa magra ammesse; usare proteine concrete.
+- Senza glutine: carne rossa e carne bianca ammesse; il vincolo riguarda solo il glutine.
+- Senza lattosio: carne rossa e carne bianca ammesse; il vincolo riguarda solo il lattosio.
+- Vegetariana: carne rossa, carne bianca e pesce vietati.
+- Vegana, se ancora gestita come legacy o futura: carne, pesce, uova, latte, latticini e miele vietati.
+
+Quindi aggiorna il test obsoleto in questo senso:
+
+La funzione mealPlanRequiresMediterraneanRedMeat può restare true solo per Mediterranea, se serve alla regola specifica mediterranea.
+
+Ma questo NON deve essere interpretato come divieto di carne rossa negli altri profili.
+
+Per gli altri profili la carne rossa può essere presente, salvo Vegetariana/Vegana.
+
+In particolare:
+- Senza glutine può contenere manzo, pollo, tacchino, pesce, uova.
+- Senza lattosio può contenere manzo, pollo, tacchino, pesce, uova.
+- Sportiva deve poter usare pollo, tacchino, manzo magro, uova, pesce.
+- Equilibrata può usare carne rossa e bianca in modo moderato.
+- Leggera può usare soprattutto carne bianca e pesce, ma non deve vietare totalmente la carne rossa.
+
+Correggi quindi solo i test e le regole che potrebbero interpretare “non eredita obbligo Mediterranea” come “carne vietata”.
+
+Non modificare menu, timeout, provider AI, strategia di generazione, Premium, bollette, chat, microfono, analytics, calendario, login, Privacy Policy o Termini d’Uso.

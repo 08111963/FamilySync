@@ -904,8 +904,14 @@ test("tutti i sette profili chiusi usano un solo contratto completo e restano si
     }
     if (profile === "balanced") assert.match(calls[0]!.prompt, /PROFILO EQUILIBRATO/i);
     if (profile === "vegetarian") assert.match(calls[0]!.prompt, /PROFILO VEGETARIANO/i);
-    if (profile === "gluten_free") assert.match(calls[0]!.prompt, /PIANO SENZA GLUTINE/i);
-    if (profile === "lactose_free") assert.match(calls[0]!.prompt, /PIANO SENZA LATTOSIO/i);
+    if (profile === "gluten_free") {
+      assert.match(calls[0]!.prompt, /PIANO SENZA GLUTINE/i);
+      assert.match(calls[0]!.prompt, /carne rossa, carne bianca, pesce e uova restano ammessi/i);
+    }
+    if (profile === "lactose_free") {
+      assert.match(calls[0]!.prompt, /PIANO SENZA LATTOSIO/i);
+      assert.match(calls[0]!.prompt, /carne rossa, carne bianca, pesce e uova restano ammessi/i);
+    }
     if (profile === "mediterranean") {
       assert.match(calls[0]!.prompt, /DIETA MEDITERRANEA OBBLIGATORIA/i);
       assert.match(calls[0]!.prompt, /DISTRIBUZIONE MEDITERRANEA DEI PRANZI/i);
