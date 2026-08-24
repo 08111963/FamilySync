@@ -832,9 +832,9 @@ class MealPlanRepairError extends Error {
 
 function buildMealPlanFormatCorrection(nextAttempt: number): string {
   return `
-- CORREZIONE FORMATO OBBLIGATORIA (tentativo ${nextAttempt}): la risposta precedente non era JSON parsabile oppure non conteneva un oggetto con una chiave "items" interpretabile.
-- Restituisci esclusivamente un oggetto JSON con la chiave "items" come array completo di tutti i pasti richiesti.
-- Non aggiungere Markdown, testo introduttivo, commenti o campi al posto dell'array "items".`;
+- CORREZIONE FORMATO OBBLIGATORIA (tentativo ${nextAttempt}): la risposta precedente non era JSON parsabile oppure non conteneva tutte le chiavi slot richieste.
+- Restituisci esclusivamente l'oggetto JSON con TUTTE e SOLO le chiavi slot richieste dal contratto, una ricetta completa per ogni chiave.
+- Non aggiungere Markdown, testo introduttivo, commenti, un array "items" o altre chiavi.`;
 }
 
 interface RepeatedMealSlot {
@@ -1177,6 +1177,7 @@ function buildLactoseSafeBreakfasts(
   const drinkMl = String(people * 200);
   const jamG = String(people * 20);
   const bread = glutenFree ? "pane senza glutine" : "pane";
+  const riceCakes = glutenFree ? "gallette di riso senza glutine" : "gallette di riso";
   const entries = [
     {
       title: `${bread[0]!.toUpperCase()}${bread.slice(1)} tostato con marmellata e mela`,
@@ -1193,10 +1194,10 @@ function buildLactoseSafeBreakfasts(
       ],
     },
     {
-      title: "Gallette di riso con banana e miele",
+      title: `${riceCakes[0]!.toUpperCase()}${riceCakes.slice(1)} con banana e miele`,
       description: "Colazione leggera con gallette croccanti, banana e miele.",
       ingredients: [
-        { name: "gallette di riso", quantity: String(people * 3), unit: "pezzi" },
+        { name: riceCakes, quantity: String(people * 3), unit: "pezzi" },
         { name: "banana", quantity: fruitPieces, unit: "pezzi" },
         { name: "miele", quantity: String(people * 10), unit: "g" },
       ],
@@ -1249,10 +1250,10 @@ function buildLactoseSafeBreakfasts(
       ],
     },
     {
-      title: "Gallette di riso con mandarino e marmellata",
+      title: `${riceCakes[0]!.toUpperCase()}${riceCakes.slice(1)} con mandarino e marmellata`,
       description: "Colazione croccante con gallette, mandarino e marmellata.",
       ingredients: [
-        { name: "gallette di riso", quantity: String(people * 3), unit: "pezzi" },
+        { name: riceCakes, quantity: String(people * 3), unit: "pezzi" },
         { name: "mandarino", quantity: String(people * 2), unit: "pezzi" },
         { name: "marmellata", quantity: jamG, unit: "g" },
       ],
@@ -1377,8 +1378,8 @@ function buildConstraintCorrection(
 - Non scrivere gli alimenti o i termini rilevati come incompatibili in nessun campo del nuovo piano, nemmeno come esempio o descrizione.
 - Sostituisci ogni componente incompatibile con un ingrediente di tipo diverso e compatibile con tutti i vincoli indicati.`;
   const correctionIngredientRule = hasLactoseViolation
-    ? "- Ricrea TUTTI i pasti da zero con soli ingredienti naturalmente compatibili, senza dichiarazioni o etichette sul lattosio."
-    : "- Ricrea TUTTI i pasti da zero. Non riutilizzare gli alimenti incompatibili; usa soltanto alternative esplicitamente compatibili e dichiarale nel titolo e negli ingredienti.";
+    ? "- Conserva ogni slot già valido. Modifica soltanto i pasti che contengono un termine rilevato, usando ingredienti naturalmente compatibili e senza dichiarazioni o etichette inutili sul lattosio."
+    : "- Conserva ogni slot già valido. Modifica soltanto i pasti necessari: non riutilizzare gli alimenti incompatibili e usa alternative esplicitamente compatibili.";
 
   return `
 - CORREZIONE AUTOMATICA OBBLIGATORIA (tentativo ${nextAttempt}): il piano precedente è stato scartato perché incompatibile.
@@ -1417,7 +1418,15 @@ async function generateWeeklyMealPlanAttempt(
   let providerDurationMs = 0;
   let parsingDurationMs = 0;
   let responseChars = 0;
-  const mealsPerDay = context.preferences?.mealsPerDay || 3;
+  const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
+  const lactoseFreeRequired = mealPlanHasExclusion(context.preferences, "lactose");
+  // I profili esclusivi hanno un contratto chiuso: 7 colazioni locali sicure
+  // + 14 slot AI di pranzo/cena. Anche una preferenza legacy da 2 o 4 pasti
+  // non può trasformare questo percorso in un piano parziale o far generare
+  // snack non coperti dalla composizione verificata.
+  const mealsPerDay = glutenFreeRequired || lactoseFreeRequired
+    ? 3
+    : context.preferences?.mealsPerDay || 3;
   const mealTypes = mealsPerDay >= 4
     ? ['breakfast', 'lunch', 'dinner', 'snack']
     : mealsPerDay >= 3
@@ -1433,27 +1442,33 @@ async function generateWeeklyMealPlanAttempt(
   // "Dieta mediterranea" senza guida diventa spesso "tanti legumi, poca pasta,
   // poche verdure": ancoriamo la distribuzione settimanale reale della dieta.
   const dietLower = (context.preferences?.dietProfile || '').toLowerCase();
-  const glutenFreeRequired = mealPlanRequiresGlutenFree(context.preferences);
   const requiresMediterraneanRedMeat = mealPlanRequiresMediterraneanRedMeat(context.preferences);
   const mediterraneanDiet = requiresMediterraneanRedMeat;
   const constrainedPlan = hasMealPlanConstraints(context.preferences);
   const lactoseAllowsGluten = !glutenFreeRequired &&
     mealPlanHasExclusion(context.preferences, "lactose");
-  const lactoseFreeRequired = mealPlanHasExclusion(context.preferences, "lactose");
   const redMeatWeeklyRule = requiresMediterraneanRedMeat
     ? " Includi almeno un pasto principale con carne rossa nella settimana, preferibilmente uno."
     : "";
   const mediterraneanRule = mediterraneanDiet
-    ? `\n- DIETA MEDITERRANEA OBBLIGATORIA: ogni settimana deve includere almeno 2 pranzi con pasta${glutenFreeRequired ? " senza glutine" : ""}, pesce 2-3 volte, carne bianca 1-2 volte, uova 1-2 volte e almeno un pranzo o cena con manzo, vitello o agnello. Ceci, lenticchie, fagioli e piselli in massimo 3 pranzi/cene totali.
+    ? `\n- DIETA MEDITERRANEA OBBLIGATORIA: ${glutenFreeRequired ? "per il profilo senza glutine usa basi naturalmente prive di glutine come riso, quinoa, patate, polenta di mais e legumi; non usare basi generiche a rischio." : "ogni settimana deve includere almeno 2 pranzi con pasta"}, pesce 2-3 volte, carne bianca 1-2 volte, uova 1-2 volte e almeno un pranzo o cena con manzo, vitello o agnello. Ceci, lenticchie, fagioli e piselli in massimo 3 pranzi/cene totali.
 - Ogni ingrediente deve essere concreto. Nell'array ingredients usa il nome di un singolo alimento, per esempio “zucchine”, “carote” o “spinaci”: non scrivere mai “Proteina”, “Carboidrato”, “Fonte proteica”, “Alimento proteico”, “verdure”, “verdure miste”, “ortaggi”, “cereali” o “legumi”. Varia davvero pranzi e cene italiani, non solo i contorni.${redMeatWeeklyRule}`
     : '';
+  const lunchVarietyExplanation = glutenFreeRequired
+    ? "la famiglia (riso, quinoa, legumi, zuppa, patate o polenta di mais), la base/preparazione (per esempio al pomodoro) e la firma completa con proteina sono tre livelli distinti."
+    : "la famiglia (pasta, riso, legumi, zuppa, patate ecc.), la base/preparazione (per esempio al pomodoro) e la firma completa con proteina sono tre livelli distinti.";
   const weeklyVarietyRule = `
 - VARIETÀ SETTIMANALE (best effort, mai in contrasto con i vincoli): sui pranzi e sulle cene cerca almeno 4 fonti di carboidrati diverse nella settimana e non usare la stessa più di 3 volte quando sono disponibili alternative compatibili.
 - Alterna le proteine principali: evita la stessa proteina specifica più di 2 volte quando possibile; il pesce può comparire più volte, ma non ripetere sempre lo stesso tipo.
-- PRANZI, VARIETÀ SEMANTICA: la famiglia (pasta, riso, legumi, zuppa, patate ecc.), la base/preparazione (per esempio al pomodoro) e la firma completa con proteina sono tre livelli distinti. Contorni, olio, erbe e piccole verdure non trasformano un pranzo in un piatto nuovo.
-${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea senza glutine includi normalmente almeno un pranzo con pasta senza glutine, se non è esclusa da altri vincoli. Non rendere obbligatori prodotti trasformati negli altri pasti.` : ""}`;
+- PRANZI, VARIETÀ SEMANTICA: ${lunchVarietyExplanation} Contorni, olio, erbe e piccole verdure non trasformano un pranzo in un piatto nuovo.
+${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea senza glutine usa la varietà delle basi naturalmente prive di glutine; non rendere obbligatori prodotti trasformati.` : ""}`;
   const mediterraneanDistributionRule = mediterraneanDiet
-    ? `
+    ? glutenFreeRequired
+      ? `
+- DISTRIBUZIONE SENZA GLUTINE DEI PRANZI: segui nell'ordine esatto le famiglie del BLUEPRINT SETTIMANALE LOCALE. Alterna basi naturalmente prive di glutine concrete come riso, quinoa, patate, polenta di mais e legumi.
+- Non usare mai pasta, couscous, pane, biscotti, farro, orzo o avena generici. Non trasformare una base sicura in una categoria generica: ogni ingrediente deve avere un nome concreto.
+- Quando il pranzo è riso, quinoa, polenta, patate o legumi, la cena dello stesso giorno deve usare una combinazione diversa con verdure e una base naturalmente priva di glutine.`
+      : `
 - DISTRIBUZIONE MEDITERRANEA DEI PRANZI: segui nell'ordine esatto le famiglie del BLUEPRINT SETTIMANALE LOCALE. La rotazione alterna due pranzi di pasta non consecutivi, due piatti di legumi, due pranzi con patate e un solo pranzo con riso.
 - Non sostituire patate o legumi con couscous, farro, orzo, quinoa o polenta: fuori dai due pranzi di pasta usa al massimo un pranzo a base di riso/cereali nella settimana.
 - La pasta è sempre un primo asciutto: non scrivere né proporre mai “pasta in umido”, “pasta stufata” o “pasta brasata”.
@@ -1540,22 +1555,22 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   // al modello di ignorarli: sostituiamoli con alternative naturalmente prive
   // di glutine, così il primo tentativo è già praticabile per il validatore.
   const glutenFreeDayThemes = [
-    'a pranzo privilegia pasta senza glutine con verdure di stagione e una fonte proteica compatibile; a cena scegli una combinazione più leggera e diversa',
-    'privilegia pesce o una fonte proteica compatibile con patate e verdure',
-    'privilegia quinoa con verdure e una fonte proteica compatibile',
-    'privilegia couscous di mais senza glutine o legumi con verdure e una fonte proteica compatibile',
-    'privilegia risotti con verdure e una fonte proteica compatibile',
-    'privilegia polenta o gnocchi senza glutine con verdure e una fonte proteica compatibile',
-    'privilegia piatti regionali italiani naturalmente senza glutine oppure pane senza glutine con una fonte proteica compatibile e verdure',
+    'a pranzo riso con pollo e zucchine; a cena salmone con patate e fagiolini',
+    'a pranzo quinoa con merluzzo e spinaci; a cena tacchino con patate e carote',
+    'a pranzo ceci con riso e peperoni; a cena uova con patate e spinaci',
+    'a pranzo polenta di mais con tonno e zucchine; a cena lenticchie con riso e carote',
+    'a pranzo patate con manzo e bietole; a cena merluzzo con quinoa e broccoli',
+    'a pranzo riso con uova e zucchine; a cena pollo con polenta di mais e peperoni',
+    'a pranzo quinoa con tacchino e carote; a cena salmone con patate e fagiolini',
   ];
   const glutenFreeDayThemesB = [
-    'privilegia pasta di riso senza glutine con verdure e una fonte proteica compatibile',
-    'privilegia polenta con verdure e una fonte proteica compatibile',
-    'privilegia quinoa con ortaggi di stagione e una fonte proteica compatibile',
-    'privilegia couscous di mais senza glutine con verdure e una fonte proteica compatibile',
-    'privilegia insalate di riso con verdure e una fonte proteica compatibile',
-    'privilegia patate al forno con verdure e una fonte proteica compatibile',
-    'privilegia gnocchi senza glutine o un piatto mediterraneo naturalmente senza glutine con verdure',
+    'a pranzo riso con tonno e pomodori; a cena polpo con patate e zucchine',
+    'a pranzo lenticchie con quinoa e carote; a cena merluzzo con patate e spinaci',
+    'a pranzo polenta di mais con tacchino e peperoni; a cena salmone con riso e fagiolini',
+    'a pranzo ceci con patate e zucchine; a cena uova con quinoa e spinaci',
+    'a pranzo riso con manzo e bietole; a cena pollo con patate e carote',
+    'a pranzo quinoa con uova e pomodori; a cena tonno con polenta di mais e zucchine',
+    'a pranzo patate con tacchino e broccoli; a cena salmone con riso e peperoni',
   ];
   const compatibleDayThemes = [
     'componi un pranzo e una cena esclusivamente con ingredienti compatibili e verdure di stagione',
@@ -1566,13 +1581,6 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     'varia tecniche di cottura e verdure mantenendo tutti gli ingredienti compatibili',
     'proponi un piatto italiano semplice composto solo da ingredienti compatibili',
   ];
-  const activeDayThemes = glutenFreeRequired
-    ? (variant === 2 ? glutenFreeDayThemesB : glutenFreeDayThemes)
-    : mediterraneanDiet
-      ? (variant === 2 ? mediterraneanDayThemesB : mediterraneanDayThemes)
-      : constrainedPlan
-        ? (variant === 2 ? [...compatibleDayThemes.slice(3), ...compatibleDayThemes.slice(0, 3)] : compatibleDayThemes)
-        : (variant === 2 ? [...dayThemes.slice(3), ...dayThemes.slice(0, 3)] : dayThemes);
   const activeDinnerThemes = buildDinnerThemes(context.preferences);
 
   // Anche le colazioni ruotano: senza un tema per giorno il modello propone
@@ -1601,11 +1609,19 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     : constrainedPlan
       ? compatibleBreakfastThemes
       : breakfastThemes;
-  // Anche le colazioni senza lattosio fanno parte dell'unico contratto
-  // settimanale. La lista chiusa e la validazione locale restano la garanzia
-  // di sicurezza; non aggiungiamo più pasti deterministici accanto all'output
-  // AI perché renderebbero il JSON da 21 elementi ambiguo.
-  const deterministicBreakfasts: MealPlanSuggestion["items"] = [];
+  // Per i due profili esclusivi le colazioni sono costruite localmente con
+  // combinazioni concrete già verificate. Il modello riceve solo pranzi e
+  // cene: così non può introdurre una base ambigua (o classificare un dolce
+  // con riso come colazione salata) e il contratto finale resta di 21 pasti.
+  const hasDeterministicBreakfasts =
+    glutenFreeRequired || lactoseFreeRequired;
+  const deterministicBreakfasts: MealPlanSuggestion["items"] =
+    hasDeterministicBreakfasts && mealTypes.includes("breakfast")
+      ? buildLactoseSafeBreakfasts(dates, context.familySize, glutenFreeRequired)
+      : [];
+  const modelMealTypes = hasDeterministicBreakfasts
+    ? mealTypes.filter((mealType) => mealType !== "breakfast")
+    : mealTypes;
 
   type WeeklyMealRequest = {
     dates: string[];
@@ -1621,15 +1637,20 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   const allergenSafePlan = usesMealPlanIngredientAllowlist(context.preferences);
   const standardPlan = !constrainedPlan;
   const compatibleMainIngredients = compatibleMealIngredients(context.preferences, "main");
+  const glutenFreeNaturalMainIngredients = compatibleMainIngredients.filter((ingredient) =>
+    !/\b(?:pasta|pane|couscous|fette biscottate|biscotti|farro|orzo|avena|cereali|gnocchi)\b/i.test(ingredient));
+  const blueprintMainIngredients = glutenFreeRequired
+    ? glutenFreeNaturalMainIngredients
+    : compatibleMainIngredients;
   const lunchFamilyTargets = planMealPlanLunchFamilies(
-    compatibleMainIngredients,
+    blueprintMainIngredients,
     dates.length,
     // Il Piano B usa la stessa distribuzione mediterranea ma parte dai legumi:
     // le due paste restano distanziate e i pranzi a base di cereali non si
     // concentrano all'inizio della settimana.
     variant === 2 ? 1 : 0,
     {
-      minimumPastaLunches: mediterraneanDiet ? 2 : 0,
+      minimumPastaLunches: mediterraneanDiet && !glutenFreeRequired ? 2 : 0,
       mediterraneanDistribution: mediterraneanDiet,
     },
   );
@@ -1643,28 +1664,35 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   // rotazione di famiglie, proteine/preparazioni, colazioni e cene. Il modello
   // riceve poi una sola richiesta con i 21 pasti della settimana, non sette
   // richieste indipendenti che potrebbero contraddirsi tra loro.
-  const safeBreakfastIngredients = compatibleMealIngredients(context.preferences, "breakfast")
-    .filter((ingredient) => glutenFreeRequired || !ingredient.includes("senza glutine"));
   const safeIngredients = allergenSafePlan
-    ? Array.from(new Set([...safeBreakfastIngredients, ...compatibleMainIngredients]))
+    ? Array.from(new Set(blueprintMainIngredients))
     : undefined;
   const weeklyBlueprint = dates.map((date, dayIndex) => {
-    const breakfast = mealTypes.includes("breakfast")
+    const glutenFreeTheme = glutenFreeRequired
+      ? (variant === 2 ? glutenFreeDayThemesB : glutenFreeDayThemes)[dayIndex]!
+      : "";
+    const [glutenFreeLunchTheme = "", glutenFreeDinnerTheme = ""] =
+      glutenFreeTheme.split("; a cena ");
+    const breakfast = modelMealTypes.includes("breakfast")
       ? `colazione: ${activeBreakfastThemes[dayIndex]}`
       : "";
-    const lunch = mealTypes.includes("lunch")
-      ? `pranzo: famiglia ${lunchFamilyTargets[dayIndex] || "compatibile"}, proteina ${lunchSemanticTargets[dayIndex]?.mainProtein || "compatibile"}, preparazione ${lunchSemanticTargets[dayIndex]?.preparation || "diversa"}`
+    const lunch = modelMealTypes.includes("lunch")
+      ? glutenFreeRequired
+        ? `pranzo: ${glutenFreeLunchTheme.replace(/^a pranzo /, "")}`
+        : `pranzo: famiglia ${lunchFamilyTargets[dayIndex] || "compatibile"}, proteina ${lunchSemanticTargets[dayIndex]?.mainProtein || "compatibile"}, preparazione ${lunchSemanticTargets[dayIndex]?.preparation || "diversa"}`
       : "";
-    const dinner = mealTypes.includes("dinner")
-      ? `cena: ${activeDinnerThemes[dayIndex]}`
+    const dinner = modelMealTypes.includes("dinner")
+      ? glutenFreeRequired
+        ? `cena: ${glutenFreeDinnerTheme}`
+        : `cena: ${activeDinnerThemes[dayIndex]}`
       : "";
     return `- ${date}: ${[breakfast, lunch, dinner].filter(Boolean).join("; ")}.`;
   }).join("\n");
   const weeklyRequests: WeeklyMealRequest[] = [{
     dates,
-    mealTypes,
+    mealTypes: modelMealTypes,
     slotKeys: Array.from(
-      { length: dates.length * mealTypes.length },
+      { length: dates.length * modelMealTypes.length },
       (_, index) => `meal_${String(index + 1).padStart(2, "0")}`,
     ),
     ingredientNames: safeIngredients,
@@ -1684,7 +1712,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     const mealsForRequest = requestMealTypes.length;
     const requestGlutenRule = glutenFreeRequired
       ? `\n- PIANO SENZA GLUTINE: scegli OGNI ingrediente solamente da questa lista chiusa per questa richiesta: ${(request.ingredientNames || compatibleMealIngredients(context.preferences, "main")).join(", ")}. Non aggiungere ingredienti esterni.
-- Se il nome di un ingrediente contiene pane, fette biscottate, biscotti, avena o altri prodotti a rischio glutine, deve includere esplicitamente la dicitura "senza glutine".`
+ - Per pranzi e cene usa prima di tutto le basi naturalmente prive di glutine concrete indicate dal BLUEPRINT (riso, quinoa, patate, polenta di mais, ceci, lenticchie, fagioli o piselli). Non usare pasta, couscous, pane, biscotti, farro, orzo o avena generici in nessun campo.`
       : "";
     const lactosePastaRule = lactoseAllowsGluten && requestMealTypes.includes("lunch")
       ? "\n- Il vincolo lattosio/latte NON richiede di evitare il glutine: pasta di semola classica e gli altri cereali con glutine restano compatibili, purché non contengano latte o derivati incompatibili."
@@ -2212,7 +2240,21 @@ export async function generateWeeklyMealPlan(
         ...context,
         generationAttempt: attempt,
         constraintCorrection: repair?.correction,
-        previousPlanJson: repair ? JSON.stringify({ items: repair.items }) : undefined,
+        // Le colazioni dei profili esclusivi sono locali e già verificate:
+        // non entrano nel JSON da correggere, quindi il repair vede soltanto
+        // i 14 slot che può davvero modificare.
+        previousPlanJson: repair
+          ? JSON.stringify({
+            items: repair.items.filter((item) =>
+              !(
+                item.mealType === "breakfast"
+                && (
+                  mealPlanRequiresGlutenFree(context.preferences)
+                  || mealPlanHasExclusion(context.preferences, "lactose")
+                )
+              )),
+          })
+          : undefined,
         modelCallBudget,
       });
     } catch (error) {

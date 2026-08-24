@@ -226,14 +226,17 @@ function createFakeClient(responder: (request: RequestInfo, call: number) => Fak
           };
           calls.push(info);
           const response = responder(info, calls.length);
+          const responseItems = Array.isArray(response) && response.length > info.slotKeys.length
+            ? response.filter((item) => info.mealTypes.includes(item.mealType))
+            : response;
           return {
             choices: [{
               message: {
-                content: Array.isArray(response)
+                content: Array.isArray(responseItems)
                   ? JSON.stringify(Object.fromEntries(
-                    info.slotKeys.map((slotKey, index) => [slotKey, response[index]]),
+                    info.slotKeys.map((slotKey, index) => [slotKey, responseItems[index]]),
                   ))
-                  : response.content,
+                  : responseItems.content,
               },
               finish_reason: "stop",
             }],
@@ -291,6 +294,143 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
   assert.equal(plan.items.length, 21);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
   assert.deepEqual(evaluateMediterraneanMealPlan(plan.items).issues, []);
+});
+
+test("i profili esclusivi chiedono 14 slot AI e ricompongono 7 colazioni locali sicure", async (t) => {
+  for (const profile of ["gluten_free", "lactose_free"] as const) {
+    const { client, calls } = createFakeClient(() => fullWeek(profile));
+    __setOpenAiClientForTest(client);
+
+    const plan = await generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      preferences: { dietProfile: profile },
+    });
+
+    assert.equal(calls.length, 1, profile);
+    assert.deepEqual(calls[0]!.mealTypes, ["lunch", "dinner"], profile);
+    assert.equal(calls[0]!.itemCount, 14, profile);
+    assert.deepEqual(
+      calls[0]!.slotKeys,
+      Array.from({ length: 14 }, (_, index) => `meal_${String(index + 1).padStart(2, "0")}`),
+      profile,
+    );
+    assert.doesNotMatch(calls[0]!.prompt, /SOLO questi tipi di pasto: breakfast/i, profile);
+    assert.equal(plan.items.length, 21, profile);
+    assert.equal(plan.items.filter((item) => item.mealType === "breakfast").length, 7, profile);
+    assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: profile }), [], profile);
+    assert.ok(
+      plan.items
+        .filter((item) => item.mealType === "breakfast")
+        .every((item) =>
+          item.title.trim()
+          && item.ingredients?.length === 3
+          && item.steps?.length === 3),
+      `${profile}: nessuna colazione locale parziale`,
+    );
+    if (profile === "lactose_free") {
+      assert.ok(
+        plan.items.some((item) => item.mealType === "breakfast" && /bevanda di riso/i.test(item.title)),
+        "la bevanda di riso resta una colazione dolce già verificata",
+      );
+    }
+  }
+  t.after(() => __setOpenAiClientForTest(null));
+});
+
+test("i profili esclusivi mantengono il contratto 7 colazioni locali più 14 slot AI anche con preferenze legacy", async (t) => {
+  for (const profile of ["gluten_free", "lactose_free"] as const) {
+    for (const mealsPerDay of [2, 4]) {
+      const { client, calls } = createFakeClient(() => fullWeek(profile));
+      __setOpenAiClientForTest(client);
+
+      const plan = await generateWeeklyMealPlan({
+        familySize: 4,
+        weekStartDate: WEEK_START,
+        preferences: { dietProfile: profile, mealsPerDay },
+      });
+
+      assert.equal(calls.length, 1, `${profile}/${mealsPerDay}`);
+      assert.deepEqual(calls[0]!.mealTypes, ["lunch", "dinner"], `${profile}/${mealsPerDay}`);
+      assert.equal(calls[0]!.itemCount, 14, `${profile}/${mealsPerDay}`);
+      assert.equal(plan.items.length, 21, `${profile}/${mealsPerDay}`);
+      assert.equal(plan.items.filter((item) => item.mealType === "breakfast").length, 7);
+      assert.equal(plan.items.some((item) => item.mealType === "snack"), false);
+      assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: profile }), []);
+    }
+  }
+  t.after(() => __setOpenAiClientForTest(null));
+});
+
+test("il repair gluten-free riceve i termini generici esatti e consegna solo il piano completo", async (t) => {
+  const valid = fullWeek("gluten_free");
+  const unsafe = cloneMeals(valid);
+  const unsafeTerms = ["pasta", "couscous", "pane", "biscotti"];
+  unsafe
+    .filter((item) => item.mealType !== "breakfast")
+    .slice(0, unsafeTerms.length)
+    .forEach((item, index) => {
+      const term = unsafeTerms[index]!;
+      item.title = `${term} con pollo e zucchine`;
+      item.ingredients[0] = { name: term, quantity: "80", unit: "g" };
+      item.steps[1] = `Cuoci ${term} con le zucchine.`;
+    });
+  const { client, calls } = createFakeClient((_request, call) => call === 1 ? unsafe : valid);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "gluten_free" },
+  });
+
+  assert.equal(calls.length, 2, "primo tentativo più un solo repair");
+  assert.equal(calls[0]!.itemCount, 14);
+  assert.equal(calls[1]!.itemCount, 14);
+  for (const term of unsafeTerms) {
+    assert.match(calls[1]!.prompt, new RegExp(`glutine: ${term}`, "i"), term);
+  }
+  assert.match(calls[1]!.prompt, /Conserva ogni slot già valido/i);
+  assert.match(calls[0]!.prompt, /Non usare mai pasta, couscous, pane, biscotti/i);
+  const positiveGlutenFreeGuidance = calls[0]!.prompt
+    .split("- PIANO SENZA GLUTINE:")[0]!
+    .split("\n")
+    .filter((line) => !/non usare mai/i.test(line))
+    .join("\n");
+  assert.doesNotMatch(
+    positiveGlutenFreeGuidance,
+    /\b(?:pasta|couscous|pane|biscotti)\b/i,
+    "le istruzioni positive gluten-free non devono suggerire basi generiche a rischio",
+  );
+  assert.equal(plan.items.length, 21);
+  assert.equal(new Set(plan.items.map((item) => `${item.date}/${item.mealType}`)).size, 21);
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "gluten_free" }), []);
+});
+
+test("un output AI incompleto per un profilo esclusivo non espone pasti parziali", async (t) => {
+  const valid = fullWeek("lactose_free");
+  const { client, calls } = createFakeClient((_request, call) =>
+    call === 1
+      ? { content: JSON.stringify({ meal_01: valid.find((item) => item.mealType === "lunch") }) }
+      : valid);
+  __setOpenAiClientForTest(client);
+  t.after(() => __setOpenAiClientForTest(null));
+
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "lactose_free" },
+  });
+
+  assert.equal(calls.length, 2, "un solo repair recupera l'output strutturato incompleto");
+  assert.equal(calls[0]!.itemCount, 14);
+  assert.equal(calls[1]!.itemCount, 14);
+  assert.match(calls[1]!.prompt, /CORREZIONE FORMATO OBBLIGATORIA/);
+  assert.equal(plan.items.length, 21);
+  assert.equal(new Set(plan.items.map((item) => `${item.date}/${item.mealType}`)).size, 21);
+  assert.ok(plan.items.every((item) => item.title && item.ingredients?.length && item.steps?.length));
+  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "lactose_free" }), []);
 });
 
 test("il blueprint mediterraneo distanzia la pasta e non concentra i cereali", () => {

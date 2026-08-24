@@ -57,6 +57,7 @@
 - [Ricette con sostituti sicuri](meal-plan-safe-substitute-context.md) — validare i passaggi nel contesto degli ingredienti per evitare falsi positivi senza sbloccare altri allergeni.
 - [Vincoli dopo le correzioni del Piano Pasti](meal-plan-post-processing-constraints.md) — una riparazione di varietà non può rimuovere un vincolo nutrizionale già soddisfatto; controllare sempre l’output finale.
 - [Velocità generazione piani pasti](meal-plan-generation-speed.md) — il percorso rapido deve mantenere un dettaglio ricetta utilizzabile; i vincoli sanitari non sacrificano mai la verifica.
+- [Contratto dei profili esclusivi](meal-plan-exclusive-profile-contract.md) — senza glutine e senza lattosio restano sempre 7 colazioni locali + 14 slot AI, anche con preferenze legacy.
 - [Google Calendar direct sync](google-calendar-sync.md) — OAuth per-utente (scope calendar.events, state con userId), refresh token cifrato, fail-visibile 'expired'; nei DELETE leggere i link Google PRIMA (cascade).
 - [Anteprima dev — porte](dev-preview-routing.md) — esterna 80 → backend 5000, mai Metro 8081; Metro orfano serve bundle stantii; login Google web = redirect pagina intera, mai popup.
 - [Assistente AI Home](home-assistant-chat.md) — parse su server, esecuzione via rotte esistenti dal client; conferma obbligatoria; FAB sopra la tab bar; policy bump a ogni nuova funzione AI.
