@@ -80,12 +80,13 @@ test("compatibilità legacy: solo le combinazioni mediterranee rappresentabili r
   assert.equal(legacyMealPlanDietToProfile("Solo cibi della mia infanzia"), undefined);
 });
 
-test("i profili mediterranei e le due varianti separate mantengono l'equilibrio settimanale", () => {
+test("solo Mediterranea richiede carne rossa, senza ereditarla negli altri profili", () => {
   assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "mediterranean" }), true);
-  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "gluten_free" }), true);
-  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "lactose_free" }), true);
-  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "vegetarian" }), false);
-  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "balanced" }), false);
-  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "light" }), false);
-  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "sport" }), false);
+  for (const dietProfile of MEAL_PLAN_DIET_PROFILES.filter((profile) => profile !== "mediterranean")) {
+    assert.equal(
+      mealPlanRequiresMediterraneanRedMeat({ dietProfile }),
+      false,
+      `${dietProfile} non deve ereditare l'obbligo Mediterranea`,
+    );
+  }
 });
