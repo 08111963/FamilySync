@@ -1032,9 +1032,9 @@ const SAFE_MAIN_INGREDIENTS = [
   "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
   "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
   "patate", "patate dolci", "ceci", "lenticchie", "fagioli", "piselli",
-  // Carni rosse già riconosciute dalle regole del Piano Pasti. Sono disponibili
-  // anche nei pool indipendenti senza glutine/lattosio, dove non implicano
-  // l'obbligo settimanale specifico del profilo Mediterranea.
+  // Carni rosse già riconosciute dalle regole del Piano Pasti. Sono necessarie
+  // anche alla lista chiusa dei profili mediterranei senza glutine/lattosio,
+  // perché il loro target proteico settimanale possa restare verificabile.
   "uova", "pollo", "tacchino", "manzo", "vitello", "maiale", "agnello",
   "salmone", "merluzzo", "tonno",
   "olio extravergine di oliva",
@@ -1439,10 +1439,11 @@ async function generateWeeklyMealPlanAttempt(
     : 'Questo è il PIANO B, l\'alternativa al piano classico: proponi piatti DIVERSI nella sostanza (ricette regionali diverse, tecniche di cottura diverse, ingredienti principali diversi), non semplici variazioni di nome o di condimento dei piatti più comuni.';
 
   const rawNotes = typeof context.preferences?.notes === 'string' ? context.preferences.notes.trim().slice(0, 600) : '';
-  const dietProfile = context.preferences?.dietProfile;
-  const dietLower = (dietProfile || '').toLowerCase();
+  // "Dieta mediterranea" senza guida diventa spesso "tanti legumi, poca pasta,
+  // poche verdure": ancoriamo la distribuzione settimanale reale della dieta.
+  const dietLower = (context.preferences?.dietProfile || '').toLowerCase();
   const requiresMediterraneanRedMeat = mealPlanRequiresMediterraneanRedMeat(context.preferences);
-  const mediterraneanDiet = dietProfile === "mediterranean";
+  const mediterraneanDiet = requiresMediterraneanRedMeat;
   const constrainedPlan = hasMealPlanConstraints(context.preferences);
   const lactoseAllowsGluten = !glutenFreeRequired &&
     mealPlanHasExclusion(context.preferences, "lactose");
@@ -1450,7 +1451,7 @@ async function generateWeeklyMealPlanAttempt(
     ? " Includi almeno un pasto principale con carne rossa nella settimana, preferibilmente uno."
     : "";
   const mediterraneanRule = mediterraneanDiet
-    ? `\n- DIETA MEDITERRANEA OBBLIGATORIA: ogni settimana deve includere almeno 2 pranzi con pasta, pesce 2-3 volte, carne bianca 1-2 volte, uova 1-2 volte e almeno un pranzo o cena con manzo, vitello o agnello. Ceci, lenticchie, fagioli e piselli in massimo 3 pranzi/cene totali.
+    ? `\n- DIETA MEDITERRANEA OBBLIGATORIA: ${glutenFreeRequired ? "per il profilo senza glutine usa basi naturalmente prive di glutine come riso, quinoa, patate, polenta di mais e legumi; non usare basi generiche a rischio." : "ogni settimana deve includere almeno 2 pranzi con pasta"}, pesce 2-3 volte, carne bianca 1-2 volte, uova 1-2 volte e almeno un pranzo o cena con manzo, vitello o agnello. Ceci, lenticchie, fagioli e piselli in massimo 3 pranzi/cene totali.
 - Ogni ingrediente deve essere concreto. Nell'array ingredients usa il nome di un singolo alimento, per esempio “zucchine”, “carote” o “spinaci”: non scrivere mai “Proteina”, “Carboidrato”, “Fonte proteica”, “Alimento proteico”, “verdure”, “verdure miste”, “ortaggi”, “cereali” o “legumi”. Varia davvero pranzi e cene italiani, non solo i contorni.${redMeatWeeklyRule}`
     : '';
   const lunchVarietyExplanation = glutenFreeRequired
@@ -1460,9 +1461,14 @@ async function generateWeeklyMealPlanAttempt(
 - VARIETÀ SETTIMANALE (best effort, mai in contrasto con i vincoli): sui pranzi e sulle cene cerca almeno 4 fonti di carboidrati diverse nella settimana e non usare la stessa più di 3 volte quando sono disponibili alternative compatibili.
 - Alterna le proteine principali: evita la stessa proteina specifica più di 2 volte quando possibile; il pesce può comparire più volte, ma non ripetere sempre lo stesso tipo.
 - PRANZI, VARIETÀ SEMANTICA: ${lunchVarietyExplanation} Contorni, olio, erbe e piccole verdure non trasformano un pranzo in un piatto nuovo.
-`;
+${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea senza glutine usa la varietà delle basi naturalmente prive di glutine; non rendere obbligatori prodotti trasformati.` : ""}`;
   const mediterraneanDistributionRule = mediterraneanDiet
-    ? `
+    ? glutenFreeRequired
+      ? `
+- DISTRIBUZIONE SENZA GLUTINE DEI PRANZI: segui nell'ordine esatto le famiglie del BLUEPRINT SETTIMANALE LOCALE. Alterna basi naturalmente prive di glutine concrete come riso, quinoa, patate, polenta di mais e legumi.
+- Non usare mai pasta, couscous, pane, biscotti, farro, orzo o avena generici. Non trasformare una base sicura in una categoria generica: ogni ingrediente deve avere un nome concreto.
+- Quando il pranzo è riso, quinoa, polenta, patate o legumi, la cena dello stesso giorno deve usare una combinazione diversa con verdure e una base naturalmente priva di glutine.`
+      : `
 - DISTRIBUZIONE MEDITERRANEA DEI PRANZI: segui nell'ordine esatto le famiglie del BLUEPRINT SETTIMANALE LOCALE. La rotazione alterna due pranzi di pasta non consecutivi, due piatti di legumi, due pranzi con patate e un solo pranzo con riso.
 - Non sostituire patate o legumi con couscous, farro, orzo, quinoa o polenta: fuori dai due pranzi di pasta usa al massimo un pranzo a base di riso/cereali nella settimana.
 - La pasta è sempre un primo asciutto: non scrivere né proporre mai “pasta in umido”, “pasta stufata” o “pasta brasata”.
@@ -1473,25 +1479,6 @@ async function generateWeeklyMealPlanAttempt(
 - PRANZI, VARIETÀ DI STRUTTURA (dopo la sicurezza): non ripetere lo stesso schema “carboidrato + base + proteina” in due giorni consecutivi; usalo al massimo 2 volte nella settimana. Una pasta al pomodoro e tonno con contorni, olio o erbe diversi resta lo stesso schema.
 - Con almeno 6 pranzi, usa quando compatibile almeno 4 famiglie diverse (per esempio pasta, risotto/riso, couscous, cereale in chicco, piatto di legumi, zuppa, patate/polenta, insalata di cereali o pane/piadina). Non forzare la pasta.`
     : "";
-  const profileIdentityRule = dietProfile === "balanced"
-    ? `
- - PROFILO EQUILIBRATO: costruisci una varietà generale tra pasta, riso, cereali, carne rossa e bianca, pesce, uova, legumi, verdure e frutta, con carni in quantità moderate. Limita i legumi a 2-3 pasti principali. Non applicare la rotazione, la carne rossa obbligatoria o le quote della Mediterranea.`
-    : dietProfile === "vegetarian"
-      ? `
-- PROFILO VEGETARIANO: carne e pesce sono vietati. Alterna davvero uova, latticini, cereali, verdure e legumi; usa i legumi in al massimo 2-3 pasti principali, senza fare una settimana di sole zuppe o legumi.`
-      : dietProfile === "light"
-        ? `
- - PROFILO LEGGERO: usa ricette semplici e digeribili, soprattutto al forno, al vapore o in padella leggera, privilegiando carne bianca, pesce e altre proteine magre. La carne rossa magra è ammessa con moderazione. Limita i legumi a 1-2 pasti principali e non applicare quote Mediterranee.`
-        : dietProfile === "sport"
-          ? `
- - PROFILO SPORTIVO: genera tutti i 21 pasti. In OGNI pranzo e cena indica esplicitamente ingredienti concreti: una proteina (es. pollo, tacchino, manzo magro, salmone, altro pesce, uova, tofu, ceci) e un carboidrato complesso (es. riso integrale o basmati, pasta, quinoa, farro, patate, polenta o legumi). Limita i legumi a 2-3 pasti principali; non usare mai “proteina”, “carboidrato” o “verdure” come ingredienti.`
-          : dietProfile === "gluten_free"
-            ? `
- - PROFILO SENZA GLUTINE: usa soltanto alimenti naturalmente privi di glutine o prodotti dichiarati esplicitamente “senza glutine”. Carne rossa, carne bianca, pesce e uova restano ammessi: il vincolo riguarda il glutine, non queste fonti proteiche. Non applicare rotazioni o quote Mediterranee.`
-            : dietProfile === "lactose_free"
-              ? `
- - PROFILO SENZA LATTOSIO: evita i latticini ordinari ma pasta, pane e cereali normali restano consentiti. Carne rossa, carne bianca, pesce e uova restano ammessi: il vincolo riguarda il lattosio, non queste fonti proteiche. Non introdurre prodotti senza glutine e non applicare quote Mediterranee.`
-              : "";
   const glutenFreeTitleRule = glutenFreeRequired
     ? `\n- Nei titoli non aggiungere meccanicamente “senza glutine” a piatti naturalmente privi di glutine. Mantieni la dicitura soltanto quando identifica davvero un prodotto sostitutivo, per esempio pasta o pane senza glutine.`
     : "";
@@ -1584,24 +1571,6 @@ async function generateWeeklyMealPlanAttempt(
     'a pranzo riso con manzo e bietole; a cena pollo con patate e carote',
     'a pranzo quinoa con uova e pomodori; a cena tonno con polenta di mais e zucchine',
     'a pranzo patate con tacchino e broccoli; a cena salmone con riso e peperoni',
-  ];
-  const sportDayThemes = [
-    'a pranzo pollo con riso integrale e zucchine; a cena salmone con patate e fagiolini',
-    'a pranzo tacchino con quinoa e carote; a cena uova con polenta e spinaci',
-    'a pranzo tonno con pasta integrale e pomodori; a cena merluzzo con riso basmati e broccoli',
-    'a pranzo tofu con farro e peperoni; a cena pollo con patata dolce e zucchine',
-    'a pranzo salmone con couscous e bietole; a cena tacchino con orzo e carote',
-    'a pranzo uova con riso venere e spinaci; a cena ceci con quinoa e zucca',
-    'a pranzo manzo con patate e fagiolini; a cena merluzzo con pasta integrale e melanzane',
-  ];
-  const sportDayThemesB = [
-    'a pranzo tacchino con riso basmati e peperoni; a cena orata con patate e spinaci',
-    'a pranzo uova con farro e zucchine; a cena pollo con polenta e carote',
-    'a pranzo salmone con quinoa e broccoli; a cena tofu con pasta integrale e pomodori',
-    'a pranzo manzo con riso venere e bietole; a cena merluzzo con patata dolce e fagiolini',
-    'a pranzo tonno con orzo e zucchine; a cena tacchino con couscous e melanzane',
-    'a pranzo pollo con pasta integrale e carote; a cena lenticchie con riso integrale e zucca',
-    'a pranzo uova con patate e spinaci; a cena salmone con quinoa e peperoni',
   ];
   const compatibleDayThemes = [
     'componi un pranzo e una cena esclusivamente con ingredienti compatibili e verdure di stagione',
@@ -1702,28 +1671,19 @@ async function generateWeeklyMealPlanAttempt(
     const glutenFreeTheme = glutenFreeRequired
       ? (variant === 2 ? glutenFreeDayThemesB : glutenFreeDayThemes)[dayIndex]!
       : "";
-    const sportTheme = dietProfile === "sport"
-      ? (variant === 2 ? sportDayThemesB : sportDayThemes)[dayIndex]!
-      : "";
     const [glutenFreeLunchTheme = "", glutenFreeDinnerTheme = ""] =
       glutenFreeTheme.split("; a cena ");
-    const [sportLunchTheme = "", sportDinnerTheme = ""] =
-      sportTheme.split("; a cena ");
     const breakfast = modelMealTypes.includes("breakfast")
       ? `colazione: ${activeBreakfastThemes[dayIndex]}`
       : "";
     const lunch = modelMealTypes.includes("lunch")
       ? glutenFreeRequired
         ? `pranzo: ${glutenFreeLunchTheme.replace(/^a pranzo /, "")}`
-        : dietProfile === "sport"
-          ? `pranzo: ${sportLunchTheme.replace(/^a pranzo /, "")}`
         : `pranzo: famiglia ${lunchFamilyTargets[dayIndex] || "compatibile"}, proteina ${lunchSemanticTargets[dayIndex]?.mainProtein || "compatibile"}, preparazione ${lunchSemanticTargets[dayIndex]?.preparation || "diversa"}`
       : "";
     const dinner = modelMealTypes.includes("dinner")
       ? glutenFreeRequired
         ? `cena: ${glutenFreeDinnerTheme}`
-        : dietProfile === "sport"
-          ? `cena: ${sportDinnerTheme}`
         : `cena: ${activeDinnerThemes[dayIndex]}`
       : "";
     return `- ${date}: ${[breakfast, lunch, dinner].filter(Boolean).join("; ")}.`;
@@ -1816,7 +1776,7 @@ ${constrainedRecipeReferenceRule}
        - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${mediterraneanDistributionRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}${lightProfileRule}${sportProfileRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
  - ${variantHint}${themeHint ? `\n- BLUEPRINT SETTIMANALE LOCALE: segui esattamente questi obiettivi già pianificati, senza scambiarli tra date:\n${themeHint}` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione indicata realizza questa combinazione concreta: ${breakfastHint}.` : ''}
-    ${constraintRule}${profileIdentityRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}${context.previousPlanJson ? `\n- JSON DEL PIANO PRECEDENTE DA CORREGGERE (non copiare gli errori; conserva ogni elemento già valido e modifica soltanto quelli necessari): ${context.previousPlanJson}` : ""}
+  ${constraintRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}${context.previousPlanJson ? `\n- JSON DEL PIANO PRECEDENTE DA CORREGGERE (non copiare gli errori; conserva ogni elemento già valido e modifica soltanto quelli necessari): ${context.previousPlanJson}` : ""}
 - Rispondi SOLO con JSON: ${responseContract}`;
     const userMsg = `Famiglia di ${context.familySize} persone.${prefText}`;
 

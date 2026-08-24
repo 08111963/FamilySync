@@ -37,8 +37,8 @@ const PROFILE_CASES: ProfileCase[] = [
   { name: "vegetariano", profile: "vegetarian", dietaryPattern: "vegetarian", exclusions: [], forbidden: "pollo", violationCode: "meat", safe: "ceci" },
   { name: "leggero", profile: "light", dietaryPattern: "light", exclusions: [], safe: "riso" },
   { name: "sportivo", profile: "sport", dietaryPattern: "sport", exclusions: [], safe: "riso" },
-  { name: "senza glutine", profile: "gluten_free", dietaryPattern: "gluten_free", exclusions: ["gluten"], forbidden: "pasta", violationCode: "gluten", safe: "pasta senza glutine" },
-  { name: "senza lattosio", profile: "lactose_free", dietaryPattern: "lactose_free", exclusions: ["lactose"], forbidden: "ricotta", violationCode: "lactose", safe: "yogurt senza lattosio" },
+  { name: "senza glutine", profile: "gluten_free", dietaryPattern: "mediterranean", exclusions: ["gluten"], forbidden: "pasta", violationCode: "gluten", safe: "pasta senza glutine" },
+  { name: "senza lattosio", profile: "lactose_free", dietaryPattern: "mediterranean", exclusions: ["lactose"], forbidden: "ricotta", violationCode: "lactose", safe: "yogurt senza lattosio" },
 ];
 
 function recipeWith(value: string, field: "title" | "description" | "notes" | "ingredients" | "steps") {

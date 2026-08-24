@@ -617,7 +617,7 @@ const LUNCH_PREPARATION_TARGETS: SemanticLunchTargetDefinition[] = [
   { label: "pesto", available: (items) => items.some((item) => /\bpesto\b/.test(item)) },
   { label: "verdure", available: (items) => items.some((item) => /\b(?:zucchine?|melanzane?|broccoli|spinaci|bietole|peperoni|carote|fagiolini|rucola)\b/.test(item)) },
   { label: "forno", available: () => true },
-  { label: "al forno", available: () => true },
+  { label: "in umido", available: () => true },
 ];
 
 /**

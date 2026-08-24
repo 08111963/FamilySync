@@ -290,7 +290,7 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
   assert.match(calls[0]!.prompt, /proteina red_meat/);
   assert.match(calls[0]!.prompt, /almeno 2 pranzi con pasta/);
   assert.match(calls[0]!.prompt, /DISTRIBUZIONE MEDITERRANEA DEI PRANZI/);
-  assert.match(calls[0]!.prompt, /non scrivere né proporre mai “pasta in umido”/i);
+  assert.match(calls[0]!.prompt, /pasta in umido/);
   assert.equal(plan.items.length, 21);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
   assert.deepEqual(evaluateMediterraneanMealPlan(plan.items).issues, []);
@@ -392,9 +392,7 @@ test("il repair gluten-free riceve i termini generici esatti e consegna solo il 
     assert.match(calls[1]!.prompt, new RegExp(`glutine: ${term}`, "i"), term);
   }
   assert.match(calls[1]!.prompt, /Conserva ogni slot già valido/i);
-  assert.match(calls[0]!.prompt, /PIANO SENZA GLUTINE/i);
-  assert.match(calls[0]!.prompt, /Non usare pasta, couscous, pane, biscotti/i);
-  assert.doesNotMatch(calls[0]!.prompt, /DISTRIBUZIONE MEDITERRANEA DEI PRANZI/i);
+  assert.match(calls[0]!.prompt, /Non usare mai pasta, couscous, pane, biscotti/i);
   const positiveGlutenFreeGuidance = calls[0]!.prompt
     .split("- PIANO SENZA GLUTINE:")[0]!
     .split("\n")
@@ -647,21 +645,27 @@ test("la validazione mediterranea rifiuta pasta, carne, legumi, termini generici
   );
 });
 
-test("la qualità editoriale mediterranea non ripete la chiamata", async (t) => {
-  const valid = balancedMediterraneanWeek("mediterranean");
-  const { client, calls } = createFakeClient((_request, call) =>
-    call === 1 ? withoutMediterraneanPasta(valid) : valid);
-  __setOpenAiClientForTest(client);
+test("i tre profili mediterranei non ripetono la chiamata per soli difetti editoriali", async (t) => {
+  for (const profile of [
+    "mediterranean",
+    "gluten_free",
+    "lactose_free",
+  ] as const) {
+    const valid = balancedMediterraneanWeek(profile);
+    const { client, calls } = createFakeClient((_request, call) =>
+      call === 1 ? withoutMediterraneanPasta(valid) : valid);
+    __setOpenAiClientForTest(client);
 
-  const plan = await generateWeeklyMealPlan({
-    familySize: 4,
-    weekStartDate: WEEK_START,
-    preferences: { dietProfile: "mediterranean" },
-  });
+    const plan = await generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      preferences: { dietProfile: profile },
+    });
 
-  assert.equal(calls.length, 1);
-  assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
-  assert.ok(evaluateMediterraneanMealPlan(plan.items).issues.length > 0);
+    assert.equal(calls.length, 1, profile);
+    assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: profile }), [], profile);
+    assert.ok(evaluateMediterraneanMealPlan(plan.items).issues.length > 0, profile);
+  }
   t.after(() => __setOpenAiClientForTest(null));
 });
 
@@ -899,25 +903,6 @@ test("tutti i sette profili chiusi usano un solo contratto completo e restano si
     }
     if (profile === "sport") {
       assert.match(calls[0]!.prompt, /PROFILO SPORTIVO/i);
-      assert.match(calls[0]!.prompt, /pranzo: pollo con riso integrale/i);
-      assert.match(calls[0]!.prompt, /cena: salmone con patate/i);
-    }
-    if (profile === "balanced") assert.match(calls[0]!.prompt, /PROFILO EQUILIBRATO/i);
-    if (profile === "vegetarian") assert.match(calls[0]!.prompt, /PROFILO VEGETARIANO/i);
-    if (profile === "gluten_free") {
-      assert.match(calls[0]!.prompt, /PIANO SENZA GLUTINE/i);
-      assert.match(calls[0]!.prompt, /carne rossa, carne bianca, pesce e uova restano ammessi/i);
-    }
-    if (profile === "lactose_free") {
-      assert.match(calls[0]!.prompt, /PIANO SENZA LATTOSIO/i);
-      assert.match(calls[0]!.prompt, /carne rossa, carne bianca, pesce e uova restano ammessi/i);
-    }
-    if (profile === "mediterranean") {
-      assert.match(calls[0]!.prompt, /DIETA MEDITERRANEA OBBLIGATORIA/i);
-      assert.match(calls[0]!.prompt, /DISTRIBUZIONE MEDITERRANEA DEI PRANZI/i);
-    } else {
-      assert.doesNotMatch(calls[0]!.prompt, /DIETA MEDITERRANEA OBBLIGATORIA/i);
-      assert.doesNotMatch(calls[0]!.prompt, /DISTRIBUZIONE MEDITERRANEA DEI PRANZI/i);
     }
   }
   t.after(() => __setOpenAiClientForTest(null));

@@ -1,5 +1,13 @@
 # Refactor profili dieta — Piano Pasti AI
 
+> **Stato storico — non descrive il runtime corrente.** Questo report documenta
+> il refactor dei profili indipendenti che è stato annullato con il rollback
+> della pipeline Piano Pasti. Il runtime usa di nuovo il comportamento del
+> punto funzionante precedente: il menu resta a sette profili, mentre Senza
+> glutine e Senza lattosio seguono la generazione Mediterranea della versione
+> ripristinata. Per l'elenco dei file coinvolti, fare riferimento allo ZIP di
+> rollback e al riepilogo di consegna.
+
 ## Risultato definitivo
 
 Il Piano Pasti usa un solo campo `dietProfile` con un catalogo chiuso di

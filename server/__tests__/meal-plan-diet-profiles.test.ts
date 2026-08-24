@@ -4,7 +4,6 @@ import {
   MEAL_PLAN_DIET_PROFILES,
   legacyMealPlanDietToProfile,
   mealPlanDietProfileLabel,
-  mealPlanVoiceDietRequiresReselection,
 } from "../../shared/meal-plan-diet-profiles";
 import {
   normalizeMealPlanConstraints,
@@ -50,7 +49,7 @@ test("i profili senza glutine e lattosio applicano solo le loro sostituzioni esp
   ).length, 0);
 });
 
-test("compatibilità legacy: vegana resta bloccata e non diventa un profilo che ammette carne", () => {
+test("compatibilità legacy: solo le combinazioni mediterranee rappresentabili restano convertibili", () => {
   const item = [{ title: "Tagliata di manzo", ingredients: [{ name: "manzo" }] }];
   assert.equal(validateMealPlanConstraints(item, { dietProfile: "vegetarian" })[0]?.code, "meat");
   assert.deepEqual(normalizeMealPlanConstraints({
@@ -60,8 +59,6 @@ test("compatibilità legacy: vegana resta bloccata e non diventa un profilo che 
   assert.equal(legacyMealPlanDietToProfile("vegetariana"), "vegetarian");
   assert.equal(legacyMealPlanDietToProfile("Mediterranea senza glutine"), "gluten_free");
   assert.equal(legacyMealPlanDietToProfile("Mediterranea senza lattosio"), "lactose_free");
-  assert.equal(legacyMealPlanDietToProfile("vegana"), undefined);
-  assert.equal(mealPlanVoiceDietRequiresReselection("piano vegano"), true);
   for (const legacyProfile of [
     "vegetarian_gluten_free",
     "vegana",
@@ -83,40 +80,12 @@ test("compatibilità legacy: vegana resta bloccata e non diventa un profilo che 
   assert.equal(legacyMealPlanDietToProfile("Solo cibi della mia infanzia"), undefined);
 });
 
-test("solo Mediterranea richiede carne rossa, senza ereditarla negli altri profili", () => {
+test("i profili mediterranei e le due varianti separate mantengono l'equilibrio settimanale", () => {
   assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "mediterranean" }), true);
-  for (const dietProfile of MEAL_PLAN_DIET_PROFILES.filter((profile) => profile !== "mediterranean")) {
-    assert.equal(
-      mealPlanRequiresMediterraneanRedMeat({ dietProfile }),
-      false,
-      `${dietProfile} non deve ereditare l'obbligo Mediterranea`,
-    );
-  }
-});
-
-test("la carne rossa e bianca resta ammessa fuori da Vegetariana", () => {
-  const meals = [
-    {
-      mealType: "lunch",
-      title: "Riso con manzo e zucchine",
-      ingredients: [{ name: "riso" }, { name: "manzo" }, { name: "zucchine" }],
-    },
-    {
-      mealType: "dinner",
-      title: "Pollo con patate e spinaci",
-      ingredients: [{ name: "pollo" }, { name: "patate" }, { name: "spinaci" }],
-    },
-  ];
-
-  for (const dietProfile of MEAL_PLAN_DIET_PROFILES) {
-    const violations = validateMealPlanConstraints(meals, { dietProfile });
-    if (dietProfile === "vegetarian") {
-      assert.ok(
-        violations.some((violation) => violation.code === "meat"),
-        "Vegetariana deve continuare a vietare entrambe le carni",
-      );
-    } else {
-      assert.deepEqual(violations, [], `${dietProfile} ammette carne rossa e bianca`);
-    }
-  }
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "gluten_free" }), true);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "lactose_free" }), true);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "vegetarian" }), false);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "balanced" }), false);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "light" }), false);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "sport" }), false);
 });

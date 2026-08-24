@@ -18,14 +18,7 @@ export type MealPlanDietProfile = typeof MEAL_PLAN_DIET_PROFILES[number];
 
 export type MealPlanDietProfileDefinition = {
   label: { it: string; en: string };
-  dietaryPattern:
-    | "mediterranean"
-    | "balanced"
-    | "vegetarian"
-    | "light"
-    | "sport"
-    | "gluten_free"
-    | "lactose_free";
+  dietaryPattern: "mediterranean" | "balanced" | "vegetarian" | "light" | "sport";
   excludes: Array<"gluten" | "lactose">;
 };
 
@@ -60,12 +53,12 @@ export const MEAL_PLAN_DIET_PROFILE_DEFINITIONS: Record<
   },
   gluten_free: {
     label: { it: "Senza glutine", en: "Gluten-free" },
-    dietaryPattern: "gluten_free",
+    dietaryPattern: "mediterranean",
     excludes: ["gluten"],
   },
   lactose_free: {
     label: { it: "Senza lattosio", en: "Lactose-free" },
-    dietaryPattern: "lactose_free",
+    dietaryPattern: "mediterranean",
     excludes: ["lactose"],
   },
 };
