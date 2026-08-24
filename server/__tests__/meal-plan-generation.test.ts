@@ -473,7 +473,7 @@ test("la validazione mediterranea rifiuta pasta, carne, legumi, termini generici
   );
 });
 
-test("i tre profili mediterranei ricevono un solo repair mirato e restano compatibili", async (t) => {
+test("i tre profili mediterranei non ripetono la chiamata per soli difetti editoriali", async (t) => {
   for (const profile of [
     "mediterranean",
     "gluten_free",
@@ -490,10 +490,9 @@ test("i tre profili mediterranei ricevono un solo repair mirato e restano compat
       preferences: { dietProfile: profile },
     });
 
-    assert.equal(calls.length, 2, profile);
-    assert.match(calls[1]!.prompt, /CORREZIONE MEDITERRANEA OBBLIGATORIA/);
+    assert.equal(calls.length, 1, profile);
     assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: profile }), [], profile);
-    assert.deepEqual(evaluateMediterraneanMealPlan(plan.items).issues, [], profile);
+    assert.ok(evaluateMediterraneanMealPlan(plan.items).issues.length > 0, profile);
   }
   t.after(() => __setOpenAiClientForTest(null));
 });
@@ -524,7 +523,7 @@ test("un ingrediente generico rilevato in produzione riceve un repair puntuale e
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
 });
 
-test("un repair mediterraneo si attiva anche quando il pesce è citato solo nel testo", async (t) => {
+test("un minimo editoriale di pesce resta osservabile ma non blocca il piano", async (t) => {
   const valid = balancedMediterraneanWeek("mediterranean");
   const fishOnlyInText = cloneMeals(valid);
   for (const item of fishOnlyInText) {
@@ -533,8 +532,7 @@ test("un repair mediterraneo si attiva anche quando il pesce è citato solo nel 
         ? { ...ingredient, name: "zucchine" }
         : ingredient);
   }
-  const { client, calls } = createFakeClient((_request, call) =>
-    call === 1 ? fishOnlyInText : valid);
+  const { client, calls } = createFakeClient(() => fishOnlyInText);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
@@ -544,9 +542,11 @@ test("un repair mediterraneo si attiva anche quando il pesce è citato solo nel 
     preferences: { dietProfile: "mediterranean" },
   });
 
-  assert.equal(calls.length, 2);
-  assert.match(calls[1]!.prompt, /CORREZIONE MEDITERRANEA OBBLIGATORIA/);
-  assert.deepEqual(evaluateMediterraneanMealPlan(plan.items).issues, []);
+  assert.equal(calls.length, 1);
+  assert.ok(
+    evaluateMediterraneanMealPlan(plan.items).issues.some((issue) =>
+      issue.code === "mediterranean-fish-minimum"),
+  );
 });
 
 test("un output interrotto per limite non avvia un repair vuoto", async (t) => {

@@ -1405,17 +1405,6 @@ function buildMealPlanQualityCorrection(error: AiError, nextAttempt: number): st
 - Restituisci esclusivamente tutti i pasti richiesti, completi e coerenti con il loro tipo.${breakfastCorrection}${wholegrainCorrection}${completenessCorrection}`;
 }
 
-function buildMediterraneanQualityCorrection(
-  issueCodes: string[],
-  nextAttempt: number,
-): string {
-  return `
-- CORREZIONE MEDITERRANEA OBBLIGATORIA (tentativo ${nextAttempt}): correggi soltanto la qualità indicata, mantenendo tutti i vincoli di sicurezza.
-- Settimana richiesta: almeno 2 pranzi con pasta concreta, pesce 2-3 volte, carne bianca 1-2 volte, uova 1-2 volte, almeno un pranzo o cena con manzo/vitello/agnello e massimo 3 pasti principali con ceci/lenticchie/fagioli/piselli.
-- Non usare mai Proteina, Carboidrato, Fonte proteica o Alimento proteico; nei campi ingredients indica sempre alimenti concreti. Varia davvero pranzi e cene italiani.
-- Problemi rilevati: ${issueCodes.join(", ")}. Restituisci di nuovo tutti i 21 pasti completi.`;
-}
-
 function appendMealPlanCorrection(existing: string | undefined, next: string): string {
   return existing ? `${existing}\n${next}` : next;
 }
@@ -2012,7 +2001,7 @@ ${constrainedRecipeReferenceRule}
     const issueCodes = mediterraneanQuality.issues.map((issue) => issue.code);
     if (!context.suppressInternalLogs) {
       console.warn(JSON.stringify({
-        tag: "AI_MEAL_PLAN_MEDITERRANEAN_REJECTED",
+        tag: "AI_MEAL_PLAN_MEDITERRANEAN_ADVISORY",
         variant,
         issues: issueCodes,
         pastaLunchCount: mediterraneanQuality.pastaLunchCount,
@@ -2024,10 +2013,6 @@ ${constrainedRecipeReferenceRule}
         distinctLunchFamilies: mediterraneanQuality.distinctLunchFamilies,
       }));
     }
-    throw new MealPlanRepairError(
-      filtered,
-      buildMediterraneanQualityCorrection(issueCodes, context.generationAttempt + 1),
-    );
   }
   const redMeatEvaluation = evaluateMealPlanRedMeat(filtered);
   if (requiresMediterraneanRedMeat && !redMeatEvaluation.hasRedMeat) {
@@ -2089,15 +2074,11 @@ ${constrainedRecipeReferenceRule}
     const issueCodes = finalMediterraneanQuality.issues.map((issue) => issue.code);
     if (!context.suppressInternalLogs) {
       console.warn(JSON.stringify({
-        tag: "AI_MEAL_PLAN_MEDITERRANEAN_FINAL_REJECTED",
+        tag: "AI_MEAL_PLAN_MEDITERRANEAN_FINAL_ADVISORY",
         variant,
         issues: issueCodes,
       }));
     }
-    throw new MealPlanRepairError(
-      finalItems,
-      buildMediterraneanQualityCorrection(issueCodes, context.generationAttempt + 1),
-    );
   }
   // Difesa finale: la verifica iniziale è eseguita prima delle riparazioni
   // locali di varietà. Ricontrollare l'output restituito impedisce a qualunque
