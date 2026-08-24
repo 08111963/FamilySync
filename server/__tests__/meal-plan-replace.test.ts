@@ -12,6 +12,8 @@ import {
   mealPlanItems,
   recipes,
   recipeIngredients,
+  shoppingItems,
+  shoppingLists,
 } from "../../shared/schema";
 import { registerRoutes } from "../routes";
 import { generateAccessToken } from "../lib/jwt";
@@ -125,7 +127,6 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     if (!prepared.ok) return;
     assert.deepEqual(prepared.preferences, {
       dietProfile: "mediterranean",
-      mealsPerDay: 2,
     });
   });
 
@@ -282,6 +283,102 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     assert.equal(oldItems.length, 0);
   });
 
+  test("4b) conserva ricetta strutturata e aggiunge alla spesa il solo pasto scelto", async () => {
+    const [linkedRecipe] = await db.insert(recipes).values({
+      familyId,
+      createdByUserId: userId,
+      title: "Ricetta collegata non personalizzata",
+      steps: ["Cuoci secondo la ricetta salvata."],
+    }).returning();
+    await db.insert(recipeIngredients).values([
+      {
+        recipeId: linkedRecipe.id,
+        name: "Pasta",
+        quantity: "999",
+        unit: "g",
+        normalizedName: "pasta",
+      },
+      {
+        recipeId: linkedRecipe.id,
+        name: "Sale",
+        quantity: "10",
+        unit: "g",
+        normalizedName: "sale",
+      },
+    ]);
+    const save = await request("POST", `/api/meal-plans/${familyId}/meal-plans`, {
+      title: "Piano ricette dettagliate",
+      weekStartDate: "2030-03-25",
+      items: [
+        {
+          date: "2030-03-25",
+          mealType: "lunch",
+          recipeId: linkedRecipe.id,
+          titleOverride: "Pasta al pomodoro",
+          servings: 4,
+          ingredients: [
+            { name: "Pasta", quantity: "320", unit: "g" },
+            { name: "Passata di pomodoro", quantity: "400", unit: "g" },
+            { name: "Basilico", quantity: "8", unit: "foglie" },
+            { name: "Olio extravergine", quantity: "20", unit: "ml" },
+          ],
+          steps: [
+            "Porta a bollore abbondante acqua salata.",
+            "Cuoci la pasta per 10 minuti.",
+            "Scalda la passata con olio e basilico.",
+            "Condisci la pasta e servi subito.",
+          ],
+        },
+        {
+          date: "2030-03-25",
+          mealType: "dinner",
+          titleOverride: "Frittata con zucchine",
+          ingredients: [{ name: "Uova", quantity: "6", unit: "pz" }],
+          steps: ["Sbatti le uova e cuoci la frittata."],
+        },
+      ],
+    });
+    assert.equal(save.status, 201);
+    const saved = await save.json();
+    const lunch = saved.items[0];
+    assert.equal(lunch.steps.length, 4);
+
+    const detail = await request("GET", `/api/meal-plans/${familyId}/meal-plans/${saved.id}`);
+    assert.equal(detail.status, 200);
+    const plan = await detail.json();
+    assert.equal(plan.items[0].ingredients.length, 4);
+    assert.equal(plan.items[0].steps.length, 4);
+
+    const toShopping = await request(
+      "POST",
+      `/api/meal-plans/${familyId}/meal-plans/${saved.id}/to-shopping-list`,
+      { itemId: lunch.id },
+    );
+    assert.equal(toShopping.status, 201);
+    const result = await toShopping.json();
+    assert.equal(result.ingredientCount, 4);
+
+    const [list] = await db.select().from(shoppingLists)
+      .where(eq(shoppingLists.id, result.shoppingListId));
+    assert.ok(list);
+    const listItems = await db.select().from(shoppingItems)
+      .where(eq(shoppingItems.listId, list!.id));
+    assert.deepEqual(
+      listItems.map((item) => item.name).sort(),
+      ["Basilico", "Olio extravergine", "Pasta", "Passata di pomodoro"].sort(),
+    );
+    assert.equal(
+      listItems.find((item) => item.name === "Pasta")?.quantity,
+      "320",
+      "gli ingredienti personalizzati non devono sommarsi a quelli della ricetta collegata",
+    );
+    assert.equal(
+      listItems.some((item) => item.name === "Sale"),
+      false,
+      "una ricetta collegata non deve aggiungere ingredienti esclusi dalla personalizzazione",
+    );
+  });
+
   let constrainedPlanId: string;
   let constrainedItemId: string;
 
@@ -391,7 +488,7 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
       weekStartDate: "2030-04-01",
       title: "Piano storico",
       // Simula un record creato prima della chiusura del catalogo.
-      preferences: { dietProfile: "vegan" } as never,
+      preferences: { dietProfile: "pescetarian" } as never,
     }).returning();
     try {
       const detail = await request("GET", `/api/meal-plans/${familyId}/meal-plans/${legacyPlan.id}`);

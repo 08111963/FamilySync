@@ -56,6 +56,7 @@ const createMealPlanSchema = z.object({
       quantity: z.string().optional(),
       unit: z.string().optional(),
     })).optional().nullable(),
+    steps: z.array(z.string()).optional().nullable(),
   })),
 });
 
@@ -111,6 +112,7 @@ interface ConstraintItemInput {
   titleOverride?: string | null;
   notes?: string | null;
   ingredients?: Array<{ name: string; quantity?: string; unit?: string }> | null;
+  steps?: string[] | null;
 }
 
 async function resolveConstraintItem(
@@ -123,6 +125,7 @@ async function resolveConstraintItem(
       title: input.titleOverride,
       notes: input.notes,
       ingredients: input.ingredients,
+      steps: input.steps,
     };
   }
 
@@ -141,6 +144,7 @@ async function resolveConstraintItem(
       title: input.titleOverride,
       notes: input.notes,
       ingredients: input.ingredients,
+      steps: input.steps,
     };
   }
 
@@ -205,6 +209,7 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
           title: item.titleOverride,
           notes: item.notes,
           ingredients: item.ingredients,
+          steps: item.steps,
         }));
     const constraintViolations = validateMealPlanConstraints(
       resolvedItems,
@@ -265,6 +270,7 @@ router.post('/:familyId/meal-plans', authenticate, requireFamilyMember(), async 
               servings: item.servings,
               notes: item.notes,
               ingredients: item.ingredients ?? null,
+              steps: item.steps ?? null,
             }))
           ).returning();
         }
@@ -349,17 +355,75 @@ router.get('/:familyId/meal-plans/:planId', authenticate, requireFamilyMember(),
       .filter((id): id is string => !!id);
 
     let recipesMap: Record<string, string> = {};
+    const recipeDetailsMap = new Map<string, {
+      description: string | null;
+      servings: number | null;
+      prepTimeMinutes: number | null;
+      cookTimeMinutes: number | null;
+      steps: string[];
+      ingredients: Array<{ name: string; quantity?: string; unit?: string }>;
+    }>();
     if (recipeIds.length > 0) {
-      const recipeRows = await db.select({ id: recipes.id, title: recipes.title })
+      const recipeRows = await db.select({
+        id: recipes.id,
+        title: recipes.title,
+        description: recipes.description,
+        servings: recipes.servings,
+        prepTimeMinutes: recipes.prepTimeMinutes,
+        cookTimeMinutes: recipes.cookTimeMinutes,
+        steps: recipes.steps,
+      })
         .from(recipes)
-        .where(inArray(recipes.id, recipeIds));
-      recipesMap = Object.fromEntries(recipeRows.map((r) => [r.id, r.title]));
+        .where(and(inArray(recipes.id, recipeIds), eq(recipes.familyId, familyId)));
+      const recipeIngredientRows = await db.select({
+        recipeId: recipeIngredients.recipeId,
+        name: recipeIngredients.name,
+        quantity: recipeIngredients.quantity,
+        unit: recipeIngredients.unit,
+      })
+        .from(recipeIngredients)
+        .innerJoin(recipes, eq(recipeIngredients.recipeId, recipes.id))
+        .where(and(inArray(recipeIngredients.recipeId, recipeIds), eq(recipes.familyId, familyId)));
+      const ingredientsByRecipe = new Map<string, Array<{ name: string; quantity?: string; unit?: string }>>();
+      for (const ingredient of recipeIngredientRows) {
+        const list = ingredientsByRecipe.get(ingredient.recipeId) ?? [];
+        list.push({
+          name: ingredient.name,
+          ...(ingredient.quantity !== null ? { quantity: String(ingredient.quantity) } : {}),
+          ...(ingredient.unit !== null ? { unit: ingredient.unit } : {}),
+        });
+        ingredientsByRecipe.set(ingredient.recipeId, list);
+      }
+      recipesMap = Object.fromEntries(recipeRows.map((recipe) => [recipe.id, recipe.title]));
+      for (const recipe of recipeRows) {
+        recipeDetailsMap.set(recipe.id, {
+          description: recipe.description,
+          servings: recipe.servings,
+          prepTimeMinutes: recipe.prepTimeMinutes,
+          cookTimeMinutes: recipe.cookTimeMinutes,
+          steps: recipe.steps,
+          ingredients: ingredientsByRecipe.get(recipe.id) ?? [],
+        });
+      }
     }
 
-    const itemsWithRecipes = items.map((item) => ({
-      ...item,
-      recipeTitle: item.recipeId ? recipesMap[item.recipeId] ?? null : null,
-    }));
+    const itemsWithRecipes = items.map((item) => {
+      const linked = item.recipeId ? recipeDetailsMap.get(item.recipeId) : undefined;
+      return {
+        ...item,
+        recipeTitle: item.recipeId ? recipesMap[item.recipeId] ?? null : null,
+        ...(linked ? {
+          recipeDescription: linked.description,
+          recipeServings: linked.servings,
+          recipePrepTimeMinutes: linked.prepTimeMinutes,
+          recipeCookTimeMinutes: linked.cookTimeMinutes,
+        } : {}),
+        ingredients: item.ingredients && item.ingredients.length > 0
+          ? item.ingredients
+          : linked?.ingredients ?? item.ingredients,
+        steps: item.steps ?? linked?.steps ?? null,
+      };
+    });
 
     res.json({ ...safePlanResponse(plan), items: itemsWithRecipes });
   } catch (error) {
@@ -404,6 +468,7 @@ const mealPlanItemSchema = z.object({
     quantity: z.string().optional(),
     unit: z.string().optional(),
   })).optional().nullable(),
+  steps: z.array(z.string()).optional().nullable(),
 });
 
 async function findPlan(familyId: string, planId: string) {
@@ -501,6 +566,7 @@ router.post('/:familyId/meal-plans/:planId/items', authenticate, requireFamilyMe
       servings: parsed.data.servings ?? undefined,
       notes: parsed.data.notes ?? undefined,
       ingredients: parsed.data.ingredients ?? null,
+      steps: parsed.data.steps ?? null,
     }).returning();
 
     broadcastToFamily(familyId, 'meal_plan_updated', { planId });
@@ -564,6 +630,7 @@ router.put('/:familyId/meal-plans/:planId/items/:itemId', authenticate, requireF
         titleOverride: nextTitle,
         notes: parsed.data.notes !== undefined ? parsed.data.notes : existingItem.notes,
         ingredients: parsed.data.ingredients !== undefined ? parsed.data.ingredients : existingItem.ingredients,
+        steps: parsed.data.steps !== undefined ? parsed.data.steps : existingItem.steps,
       });
       const violations = validateMealPlanConstraints([constraintItem], planPreferences || undefined);
       if (violations.length > 0) {
@@ -579,6 +646,7 @@ router.put('/:familyId/meal-plans/:planId/items/:itemId', authenticate, requireF
     if (parsed.data.servings !== undefined) updates.servings = parsed.data.servings;
     if (parsed.data.notes !== undefined) updates.notes = parsed.data.notes;
     if (parsed.data.ingredients !== undefined) updates.ingredients = parsed.data.ingredients;
+    if (parsed.data.steps !== undefined) updates.steps = parsed.data.steps;
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Nessuna modifica indicata" } });
@@ -645,16 +713,24 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
     // Opzionale: lista solo per un giorno del piano (body { date: "YYYY-MM-DD" }).
     const bodySchema = z.object({
       date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      itemId: z.string().uuid().optional(),
     });
     const parsedBody = bodySchema.safeParse(req.body ?? {});
     if (!parsedBody.success) {
       return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Data non valida" } });
     }
     const onlyDate = parsedBody.data.date ?? null;
+    const onlyItemId = parsedBody.data.itemId ?? null;
 
     let items = await db.select()
       .from(mealPlanItems)
       .where(eq(mealPlanItems.mealPlanId, planId));
+    if (onlyItemId) {
+      items = items.filter((it) => it.id === onlyItemId);
+      if (items.length === 0) {
+        return res.status(404).json({ error: { code: "NOT_FOUND", message: "Pasto non trovato nel piano" } });
+      }
+    }
     if (onlyDate) {
       items = items.filter((it) => it.date === onlyDate);
       if (items.length === 0) {
@@ -663,22 +739,30 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
     }
 
     const rawEntries: IngredientEntry[] = [];
+    const itemIdsWithInlineIngredients = new Set<string>();
 
     for (const item of items) {
       const inlineIngredients = item.ingredients as Array<{ name: string; quantity?: string; unit?: string }> | null;
       if (inlineIngredients && Array.isArray(inlineIngredients)) {
+        let hasUsableInlineIngredient = false;
         for (const ing of inlineIngredients) {
           if (!ing.name || !normalizeItemName(ing.name)) continue;
+          hasUsableInlineIngredient = true;
           rawEntries.push({
             name: ing.name,
             ...toShoppingQuantity(ing.quantity ?? null, ing.unit ?? null),
             category: 'food',
           });
         }
+        // Gli ingredienti salvati sul pasto sono la personalizzazione
+        // esplicita dell'utente/AI e devono prevalere sulla ricetta collegata,
+        // come già accade nella risposta GET del piano.
+        if (hasUsableInlineIngredient) itemIdsWithInlineIngredients.add(item.id);
       }
     }
 
     const recipeIds = items
+      .filter((item) => !itemIdsWithInlineIngredients.has(item.id))
       .map((item) => item.recipeId)
       .filter((id): id is string => !!id);
 
@@ -734,7 +818,10 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
     const dayLabel = onlyDate
       ? new Date(`${onlyDate}T00:00:00Z`).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
       : null;
-    const listName = `Spesa per ${plan.title || 'Piano ' + plan.weekStartDate}${dayLabel ? ` — ${dayLabel}` : ''}`;
+    const itemLabel = onlyItemId && items[0]
+      ? ` — ${items[0].titleOverride || items[0].mealType}`
+      : "";
+    const listName = `Spesa per ${plan.title || 'Piano ' + plan.weekStartDate}${dayLabel ? ` — ${dayLabel}` : ''}${itemLabel}`;
 
     const [shoppingList] = await db.insert(shoppingLists).values({
       familyId,
@@ -756,7 +843,13 @@ router.post('/:familyId/meal-plans/:planId/to-shopping-list', authenticate, requ
 
     broadcastToFamily(familyId, 'shopping:updated', {});
 
-    logger.info('Meal plan converted to shopping list', { planId, ingredientCount: toBuy.length, skippedFromPantry: skippedFromPantry.length, onlyDate });
+    logger.info('Meal plan converted to shopping list', {
+      planId,
+      ingredientCount: toBuy.length,
+      skippedFromPantry: skippedFromPantry.length,
+      onlyDate,
+      onlyItemId,
+    });
     res.status(201).json({ shoppingListId: shoppingList.id, ingredientCount: toBuy.length, skippedFromPantry });
   } catch (error) {
     logger.error('Convert meal plan to shopping list error', { error: String(error) });

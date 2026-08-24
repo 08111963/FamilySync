@@ -7,15 +7,18 @@ import {
   Pressable,
   Platform,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
+import { apiRequest } from "@/lib/query-client";
+import { MealPlanRecipeDetails } from "@/components/MealPlanRecipeDetails";
 
 interface PlanItem {
   id: string;
@@ -26,6 +29,10 @@ interface PlanItem {
   titleOverride?: string | null;
   servings?: number | null;
   notes?: string | null;
+  ingredients?: Array<{ name: string; quantity?: string | null; unit?: string | null }> | null;
+  steps?: string[] | null;
+  recipeDescription?: string | null;
+  recipeServings?: number | null;
 }
 
 interface PlanDetail {
@@ -74,13 +81,33 @@ function formatWeekDate(dateStr: string): string {
   return dateStr;
 }
 
-function MealRow({ item, colors }: { item: PlanItem; colors: ReturnType<typeof useTheme>["colors"] }) {
+function MealRow({
+  item,
+  colors,
+  onAddToShoppingList,
+  addingToShoppingList,
+  addedToShoppingList,
+}: {
+  item: PlanItem;
+  colors: ReturnType<typeof useTheme>["colors"];
+  onAddToShoppingList: (item: PlanItem) => void;
+  addingToShoppingList: boolean;
+  addedToShoppingList: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const mealColor = getMealTypeColor(item.mealType, colors.primary, colors.secondary);
   const title = item.titleOverride || item.recipeTitle || "Pasto";
   const notes = (item.notes ?? "").trim();
-  const servings = typeof item.servings === "number" && item.servings > 0 ? item.servings : null;
-  const hasDetails = notes.length > 0 || servings !== null;
+  const servings = typeof item.servings === "number" && item.servings > 0
+    ? item.servings
+    : item.recipeServings ?? null;
+  const hasDetails = Boolean(
+    notes
+    || servings
+    || item.recipeDescription
+    || item.ingredients?.some((ingredient) => ingredient.name?.trim())
+    || item.steps?.some((step) => step.trim()),
+  );
 
   return (
     <View style={[styles.mealRow, { borderLeftColor: mealColor }]}>
@@ -109,14 +136,19 @@ function MealRow({ item, colors }: { item: PlanItem; colors: ReturnType<typeof u
       </Pressable>
       {hasDetails && expanded && (
         <View style={styles.notesBox}>
-          {servings !== null && (
-            <Text style={[styles.servingsText, { color: colors.primary }]}>
-              Ricetta per {servings} {servings === 1 ? "persona" : "persone"}
-            </Text>
-          )}
-          {notes.length > 0 && (
-            <Text style={[styles.notesText, { color: colors.textSecondary }]}>{notes}</Text>
-          )}
+          <MealPlanRecipeDetails
+            description={item.recipeDescription}
+            servings={servings}
+            ingredients={item.ingredients}
+            steps={item.steps}
+            notes={notes}
+            colors={colors}
+            mealColor={mealColor}
+            onAddToShoppingList={() => onAddToShoppingList(item)}
+            addingToShoppingList={addingToShoppingList}
+            addedToShoppingList={addedToShoppingList}
+            testIDPrefix={`saved-meal-${item.id}`}
+          />
         </View>
       )}
     </View>
@@ -127,8 +159,11 @@ export default function MealPlanViewScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { currentFamily } = useFamily();
+  const qc = useQueryClient();
   const params = useLocalSearchParams<{ planId?: string }>();
   const planId = typeof params.planId === "string" && params.planId ? params.planId : null;
+  const [addingItemId, setAddingItemId] = useState<string | null>(null);
+  const [addedItemIds, setAddedItemIds] = useState<Set<string>>(() => new Set());
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
@@ -139,6 +174,43 @@ export default function MealPlanViewScreen() {
   });
 
   const plan = planQuery.data ?? null;
+
+  const handleAddMealToShoppingList = async (item: PlanItem) => {
+    if (!currentFamily || !planId || addingItemId) return;
+    setAddingItemId(item.id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const res = await apiRequest(
+        "POST",
+        `/api/meal-plans/${currentFamily.id}/meal-plans/${planId}/to-shopping-list`,
+        { itemId: item.id },
+      );
+      const data = await res.json().catch(() => ({}));
+      const skipped: string[] = Array.isArray(data?.skippedFromPantry) ? data.skippedFromPantry : [];
+      let message = data?.shoppingListId
+        ? `${data.ingredientCount} ingredienti aggiunti alla lista della spesa.`
+        : "Nessuna lista creata: hai già tutti gli ingredienti in dispensa.";
+      if (skipped.length > 0) {
+        message += `\n\nGià in dispensa (non aggiunti): ${skipped.join(", ")}.`;
+      }
+      setAddedItemIds((previous) => new Set(previous).add(item.id));
+      qc.invalidateQueries({ queryKey: ["/api/shopping", currentFamily.id, "lists"] });
+      if (Platform.OS === "web") {
+        window.alert(message);
+      } else {
+        Alert.alert(data?.shoppingListId ? "Lista creata" : "Tutto in dispensa", message);
+      }
+    } catch {
+      const message = "Impossibile aggiungere gli ingredienti alla lista della spesa.";
+      if (Platform.OS === "web") {
+        window.alert(message);
+      } else {
+        Alert.alert("Errore", message);
+      }
+    } finally {
+      setAddingItemId(null);
+    }
+  };
 
   // Pasti raggruppati per giorno, giorni in ordine, pasti in ordine
   // colazione → pranzo → spuntino → cena.
@@ -198,7 +270,14 @@ export default function MealPlanViewScreen() {
               <Text style={[styles.dayTitle, { color: colors.text }]}>{dayLabel(group.date)}</Text>
               <View style={[styles.dayCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 {group.items.map((item) => (
-                  <MealRow key={item.id} item={item} colors={colors} />
+                  <MealRow
+                    key={item.id}
+                    item={item}
+                    colors={colors}
+                    onAddToShoppingList={handleAddMealToShoppingList}
+                    addingToShoppingList={addingItemId === item.id}
+                    addedToShoppingList={addedItemIds.has(item.id)}
+                  />
                 ))}
               </View>
             </View>

@@ -54,8 +54,19 @@ const STREAM_ITEMS = [
     mealType: "lunch",
     title: "Pasta al pomodoro E2E",
     description: "Un primo veloce con salsa di pomodoro fresco.",
-    ingredients: [{ name: "Pasta", quantity: "160", unit: "g" }],
-    steps: ["Cuoci la pasta.", "Condisci con il pomodoro e servi."],
+    servings: 4,
+    ingredients: [
+      { name: "Pasta", quantity: "320", unit: "g" },
+      { name: "Passata di pomodoro", quantity: "400", unit: "g" },
+      { name: "Basilico", quantity: "8", unit: "foglie" },
+      { name: "Olio extravergine", quantity: "20", unit: "ml" },
+    ],
+    steps: [
+      "Porta a bollore abbondante acqua salata.",
+      "Cuoci la pasta per 10 minuti.",
+      "Scalda la passata con olio e basilico.",
+      "Condisci la pasta e servi subito.",
+    ],
   },
   {
     date: "2030-03-05",
@@ -98,6 +109,10 @@ async function stubApi(pg: Page) {
 
     // Stream AI stubbato: due pasti + done, formato NDJSON come il backend vero.
     if (path === `/api/ai/${FAMILY_ID}/weekly-meal-plan/stream` && method === "POST") {
+      const requestBody = route.request().postDataJSON() as {
+        requestId?: string;
+        preferences?: { dietProfile?: string };
+      };
       if (streamMode === "constraint-error") {
         return json({
           error: {
@@ -107,8 +122,19 @@ async function stubApi(pg: Page) {
         }, 422);
       }
       const lines = [
-        JSON.stringify({ type: "items", items: STREAM_ITEMS }),
-        JSON.stringify({ type: "done", title: "Piano Settimanale E2E" }),
+        JSON.stringify({
+          type: "items",
+          requestId: requestBody.requestId,
+          dietProfile: requestBody.preferences?.dietProfile,
+          items: STREAM_ITEMS,
+        }),
+        JSON.stringify({
+          type: "done",
+          requestId: requestBody.requestId,
+          dietProfile: requestBody.preferences?.dietProfile,
+          title: "Piano Settimanale E2E",
+          items: STREAM_ITEMS,
+        }),
       ].join("\n");
       return route.fulfill({ status: 200, contentType: "application/x-ndjson", body: lines });
     }
@@ -142,16 +168,44 @@ async function stubApi(pg: Page) {
   });
 }
 
+async function dismissWebUpdateBanner(pg: Page) {
+  // Il controllo versione/staleness avviene in background e può montare il
+  // banner anche dopo il caricamento iniziale della schermata.
+  let idleRounds = 0;
+  for (let round = 0; round < 8 && idleRounds < 2; round++) {
+    let dismissed = false;
+    for (const testId of ["web-stale-dismiss", "web-update-dismiss"]) {
+      const dismiss = pg.getByTestId(testId);
+      if (await dismiss.isVisible().catch(() => false)) {
+        await dismiss.tap({ force: true });
+        dismissed = true;
+      }
+    }
+    idleRounds = dismissed ? 0 : idleRounds + 1;
+    await pg.waitForTimeout(150);
+  }
+}
+
 async function generatePlan() {
   await page.getByText("Genera con AI").first().tap();
   await page.getByText("Genera Piano").first().waitFor({ timeout: 15000 });
+  await dismissWebUpdateBanner(page);
   await page.getByText("Genera Piano").first().tap();
-  await page.getByText("Salva questo piano").first().waitFor({ timeout: 15000 });
+  try {
+    await page.getByText("Salva questo piano").first().waitFor({ timeout: 15000 });
+  } catch (error) {
+    const generationError = await page.getByTestId("mealplan-generation-error").allTextContents().catch(() => []);
+    throw new Error(`Anteprima piano non disponibile: ${generationError.join(" ") || "nessun errore UI"}; ${String(error)}`);
+  }
   // Il piano generato (stub) deve essere visibile in anteprima.
   await page.getByText("Pasta al pomodoro E2E").first().waitFor({ timeout: 15000 });
   await page.getByText("Pasta al pomodoro E2E").first().tap();
   await page.getByText("Un primo veloce con salsa di pomodoro fresco.").waitFor({ timeout: 5000 });
-  await page.getByText("Cuoci la pasta.").waitFor({ timeout: 5000 });
+  await page.getByText("Ricetta per 4 persone").waitFor({ timeout: 5000 });
+  await page.getByText("Ingredienti").waitFor({ timeout: 5000 });
+  await page.getByText("320 g").waitFor({ timeout: 5000 });
+  await page.getByText("Preparazione").waitFor({ timeout: 5000 });
+  await page.getByText("Cuoci la pasta per 10 minuti.").waitFor({ timeout: 5000 });
 }
 
 describe("Sostituzione piano pasti (Salva → conferma / Annulla)", () => {
@@ -189,6 +243,7 @@ describe("Sostituzione piano pasti (Salva → conferma / Annulla)", () => {
 
     await page.goto(`${BASE_URL}/meal-plans`, { waitUntil: "domcontentloaded", timeout: 60000 });
     await page.getByText("I Miei Piani").first().waitFor({ timeout: 60000 });
+    await dismissWebUpdateBanner(page);
   });
 
   after(async () => {
@@ -256,9 +311,11 @@ describe("Sostituzione piano pasti (Salva → conferma / Annulla)", () => {
     assert.equal(serverPlan!.id, "plan-2", "il piano deve essere stato sostituito (nuovo id)");
     assert.equal(serverPlan!.title, "Piano Settimanale E2E");
     assert.equal(serverPlan!.items.length, STREAM_ITEMS.length);
+    assert.equal(serverPlan!.items[0].ingredients.length, 4);
+    assert.deepEqual(serverPlan!.items[0].steps, STREAM_ITEMS[0].steps);
   });
 
-  test("5) fallimento definitivo dei vincoli: messaggio contestuale, nessun popup e allergie conservate", async () => {
+  test("5) fallimento definitivo dei vincoli: messaggio contestuale e nessun popup", async () => {
     streamMode = "constraint-error";
     const unexpectedDialogs: string[] = [];
     const dialogListener = async (dialog: any) => {
@@ -269,8 +326,7 @@ describe("Sostituzione piano pasti (Salva → conferma / Annulla)", () => {
 
     try {
       await page.getByText("Genera con AI").first().tap();
-      const allergiesInput = page.getByPlaceholder("Es. glutine, lattosio...");
-      await allergiesInput.fill("Glutine");
+      await dismissWebUpdateBanner(page);
       await page.getByText("Genera Piano").first().tap();
 
       const errorBox = page.getByTestId("mealplan-generation-error");
@@ -281,7 +337,6 @@ describe("Sostituzione piano pasti (Salva → conferma / Annulla)", () => {
       const viewportHeight = await page.evaluate(() => window.innerHeight);
 
       assert.equal(unexpectedDialogs.length, 0, "l'errore non deve aprire popup bloccanti");
-      assert.equal(await allergiesInput.inputValue(), "Glutine", "il campo allergie deve restare compilato");
       assert.equal(await page.getByText("Penne di semola", { exact: false }).count(), 0, "nessun pasto incompatibile deve essere visibile");
       assert.ok(errorBounds, "il messaggio contestuale deve avere dimensioni visibili");
       assert.ok(

@@ -24,6 +24,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { VoiceInput, SpeakButton, speakText, primeSpeech } from "@/components/VoiceInput";
 import { useAutoSpeak } from "@/hooks/useAutoSpeak";
 import { useFamily } from "@/context/FamilyContext";
+import { MealPlanRecipeDetails } from "@/components/MealPlanRecipeDetails";
 import {
   apiRequest,
   apiStream,
@@ -342,15 +343,12 @@ type ThemeColors = ReturnType<typeof useTheme>["colors"];
 function PreviewMealRow({ meal, colors }: { meal: MealPlanItem; colors: ThemeColors }) {
   const [expanded, setExpanded] = useState(false);
   const mealColor = getMealTypeColor(meal.mealType, colors.primary, colors.secondary);
-  const recipeSteps = (meal.steps ?? []).map((s) => s.trim()).filter(Boolean);
-  const recipeIngredients = (meal.ingredients ?? [])
-    .filter((ingredient) => ingredient.name?.trim())
-    .map((ingredient) =>
-      [ingredient.quantity?.trim(), ingredient.unit?.trim(), ingredient.name.trim()]
-        .filter(Boolean)
-        .join(" "),
-    );
-  const hasRecipe = recipeSteps.length > 0;
+  const hasRecipe = Boolean(
+    meal.description?.trim()
+    || meal.servings
+    || meal.ingredients?.some((ingredient) => ingredient.name?.trim())
+    || meal.steps?.some((step) => step.trim()),
+  );
 
   return (
     <View style={[styles.mealRow, { borderLeftColor: mealColor }]}>
@@ -378,33 +376,15 @@ function PreviewMealRow({ meal, colors }: { meal: MealPlanItem; colors: ThemeCol
       </Pressable>
       {hasRecipe && expanded && (
         <View style={styles.recipeBox}>
-          {meal.description ? (
-            <Text style={[styles.recipeDescription, { color: colors.textSecondary }]}>
-              {meal.description}
-            </Text>
-          ) : null}
-          {meal.servings ? (
-            <Text style={[styles.recipeServings, { color: colors.primary }]}>
-              Ricetta per {meal.servings} {meal.servings === 1 ? "persona" : "persone"}
-            </Text>
-          ) : null}
-          {recipeIngredients.length > 0 && (
-            <View style={styles.ingredientsBox}>
-              <Text style={[styles.recipeHeading, { color: colors.text }]}>Ingredienti</Text>
-              {recipeIngredients.map((ingredient, index) => (
-                <Text key={`${ingredient}-${index}`} style={[styles.ingredientText, { color: colors.textSecondary }]}>
-                  • {ingredient}
-                </Text>
-              ))}
-            </View>
-          )}
-          <Text style={[styles.recipeHeading, { color: colors.text }]}>Ricetta</Text>
-          {recipeSteps.map((step, i) => (
-            <View key={i} style={styles.recipeStepRow}>
-              <Text style={[styles.recipeStepNum, { color: mealColor }]}>{i + 1}.</Text>
-              <Text style={[styles.recipeStepText, { color: colors.text }]}>{step}</Text>
-            </View>
-          ))}
+          <MealPlanRecipeDetails
+            description={meal.description}
+            servings={meal.servings}
+            ingredients={meal.ingredients}
+            steps={meal.steps}
+            colors={colors}
+            mealColor={mealColor}
+            testIDPrefix={`preview-meal-${meal.date}-${meal.mealType}`}
+          />
         </View>
       )}
     </View>
@@ -837,6 +817,7 @@ export default function MealPlansScreen() {
           servings: i.servings,
           notes: buildNotes(i.description, i.steps, i.ingredients),
           ingredients: i.ingredients || null,
+          steps: i.steps || null,
         })),
       });
 

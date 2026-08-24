@@ -281,17 +281,17 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
     "il timeout del browser deve consentire il primo tentativo e l'unico repair",
   );
   assert.equal(calls[0]!.stepMinItems, 3);
-  assert.equal(calls[0]!.stepMaxItems, 3);
+  assert.equal(calls[0]!.stepMaxItems, 5);
   assert.equal(calls[0]!.stepMaxLength, 80);
   assert.equal(calls[0]!.ingredientMinItems, 3);
-  assert.equal(calls[0]!.ingredientMaxItems, 3);
+  assert.equal(calls[0]!.ingredientMaxItems, 8);
   assert.equal(calls[0]!.titleMaxLength, 55);
   assert.equal(calls[0]!.descriptionMaxLength, 45);
   assert.match(calls[0]!.prompt, /servings \(intero, sempre 4\)/);
   assert.ok(plan.items.every((item) => item.servings === 4));
   assert.match(calls[0]!.prompt, /BLUEPRINT SETTIMANALE LOCALE/);
-  assert.match(calls[0]!.prompt, /ESATTAMENTE 3 istruzioni concrete/);
-  assert.match(calls[0]!.prompt, /ESATTAMENTE 3 ingredienti essenziali/);
+  assert.match(calls[0]!.prompt, /3-5 istruzioni concrete/);
+  assert.match(calls[0]!.prompt, /3-8 voci: includi TUTTI gli ingredienti realmente necessari/);
   assert.match(calls[0]!.prompt, /famiglia pasta/);
   assert.match(calls[0]!.prompt, /proteina red_meat/);
   assert.match(calls[0]!.prompt, /almeno 2 pranzi con pasta/);
