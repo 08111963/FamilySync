@@ -323,8 +323,8 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
               servings: { type: 'integer', minimum: 1, maximum: 50 },
               ingredients: {
                 type: 'array',
-                minItems: 3,
-                maxItems: 8,
+                minItems: 4,
+                maxItems: 5,
                 items: {
                   type: 'object',
                   additionalProperties: false,
@@ -338,8 +338,8 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
               },
               steps: {
                 type: 'array',
-                minItems: 3,
-                maxItems: 5,
+                minItems: 4,
+                maxItems: 4,
                 items: { type: 'string', minLength: 1, maxLength: 80 },
               },
             },
@@ -353,12 +353,11 @@ const MEAL_PLAN_RESPONSE_FORMAT = {
 };
 
 /**
- * La settimana resta una singola chiamata applicativa, ma ogni pasto deve
- * conservare una ricetta davvero utilizzabile. Otto ingredienti e cinque
- * passaggi lasciano spazio a condimenti e preparazione senza superare il
- * budget del structured output per 21 pasti.
+ * La settimana resta una singola chiamata applicativa e ogni pasto conserva una
+ * ricetta completa. Quattro-cinque ingredienti e quattro passaggi bilanciano
+ * completezza e dimensione del JSON strutturato dei 21 pasti.
  */
-export const MEAL_PLAN_MAX_COMPLETION_TOKENS = 4800;
+export const MEAL_PLAN_MAX_COMPLETION_TOKENS = 5000;
 export const MEAL_PLAN_MODEL = "gpt-5-mini";
 
 /**
@@ -1787,8 +1786,8 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     const snackMealRule = constrainedPlan
       ? `- snack (spuntino): piccolo e leggero, composto esclusivamente da ingredienti compatibili con TUTTI i vincoli.`
       : `- snack (spuntino): piccolo e leggero (es. frutta, yogurt, frutta secca, una merenda).`;
-    const itemContract = `- Ogni pasto ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (massimo 8 parole), description (una frase utile di massimo 7 parole), servings (intero, sempre ${servings}), ingredients (3-8 voci: includi TUTTI gli ingredienti realmente necessari), steps (3-5 passaggi).`;
-    const preparationContract = `- steps è la RICETTA completa, passo-passo: 3-5 istruzioni concrete in italiano (ogni passaggio è una stringa, senza numerazione iniziale, massimo 80 caratteri). Specifica taglio/preparazione e, per pranzo o cena, un tempo in minuti o una temperatura in °C. Elenca negli ingredienti anche condimenti e basi realmente usati, con quantità concrete; non aggiungere elementi opzionali o spiegazioni.`;
+    const itemContract = `- Ogni pasto ha: date (una YYYY-MM-DD tra quelle indicate), mealType (${requestMealTypes.join('|')}), title (massimo 8 parole), description (una frase utile di massimo 7 parole), servings (intero, sempre ${servings}), ingredients (4-5 voci: includi TUTTI gli ingredienti realmente necessari), steps (ESATTAMENTE 4 passaggi).`;
+    const preparationContract = `- steps è la RICETTA completa, passo-passo: ESATTAMENTE 4 istruzioni concrete in italiano (ogni passaggio è una stringa, senza numerazione iniziale, massimo 80 caratteri). Specifica taglio/preparazione e, per pranzo o cena, un tempo in minuti o una temperatura in °C. Nei 4-5 ingredienti elenca anche condimenti e basi realmente usati, con quantità concrete; non aggiungere elementi opzionali o spiegazioni.`;
     const constrainedRecipeReferenceRule = constrainedPlan && !lactoseFreeRequired
       ? `- VINCOLI NELLA RICETTA: per ogni ingrediente soggetto a un vincolo usa, nel titolo, descrizione e in OGNI passaggio, il nome completo e compatibile scritto nell'array ingredients. Non abbreviare né sostituire con parole generiche un ingrediente sensibile (per esempio non scrivere "latte", "yogurt" o "formaggio" se nell'array è presente un sostituto vegetale o senza lattosio).`
       : "";
