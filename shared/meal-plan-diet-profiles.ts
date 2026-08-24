@@ -95,6 +95,12 @@ export function legacyMealPlanDietToProfile(value: unknown): MealPlanDietProfile
   return exact[normalized];
 }
 
+/** Normalizza sia i valori attivi sia quelli legacy prima di ogni generazione. */
+export function normalizeMealPlanDietProfile(value: unknown): MealPlanDietProfile | undefined {
+  if (isMealPlanDietProfile(value)) return value;
+  return legacyMealPlanDietToProfile(value);
+}
+
 /**
  * La dettatura può nominare una dieta storica/combinata che il catalogo chiuso
  * non riesce a rappresentare senza perdere vincoli. In quel caso il chiamante

@@ -33,6 +33,9 @@ import {
   MEAL_PLAN_MAX_GENERATION_ATTEMPTS,
   MEAL_PLAN_PROVIDER_ATTEMPT_TIMEOUT_MS,
 } from '../../shared/meal-plan-generation-timeouts';
+import {
+  normalizeMealPlanDietProfile,
+} from '../../shared/meal-plan-diet-profiles';
 
 // Client OpenAI LAZY: non creato a livello top-level perché il costruttore del
 // SDK lancia se la chiave manca, e ciò impedirebbe l'avvio del server.
@@ -753,6 +756,24 @@ interface MealPlanGenerationContext {
    */
 
   suppressInternalLogs?: boolean;
+}
+
+function normalizeMealPlanGenerationPreferences(
+  preferences: MealPlanGenerationContext["preferences"],
+): MealPlanGenerationContext["preferences"] {
+  if (!preferences) return preferences;
+  const requestedProfile = preferences.dietProfile ?? preferences.diet;
+  if (requestedProfile === undefined || requestedProfile === null || requestedProfile === "") {
+    return preferences;
+  }
+  const dietProfile = normalizeMealPlanDietProfile(requestedProfile);
+  if (!dietProfile) {
+    throw new AiError(
+      "AI_CONSTRAINT_VIOLATION",
+      "Profilo dieta non riconosciuto: seleziona uno dei cinque profili disponibili",
+    );
+  }
+  return { ...preferences, dietProfile, diet: undefined };
 }
 
 interface MealPlanModelCallBudget {
@@ -2160,10 +2181,14 @@ ${constrainedRecipeReferenceRule}
 export async function generateWeeklyMealPlan(
   context: MealPlanGenerationContext,
 ): Promise<MealPlanSuggestion> {
+  const generationContext: MealPlanGenerationContext = {
+    ...context,
+    preferences: normalizeMealPlanGenerationPreferences(context.preferences),
+  };
   // Difesa in profondità per eventuali chiamanti interni che bypassassero la
   // preparazione HTTP: una nota sanitaria non traducibile in regole
   // verificabili non deve mai raggiungere OpenAI come preferenza generica.
-  const unsupportedHealthNote = unsupportedMealPlanHealthNote(context.preferences);
+  const unsupportedHealthNote = unsupportedMealPlanHealthNote(generationContext.preferences);
   if (unsupportedHealthNote) {
     throw new AiError("AI_CONSTRAINT_VIOLATION", unsupportedHealthNote);
   }
@@ -2180,7 +2205,7 @@ export async function generateWeeklyMealPlan(
     maxCalls: Math.max(1, Math.min(MAX_MEAL_PLAN_MODEL_CALLS, requestedModelCalls)),
     usedCalls: 0,
   };
-  const fullAttemptCallCost = mealPlanAttemptModelCallCost(context);
+  const fullAttemptCallCost = mealPlanAttemptModelCallCost(generationContext);
   let repair: { items: MealPlanSuggestion["items"]; correction: string } | undefined;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -2188,13 +2213,13 @@ export async function generateWeeklyMealPlan(
       throw modelCallBudgetExhaustedError(modelCallBudget);
     }
     try {
-      context.onStatus?.(
+      generationContext.onStatus?.(
         attempt === 1
           ? "Compongo le 21 ricette della settimana."
           : "Correggo solo gli errori rilevati e ricontrollo il piano.",
       );
       return await generateWeeklyMealPlanAttempt({
-        ...context,
+        ...generationContext,
         generationAttempt: attempt,
         constraintCorrection: repair?.correction,
         // Le colazioni dei profili esclusivi sono locali e già verificate:
@@ -2206,8 +2231,8 @@ export async function generateWeeklyMealPlan(
               !(
                 item.mealType === "breakfast"
                 && (
-                  mealPlanRequiresGlutenFree(context.preferences)
-                  || mealPlanHasExclusion(context.preferences, "lactose")
+                  mealPlanRequiresGlutenFree(generationContext.preferences)
+                  || mealPlanHasExclusion(generationContext.preferences, "lactose")
                 )
               )),
           })
@@ -2236,7 +2261,7 @@ export async function generateWeeklyMealPlan(
         throw error;
       }
       repair = recoverable;
-      if (!context.suppressInternalLogs) {
+      if (!generationContext.suppressInternalLogs) {
         console.warn(JSON.stringify({
           tag: "AI_MEAL_PLAN_SINGLE_REPAIR",
           variant: context.planVariant || 1,

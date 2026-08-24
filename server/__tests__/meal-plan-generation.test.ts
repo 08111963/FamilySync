@@ -49,6 +49,7 @@ type Meal = {
 };
 type RequestInfo = {
   prompt: string;
+  userMessage: string;
   dates: string[];
   mealTypes: string[];
   itemCount: number;
@@ -196,11 +197,13 @@ function createFakeClient(responder: (request: RequestInfo, call: number) => Fak
       completions: {
         create: async (request: any, options?: { maxRetries?: number; timeout?: number }) => {
           const prompt = request.messages.find((message: any) => message.role === "system")!.content as string;
+          const userMessage = request.messages.find((message: any) => message.role === "user")!.content as string;
           const schema = request.response_format.json_schema.schema;
           const slotKeys = schema.required as string[];
           const firstSlotSchema = schema.properties[slotKeys[0]!];
           const info: RequestInfo = {
             prompt,
+            userMessage,
             dates: datesFromPrompt(prompt),
             mealTypes: firstSlotSchema.properties.mealType.enum,
             itemCount: slotKeys.length,
@@ -372,6 +375,38 @@ test("mediterranea, vegetariana e vegana ignorano mealsPerDay e mantengono 21 pa
       assert.equal(calls[0]!.itemCount, 21, `${profile}/${mealsPerDay}`);
       assert.equal(plan.items.length, 21, `${profile}/${mealsPerDay}`);
     }
+  }
+  t.after(() => __setOpenAiClientForTest(null));
+});
+
+test("i vecchi profili vengono normalizzati prima di costruire il prompt OpenAI", async (t) => {
+  const legacyPreferences = [
+    { dietProfile: "balanced" },
+    { dietProfile: "light" },
+    { dietProfile: "sport" },
+    { diet: "balanced" },
+    { diet: "light" },
+    { diet: "sport" },
+  ] as const;
+
+  for (const preferences of legacyPreferences) {
+    const { client, calls } = createFakeClient(() => fullWeek("mediterranean"));
+    __setOpenAiClientForTest(client);
+
+    const plan = await generateWeeklyMealPlan({
+      familySize: 4,
+      weekStartDate: WEEK_START,
+      // Simula record storici che possono ancora arrivare a un chiamante
+      // interno pur essendo esclusi dal tipo pubblico dei profili attivi.
+      preferences: preferences as unknown as import("../lib/meal-plan-constraints").MealPlanConstraintPreferences,
+    });
+
+    assert.equal(plan.items.length, 21);
+    assert.equal(calls.length, 1);
+    const requestText = `${calls[0]!.prompt}\n${calls[0]!.userMessage}`;
+    assert.match(requestText, /Profilo dieta: mediterranean\./);
+    assert.doesNotMatch(requestText, /Profilo dieta:\s*(?:balanced|light|sport)\b/i);
+    assert.doesNotMatch(requestText, /Dieta\s+(?:Equilibrata|Leggera|Sportiva)/i);
   }
   t.after(() => __setOpenAiClientForTest(null));
 });

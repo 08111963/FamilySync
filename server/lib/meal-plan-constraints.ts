@@ -1,7 +1,6 @@
 import {
   MEAL_PLAN_DIET_PROFILE_DEFINITIONS,
-  isMealPlanDietProfile,
-  legacyMealPlanDietToProfile,
+  normalizeMealPlanDietProfile,
   type MealPlanDietProfile,
 } from "../../shared/meal-plan-diet-profiles";
 import { findGenericMealPlanTerm } from "./meal-plan-variety";
@@ -357,10 +356,8 @@ export function normalizeMealPlanConstraints(
   preferences?: MealPlanConstraintPreferences,
 ): NormalizedMealPlanConstraints {
   const requestedProfile = preferences?.dietProfile;
-  const dietProfile = isMealPlanDietProfile(requestedProfile)
-    ? requestedProfile
-    : legacyMealPlanDietToProfile(requestedProfile) ||
-      legacyMealPlanDietToProfile(preferences?.diet);
+  const dietProfile = normalizeMealPlanDietProfile(requestedProfile) ||
+    normalizeMealPlanDietProfile(preferences?.diet);
   const definition = dietProfile ? MEAL_PLAN_DIET_PROFILE_DEFINITIONS[dietProfile] : undefined;
   return {
     dietaryPatterns: definition ? [definition.dietaryPattern] : [],
