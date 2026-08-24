@@ -20,7 +20,10 @@ import {
   MEAL_PLAN_STREAM_SAFETY_TIMEOUT_MS,
 } from "../../shared/meal-plan-generation-timeouts";
 import { validateMealPlanConstraints } from "../lib/meal-plan-constraints";
-import { evaluateMediterraneanMealPlan } from "../lib/meal-plan-variety";
+import {
+  evaluateMediterraneanMealPlan,
+  planMealPlanLunchFamilies,
+} from "../lib/meal-plan-variety";
 import { MEAL_PLAN_DIET_PROFILES, type MealPlanDietProfile } from "../../shared/meal-plan-diet-profiles";
 import { db } from "../db";
 import { aiUsage, familyMembers, families, users } from "../../shared/schema";
@@ -283,9 +286,38 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
   assert.match(calls[0]!.prompt, /famiglia pasta/);
   assert.match(calls[0]!.prompt, /proteina red_meat/);
   assert.match(calls[0]!.prompt, /almeno 2 pranzi con pasta/);
+  assert.match(calls[0]!.prompt, /DISTRIBUZIONE MEDITERRANEA DEI PRANZI/);
+  assert.match(calls[0]!.prompt, /pasta in umido/);
   assert.equal(plan.items.length, 21);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
   assert.deepEqual(evaluateMediterraneanMealPlan(plan.items).issues, []);
+});
+
+test("il blueprint mediterraneo distanzia la pasta e non concentra i cereali", () => {
+  const targets = planMealPlanLunchFamilies(
+    ["pasta", "riso", "ceci", "patate", "pollo", "zucchine"],
+    7,
+    0,
+    { minimumPastaLunches: 2, mediterraneanDistribution: true },
+  );
+
+  assert.deepEqual(targets, [
+    "pasta",
+    "piatto di legumi",
+    "patate/polenta",
+    "pasta",
+    "risotto/riso",
+    "piatto di legumi",
+    "patate/polenta",
+  ]);
+  assert.equal(targets.filter((target) => target === "pasta").length, 2);
+  assert.ok(targets.every((target, index) =>
+    target !== "pasta" || targets[index - 1] !== "pasta"));
+  assert.equal(
+    targets.filter((target) => target === "risotto/riso" || target === "couscous" ||
+      target === "cereale in chicco" || target === "quinoa").length,
+    1,
+  );
 });
 
 test("la validazione mediterranea rifiuta pasta, carne, legumi, termini generici e poca varietà", () => {

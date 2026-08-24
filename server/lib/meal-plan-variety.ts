@@ -503,6 +503,15 @@ type LunchFamilyDefinition = {
   available: (normalizedIngredients: string[]) => boolean;
 };
 
+export type MealPlanLunchFamilyOptions = {
+  minimumPastaLunches?: number;
+  /**
+   * Rotazione dei pranzi per i profili mediterranei: riduce la concentrazione
+   * di cereali e distanzia sempre i due giorni di pasta.
+   */
+  mediterraneanDistribution?: boolean;
+};
+
 const LUNCH_FAMILY_ROTATION: LunchFamilyDefinition[] = [
   { family: "pasta", available: (items) => items.some((item) => /\bpasta\b/.test(item)) },
   { family: "risotto/riso", available: (items) => items.some((item) => /\briso\b/.test(item)) },
@@ -527,13 +536,33 @@ export function planMealPlanLunchFamilies(
   ingredientNames: string[],
   days = 7,
   rotationOffset = 0,
-  options?: { minimumPastaLunches?: number },
+  options?: MealPlanLunchFamilyOptions,
 ): Array<string | undefined> {
   const normalizedIngredients = ingredientNames.map(normalize);
   const available = LUNCH_FAMILY_ROTATION
     .filter((entry) => entry.available(normalizedIngredients))
     .map((entry) => entry.family);
   if (available.length === 0 || days <= 0) return Array.from({ length: Math.max(0, days) });
+
+  if (options?.mediterraneanDistribution) {
+    // Due pasti di pasta non consecutivi, due a base di legumi, due con
+    // patate e uno solo con riso. È un vincolo di pianificazione del prompt,
+    // non una validazione che può impedire di consegnare un piano sicuro.
+    const rotations = [
+      ["pasta", "piatto di legumi", "patate/polenta", "pasta", "risotto/riso", "piatto di legumi", "patate/polenta"],
+      ["piatto di legumi", "pasta", "patate/polenta", "risotto/riso", "pasta", "piatto di legumi", "patate/polenta"],
+    ];
+    const rotation = rotations[Math.abs(rotationOffset) % rotations.length]!;
+    const targets: string[] = [];
+    for (let dayIndex = 0; dayIndex < days; dayIndex++) {
+      const requested = rotation[dayIndex % rotation.length]!;
+      const previous = targets.at(-1);
+      const fallback = available.find((family) =>
+        family !== previous && !(previous === "pasta" && family === "pasta"));
+      targets.push(available.includes(requested) ? requested : fallback || available[0]!);
+    }
+    return targets;
+  }
 
   // La settimana standard ha sette pranzi: quando il pool offre ulteriori
   // famiglie opzionali (zuppa, insalata, pane), completa prima una rotazione
@@ -558,6 +587,7 @@ export function planMealPlanLunchFamilies(
     let pastaCount = targets.filter((family) => family === "pasta").length;
     for (let index = 0; index < targets.length && pastaCount < minimumPastaLunches; index++) {
       if (targets[index] === "pasta") continue;
+      if (targets[index - 1] === "pasta" || targets[index + 1] === "pasta") continue;
       targets[index] = "pasta";
       pastaCount++;
     }

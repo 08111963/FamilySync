@@ -1452,6 +1452,13 @@ async function generateWeeklyMealPlanAttempt(
 - Alterna le proteine principali: evita la stessa proteina specifica più di 2 volte quando possibile; il pesce può comparire più volte, ma non ripetere sempre lo stesso tipo.
 - PRANZI, VARIETÀ SEMANTICA: la famiglia (pasta, riso, legumi, zuppa, patate ecc.), la base/preparazione (per esempio al pomodoro) e la firma completa con proteina sono tre livelli distinti. Contorni, olio, erbe e piccole verdure non trasformano un pranzo in un piatto nuovo.
 ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea senza glutine includi normalmente almeno un pranzo con pasta senza glutine, se non è esclusa da altri vincoli. Non rendere obbligatori prodotti trasformati negli altri pasti.` : ""}`;
+  const mediterraneanDistributionRule = mediterraneanDiet
+    ? `
+- DISTRIBUZIONE MEDITERRANEA DEI PRANZI: segui nell'ordine esatto le famiglie del BLUEPRINT SETTIMANALE LOCALE. La rotazione alterna due pranzi di pasta non consecutivi, due piatti di legumi, due pranzi con patate e un solo pranzo con riso.
+- Non sostituire patate o legumi con couscous, farro, orzo, quinoa o polenta: fuori dai due pranzi di pasta usa al massimo un pranzo a base di riso/cereali nella settimana.
+- La pasta è sempre un primo asciutto: non scrivere né proporre mai “pasta in umido”, “pasta stufata” o “pasta brasata”.
+- Quando il pranzo è pasta o riso/cereali, la cena dello stesso giorno deve essere un secondo con verdure e patate o pane, mai ancora riso, couscous, farro, orzo, quinoa o polenta.`
+    : "";
   const lactoseLunchVarietyRule = lactoseFreeRequired
     ? `
 - PRANZI, VARIETÀ DI STRUTTURA (dopo la sicurezza): non ripetere lo stesso schema “carboidrato + base + proteina” in due giorni consecutivi; usalo al massimo 2 volte nella settimana. Una pasta al pomodoro e tonno con contorni, olio o erbe diversi resta lo stesso schema.
@@ -1617,10 +1624,14 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   const lunchFamilyTargets = planMealPlanLunchFamilies(
     compatibleMainIngredients,
     dates.length,
-    // Il Piano B parte dal riso: riso → legumi → couscous → cereale →
-    // patate → quinoa → pasta, mantenendo un'alternativa strutturale al Piano A.
+    // Il Piano B usa la stessa distribuzione mediterranea ma parte dai legumi:
+    // le due paste restano distanziate e i pranzi a base di cereali non si
+    // concentrano all'inizio della settimana.
     variant === 2 ? 1 : 0,
-    { minimumPastaLunches: mediterraneanDiet ? 2 : 0 },
+    {
+      minimumPastaLunches: mediterraneanDiet ? 2 : 0,
+      mediterraneanDistribution: mediterraneanDiet,
+    },
   );
   const lunchSemanticTargets = planMealPlanLunchSemanticTargets(
     compatibleMainIngredients,
@@ -1734,7 +1745,7 @@ ${constrainedRecipeReferenceRule}
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}
-      - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}${lightProfileRule}${sportProfileRule}
+       - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${mediterraneanDistributionRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}${lightProfileRule}${sportProfileRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
  - ${variantHint}${themeHint ? `\n- BLUEPRINT SETTIMANALE LOCALE: segui esattamente questi obiettivi già pianificati, senza scambiarli tra date:\n${themeHint}` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione indicata realizza questa combinazione concreta: ${breakfastHint}.` : ''}
   ${constraintRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}${context.previousPlanJson ? `\n- JSON DEL PIANO PRECEDENTE DA CORREGGERE (non copiare gli errori; conserva ogni elemento già valido e modifica soltanto quelli necessari): ${context.previousPlanJson}` : ""}
