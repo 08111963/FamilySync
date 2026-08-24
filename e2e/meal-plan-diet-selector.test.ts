@@ -244,7 +244,7 @@ describe("Selettore Dieta nel Piano Pasti", () => {
     );
   });
 
-  test("apre il dropdown, mostra solo sette profili, seleziona Senza lattosio e ignora risposte stale", async () => {
+  test("apre il dropdown, mostra solo cinque profili, seleziona Senza lattosio e ignora risposte stale", async () => {
     await page.getByTestId("mealplan-diet-selector").tap();
     for (const profile of MEAL_PLAN_DIET_PROFILES) {
       const option = page.getByTestId(`mealplan-diet-option-${profile}`);
@@ -256,10 +256,10 @@ describe("Selettore Dieta nel Piano Pasti", () => {
     }
     assert.equal(
       await page.locator('[data-testid^="mealplan-diet-option-"]').count(),
-      7,
-      "il menu deve mostrare esattamente i sette profili definitivi",
+      5,
+      "il menu deve mostrare esattamente i cinque profili definitivi",
     );
-    for (const retired of ["mediterranean_gluten_free", "mediterranean_lactose_free", "vegetarian_gluten_free"]) {
+    for (const retired of ["balanced", "light", "sport", "mediterranean_gluten_free", "mediterranean_lactose_free", "vegetarian_gluten_free"]) {
       assert.equal(
         await page.getByTestId(`mealplan-diet-option-${retired}`).count(),
         0,

@@ -19,10 +19,10 @@ export interface MealPlanConstraintPreferences {
 
 export type MealPlanDietaryPattern =
   | "mediterranean"
-  | "balanced"
   | "vegetarian"
-  | "light"
-  | "sport";
+  | "vegan"
+  | "gluten_free"
+  | "lactose_free";
 
 export type MealPlanExclusion =
   | "gluten" | "lactose" | "milk" | "egg" | "peanut" | "nuts" | "fish"
@@ -118,20 +118,6 @@ const LACTOSE_ONLY_GLUTEN_LABEL_RULE: FoodRule = {
   terms: ["senza glutine", "gluten free"],
 };
 
-const LIGHT_HEAVY_PREPARATION_RULE: FoodRule = {
-  code: "light-heavy-preparation",
-  label: "preparazione pesante per il profilo leggero",
-  terms: [
-    "fritto", "fritta", "fritti", "fritte", "frittura", "impanato", "impanata",
-    "panna", "besciamella", "maionese", "pancetta", "salsiccia",
-  ],
-};
-
-const SPORT_PROTEIN_PATTERN =
-  /\b(?:pollo|tacchino|manzo|vitello|agnello|maiale|suino|salmone|merluzzo|tonno|orata|spigola|branzino|uova?|ceci|lenticchie|fagioli|piselli|tofu|tempeh|yogurt greco|ricotta|mozzarella)\b/;
-const SPORT_COMPLEX_CARBOHYDRATE_PATTERN =
-  /\b(?:pasta integrale|riso integrale|pane integrale|farro|orzo|avena|quinoa|patate?|patata dolce|batata|polenta|pasta di legumi|ceci|lenticchie|fagioli|piselli)\b/;
-
 const MILK_RULE: FoodRule = {
   code: "milk",
   label: "latte",
@@ -177,6 +163,19 @@ const HONEY_RULE: FoodRule = {
   code: "honey",
   label: "miele",
   terms: ["miele"],
+};
+
+/** Ingredienti animali meno evidenti, vietati dal profilo vegano. */
+const ANIMAL_DERIVED_RULE: FoodRule = {
+  code: "animal-derived",
+  label: "ingrediente animale",
+  terms: [
+    "strutto", "lardo", "guanciale", "gelatina", "colla di pesce",
+    "brodo di carne", "brodo di pollo", "brodo di pesce", "brodo animale",
+    "dado di carne", "dado di pollo", "dado di pesce", "grasso animale",
+    "salsa di pesce", "bottarga", "caviale", "frattaglie", "fegato",
+    "wurst", "wurstel", "speck", "cotechino",
+  ],
 };
 
 const LOW_CARB_RULE: FoodRule = {
@@ -406,9 +405,7 @@ export function mealPlanRequiresMediterraneanRedMeat(
   preferences?: MealPlanConstraintPreferences,
 ): boolean {
   const profile = normalizeMealPlanConstraints(preferences).source.dietProfile;
-  return profile === "mediterranean"
-    || profile === "gluten_free"
-    || profile === "lactose_free";
+  return profile === "mediterranean";
 }
 
 export function unsupportedMealPlanHealthNote(
@@ -433,6 +430,14 @@ function rulesForPreferences(preferences?: MealPlanConstraintPreferences): FoodR
   if (normalized.dietaryPatterns.includes("vegetarian")) {
     addRule(rules, MEAT_RULE);
     addRule(rules, FISH_RULE);
+  }
+  if (normalized.dietaryPatterns.includes("vegan")) {
+    addRule(rules, MEAT_RULE);
+    addRule(rules, FISH_RULE);
+    addRule(rules, MILK_RULE);
+    addRule(rules, EGG_RULE);
+    addRule(rules, HONEY_RULE);
+    addRule(rules, ANIMAL_DERIVED_RULE);
   }
 
   const profileRules: Partial<Record<MealPlanExclusion, FoodRule>> = {
@@ -484,10 +489,10 @@ export function buildMealPlanConstraintPrompt(
     : lactoseRequired
       ? `- SENZA LATTOSIO: evita latte, yogurt, burro, panna, ricotta e formaggi ordinari; usa versioni esplicitamente senza lattosio o vegetali quando servono. Pasta, pane e fette biscottate normali restano consentiti. Non aggiungere né citare diciture “senza glutine” o “gluten free”: questo profilo non le richiede.`
       : `- Se usi un sostituto compatibile, dichiarane esplicitamente la compatibilità nel titolo E nell'ingrediente. Non lasciare mai implicita la compatibilità e non usare esempi o alternative che possano contraddire un altro vincolo.`;
-  const profileRule = normalized.dietaryPatterns.includes("light")
-    ? `- PROFILO LEGGERO: per pranzo e cena scegli preparazioni semplici e leggere; evita fritture, impanature, panna, besciamella, maionese, pancetta e salsiccia.`
-    : normalized.dietaryPatterns.includes("sport")
-      ? `- PROFILO SPORTIVO: ogni pranzo e cena deve contenere una fonte proteica concreta e un carboidrato complesso concreto (per esempio riso o pasta integrali, quinoa, farro, orzo, patate, polenta o legumi). Non usare mai parole-segnaposto come “proteina”, “carboidrato” o “verdure”.`
+  const profileRule = normalized.dietaryPatterns.includes("vegan")
+    ? `- PROFILO VEGANO: vietati in ogni campo carne, pesce, uova, latte, yogurt, formaggi, burro, panna, miele e qualsiasi ingrediente animale. Sono ammessi solo sostituti vegetali dichiarati esplicitamente.`
+    : normalized.dietaryPatterns.includes("vegetarian")
+      ? `- PROFILO VEGETARIANO: vietati in ogni campo carne e pesce; uova e latticini sono ammessi.`
       : "";
   return `
 - VINCOLI ALIMENTARI OBBLIGATORI E PRIORITARI: prevalgono su QUALSIASI tema, esempio, regola nutrizionale o richiesta di varietà precedente.
@@ -516,8 +521,7 @@ export function validateMealPlanConstraints(
 ): MealPlanConstraintViolation[] {
   const rules = rulesForPreferences(preferences);
   const normalized = normalizeMealPlanConstraints(preferences);
-  const sportProfile = normalized.dietaryPatterns.includes("sport");
-  const requiresIngredientDetails = rules.length > 0 || sportProfile;
+  const requiresIngredientDetails = rules.length > 0;
 
   const violations: MealPlanConstraintViolation[] = [];
   for (const item of items) {
@@ -579,44 +583,6 @@ export function validateMealPlanConstraints(
           });
           break;
         }
-      }
-    }
-    if (normalized.dietaryPatterns.includes("light")) {
-      for (const segment of segments) {
-        const heavyPreparation = LIGHT_HEAVY_PREPARATION_RULE.terms
-          .find((term) => hasTerm(segment, term));
-        if (heavyPreparation) {
-          violations.push({
-            code: LIGHT_HEAVY_PREPARATION_RULE.code,
-            constraint: LIGHT_HEAVY_PREPARATION_RULE.label,
-            itemTitle: title,
-            matched: heavyPreparation,
-          });
-          break;
-        }
-      }
-    }
-    if (
-      sportProfile &&
-      item.mealType &&
-      ["lunch", "dinner"].includes(item.mealType)
-    ) {
-      const ingredientText = (item.ingredients || [])
-        .map((ingredient) => normalize(ingredient.name || ""))
-        .join(" ");
-      if (!SPORT_PROTEIN_PATTERN.test(ingredientText)) {
-        violations.push({
-          code: "sport-protein-missing",
-          constraint: "fonte proteica concreta nel profilo sportivo",
-          itemTitle: title,
-        });
-      }
-      if (!SPORT_COMPLEX_CARBOHYDRATE_PATTERN.test(ingredientText)) {
-        violations.push({
-          code: "sport-complex-carbohydrate-missing",
-          constraint: "carboidrato complesso nel profilo sportivo",
-          itemTitle: title,
-        });
       }
     }
   }

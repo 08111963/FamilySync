@@ -14,15 +14,13 @@ import { MEAL_PLAN_DIET_PROFILES } from "../../shared/meal-plan-diet-profiles";
 
 const ingredient = (name: string) => ({ name });
 
-test("i sette dietProfile chiusi normalizzano nei soli pattern ed esclusioni supportati", () => {
+test("i cinque dietProfile chiusi normalizzano nei soli pattern ed esclusioni supportati", () => {
   const cases = [
     ["mediterranean", ["mediterranean"], []],
-    ["balanced", ["balanced"], []],
     ["vegetarian", ["vegetarian"], []],
-    ["light", ["light"], []],
-    ["sport", ["sport"], []],
-    ["gluten_free", ["mediterranean"], ["gluten"]],
-    ["lactose_free", ["mediterranean"], ["lactose"]],
+    ["vegan", ["vegan"], []],
+    ["gluten_free", ["gluten_free"], ["gluten"]],
+    ["lactose_free", ["lactose_free"], ["lactose"]],
   ] as const;
 
   for (const [dietProfile, dietaryPatterns, exclusions] of cases) {
@@ -144,6 +142,29 @@ test("dieta vegetariana: carne e pesce vengono rifiutati", () => {
   assert.ok(violations.some((violation) => violation.code === "fish"));
 });
 
+test("dieta vegana: ogni ingrediente animale è rifiutato e i sostituti vegetali restano ammessi", () => {
+  for (const forbidden of [
+    "pollo", "tonno", "uova", "latte", "yogurt", "formaggio", "burro", "panna",
+    "miele", "strutto", "gelatina", "colla di pesce", "brodo di pollo",
+    "salsa di pesce", "bottarga",
+  ]) {
+    assert.ok(
+      validateMealPlanConstraints(
+        [{ title: forbidden, ingredients: [ingredient(forbidden)] }],
+        { dietProfile: "vegan" },
+      ).length > 0,
+      forbidden,
+    );
+  }
+  assert.deepEqual(validateMealPlanConstraints(
+    [{
+      title: "Tofu con bevanda di riso",
+      ingredients: [ingredient("tofu"), ingredient("bevanda di riso"), ingredient("yogurt vegetale di cocco")],
+    }],
+    { dietProfile: "vegan" },
+  ), []);
+});
+
 test("intolleranza al lattosio: i passaggi possono riferirsi alla bevanda vegetale già dichiarata", () => {
   const violations = validateMealPlanConstraints(
     [{
@@ -217,7 +238,7 @@ test("il profilo senza lattosio conserva cereali normali e blocca i latticini", 
   ).some((violation) => violation.code === "unexpected-gluten-free-label"));
 });
 
-test("termini segnaposto non verificabili vengono rifiutati da tutti i sette profili", () => {
+test("termini segnaposto non verificabili vengono rifiutati da tutti i cinque profili", () => {
   for (const dietProfile of MEAL_PLAN_DIET_PROFILES) {
     const violations = validateMealPlanConstraints(
       [{
@@ -232,47 +253,6 @@ test("termini segnaposto non verificabili vengono rifiutati da tutti i sette pro
       dietProfile,
     );
   }
-});
-
-test("profilo leggero rifiuta solo preparazioni esplicitamente pesanti", () => {
-  const violations = validateMealPlanConstraints(
-    [{
-      mealType: "dinner",
-      title: "Pollo fritto con patate",
-      ingredients: [ingredient("Pollo fritto"), ingredient("Patate"), ingredient("Zucchine")],
-    }],
-    { dietProfile: "light" },
-  );
-  assert.ok(violations.some((violation) => violation.code === "light-heavy-preparation"));
-  assert.deepEqual(validateMealPlanConstraints(
-    [{
-      mealType: "dinner",
-      title: "Pollo al forno con patate",
-      ingredients: [ingredient("Pollo"), ingredient("Patate"), ingredient("Zucchine")],
-    }],
-    { dietProfile: "light" },
-  ), []);
-});
-
-test("profilo sportivo richiede proteine e carboidrati complessi concreti a pranzo e cena", () => {
-  const missingBoth = validateMealPlanConstraints(
-    [{
-      mealType: "lunch",
-      title: "Insalata di zucchine",
-      ingredients: [ingredient("Zucchine"), ingredient("Carote"), ingredient("Pomodori")],
-    }],
-    { dietProfile: "sport" },
-  );
-  assert.ok(missingBoth.some((violation) => violation.code === "sport-protein-missing"));
-  assert.ok(missingBoth.some((violation) => violation.code === "sport-complex-carbohydrate-missing"));
-  assert.deepEqual(validateMealPlanConstraints(
-    [{
-      mealType: "dinner",
-      title: "Pollo con riso integrale",
-      ingredients: [ingredient("Pollo"), ingredient("Riso integrale"), ingredient("Zucchine")],
-    }],
-    { dietProfile: "sport" },
-  ), []);
 });
 
 test("un piano senza dietProfile non può avviare la generazione", () => {

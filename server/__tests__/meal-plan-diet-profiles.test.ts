@@ -14,10 +14,8 @@ import {
 test("tutti i profili sono canonici, localizzabili e senza combinazioni libere", () => {
   assert.deepEqual(MEAL_PLAN_DIET_PROFILES, [
     "mediterranean",
-    "balanced",
     "vegetarian",
-    "light",
-    "sport",
+    "vegan",
     "gluten_free",
     "lactose_free",
   ]);
@@ -49,7 +47,7 @@ test("i profili senza glutine e lattosio applicano solo le loro sostituzioni esp
   ).length, 0);
 });
 
-test("compatibilità legacy: solo le combinazioni mediterranee rappresentabili restano convertibili", () => {
+test("compatibilità legacy: i profili ritirati convergono al catalogo attivo", () => {
   const item = [{ title: "Tagliata di manzo", ingredients: [{ name: "manzo" }] }];
   assert.equal(validateMealPlanConstraints(item, { dietProfile: "vegetarian" })[0]?.code, "meat");
   assert.deepEqual(normalizeMealPlanConstraints({
@@ -59,10 +57,12 @@ test("compatibilità legacy: solo le combinazioni mediterranee rappresentabili r
   assert.equal(legacyMealPlanDietToProfile("vegetariana"), "vegetarian");
   assert.equal(legacyMealPlanDietToProfile("Mediterranea senza glutine"), "gluten_free");
   assert.equal(legacyMealPlanDietToProfile("Mediterranea senza lattosio"), "lactose_free");
+  assert.equal(legacyMealPlanDietToProfile("Equilibrata"), "mediterranean");
+  assert.equal(legacyMealPlanDietToProfile("Leggera"), "mediterranean");
+  assert.equal(legacyMealPlanDietToProfile("Sportiva"), "mediterranean");
+  assert.equal(legacyMealPlanDietToProfile("vegana"), "vegan");
+  assert.equal(legacyMealPlanDietToProfile("vegetarian_gluten_free"), "gluten_free");
   for (const legacyProfile of [
-    "vegetarian_gluten_free",
-    "vegana",
-    "vegan",
     "pescetariana",
     "pescetarian",
     "low carb",
@@ -80,12 +80,10 @@ test("compatibilità legacy: solo le combinazioni mediterranee rappresentabili r
   assert.equal(legacyMealPlanDietToProfile("Solo cibi della mia infanzia"), undefined);
 });
 
-test("i profili mediterranei e le due varianti separate mantengono l'equilibrio settimanale", () => {
+test("solo il profilo mediterraneo guida la carne rossa settimanale", () => {
   assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "mediterranean" }), true);
-  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "gluten_free" }), true);
-  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "lactose_free" }), true);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "gluten_free" }), false);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "lactose_free" }), false);
   assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "vegetarian" }), false);
-  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "balanced" }), false);
-  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "light" }), false);
-  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "sport" }), false);
+  assert.equal(mealPlanRequiresMediterraneanRedMeat({ dietProfile: "vegan" }), false);
 });

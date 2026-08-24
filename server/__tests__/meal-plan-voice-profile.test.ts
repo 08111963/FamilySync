@@ -12,15 +12,13 @@ test("la voce non degrada diete storiche o combinazioni non rappresentabili", ()
   for (const spoken of [
     "Vorrei una dieta vegetariana senza glutine",
     "vegetarian gluten free per tutta la settimana",
-    "un menu vegan",
     "pasti pescetariani",
     "dieta halal",
     "piano low carb",
     "Vorrei pasti senza glutine e senza lattosio",
     "gluten free e lactose free per tutta la settimana",
-    "piano vegetariano sportivo",
+    "piano vegetariano e senza glutine",
     "menu mediterraneo vegetariano",
-    "voglio una dieta leggera e sportiva",
   ]) {
     assert.equal(mealPlanVoiceDietRequiresReselection(spoken), true, spoken);
     assert.equal(detectMealPlanDietProfileFromText(spoken), undefined, spoken);
@@ -33,6 +31,8 @@ test("la voce non degrada diete storiche o combinazioni non rappresentabili", ()
     detectMealPlanDietProfileFromText("Vorrei una mediterranea senza lattosio"),
     "lactose_free",
   );
+  assert.equal(detectMealPlanDietProfileFromText("Vorrei un menu vegano"), "vegan");
+  assert.equal(detectMealPlanDietProfileFromText("Vorrei una dieta sportiva"), "mediterranean");
 });
 
 test("blocco vocale, scelta manuale e richiesta server non inoltrano note sanitarie", async () => {

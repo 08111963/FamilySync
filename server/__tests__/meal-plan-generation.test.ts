@@ -95,7 +95,7 @@ function ingredientsFor(
   includeRedMeat = true,
 ): Ingredient[] {
   if (mealType === "breakfast") {
-    if (profile === "lactose_free") {
+    if (profile === "lactose_free" || profile === "vegan") {
       return [{ name: "mela", quantity: "1", unit: "pezzo" }, { name: "bevanda di riso", quantity: "200", unit: "ml" }];
     }
     return [{ name: "mela", quantity: "1", unit: "pezzo" }, { name: "yogurt bianco", quantity: "125", unit: "g" }];
@@ -107,10 +107,10 @@ function ingredientsFor(
       { name: "zucchine", quantity: "150", unit: "g" },
     ];
   }
-  if (profile === "sport") {
+  if (profile === "vegan") {
     return [
-      { name: ["pollo", "tonno", "uova", "ceci", "tacchino", "salmone", "lenticchie"][day]!, quantity: "120", unit: "g" },
-      { name: ["riso integrale", "quinoa", "patate", "farro", "polenta", "pasta integrale", "fagioli"][day]!, quantity: "80", unit: "g" },
+      { name: ["tofu", "ceci", "lenticchie", "tempeh", "fagioli", "piselli", "tofu"][day]!, quantity: "120", unit: "g" },
+      { name: ["pasta", "riso", "patate", "quinoa", "polenta di mais", "pasta", "riso"][day]!, quantity: "80", unit: "g" },
       { name: "zucchine", quantity: "150", unit: "g" },
     ];
   }
@@ -126,11 +126,7 @@ function ingredientsFor(
 }
 
 function fullWeek(profile?: MealPlanDietProfile, duplicate = false, includeRedMeat = true): Meal[] {
-  if (
-    profile === "mediterranean" ||
-    profile === "gluten_free" ||
-    profile === "lactose_free"
-  ) {
+  if (profile === "mediterranean") {
     return balancedMediterraneanWeek(profile, duplicate, includeRedMeat);
   }
   return DATES.flatMap((date, day) => [
@@ -141,14 +137,13 @@ function fullWeek(profile?: MealPlanDietProfile, duplicate = false, includeRedMe
 }
 
 function balancedMediterraneanWeek(
-  profile: Extract<MealPlanDietProfile, "mediterranean" | "gluten_free" | "lactose_free">,
+  profile: "mediterranean",
   duplicate = false,
   includeRedMeat = true,
 ): Meal[] {
-  const glutenFree = profile === "gluten_free";
-  const pasta = glutenFree ? "pasta senza glutine" : "pasta";
-  const couscous = glutenFree ? "couscous di mais senza glutine" : "couscous";
-  const farro = glutenFree ? "quinoa" : "farro";
+  const pasta = "pasta";
+  const couscous = "couscous";
+  const farro = "farro";
   const lunches: Array<{ title: string; ingredients: Ingredient[] }> = [
     { title: `${pasta} al pomodoro con pollo`, ingredients: [{ name: pasta, quantity: "320", unit: "g" }, { name: "pollo", quantity: "320", unit: "g" }, { name: "zucchine", quantity: "400", unit: "g" }] },
     { title: `${pasta} con tonno e melanzane`, ingredients: [{ name: pasta, quantity: "320", unit: "g" }, { name: "tonno", quantity: "240", unit: "g" }, { name: "melanzane", quantity: "400", unit: "g" }] },
@@ -362,6 +357,25 @@ test("i profili esclusivi mantengono il contratto 7 colazioni locali più 14 slo
   t.after(() => __setOpenAiClientForTest(null));
 });
 
+test("mediterranea, vegetariana e vegana ignorano mealsPerDay e mantengono 21 pasti", async (t) => {
+  for (const profile of ["mediterranean", "vegetarian", "vegan"] as const) {
+    for (const mealsPerDay of [2, 4]) {
+      const { client, calls } = createFakeClient(() => fullWeek(profile));
+      __setOpenAiClientForTest(client);
+      const plan = await generateWeeklyMealPlan({
+        familySize: 4,
+        weekStartDate: WEEK_START,
+        preferences: { dietProfile: profile, mealsPerDay },
+      });
+      assert.equal(calls.length, 1, `${profile}/${mealsPerDay}`);
+      assert.deepEqual(calls[0]!.mealTypes, ["breakfast", "lunch", "dinner"], `${profile}/${mealsPerDay}`);
+      assert.equal(calls[0]!.itemCount, 21, `${profile}/${mealsPerDay}`);
+      assert.equal(plan.items.length, 21, `${profile}/${mealsPerDay}`);
+    }
+  }
+  t.after(() => __setOpenAiClientForTest(null));
+});
+
 test("il repair gluten-free riceve i termini generici esatti e consegna solo il piano completo", async (t) => {
   const valid = fullWeek("gluten_free");
   const unsafe = cloneMeals(valid);
@@ -392,7 +406,7 @@ test("il repair gluten-free riceve i termini generici esatti e consegna solo il 
     assert.match(calls[1]!.prompt, new RegExp(`glutine: ${term}`, "i"), term);
   }
   assert.match(calls[1]!.prompt, /Conserva ogni slot già valido/i);
-  assert.match(calls[0]!.prompt, /Non usare mai pasta, couscous, pane, biscotti/i);
+  assert.match(calls[0]!.prompt, /Non usare pasta, couscous, pane, biscotti/i);
   const positiveGlutenFreeGuidance = calls[0]!.prompt
     .split("- PIANO SENZA GLUTINE:")[0]!
     .split("\n")
@@ -645,13 +659,11 @@ test("la validazione mediterranea rifiuta pasta, carne, legumi, termini generici
   );
 });
 
-test("i tre profili mediterranei non ripetono la chiamata per soli difetti editoriali", async (t) => {
+test("la guida mediterranea resta advisory e non ripete la chiamata", async (t) => {
   for (const profile of [
     "mediterranean",
-    "gluten_free",
-    "lactose_free",
   ] as const) {
-    const valid = balancedMediterraneanWeek(profile);
+    const valid = fullWeek(profile);
     const { client, calls } = createFakeClient((_request, call) =>
       call === 1 ? withoutMediterraneanPasta(valid) : valid);
     __setOpenAiClientForTest(client);
@@ -751,7 +763,7 @@ test("un output interrotto per limite non avvia un repair vuoto", async (t) => {
   assert.equal(calls, 1, "un repair senza output parziale ripeterebbe inutilmente la stessa settimana");
 });
 
-test("un duplicato deterministico esegue un solo repair con il JSON precedente", async (t) => {
+test("un duplicato editoriale non consuma una seconda chiamata", async (t) => {
   const { client, calls } = createFakeClient((_request, call) =>
     fullWeek("mediterranean", call === 1));
   __setOpenAiClientForTest(client);
@@ -764,9 +776,7 @@ test("un duplicato deterministico esegue un solo repair con il JSON precedente",
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
-  assert.equal(calls.length, 2, "prima chiamata + un solo repair");
-  assert.match(calls[1]!.prompt, /JSON DEL PIANO PRECEDENTE DA CORREGGERE/);
-  assert.match(calls[1]!.prompt, /CORREZIONE VARIETÀ OBBLIGATORIA/);
+  assert.equal(calls.length, 1, "la varietà è advisory");
   assert.equal(plan.items.length, 21);
 });
 
@@ -838,7 +848,7 @@ test("il piano alternativo usa lo stesso contratto full-week e una sola chiamata
   assert.equal(plan.items.length, 21);
 });
 
-test("la carne rossa mediterranea mancante avvia un solo repair e non viene aggirata", async (t) => {
+test("la carne rossa mediterranea resta una guida e non avvia un repair", async (t) => {
   const { client, calls } = createFakeClient((_request, call) =>
     fullWeek("mediterranean", false, call > 1));
   __setOpenAiClientForTest(client);
@@ -850,28 +860,25 @@ test("la carne rossa mediterranea mancante avvia un solo repair e non viene aggi
     preferences: { dietProfile: "mediterranean" },
   });
 
-  assert.equal(calls.length, 2);
-  assert.match(calls[1]!.prompt, /carne rossa|manzo|vitello|agnello/i);
+  assert.equal(calls.length, 1);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
 });
 
-test("dopo un repair ancora duplicato fallisce senza una terza chiamata", async (t) => {
+test("un piano duplicato ma strutturalmente valido viene consegnato", async (t) => {
   const { client, calls } = createFakeClient(() => fullWeek("mediterranean", true));
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
-  await assert.rejects(
-    generateWeeklyMealPlan({
-      familySize: 4,
-      weekStartDate: WEEK_START,
-      preferences: { dietProfile: "mediterranean" },
-    }),
-    /Piano pasti non valido dopo 2 tentativi/i,
-  );
-  assert.equal(calls.length, 2);
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "mediterranean" },
+  });
+  assert.equal(plan.items.length, 21);
+  assert.equal(calls.length, 1);
 });
 
-test("tutti i sette profili chiusi usano un solo contratto completo e restano sicuri", async (t) => {
+test("tutti i cinque profili chiusi usano un solo contratto completo e restano sicuri", async (t) => {
   for (const profile of MEAL_PLAN_DIET_PROFILES) {
     const fixture = fullWeek(profile);
     assert.deepEqual(
@@ -898,30 +905,25 @@ test("tutti i sette profili chiusi usano un solo contratto completo e restano si
       [],
       `${profile}: piano sicuro`,
     );
-    if (profile === "light") {
-      assert.match(calls[0]!.prompt, /PROFILO LEGGERO/i);
-    }
-    if (profile === "sport") {
-      assert.match(calls[0]!.prompt, /PROFILO SPORTIVO/i);
+    if (profile === "vegan") {
+      assert.match(calls[0]!.prompt, /PROFILO VEGANO/i);
     }
   }
   t.after(() => __setOpenAiClientForTest(null));
 });
 
-test("un budget applicativo di una chiamata non avvia il repair", async (t) => {
+test("un budget applicativo di una chiamata consegna un piano con difetti editoriali", async (t) => {
   const { client, calls } = createFakeClient(() => fullWeek("mediterranean", true));
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
-  await assert.rejects(
-    generateWeeklyMealPlan({
-      familySize: 4,
-      weekStartDate: WEEK_START,
-      preferences: { dietProfile: "mediterranean" },
-      maxModelCalls: 1,
-    }),
-    (error: unknown) => (error as { code?: string }).code === "AI_MODEL_CALL_BUDGET_EXHAUSTED",
-  );
+  const plan = await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "mediterranean" },
+    maxModelCalls: 1,
+  });
+  assert.equal(plan.items.length, 21);
   assert.equal(calls.length, 1);
 });
 
@@ -937,10 +939,13 @@ test(
       ...item,
       title: `${item.title} ${marker}`,
     }));
-    const invalidPlan = fullWeek("vegetarian", true).map((item) => ({
+    const invalidPlan = cloneMeals(fullWeek("vegetarian")).map((item) => ({
       ...item,
       title: `${item.title} ${marker}`,
     }));
+    const unsafeItem = invalidPlan.find((item) => item.mealType === "lunch")!;
+    unsafeItem.title = `Pollo con riso ${marker}`;
+    unsafeItem.ingredients[0] = { name: "pollo", quantity: "120", unit: "g" };
     // La rotta avvia il prewarm delle immagini dopo res.end(). Per mantenere
     // il test focalizzato sullo stream (e non inviare richieste immagini),
     // rendiamo disponibili solo le cache sintetiche dei titoli finali.

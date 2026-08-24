@@ -33,12 +33,10 @@ type ProfileCase = {
  */
 const PROFILE_CASES: ProfileCase[] = [
   { name: "mediterraneo", profile: "mediterranean", dietaryPattern: "mediterranean", exclusions: [], safe: "riso" },
-  { name: "equilibrato", profile: "balanced", dietaryPattern: "balanced", exclusions: [], safe: "riso" },
   { name: "vegetariano", profile: "vegetarian", dietaryPattern: "vegetarian", exclusions: [], forbidden: "pollo", violationCode: "meat", safe: "ceci" },
-  { name: "leggero", profile: "light", dietaryPattern: "light", exclusions: [], safe: "riso" },
-  { name: "sportivo", profile: "sport", dietaryPattern: "sport", exclusions: [], safe: "riso" },
-  { name: "senza glutine", profile: "gluten_free", dietaryPattern: "mediterranean", exclusions: ["gluten"], forbidden: "pasta", violationCode: "gluten", safe: "pasta senza glutine" },
-  { name: "senza lattosio", profile: "lactose_free", dietaryPattern: "mediterranean", exclusions: ["lactose"], forbidden: "ricotta", violationCode: "lactose", safe: "yogurt senza lattosio" },
+  { name: "vegano", profile: "vegan", dietaryPattern: "vegan", exclusions: [], forbidden: "miele", violationCode: "honey", safe: "tofu" },
+  { name: "senza glutine", profile: "gluten_free", dietaryPattern: "gluten_free", exclusions: ["gluten"], forbidden: "pasta", violationCode: "gluten", safe: "pasta senza glutine" },
+  { name: "senza lattosio", profile: "lactose_free", dietaryPattern: "lactose_free", exclusions: ["lactose"], forbidden: "ricotta", violationCode: "lactose", safe: "yogurt senza lattosio" },
 ];
 
 function recipeWith(value: string, field: "title" | "description" | "notes" | "ingredients" | "steps") {
@@ -154,7 +152,6 @@ function createAllergenAuditClient(
               const fallbackIngredients = mealType === "breakfast"
                 ? ["mela", "banana", "pane"]
                 : ["riso", "zucchine", "carote"];
-              const sportMainIngredients = ["pollo", "riso integrale", "zucchine"];
               return ({
               date,
               mealType,
@@ -163,9 +160,7 @@ function createAllergenAuditClient(
               title: `${mealType === "breakfast" ? "Colazione" : mealType === "lunch" ? "Pranzo" : "Cena"} di ${distinctiveLabels[position]}`,
               description: "Ricetta sintetica compatibile.",
               ingredients: fallbackIngredients.map((fallback, index) => ({
-                name: profile === "sport" && mealType !== "breakfast"
-                  ? sportMainIngredients[index]!
-                  : includeMediterraneanRedMeat &&
+                name: includeMediterraneanRedMeat &&
                     mealType === "dinner" &&
                     date === dates[0] &&
                     index === 0 &&
@@ -201,7 +196,7 @@ function createAllergenAuditClient(
 
 test("body reale → route parser → prompt → mock → piano finale: i profili non mediterranei restano entro il budget globale", async (t) => {
   for (const scenario of PROFILE_CASES.filter((scenario) =>
-    !["mediterranean", "gluten_free", "lactose_free"].includes(scenario.profile))) {
+    !["gluten_free", "lactose_free"].includes(scenario.profile))) {
     const prepared = await prepareMealPlanPreferences(
       "meal-plan-allergen-audit-user",
       { dietProfile: scenario.profile },
@@ -212,9 +207,7 @@ test("body reale → route parser → prompt → mock → piano finale: i profil
 
     const { client, calls } = createAllergenAuditClient(
       scenario.profile,
-      scenario.profile === "mediterranean" ||
-        scenario.profile === "gluten_free" ||
-        scenario.profile === "lactose_free",
+      scenario.profile === "mediterranean",
     );
     __setOpenAiClientForTest(client);
     const plan = await generateWeeklyMealPlan({

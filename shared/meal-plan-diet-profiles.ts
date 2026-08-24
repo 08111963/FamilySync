@@ -6,10 +6,8 @@
  */
 export const MEAL_PLAN_DIET_PROFILES = [
   "mediterranean",
-  "balanced",
   "vegetarian",
-  "light",
-  "sport",
+  "vegan",
   "gluten_free",
   "lactose_free",
 ] as const;
@@ -18,7 +16,7 @@ export type MealPlanDietProfile = typeof MEAL_PLAN_DIET_PROFILES[number];
 
 export type MealPlanDietProfileDefinition = {
   label: { it: string; en: string };
-  dietaryPattern: "mediterranean" | "balanced" | "vegetarian" | "light" | "sport";
+  dietaryPattern: "mediterranean" | "vegetarian" | "vegan" | "gluten_free" | "lactose_free";
   excludes: Array<"gluten" | "lactose">;
 };
 
@@ -31,34 +29,24 @@ export const MEAL_PLAN_DIET_PROFILE_DEFINITIONS: Record<
     dietaryPattern: "mediterranean",
     excludes: [],
   },
-  balanced: {
-    label: { it: "Equilibrata", en: "Balanced" },
-    dietaryPattern: "balanced",
-    excludes: [],
-  },
   vegetarian: {
     label: { it: "Vegetariana", en: "Vegetarian" },
     dietaryPattern: "vegetarian",
     excludes: [],
   },
-  light: {
-    label: { it: "Leggera", en: "Light" },
-    dietaryPattern: "light",
-    excludes: [],
-  },
-  sport: {
-    label: { it: "Sportiva", en: "Sport" },
-    dietaryPattern: "sport",
+  vegan: {
+    label: { it: "Vegana", en: "Vegan" },
+    dietaryPattern: "vegan",
     excludes: [],
   },
   gluten_free: {
     label: { it: "Senza glutine", en: "Gluten-free" },
-    dietaryPattern: "mediterranean",
+    dietaryPattern: "gluten_free",
     excludes: ["gluten"],
   },
   lactose_free: {
     label: { it: "Senza lattosio", en: "Lactose-free" },
-    dietaryPattern: "mediterranean",
+    dietaryPattern: "lactose_free",
     excludes: ["lactose"],
   },
 };
@@ -77,7 +65,7 @@ export function mealPlanDietProfileLabel(
 
 /**
  * Compatibilità controllata per i valori che erano già pubblicati prima del
- * menu a sette voci. Il campo legacy allergies non partecipa mai alla
+ * menu a cinque voci. Il campo legacy allergies non partecipa mai alla
  * conversione: i dati sanitari restano fuori dal Piano Pasti.
  */
 export function legacyMealPlanDietToProfile(value: unknown): MealPlanDietProfile | undefined {
@@ -86,17 +74,20 @@ export function legacyMealPlanDietToProfile(value: unknown): MealPlanDietProfile
   const exact: Record<string, MealPlanDietProfile> = {
     mediterranea: "mediterranean",
     mediterranean: "mediterranean",
-    equilibrata: "balanced",
-    balanced: "balanced",
+    equilibrata: "mediterranean",
+    balanced: "mediterranean",
     vegetariana: "vegetarian",
     vegetarian: "vegetarian",
-    leggera: "light",
-    light: "light",
-    sportiva: "sport",
-    sport: "sport",
+    vegana: "vegan",
+    vegan: "vegan",
+    leggera: "mediterranean",
+    light: "mediterranean",
+    sportiva: "mediterranean",
+    sport: "mediterranean",
     "mediterranea senza glutine": "gluten_free",
     "mediterranean gluten free": "gluten_free",
     mediterranean_gluten_free: "gluten_free",
+    vegetarian_gluten_free: "gluten_free",
     "mediterranea senza lattosio": "lactose_free",
     "mediterranean lactose free": "lactose_free",
     mediterranean_lactose_free: "lactose_free",
@@ -111,14 +102,13 @@ export function legacyMealPlanDietToProfile(value: unknown): MealPlanDietProfile
  */
 export function mealPlanVoiceDietRequiresReselection(value: string): boolean {
   const text = value.toLocaleLowerCase("it-IT");
-  const legacyPattern = /\b(?:vegan\w*|pescetar\w*|halal|low[\s-]?carb|chetogenic\w*|keto)\b/;
+  const legacyPattern = /\b(?:pescetar\w*|halal|low[\s-]?carb|chetogenic\w*|keto)\b/;
   const mentionedProfiles = new Set<MealPlanDietProfile>();
   const profileMentions: Array<[MealPlanDietProfile, RegExp]> = [
     ["mediterranean", /\b(?:mediterrane\w*|mediterranean)\b/],
-    ["balanced", /\b(?:equilibrat\w*|balanced)\b/],
     ["vegetarian", /\bvegetarian\w*\b/],
-    ["light", /\b(?:legger\w*|light)\b/],
-    ["sport", /\b(?:sportiv\w*|sport)\b/],
+    ["vegan", /\b(?:vegan\w*|vegana)\b/],
+    ["mediterranean", /\b(?:equilibrat\w*|balanced|legger\w*|light|sportiv\w*|sport)\b/],
     ["gluten_free", /\b(?:senza glutine|gluten free)\b/],
     ["lactose_free", /\b(?:senza lattosio|lactose free)\b/],
   ];
@@ -142,10 +132,9 @@ export function detectMealPlanDietProfileFromText(value: string): MealPlanDietPr
     [/\b(?:mediterranea|mediterranean).*(?:senza lattosio|lactose free)\b|\b(?:senza lattosio|lactose free).*(?:mediterranea|mediterranean)\b/, "lactose_free"],
     [/\b(?:senza glutine|gluten free)\b/, "gluten_free"],
     [/\b(?:senza lattosio|lactose free)\b/, "lactose_free"],
-    [/\b(?:equilibrata|balanced)\b/, "balanced"],
-    [/\b(?:leggera|light)\b/, "light"],
-    [/\b(?:sportiva|sport)\b/, "sport"],
+    [/\b(?:vegan[ao]?|vegana)\b/, "vegan"],
     [/\bvegetarian[ao]?\b/, "vegetarian"],
+    [/\b(?:equilibrata|balanced|leggera|light|sportiva|sport)\b/, "mediterranean"],
     [/\bmediterrane[ao]?\b|\bmediterranean\b/, "mediterranean"],
   ];
   return matches.find(([pattern]) => pattern.test(text))?.[1];

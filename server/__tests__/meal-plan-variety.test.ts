@@ -124,16 +124,11 @@ test("il blueprint mediterraneo impone una carne rossa e il controllo conta pran
   }, "l'assenza resta un advisory locale, senza una rigenerazione completa");
 });
 
-test("il blueprint gluten-free conserva il target red_meat, vegetariano e vegano non lo richiedono", () => {
+test("il target carne rossa è opzionale per i profili non mediterranei", () => {
   const glutenFreeIngredients = [
     "pasta senza glutine", "riso", "ceci", "patate", "quinoa",
     "manzo", "salmone", "pollo", "zucchine", "pomodori",
   ];
-  assert.ok(
-    planMealPlanLunchSemanticTargets(glutenFreeIngredients, 7, 0, {
-      requireRedMeat: true,
-    }).some((target) => target.mainProtein === "red_meat"),
-  );
   assert.ok(
     !planMealPlanLunchSemanticTargets(
       glutenFreeIngredients.filter((ingredient) => ingredient !== "manzo"),

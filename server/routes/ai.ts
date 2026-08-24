@@ -102,7 +102,7 @@ const mealPlanPreferencesSchema = z.object({
 }).strict().optional();
 
 type PreparedMealPlanPreferences =
-  | { ok: true; preferences: MealPlanConstraintPreferences & { maxTimeMinutes?: number; mealsPerDay?: number } | undefined }
+  | { ok: true; preferences: MealPlanConstraintPreferences & { maxTimeMinutes?: number } | undefined }
   | { ok: false; status: number; body: { error: { code: string; message: string } } };
 
 /**
@@ -146,11 +146,10 @@ export async function prepareMealPlanPreferences(
   const dietProfile: MealPlanDietProfile = requestedOrLegacyProfile ||
     legacyDietProfile ||
     "mediterranean";
-  const preferences: MealPlanConstraintPreferences & { maxTimeMinutes?: number; mealsPerDay?: number } = {
+  const preferences: MealPlanConstraintPreferences & { maxTimeMinutes?: number } = {
     dietProfile,
     ...(rawPreferences.notes ? { notes: rawPreferences.notes } : {}),
     ...(rawPreferences.maxTimeMinutes ? { maxTimeMinutes: rawPreferences.maxTimeMinutes } : {}),
-    ...(rawPreferences.mealsPerDay ? { mealsPerDay: rawPreferences.mealsPerDay } : {}),
   };
   const unsupportedHealthNote = unsupportedMealPlanHealthNote(preferences);
   if (unsupportedHealthNote) {

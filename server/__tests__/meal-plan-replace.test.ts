@@ -246,48 +246,8 @@ describe("sostituzione piano pasti (DB + HTTP)", { skip: hasDb ? false : "DATABA
     assert.equal(rows[0].id, firstPlanId);
   });
 
-  test("3e) il salvataggio manuale applica anche i contratti leggero e sportivo", async () => {
-    const cases = [
-      {
-        dietProfile: "light",
-        titleOverride: "Pollo fritto con patate",
-        ingredients: [
-          { name: "Pollo fritto", quantity: "120", unit: "g" },
-          { name: "Patate", quantity: "150", unit: "g" },
-          { name: "Zucchine", quantity: "150", unit: "g" },
-        ],
-      },
-      {
-        dietProfile: "sport",
-        titleOverride: "Riso bianco e zucchine",
-        ingredients: [
-          { name: "Riso", quantity: "80", unit: "g" },
-          { name: "Zucchine", quantity: "150", unit: "g" },
-          { name: "Carote", quantity: "100", unit: "g" },
-        ],
-      },
-    ] as const;
-    for (const scenario of cases) {
-      const res = await savePlan({
-        replace: true,
-        preferences: { dietProfile: scenario.dietProfile },
-        items: [{
-          date: "2030-03-04",
-          mealType: "lunch",
-          titleOverride: scenario.titleOverride,
-          ingredients: scenario.ingredients,
-        }],
-      });
-      assert.equal(res.status, 422, scenario.dietProfile);
-    }
-    const rows = await plansForWeek();
-    assert.equal(rows[0].id, firstPlanId);
-  });
-
-  test("3f) i profili legacy non rappresentabili non possono creare o sostituire un piano", async () => {
+  test("3e) i profili legacy non rappresentabili non possono creare o sostituire un piano", async () => {
     for (const legacyProfile of [
-      "vegetarian_gluten_free",
-      "vegan",
       "pescetarian",
       "halal",
       "low_carb",

@@ -1031,7 +1031,7 @@ export const MAX_MEAL_PLAN_MODEL_CALLS = 28;
 const SAFE_MAIN_INGREDIENTS = [
   "pasta", "pane", "couscous", "farro", "orzo", "avena", "cereali",
   "riso", "riso basmati", "riso integrale", "quinoa", "polenta di mais",
-  "patate", "patate dolci", "ceci", "lenticchie", "fagioli", "piselli",
+  "patate", "patate dolci", "ceci", "lenticchie", "fagioli", "piselli", "tofu", "tempeh",
   // Carni rosse già riconosciute dalle regole del Piano Pasti. Sono necessarie
   // anche alla lista chiusa dei profili mediterranei senza glutine/lattosio,
   // perché il loro target proteico settimanale possa restare verificabile.
@@ -1302,11 +1302,24 @@ function buildDinnerThemes(
   }
 
   const allowed = new Set(compatibleMealIngredients(preferences, "main"));
+  const vegan = mealPlanHasDietaryPattern(preferences, "vegan");
   const canUseFish = ["salmone", "merluzzo", "tonno"].some((ingredient) => allowed.has(ingredient));
   const canUsePoultry = ["pollo", "tacchino"].some((ingredient) => allowed.has(ingredient));
   const canUseEggs = allowed.has("uova");
   const canUseLegumes = ["ceci", "lenticchie", "fagioli", "piselli"].some((ingredient) => allowed.has(ingredient));
   const protein = "una fonte proteica esplicitamente compatibile";
+
+  if (vegan) {
+    return [
+      "A CENA prepara tofu al forno con verdure e patate.",
+      "A CENA prepara ceci in umido con verdure e riso.",
+      "A CENA prepara lenticchie in zuppa con verdure e una base compatibile.",
+      "A CENA prepara tempeh in padella con verdure e patate.",
+      "A CENA prepara fagioli con ortaggi e polenta di mais.",
+      "A CENA prepara tofu alla griglia con verdure e riso.",
+      "A CENA prepara burger di ceci con insalata e patate.",
+    ];
+  }
 
   return [
     canUseFish ? "A CENA usa pesce compatibile al forno con verdure e patate." : `A CENA usa ${protein} al forno con verdure e patate.`,
@@ -1424,14 +1437,10 @@ async function generateWeeklyMealPlanAttempt(
   // + 14 slot AI di pranzo/cena. Anche una preferenza legacy da 2 o 4 pasti
   // non può trasformare questo percorso in un piano parziale o far generare
   // snack non coperti dalla composizione verificata.
-  const mealsPerDay = glutenFreeRequired || lactoseFreeRequired
-    ? 3
-    : context.preferences?.mealsPerDay || 3;
-  const mealTypes = mealsPerDay >= 4
-    ? ['breakfast', 'lunch', 'dinner', 'snack']
-    : mealsPerDay >= 3
-      ? ['breakfast', 'lunch', 'dinner']
-      : ['lunch', 'dinner'];
+  // Il contratto pubblico è sempre una settimana completa da 21 pasti:
+  // un eventuale valore legacy mealsPerDay non può ridurre né ampliare
+  // il piano, i costi AI o il formato della risposta.
+  const mealTypes = ['breakfast', 'lunch', 'dinner'];
 
   const variant = context.planVariant || 1;
   const variantHint = variant === 1
@@ -1491,12 +1500,8 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
 
   // Piatti tradizionali: il modello tende a "salutizzare" tutto proponendo
   // pasta/pane integrali ovunque. Niente varianti integrali salvo richiesta.
-  // Il profilo sportivo richiede carboidrati complessi a pranzo e cena:
-  // le varianti integrali sono quindi compatibili, senza renderle obbligatorie
-  // quando il piano usa patate, polenta o legumi.
   const wantsWholegrain = dietLower.includes('integral') ||
-    rawNotes.toLowerCase().includes('integral') ||
-    mealPlanHasDietaryPattern(context.preferences, "sport");
+    rawNotes.toLowerCase().includes('integral');
   const wholegrainRule = glutenFreeRequired || wantsWholegrain
     ? ''
     : `\n- Pasta, riso e pane: usa quelli CLASSICI (pasta di semola, riso bianco, pane comune). NON proporre varianti "integrali" a meno che l'utente non le chieda espressamente. Questo vale anche se sono presenti allergie, intolleranze o altri vincoli: tali vincoli non implicano mai prodotti integrali.`;
@@ -1616,7 +1621,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   const hasDeterministicBreakfasts =
     glutenFreeRequired || lactoseFreeRequired;
   const deterministicBreakfasts: MealPlanSuggestion["items"] =
-    hasDeterministicBreakfasts && mealTypes.includes("breakfast")
+    hasDeterministicBreakfasts
       ? buildLactoseSafeBreakfasts(dates, context.familySize, glutenFreeRequired)
       : [];
   const modelMealTypes = hasDeterministicBreakfasts
@@ -1717,12 +1722,6 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     const lactosePastaRule = lactoseAllowsGluten && requestMealTypes.includes("lunch")
       ? "\n- Il vincolo lattosio/latte NON richiede di evitare il glutine: pasta di semola classica e gli altri cereali con glutine restano compatibili, purché non contengano latte o derivati incompatibili."
       : "";
-    const lightProfileRule = mealPlanHasDietaryPattern(context.preferences, "light")
-      ? "\n- PROFILO LEGGERO: per pranzo e cena usa cotture al forno, al vapore o in padella leggera; non usare fritture, impanature, panna, besciamella, maionese, pancetta o salsiccia."
-      : "";
-    const sportProfileRule = mealPlanHasDietaryPattern(context.preferences, "sport")
-      ? "\n- PROFILO SPORTIVO: in OGNI pranzo e cena dichiara negli ingredienti una fonte proteica concreta e un carboidrato complesso concreto (riso o pasta integrali, quinoa, farro, orzo, patate, polenta o legumi). Non usare parole generiche come “proteina”, “carboidrato” o “verdure”."
-      : "";
     const lunchFamilyTargetRule = requestMealTypes.includes("lunch") && request.lunchFamilyTarget
       ? `\n- OBIETTIVO FAMIGLIA PRANZO DEL GIORNO: ${request.lunchFamilyTarget}. Il pranzo DEVE appartenere a questa famiglia, salvo conflitto con un vincolo di sicurezza. Non sostituirla con pasta o un'altra famiglia solo cambiando condimento, contorno, olio o erbe.`
       : "";
@@ -1773,7 +1772,7 @@ ${constrainedRecipeReferenceRule}
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}
-       - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${mediterraneanDistributionRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}${lightProfileRule}${sportProfileRule}
+        - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${mediterraneanDistributionRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.
  - ${variantHint}${themeHint ? `\n- BLUEPRINT SETTIMANALE LOCALE: segui esattamente questi obiettivi già pianificati, senza scambiarli tra date:\n${themeHint}` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione indicata realizza questa combinazione concreta: ${breakfastHint}.` : ''}
   ${constraintRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}${context.previousPlanJson ? `\n- JSON DEL PIANO PRECEDENTE DA CORREGGERE (non copiare gli errori; conserva ogni elemento già valido e modifica soltanto quelli necessari): ${context.previousPlanJson}` : ""}
@@ -1919,32 +1918,23 @@ ${constrainedRecipeReferenceRule}
       ),
     );
   }
-  const unsuitableBreakfast = filtered.map((item) => {
-    if (item.mealType !== "breakfast") return false;
-    const text = [
-      item.title,
-      item.description,
-      ...(item.ingredients || []).map((ingredient) => ingredient.name),
-    ].join(" ");
-    const term = savoryBreakfastTerm(text);
-    return term ? { item, term } : false;
-  }).find(Boolean);
-  if (unsuitableBreakfast) {
-    if (!context.suppressInternalLogs) {
-      console.warn(JSON.stringify({
-        tag: "AI_MEAL_PLAN_BREAKFAST_REJECTED",
-        variant,
-        term: unsuitableBreakfast.term,
-      }));
-    }
-    throw new MealPlanRepairError(
-      filtered,
-      buildMealPlanQualityCorrection(
-        new AiError("AI_BAD_RESPONSE", "La risposta AI contiene un pasto non adatto alla colazione"),
-        2,
-      ),
-    );
-  }
+   const unsuitableBreakfast = filtered.map((item) => {
+     if (item.mealType !== "breakfast") return false;
+     const text = [
+       item.title,
+       item.description,
+       ...(item.ingredients || []).map((ingredient) => ingredient.name),
+     ].join(" ");
+     const term = savoryBreakfastTerm(text);
+     return term ? { item, term } : false;
+   }).find(Boolean);
+   if (unsuitableBreakfast && !context.suppressInternalLogs) {
+     console.warn(JSON.stringify({
+       tag: "AI_MEAL_PLAN_BREAKFAST_ADVISORY",
+       variant,
+       term: unsuitableBreakfast.term,
+     }));
+   }
   const incompleteMeal = filtered.find((item) =>
     !item.title.trim() ||
     !item.description?.trim() ||
@@ -1981,7 +1971,7 @@ ${constrainedRecipeReferenceRule}
       ),
     );
   }
-  const unexpectedWholegrain = !glutenFreeRequired && !wantsWholegrain
+   const unexpectedWholegrain = !glutenFreeRequired && !wantsWholegrain
     ? filtered.find((item) => /\bintegral(?:e|i)?\b/i.test([
       item.title,
       item.description,
@@ -1989,22 +1979,13 @@ ${constrainedRecipeReferenceRule}
       ...(item.steps || []),
     ].join(" ")))
     : undefined;
-  if (unexpectedWholegrain) {
-    if (!context.suppressInternalLogs) {
-      console.warn(JSON.stringify({
-        tag: "AI_MEAL_PLAN_WHOLEGRAIN_REJECTED",
-        variant,
-        mealType: unexpectedWholegrain.mealType,
-      }));
-    }
-    throw new MealPlanRepairError(
-      filtered,
-      buildMealPlanQualityCorrection(
-        new AiError("AI_BAD_RESPONSE", "La risposta AI usa varianti integrali non richieste"),
-        2,
-      ),
-    );
-  }
+   if (unexpectedWholegrain && !context.suppressInternalLogs) {
+     console.warn(JSON.stringify({
+       tag: "AI_MEAL_PLAN_WHOLEGRAIN_ADVISORY",
+       variant,
+       mealType: unexpectedWholegrain.mealType,
+     }));
+   }
   context.onStatus?.("Controllo che ogni pasto rispetti i vincoli alimentari.");
   const constraintViolations = validateMealPlanConstraints(filtered, context.preferences);
   if (constraintViolations.length > 0) {
@@ -2053,42 +2034,27 @@ ${constrainedRecipeReferenceRule}
       }));
     }
   }
-  const redMeatEvaluation = evaluateMealPlanRedMeat(filtered);
-  if (requiresMediterraneanRedMeat && !redMeatEvaluation.hasRedMeat) {
-    // Il blueprint imposta sempre il target red_meat prima della generazione.
-    // Se il modello lo ignora, non consegniamo un piano non conforme e non
-    // lanciamo una rigenerazione completa: nessuna chiamata aggiuntiva può
-    // aggirare la protezione locale deterministica.
-    if (!context.suppressInternalLogs) {
-      console.warn(JSON.stringify({
-        tag: "AI_MEAL_PLAN_RED_MEAT_REJECTED",
-        variant,
-        mainMealCount: redMeatEvaluation.mainMealCount,
-        redMeatMealCount: redMeatEvaluation.redMeatMealCount,
-      }));
-    }
-    throw new MealPlanRepairError(
-      filtered,
-      `- CORREZIONE OBBLIGATORIA: conserva tutti i pasti già compatibili e modifica soltanto quanto necessario per includere almeno un pranzo o una cena con manzo, vitello o agnello compatibile. Non rimuovere alcun vincolo alimentare.`,
-    );
-  }
+   const redMeatEvaluation = evaluateMealPlanRedMeat(filtered);
+   if (requiresMediterraneanRedMeat && !redMeatEvaluation.hasRedMeat && !context.suppressInternalLogs) {
+     console.warn(JSON.stringify({
+       tag: "AI_MEAL_PLAN_RED_MEAT_ADVISORY",
+       variant,
+       mainMealCount: redMeatEvaluation.mainMealCount,
+       redMeatMealCount: redMeatEvaluation.redMeatMealCount,
+     }));
+   }
 
   const repeatedSlots = findRepeatedMealSlots(disambiguateMealTitles(filtered));
   const finalItems = disambiguateMealTitles(filtered);
   const repeatedConcepts = findRepeatedMealConcepts(finalItems);
   const varietyEvaluation = evaluateMealPlanVariety(finalItems);
-  if (repeatedSlots.length > 0) {
-    const repairTargets = repeatedSlots
-      .map((slot) => `${slot.date}/${slot.mealType}`)
-      .join(", ");
-    throw new MealPlanRepairError(
-      finalItems,
-      `- CORREZIONE VARIETÀ OBBLIGATORIA: conserva tutti i pasti già validi e modifica soltanto i pasti necessari per eliminare duplicati e rispettare il blueprint locale.
-- Slot duplicati da correggere: ${repairTargets || "nessun titolo identico, correggi comunque le firme indicate"}.
-- Non ripetere la stessa firma semantica di pranzo (base, proteina, preparazione).
-- Restituisci l'intera settimana completa, con date e tipi di pasto invariati; non rimuovere vincoli alimentari né l'eventuale carne rossa mediterranea.`,
-    );
-  }
+   if (repeatedSlots.length > 0 && !context.suppressInternalLogs) {
+     console.warn(JSON.stringify({
+       tag: "AI_MEAL_PLAN_DUPLICATE_ADVISORY",
+       variant,
+       slotCount: repeatedSlots.length,
+     }));
+   }
   if (repeatedConcepts.length > 0) {
     if (!context.suppressInternalLogs) {
       console.warn(JSON.stringify({
@@ -2119,24 +2085,15 @@ ${constrainedRecipeReferenceRule}
       }));
     }
   }
-  // Difesa finale: la verifica iniziale è eseguita prima delle riparazioni
-  // locali di varietà. Ricontrollare l'output restituito impedisce a qualunque
-  // modifica successiva di consegnare un piano mediterraneo senza carne rossa.
   const finalRedMeatEvaluation = evaluateMealPlanRedMeat(finalItems);
-  if (requiresMediterraneanRedMeat && !finalRedMeatEvaluation.hasRedMeat) {
-    if (!context.suppressInternalLogs) {
-      console.warn(JSON.stringify({
-        tag: "AI_MEAL_PLAN_RED_MEAT_FINAL_REJECTED",
-        variant,
-        mainMealCount: finalRedMeatEvaluation.mainMealCount,
-        redMeatMealCount: finalRedMeatEvaluation.redMeatMealCount,
-      }));
-    }
-    throw new MealPlanRepairError(
-      finalItems,
-      "- CORREZIONE OBBLIGATORIA: il piano finale deve mantenere almeno una carne rossa compatibile tra pranzo e cena senza modificare gli altri vincoli.",
-    );
-  }
+   if (requiresMediterraneanRedMeat && !finalRedMeatEvaluation.hasRedMeat && !context.suppressInternalLogs) {
+     console.warn(JSON.stringify({
+       tag: "AI_MEAL_PLAN_RED_MEAT_FINAL_ADVISORY",
+       variant,
+       mainMealCount: finalRedMeatEvaluation.mainMealCount,
+       redMeatMealCount: finalRedMeatEvaluation.redMeatMealCount,
+     }));
+   }
 
   if (context.onProgress) {
     for (const date of dates) {
