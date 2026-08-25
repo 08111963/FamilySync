@@ -14,7 +14,9 @@ soltanto dettagli secondari.
 
 **How to apply:** guidare ogni pranzo verso una famiglia e un profilo
 compatibili diversi quando esistono alternative sicure; confrontare il nucleo
-del titolo prima dei contorni. Per Mediterranea la rotazione locale preferisce
-due paste non consecutive, due piatti di legumi, due con patate e un solo riso,
-evitando cereali concentrati e “pasta in umido”. I vincoli alimentari
-prevalgono sempre e la varietà non giustifica chiamate o retry AI aggiuntivi.
+del titolo prima dei contorni. La rotazione deve variare anche fra due nuove
+generazioni della stessa settimana, restando però invariata durante un repair.
+Per Mediterranea preferire due paste non consecutive, due piatti di legumi, due
+con patate e un solo riso, evitando cereali concentrati e “pasta in umido”. I
+vincoli alimentari prevalgono sempre e la varietà non giustifica chiamate o
+retry AI aggiuntivi.

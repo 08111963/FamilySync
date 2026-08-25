@@ -330,6 +330,33 @@ test("genera tutti i 21 pasti completi in tre blocchi settimanali", async (t) =>
   assert.deepEqual(evaluateMediterraneanMealPlan(plan.items).issues, []);
 });
 
+test("una nuova generazione ruota anche il pranzo del primo giorno", async (t) => {
+  const first = createFakeClient(() => fullWeek("mediterranean"));
+  __setOpenAiClientForTest(first.client);
+  await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "mediterranean" },
+    variationSeed: "a",
+  });
+
+  const second = createFakeClient(() => fullWeek("mediterranean"));
+  __setOpenAiClientForTest(second.client);
+  await generateWeeklyMealPlan({
+    familySize: 4,
+    weekStartDate: WEEK_START,
+    preferences: { dietProfile: "mediterranean" },
+    variationSeed: "c",
+  });
+
+  const firstLunchPrompt = first.calls.find((call) => call.mealTypes[0] === "lunch")!.prompt;
+  const secondLunchPrompt = second.calls.find((call) => call.mealTypes[0] === "lunch")!.prompt;
+  assert.match(firstLunchPrompt, /2026-08-03: famiglia pasta/i);
+  assert.match(secondLunchPrompt, /2026-08-03: famiglia piatto di legumi/i);
+  assert.notEqual(firstLunchPrompt, secondLunchPrompt);
+  t.after(() => __setOpenAiClientForTest(null));
+});
+
 test("i profili esclusivi chiedono 14 slot AI e ricompongono 7 colazioni locali sicure", async (t) => {
   for (const profile of ["gluten_free", "lactose_free"] as const) {
     const { client, calls } = createFakeClient(() => fullWeek(profile));

@@ -987,6 +987,7 @@ router.post('/:familyId/weekly-meal-plan', authenticate, requireAiEnabled, requi
       () => generateWeeklyMealPlan({
         ...context,
         planVariant: 1,
+        variationSeed: crypto.randomUUID(),
         maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
         provider: ai.provider,
       }),
@@ -1152,6 +1153,7 @@ router.post('/:familyId/weekly-meal-plan/stream', authenticate, requireAiEnabled
         weekStartDate,
         preferences: preparedPreferences.preferences,
         planVariant,
+        variationSeed: requestId,
         maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
         onStatus: writeStatus,
         signal: generationAbortController.signal,

@@ -722,6 +722,11 @@ interface MealPlanGenerationContext {
   provider?: AiProvider;
 
   weekStartDate: string;
+  /**
+   * Chiave opaca per variare la rotazione culinaria fra rigenerazioni della
+   * stessa settimana. Non contiene preferenze o dati mostrati al provider.
+   */
+  variationSeed?: string;
 
   preferences?: import("./meal-plan-constraints").MealPlanConstraintPreferences;
 
@@ -823,6 +828,16 @@ function mealPlanAttemptModelCallCost(context: MealPlanGenerationContext): numbe
     || mealPlanHasExclusion(context.preferences, "lactose");
   return deterministicBreakfasts ? 2 : 3;
 }
+
+function mealPlanRotationOffset(seed: string | undefined, modulo: number): number {
+  if (!seed || modulo <= 1) return 0;
+  let hash = 0;
+  for (let index = 0; index < seed.length; index++) {
+    hash = ((hash * 31) + seed.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash) % modulo;
+}
+
 interface MealPlanGenerationAttemptContext extends MealPlanGenerationContext {
   constraintCorrection?: string;
   qualityCorrection?: string;
@@ -1574,6 +1589,11 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     d.setDate(d.getDate() + i);
     dates.push(d.toISOString().split('T')[0]!);
   }
+  // A parità di preferenze e settimana non imponiamo sempre la medesima
+  // sequenza iniziale: la chiave è nuova per ogni richiesta utente, ma rende
+  // la rotazione stabile all'interno dell'eventuale repair.
+  const rotationOffset = (variant === 2 ? 1 : 0) +
+    mealPlanRotationOffset(context.variationSeed, dates.length);
 
   const mealOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
 
@@ -1711,7 +1731,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     // Il Piano B usa la stessa distribuzione mediterranea ma parte dai legumi:
     // le due paste restano distanziate e i pranzi a base di cereali non si
     // concentrano all'inizio della settimana.
-    variant === 2 ? 1 : 0,
+    rotationOffset,
     {
       minimumPastaLunches: mediterraneanDiet && !glutenFreeRequired ? 2 : 0,
       mediterraneanDistribution: mediterraneanDiet,
@@ -1720,7 +1740,7 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
   const lunchSemanticTargets = planMealPlanLunchSemanticTargets(
     compatibleMainIngredients,
     dates.length,
-    variant === 2 ? 1 : 0,
+    rotationOffset,
     { requireRedMeat: requiresMediterraneanRedMeat },
   );
   // Il blueprint è totalmente locale: prima delle chiamate decidiamo la
@@ -1750,6 +1770,14 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
         : `cena: ${activeDinnerThemes[dayIndex]}`
       : "";
     return `- ${date}: ${[breakfast, lunch, dinner].filter(Boolean).join("; ")}.`;
+  }).join("\n");
+  const lunchTargetCalendar = dates.map((date, dayIndex) => {
+    const target = lunchSemanticTargets[dayIndex];
+    return `- ${date}: famiglia ${lunchFamilyTargets[dayIndex] || "compatibile"}; proteina ${
+      target?.mainProtein === "red_meat"
+        ? "carne rossa"
+        : target?.mainProtein || "compatibile"
+    }; preparazione ${target?.preparation || "diversa"}.`;
   }).join("\n");
   const weeklyRequests: WeeklyMealRequest[] = modelMealTypes.map((mealType) => ({
     dates,
@@ -1790,6 +1818,9 @@ ${mediterraneanDiet && glutenFreeRequired ? `- Per una settimana mediterranea se
     const lunchSemanticTargetRule = requestMealTypes.includes("lunch")
       && (request.lunchSemanticTarget?.mainProtein || request.lunchSemanticTarget?.preparation)
       ? `\n- OBIETTIVO PROFILO PRANZO DEL GIORNO: proteina principale ${request.lunchSemanticTarget?.mainProtein === "red_meat" ? "red_meat (carne rossa: manzo, vitello, maiale o agnello compatibile)" : request.lunchSemanticTarget?.mainProtein || "compatibile"}; profilo/preparazione ${request.lunchSemanticTarget?.preparation || "diverso dai giorni già usati"}. Quando compatibile, seguilo senza ripetere una coppia proteina + profilo già presente nel contesto.`
+      : "";
+    const lunchTargetCalendarRule = requestMealTypes.includes("lunch") && !glutenFreeRequired
+      ? `\n- CALENDARIO VINCOLANTE DEI PRANZI: segui ogni riga nella data corrispondente. Non trasformare questo calendario in un titolo fisso: scegli ingredienti e nomi concreti diversi a ogni nuova generazione, evitando formule ripetute come “Pasta al forno con tacchino al forno”.\n${lunchTargetCalendar}`
       : "";
     const lactoseFreeOutputRule = lactoseFreeRequired
     ? `\n- PIANO SENZA LATTOSIO: evita latte, yogurt, burro, panna, ricotta, mozzarella, formaggio, parmigiano, pecorino e mascarpone ordinari. Se servono, usa solo prodotti esplicitamente “senza lattosio” o vegetali. Pasta di semola, pane e fette biscottate normali sono consentiti. Non aggiungere mai “senza glutine” o “gluten free” a titoli, ingredienti o passaggi: questo profilo non richiede vincoli sul glutine.`
@@ -1835,7 +1866,7 @@ ${constrainedRecipeReferenceRule}
 - EQUILIBRIO NUTRIZIONALE: ogni pranzo e ogni cena deve essere un pasto COMPLETO con tutti e tre: carboidrati + proteine + verdure.
   ${completeLunchRule}
   ${completeDinnerRule}
-        - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${mediterraneanDistributionRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
+        - Verdure: includi verdure fresche o un contorno di verdure in OGNI pranzo e cena.${mediterraneanRule}${mediterraneanDistributionRule}${weeklyVarietyRule}${lactoseLunchVarietyRule}${lunchFamilyTargetRule}${lunchSemanticTargetRule}${lunchTargetCalendarRule}${wholegrainRule}${requestGlutenRule}${lactosePastaRule}${lactoseFreeOutputRule}${glutenFreeTitleRule}
 - Includi tutti gli ingredienti necessari. Non ripetere lo stesso piatto per lo stesso giorno.${glutenFreeWeeklyPastaRule}
  - ${variantHint}${themeHint ? `\n- BLUEPRINT SETTIMANALE LOCALE: segui esattamente questi obiettivi già pianificati, senza scambiarli tra date:\n${themeHint}` : ''}${breakfastHint && requestMealTypes.includes('breakfast') ? `\n- Per la colazione indicata realizza questa combinazione concreta: ${breakfastHint}.` : ''}
   ${constraintRule}${priorVarietyContext}${constraintCorrection}${qualityCorrection}${localCorrection}${context.previousPlanJson ? `\n- JSON DEL PIANO PRECEDENTE DA CORREGGERE (non copiare gli errori; conserva ogni elemento già valido e modifica soltanto quelli necessari): ${context.previousPlanJson}` : ""}
