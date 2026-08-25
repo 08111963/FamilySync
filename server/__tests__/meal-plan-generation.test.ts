@@ -75,22 +75,47 @@ function datesFromPrompt(prompt: string): string[] {
 }
 
 function meal(date: string, mealType: Meal["mealType"], title: string, ingredients: Ingredient[]): Meal {
+  const completedIngredients = [...ingredients];
+  const extraIngredients = mealType === "breakfast"
+    ? [
+      { name: "cannella", quantity: "4", unit: "g" },
+      { name: "semi di chia", quantity: "40", unit: "g" },
+      { name: "noci", quantity: "60", unit: "g" },
+      { name: "cacao amaro", quantity: "12", unit: "g" },
+      { name: "vaniglia", quantity: "2", unit: "g" },
+    ]
+    : [
+      { name: "olio extravergine", quantity: "40", unit: "ml" },
+      { name: "sale", quantity: "4", unit: "g" },
+      { name: "prezzemolo", quantity: "12", unit: "g" },
+      { name: "aglio", quantity: "1", unit: "spicchio" },
+      { name: "basilico", quantity: "12", unit: "g" },
+    ];
+  for (const ingredient of extraIngredients) {
+    if (completedIngredients.some((item) => item.name === ingredient.name)) continue;
+    completedIngredients.push(ingredient);
+    if (completedIngredients.length === 6) break;
+  }
   return {
     date,
     mealType,
     title,
     description: "Ricetta completa e compatibile.",
-    ingredients,
+    ingredients: completedIngredients,
     steps: mealType === "breakfast"
       ? [
         "Prepara gli ingredienti indicati.",
         "Assembla la colazione in una ciotola.",
+        "Aggiungi cannella, semi di chia e noci.",
+        "Mescola con cura gli ingredienti.",
         "Servi subito a tavola.",
       ]
       : [
         "Lava e taglia gli ingredienti indicati.",
         "Cuoci a 180 °C per 20 minuti.",
-        "Assembla il piatto e servilo caldo.",
+        "Aggiungi olio, sale ed erbe aromatiche.",
+        "Assembla il piatto con cura.",
+        "Servilo caldo a tavola.",
       ],
   };
 }
@@ -252,7 +277,7 @@ function createFakeClient(responder: (request: RequestInfo, call: number) => Fak
   return { client, calls };
 }
 
-test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimanale", async (t) => {
+test("genera tutti i 21 pasti completi in tre blocchi settimanali", async (t) => {
   const { client, calls } = createFakeClient(() => fullWeek("mediterranean"));
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
@@ -263,11 +288,14 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
     preferences: { dietProfile: "mediterranean" },
   });
 
-  assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0]!.dates, DATES);
-  assert.deepEqual(calls[0]!.mealTypes, ["breakfast", "lunch", "dinner"]);
-  assert.equal(calls[0]!.itemCount, 21);
-  assert.deepEqual(calls[0]!.slotKeys, Array.from({ length: 21 }, (_, index) => `meal_${String(index + 1).padStart(2, "0")}`));
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every((call) => JSON.stringify(call.dates) === JSON.stringify(DATES)));
+  assert.deepEqual(calls.map((call) => call.mealTypes), [["breakfast"], ["lunch"], ["dinner"]]);
+  assert.ok(calls.every((call) => call.itemCount === 7));
+  assert.ok(calls.every((call) =>
+    JSON.stringify(call.slotKeys) === JSON.stringify(
+      Array.from({ length: 7 }, (_, index) => `meal_${String(index + 1).padStart(2, "0")}`),
+    )));
   assert.equal(
     calls[0]!.ingredientNamesAreEnumerated,
     false,
@@ -280,18 +308,18 @@ test("genera tutti i 21 pasti con una sola chiamata e blueprint locale settimana
     MEAL_PLAN_STREAM_SAFETY_TIMEOUT_MS > MEAL_PLAN_PROVIDER_ATTEMPT_TIMEOUT_MS * MEAL_PLAN_MAX_GENERATION_ATTEMPTS,
     "il timeout del browser deve consentire il primo tentativo e l'unico repair",
   );
-   assert.equal(calls[0]!.stepMinItems, 4);
-   assert.equal(calls[0]!.stepMaxItems, 4);
+  assert.equal(calls[0]!.stepMinItems, 5);
+  assert.equal(calls[0]!.stepMaxItems, 5);
   assert.equal(calls[0]!.stepMaxLength, 80);
-   assert.equal(calls[0]!.ingredientMinItems, 4);
-   assert.equal(calls[0]!.ingredientMaxItems, 5);
+  assert.equal(calls[0]!.ingredientMinItems, 6);
+  assert.equal(calls[0]!.ingredientMaxItems, 8);
   assert.equal(calls[0]!.titleMaxLength, 55);
   assert.equal(calls[0]!.descriptionMaxLength, 45);
   assert.match(calls[0]!.prompt, /servings \(intero, sempre 4\)/);
   assert.ok(plan.items.every((item) => item.servings === 4));
   assert.match(calls[0]!.prompt, /BLUEPRINT SETTIMANALE LOCALE/);
-   assert.match(calls[0]!.prompt, /ESATTAMENTE 4 istruzioni concrete/);
-   assert.match(calls[0]!.prompt, /4-5 voci: includi TUTTI gli ingredienti realmente necessari/);
+  assert.match(calls[0]!.prompt, /ESATTAMENTE 5 istruzioni concrete/);
+  assert.match(calls[0]!.prompt, /6-8 voci: includi TUTTI gli ingredienti realmente necessari/);
   assert.match(calls[0]!.prompt, /famiglia pasta/);
   assert.match(calls[0]!.prompt, /proteina red_meat/);
   assert.match(calls[0]!.prompt, /almeno 2 pranzi con pasta/);
@@ -313,15 +341,14 @@ test("i profili esclusivi chiedono 14 slot AI e ricompongono 7 colazioni locali 
       preferences: { dietProfile: profile },
     });
 
-    assert.equal(calls.length, 1, profile);
-    assert.deepEqual(calls[0]!.mealTypes, ["lunch", "dinner"], profile);
-    assert.equal(calls[0]!.itemCount, 14, profile);
-    assert.deepEqual(
-      calls[0]!.slotKeys,
-      Array.from({ length: 14 }, (_, index) => `meal_${String(index + 1).padStart(2, "0")}`),
-      profile,
-    );
-    assert.doesNotMatch(calls[0]!.prompt, /SOLO questi tipi di pasto: breakfast/i, profile);
+    assert.equal(calls.length, 2, profile);
+    assert.deepEqual(calls.map((call) => call.mealTypes), [["lunch"], ["dinner"]], profile);
+    assert.ok(calls.every((call) => call.itemCount === 7), profile);
+    assert.ok(calls.every((call) =>
+      JSON.stringify(call.slotKeys) === JSON.stringify(
+        Array.from({ length: 7 }, (_, index) => `meal_${String(index + 1).padStart(2, "0")}`),
+      )), profile);
+    assert.ok(calls.every((call) => !/SOLO questi tipi di pasto: breakfast/i.test(call.prompt)), profile);
     assert.equal(plan.items.length, 21, profile);
     assert.equal(plan.items.filter((item) => item.mealType === "breakfast").length, 7, profile);
     assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: profile }), [], profile);
@@ -330,8 +357,8 @@ test("i profili esclusivi chiedono 14 slot AI e ricompongono 7 colazioni locali 
         .filter((item) => item.mealType === "breakfast")
         .every((item) =>
           item.title.trim()
-          && item.ingredients?.length === 3
-          && item.steps?.length === 3),
+          && item.ingredients?.length === 6
+          && item.steps?.length === 5),
       `${profile}: nessuna colazione locale parziale`,
     );
     if (profile === "lactose_free") {
@@ -350,7 +377,7 @@ test("i profili esclusivi chiedono 14 slot AI e ricompongono 7 colazioni locali 
         breakfasts.every((item) => !/bevanda di riso/i.test([item.title, ...(item.ingredients || []).map((ingredient) => ingredient.name)].join(" "))),
         "il senza glutine non sostituisce il latte con bevanda di riso",
       );
-      assert.match(calls[0]!.prompt, /pranzo: pasta senza glutine con pollo e zucchine/i);
+       assert.match(calls[0]!.prompt, /pranzo: pasta senza glutine con pollo e zucchine/i);
     }
   }
   t.after(() => __setOpenAiClientForTest(null));
@@ -389,9 +416,9 @@ test("i profili esclusivi mantengono il contratto 7 colazioni locali più 14 slo
         preferences: { dietProfile: profile, mealsPerDay },
       });
 
-      assert.equal(calls.length, 1, `${profile}/${mealsPerDay}`);
-      assert.deepEqual(calls[0]!.mealTypes, ["lunch", "dinner"], `${profile}/${mealsPerDay}`);
-      assert.equal(calls[0]!.itemCount, 14, `${profile}/${mealsPerDay}`);
+      assert.equal(calls.length, 2, `${profile}/${mealsPerDay}`);
+      assert.deepEqual(calls.map((call) => call.mealTypes), [["lunch"], ["dinner"]], `${profile}/${mealsPerDay}`);
+      assert.ok(calls.every((call) => call.itemCount === 7), `${profile}/${mealsPerDay}`);
       assert.equal(plan.items.length, 21, `${profile}/${mealsPerDay}`);
       assert.equal(plan.items.filter((item) => item.mealType === "breakfast").length, 7);
       assert.equal(plan.items.some((item) => item.mealType === "snack"), false);
@@ -411,9 +438,9 @@ test("mediterranea, vegetariana e vegana ignorano mealsPerDay e mantengono 21 pa
         weekStartDate: WEEK_START,
         preferences: { dietProfile: profile, mealsPerDay },
       });
-      assert.equal(calls.length, 1, `${profile}/${mealsPerDay}`);
-      assert.deepEqual(calls[0]!.mealTypes, ["breakfast", "lunch", "dinner"], `${profile}/${mealsPerDay}`);
-      assert.equal(calls[0]!.itemCount, 21, `${profile}/${mealsPerDay}`);
+      assert.equal(calls.length, 3, `${profile}/${mealsPerDay}`);
+      assert.deepEqual(calls.map((call) => call.mealTypes), [["breakfast"], ["lunch"], ["dinner"]], `${profile}/${mealsPerDay}`);
+      assert.ok(calls.every((call) => call.itemCount === 7), `${profile}/${mealsPerDay}`);
       assert.equal(plan.items.length, 21, `${profile}/${mealsPerDay}`);
     }
   }
@@ -443,7 +470,7 @@ test("i vecchi profili vengono normalizzati prima di costruire il prompt OpenAI"
     });
 
     assert.equal(plan.items.length, 21);
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 3);
     const requestText = `${calls[0]!.prompt}\n${calls[0]!.userMessage}`;
     assert.match(requestText, /Profilo dieta: mediterranean\./);
     assert.doesNotMatch(requestText, /Profilo dieta:\s*(?:balanced|light|sport)\b/i);
@@ -465,7 +492,7 @@ test("il repair gluten-free riceve i termini generici esatti e consegna solo il 
       item.ingredients[0] = { name: term, quantity: "80", unit: "g" };
       item.steps[1] = `Cuoci ${term} con le zucchine per 20 minuti a 180 °C.`;
     });
-  const { client, calls } = createFakeClient((_request, call) => call === 1 ? unsafe : valid);
+  const { client, calls } = createFakeClient((_request, call) => call <= 2 ? unsafe : valid);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
@@ -475,13 +502,12 @@ test("il repair gluten-free riceve i termini generici esatti e consegna solo il 
     preferences: { dietProfile: "gluten_free" },
   });
 
-  assert.equal(calls.length, 2, "primo tentativo più un solo repair");
-  assert.equal(calls[0]!.itemCount, 14);
-  assert.equal(calls[1]!.itemCount, 14);
+  assert.equal(calls.length, 4, "due blocchi iniziali più un solo repair dei due blocchi");
+  assert.ok(calls.every((call) => call.itemCount === 7));
   for (const term of unsafeTerms) {
-    assert.match(calls[1]!.prompt, new RegExp(`glutine: ${term}`, "i"), term);
+    assert.match(calls[2]!.prompt, new RegExp(`glutine: ${term}`, "i"), term);
   }
-  assert.match(calls[1]!.prompt, /Conserva ogni slot già valido/i);
+  assert.match(calls[2]!.prompt, /Conserva ogni slot già valido/i);
   assert.match(calls[0]!.prompt, /Non usare pasta, couscous, pane, biscotti/i);
   const positiveGlutenFreeGuidance = calls[0]!.prompt
     .split("- PIANO SENZA GLUTINE:")[0]!
@@ -520,8 +546,8 @@ test("il senza glutine rigenera una sola volta se manca la pasta senza glutine s
     preferences: { dietProfile: "gluten_free" },
   });
 
-  assert.equal(calls.length, 2, "un solo repair ripristina la pasta senza glutine");
-  assert.match(calls[1]!.prompt, /CORREZIONE DIETETICA OBBLIGATORIA/i);
+  assert.equal(calls.length, 4, "un solo repair ripristina la pasta senza glutine");
+  assert.match(calls[2]!.prompt, /CORREZIONE DIETETICA OBBLIGATORIA/i);
   assert.ok(
     plan.items.some((item) =>
       item.mealType === "lunch" &&
@@ -546,10 +572,9 @@ test("un output AI incompleto per un profilo esclusivo non espone pasti parziali
     preferences: { dietProfile: "lactose_free" },
   });
 
-  assert.equal(calls.length, 2, "un solo repair recupera l'output strutturato incompleto");
-  assert.equal(calls[0]!.itemCount, 14);
-  assert.equal(calls[1]!.itemCount, 14);
-  assert.match(calls[1]!.prompt, /CORREZIONE FORMATO OBBLIGATORIA/);
+  assert.equal(calls.length, 4, "un solo repair recupera l'output strutturato incompleto");
+  assert.ok(calls.every((call) => call.itemCount === 7));
+  assert.match(calls[2]!.prompt, /CORREZIONE FORMATO OBBLIGATORIA/);
   assert.equal(plan.items.length, 21);
   assert.equal(new Set(plan.items.map((item) => `${item.date}/${item.mealType}`)).size, 21);
   assert.ok(plan.items.every((item) => item.title && item.ingredients?.length && item.steps?.length));
@@ -774,7 +799,7 @@ test("la guida mediterranea resta advisory e non ripete la chiamata", async (t) 
   ] as const) {
     const valid = fullWeek(profile);
     const { client, calls } = createFakeClient((_request, call) =>
-      call === 1 ? withoutMediterraneanPasta(valid) : valid);
+      call <= 3 ? withoutMediterraneanPasta(valid) : valid);
     __setOpenAiClientForTest(client);
 
     const plan = await generateWeeklyMealPlan({
@@ -783,7 +808,7 @@ test("la guida mediterranea resta advisory e non ripete la chiamata", async (t) 
       preferences: { dietProfile: profile },
     });
 
-    assert.equal(calls.length, 1, profile);
+    assert.equal(calls.length, 3, profile);
     assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: profile }), [], profile);
     assert.ok(evaluateMediterraneanMealPlan(plan.items).issues.length > 0, profile);
   }
@@ -798,8 +823,8 @@ test("un ingrediente generico rilevato in produzione riceve un repair puntuale e
     ...genericDinner.ingredients[2]!,
     name: "verdure miste per umido",
   };
-  const { client, calls } = createFakeClient((_request, call) =>
-    call === 1 ? generic : valid);
+  const { client, calls } = createFakeClient((request, call) =>
+    call <= 3 && request.mealTypes[0] === "dinner" ? generic : valid);
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
 
@@ -809,10 +834,10 @@ test("un ingrediente generico rilevato in produzione riceve un repair puntuale e
     preferences: { dietProfile: "mediterranean" },
   });
 
-  assert.equal(calls.length, 2, "un solo repair deve correggere il termine generico");
-  assert.match(calls[0]!.prompt, /“verdure miste”/);
-  assert.match(calls[1]!.prompt, /CATEGORIE GENERICHE VIETATE/);
-  assert.match(calls[1]!.prompt, /“verdure miste per umido”/);
+  assert.equal(calls.length, 6, "un solo repair deve correggere il termine generico");
+  assert.match(calls[2]!.prompt, /“verdure miste”/);
+  assert.match(calls[3]!.prompt, /CATEGORIE GENERICHE VIETATE/);
+  assert.match(calls[3]!.prompt, /“verdure miste per umido”/);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
 });
 
@@ -835,7 +860,7 @@ test("un minimo editoriale di pesce resta osservabile ma non blocca il piano", a
     preferences: { dietProfile: "mediterranean" },
   });
 
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 3);
   assert.ok(
     evaluateMediterraneanMealPlan(plan.items).issues.some((issue) =>
       issue.code === "mediterranean-fish-minimum"),
@@ -869,7 +894,7 @@ test("un output interrotto per limite non avvia un repair vuoto", async (t) => {
     }),
     (error: unknown) => (error as { code?: string }).code === "AI_BAD_RESPONSE",
   );
-  assert.equal(calls, 1, "un repair senza output parziale ripeterebbe inutilmente la stessa settimana");
+  assert.equal(calls, 3, "un repair senza output parziale ripeterebbe inutilmente i blocchi della settimana");
 });
 
 test("un duplicato editoriale non consuma una seconda chiamata", async (t) => {
@@ -885,7 +910,7 @@ test("un duplicato editoriale non consuma una seconda chiamata", async (t) => {
     maxModelCalls: MAX_MEAL_PLAN_MODEL_CALLS,
   });
 
-  assert.equal(calls.length, 1, "la varietà è advisory");
+  assert.equal(calls.length, 3, "la varietà è advisory");
   assert.equal(plan.items.length, 21);
 });
 
@@ -901,8 +926,8 @@ test("un primo JSON non parsabile riceve un solo repair full-week", async (t) =>
     preferences: { dietProfile: "mediterranean" },
   });
 
-  assert.equal(calls.length, 2);
-  assert.match(calls[1]!.prompt, /CORREZIONE FORMATO OBBLIGATORIA/);
+  assert.equal(calls.length, 6);
+  assert.match(calls[3]!.prompt, /CORREZIONE FORMATO OBBLIGATORIA/);
   assert.equal(plan.items.length, 21);
 });
 
@@ -919,7 +944,7 @@ test("due JSON non parsabili falliscono dopo due sole chiamate", async (t) => {
     }),
     /Piano pasti non valido dopo 2 tentativi/i,
   );
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 6);
 });
 
 test("un JSON valido ma con schema incompleto riceve un solo repair", async (t) => {
@@ -936,11 +961,11 @@ test("un JSON valido ma con schema incompleto riceve un solo repair", async (t) 
     preferences: { dietProfile: "mediterranean" },
   });
 
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 6);
   assert.equal(plan.items.length, 21);
 });
 
-test("il piano alternativo usa lo stesso contratto full-week e una sola chiamata", async (t) => {
+test("il piano alternativo usa tre blocchi completi settimanali", async (t) => {
   const { client, calls } = createFakeClient(() => fullWeek("mediterranean"));
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
@@ -952,7 +977,7 @@ test("il piano alternativo usa lo stesso contratto full-week e una sola chiamata
     planVariant: 2,
   });
 
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 3);
   assert.match(calls[0]!.prompt, /Piano B|alternativa|creativo/i);
   assert.equal(plan.items.length, 21);
 });
@@ -969,7 +994,7 @@ test("la carne rossa mediterranea resta una guida e non avvia un repair", async 
     preferences: { dietProfile: "mediterranean" },
   });
 
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 3);
   assert.deepEqual(validateMealPlanConstraints(plan.items, { dietProfile: "mediterranean" }), []);
 });
 
@@ -984,10 +1009,10 @@ test("un piano duplicato ma strutturalmente valido viene consegnato", async (t) 
     preferences: { dietProfile: "mediterranean" },
   });
   assert.equal(plan.items.length, 21);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 3);
 });
 
-test("tutti i cinque profili chiusi usano un solo contratto completo e restano sicuri", async (t) => {
+test("tutti i cinque profili chiusi usano blocchi completi e restano sicuri", async (t) => {
   for (const profile of MEAL_PLAN_DIET_PROFILES) {
     const fixture = fullWeek(profile);
     assert.deepEqual(
@@ -1007,7 +1032,7 @@ test("tutti i cinque profili chiusi usano un solo contratto completo e restano s
     } catch (error) {
       throw new Error(`${profile}: ${(error as Error).message}`, { cause: error });
     }
-    assert.equal(calls.length, 1, `${profile}: una chiamata`);
+    assert.equal(calls.length, ["gluten_free", "lactose_free"].includes(profile) ? 2 : 3, `${profile}: blocchi completi`);
     assert.equal(plan.items.length, 21, `${profile}: settimana completa`);
     assert.deepEqual(
       validateMealPlanConstraints(plan.items, { dietProfile: profile }),
@@ -1021,7 +1046,7 @@ test("tutti i cinque profili chiusi usano un solo contratto completo e restano s
   t.after(() => __setOpenAiClientForTest(null));
 });
 
-test("un budget applicativo di una chiamata consegna un piano con difetti editoriali", async (t) => {
+test("un budget applicativo di tre chiamate consegna un piano con difetti editoriali", async (t) => {
   const { client, calls } = createFakeClient(() => fullWeek("mediterranean", true));
   __setOpenAiClientForTest(client);
   t.after(() => __setOpenAiClientForTest(null));
@@ -1030,10 +1055,10 @@ test("un budget applicativo di una chiamata consegna un piano con difetti editor
     familySize: 4,
     weekStartDate: WEEK_START,
     preferences: { dietProfile: "mediterranean" },
-    maxModelCalls: 1,
+    maxModelCalls: 3,
   });
   assert.equal(plan.items.length, 21);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 3);
 });
 
 test(
@@ -1115,15 +1140,18 @@ test(
         completions: {
           create: async (request: any) => {
             providerCalls++;
-            if (providerCalls === 1) {
+            if (providerCalls <= 3) {
               providerStartedAt.push(Date.now());
               // Deve superare il battito di 8 secondi della rotta, non solo
               // l'aggiornamento iniziale scritto prima della chiamata AI.
               await new Promise((resolve) => setTimeout(resolve, 8_400));
             }
             providerResolvedAt.push(Date.now());
-            const responseItems = providerCalls === 1 ? invalidPlan : validPlan;
             const slotKeys = request.response_format.json_schema.schema.required as string[];
+            const firstSlotSchema = request.response_format.json_schema.schema.properties[slotKeys[0]!];
+            const mealType = firstSlotSchema.properties.mealType.enum[0];
+            const responseItems = (providerCalls <= 3 ? invalidPlan : validPlan)
+              .filter((item) => item.mealType === mealType);
             return {
               choices: [{
                 message: {
@@ -1200,7 +1228,7 @@ test(
       eventTimes.push(Date.now());
     }
 
-    assert.equal(providerCalls, 2, "il primo output non valido deve causare un solo repair");
+    assert.equal(providerCalls, 6, "il primo output non valido deve causare un solo repair dei tre blocchi");
     assert.ok(events.length >= 4, "lo stream deve contenere stato iniziale, heartbeat, repair e risultato");
     const statusEvents = events.filter((event) => event.type === "status");
     assert.ok(statusEvents.length >= 2, "un provider lento deve produrre almeno un heartbeat oltre allo stato iniziale");
@@ -1357,7 +1385,7 @@ test(
         2_000,
       )),
     ]);
-    assert.equal(providerCalls, 1, "la disconnessione non deve avviare un secondo tentativo AI");
+    assert.equal(providerCalls, 3, "la disconnessione non deve avviare un secondo tentativo AI");
     await new Promise((resolve) => setTimeout(resolve, 25));
     const usageRows = await db.select().from(aiUsage).where(eq(aiUsage.familyId, family.id));
     assert.equal(usageRows.length, 1, "la disconnessione deve lasciare un solo slot di utilizzo");
