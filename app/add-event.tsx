@@ -317,10 +317,19 @@ export default function AddEventScreen() {
                   context={'Evento del calendario familiare: titolo, luogo, data, orario di inizio e fine, eventuale ripetizione.'}
                   onTranscribed={(text) => {
                     // Come WhatsApp: al rilascio del microfono la compilazione
-                    // parte subito, senza dover premere "Compila".
-                    const combined = aiText ? `${aiText} ${text}` : text;
-                    setAiText(combined);
-                    handleCompile(combined);
+                    // parte subito, senza dover premere "Compila". In modifica
+                    // la nuova dettatura è una nuova istruzione: non va
+                    // concatenata a una dettatura precedente, altrimenti l'AI
+                    // interpreta una serie di comandi come un unico evento e
+                    // finisce per aggiungere invece di sostituire.
+                    const transcript = text.trim();
+                    const nextText = editingEvent
+                      ? transcript
+                      : aiText
+                        ? `${aiText} ${transcript}`
+                        : transcript;
+                    setAiText(nextText);
+                    handleCompile(nextText);
                   }}
                 />
               </View>
