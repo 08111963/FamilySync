@@ -384,9 +384,6 @@ export default function RecipePreviewScreen() {
   const [detailIndex, setDetailIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  // True se l'errore è "consenso AI disattivato": il banner mostra anche
-  // il pulsante che porta all'interruttore nel Centro Privacy.
-  const [saveErrorAiDisabled, setSaveErrorAiDisabled] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [seenTitles, setSeenTitles] = useState<string[]>(() => initialRecipes.map(r => r.title));
   // Generazione incrementale: id della generazione in corso da cui leggere
@@ -440,8 +437,11 @@ export default function RecipePreviewScreen() {
         if (err?.status === 404) {
           setSaveError("La generazione si è interrotta (sessione scaduta). Riprova per generare nuove ricette.");
         } else {
-          setSaveError(aiErrorMessage(err, "Errore nella generazione. Riprova."));
-          if (isAiDisabled(err)) setSaveErrorAiDisabled(true);
+          setSaveError(
+            isAiDisabled(err)
+              ? "Funzionalità AI non disponibile per questo profilo."
+              : aiErrorMessage(err, "Errore nella generazione. Riprova.")
+          );
         }
         setActiveGenerationId(null);
         setRefreshing(false);
@@ -485,7 +485,6 @@ export default function RecipePreviewScreen() {
     if (!currentFamily || refreshing || activeGenerationId) return;
     setRefreshing(true);
     setSaveError(null);
-    setSaveErrorAiDisabled(false);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       if (!searchQuery) {
@@ -519,8 +518,11 @@ export default function RecipePreviewScreen() {
       setAllRecipes(prev => [...prev, ...newRecipes]);
       setRefreshing(false);
     } catch (err) {
-      setSaveError(aiErrorMessage(err, "Errore nella generazione. Riprova."));
-      if (isAiDisabled(err)) setSaveErrorAiDisabled(true);
+      setSaveError(
+        isAiDisabled(err)
+          ? "Funzionalità AI non disponibile per questo profilo."
+          : aiErrorMessage(err, "Errore nella generazione. Riprova.")
+      );
       setRefreshing(false);
     }
   };
@@ -529,7 +531,6 @@ export default function RecipePreviewScreen() {
     if (!currentFamily || selected.size === 0) return;
     setSaving(true);
     setSaveError(null);
-    setSaveErrorAiDisabled(false);
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const recipesToSave = allRecipes
@@ -617,15 +618,6 @@ export default function RecipePreviewScreen() {
         <View style={[styles.errorBanner, { backgroundColor: colors.error + "15" }]}>
           <Ionicons name="warning-outline" size={16} color={colors.error} />
           <Text style={[styles.errorText, { color: colors.error }]}>{saveError}</Text>
-          {saveErrorAiDisabled ? (
-            <Pressable
-              onPress={() => router.push("/privacy-center")}
-              style={[styles.errorActionButton, { backgroundColor: colors.error }]}
-              testID="ai-disabled-settings"
-            >
-              <Text style={styles.errorActionText}>Attiva ora</Text>
-            </Pressable>
-          ) : null}
         </View>
       ) : null}
 

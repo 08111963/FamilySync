@@ -10,7 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { useTheme } from "@/hooks/useTheme";
 import { apiRequest, apiFetch, getApiErrorMessage } from "@/lib/query-client";
-import { aiErrorMessage, isAiDisabled, openAiSettings } from "@/lib/ai-error-message";
+import { aiErrorMessage, isAiDisabled } from "@/lib/ai-error-message";
 import { VoiceInput } from "@/components/VoiceInput";
 import { buildRecurrenceRule } from "@/shared/chore-recurrence";
 
@@ -143,7 +143,7 @@ export function AssistantChat({ familyId, memberRole }: AssistantChatProps) {
       pushMessage({ kind: "proposal", actions, decided: false });
     } catch (err) {
       if (isAiDisabled(err)) {
-        pushMessage({ kind: "text", role: "assistant", text: "Le funzioni AI sono disattivate. Attivale dal Centro Privacy (Famiglia → Centro Privacy) e riprova." });
+        pushMessage({ kind: "text", role: "assistant", text: "Le funzioni AI non sono disponibili per questo profilo." });
       } else {
         pushMessage({ kind: "text", role: "assistant", text: aiErrorMessage(err, "Non ho capito la richiesta. Prova a riformularla, ad esempio: \"Domani alle 18 dentista per Anna e aggiungi il latte alla spesa\".") });
       }

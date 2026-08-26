@@ -1,5 +1,4 @@
 import { Alert, Platform } from "react-native";
-import { router } from "expo-router";
 
 type AiErrorLike = {
   status?: number;
@@ -37,34 +36,14 @@ export function aiErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-/** Apre il Centro Privacy con policy, termini e registro delle accettazioni. */
-export function openAiSettings() {
-  router.push("/privacy-center");
-}
-
 /**
  * Mostra l'errore AI all'utente. Le risposte AI_DISABLED di client/server
- * precedenti restano gestite con un link al Centro Privacy.
- * Per gli altri errori mostra il solito messaggio con OK.
+ * precedenti restano gestite come indisponibilità del profilo.
  */
 export function showAiErrorAlert(err: unknown, fallback: string, title = "Errore") {
-  const msg = aiErrorMessage(err, fallback);
-  if (isAiDisabled(err)) {
-    if (Platform.OS === "web") {
-      const win = globalThis as any;
-      const ok =
-        typeof win?.confirm === "function"
-          ? win.confirm(`${msg}\n\nVuoi andare alle impostazioni per attivarle ora?`)
-          : false;
-      if (ok) openAiSettings();
-      return;
-    }
-    Alert.alert(title, msg, [
-      { text: "Annulla", style: "cancel" },
-      { text: "Vai alle impostazioni", onPress: openAiSettings },
-    ]);
-    return;
-  }
+  const msg = isAiDisabled(err)
+    ? "Funzionalità AI non disponibile per questo profilo."
+    : aiErrorMessage(err, fallback);
   if (Platform.OS === "web") {
     const win = globalThis as any;
     if (typeof win?.alert === "function") {

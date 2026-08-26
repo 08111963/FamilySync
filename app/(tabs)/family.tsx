@@ -792,20 +792,6 @@ export default function FamilyScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Legale</Text>
         </View>
         <View style={{ gap: 12 }}>
-          <Card onPress={() => router.push("/privacy-center")}>
-            <View style={styles.featureLinkRow}>
-              <View style={[styles.featureLinkIcon, { backgroundColor: colors.primary + "20" }]}>
-                <Ionicons name="lock-closed" size={24} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Centro Privacy</Text>
-                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
-                  Informative e registro delle accettazioni
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-            </View>
-          </Card>
           <Card onPress={() => router.push("/legal/privacy")}>
             <View style={styles.featureLinkRow}>
               <View style={[styles.featureLinkIcon, { backgroundColor: colors.textSecondary + "15" }]}>

@@ -1223,15 +1223,8 @@ export default function MealPlansScreen() {
             <View style={[styles.aiDisabledBox, { backgroundColor: colors.error + "15", borderColor: colors.error + "40" }]}>
               <Ionicons name="warning-outline" size={20} color={colors.error} />
               <Text style={[styles.aiDisabledText, { color: colors.error }]}>
-                Funzionalità AI disabilitata. Attivala nelle Impostazioni.
+                Funzionalità AI non disponibile per questo profilo.
               </Text>
-              <Pressable
-                onPress={() => router.push("/privacy-center")}
-                style={[styles.aiDisabledButton, { backgroundColor: colors.error }]}
-                testID="ai-disabled-settings"
-              >
-                <Text style={styles.aiDisabledButtonText}>Attiva ora</Text>
-              </Pressable>
             </View>
           )}
 

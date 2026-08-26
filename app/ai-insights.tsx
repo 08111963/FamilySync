@@ -501,17 +501,8 @@ export default function AIInsightsScreen() {
         <View style={[styles.banner, { backgroundColor: colors.error + "15", borderColor: colors.error + "40" }]}>
           <Ionicons name="warning" size={18} color={colors.error} />
           <Text style={[styles.bannerText, { color: colors.error }]}>
-            Suggerimenti AI disattivati.
+            Suggerimenti AI non disponibili per questo profilo.
           </Text>
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push("/privacy-center");
-            }}
-            style={[styles.bannerButton, { backgroundColor: colors.error }]}
-          >
-            <Text style={styles.bannerButtonText}>Impostazioni</Text>
-          </Pressable>
         </View>
       )}
 

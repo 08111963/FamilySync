@@ -124,7 +124,7 @@ export const PRIVACY_POLICY_SECTIONS: PolicySection[] = [
       li("Per i profili di età inferiore ai 14 anni le **funzioni AI non sono disponibili**: il blocco è applicato dai nostri server e non dipende dalle impostazioni del dispositivo"),
       li("In fase di registrazione chiediamo solo una fascia di età, non la data di nascita, in linea con il principio di minimizzazione"),
       li("Se veniamo a conoscenza di aver raccolto dati di un minore di 14 anni senza il coinvolgimento di un genitore o tutore, provvederemo alla loro cancellazione tempestiva"),
-      p("Un'informativa semplificata per ragazze e ragazzi, con un linguaggio adatto ai più giovani, è disponibile nell'app (Famiglia → Centro Privacy) e sul sito alla pagina https://familysync.eu/legal/minori."),
+      p("Un'informativa semplificata per ragazze e ragazzi, con un linguaggio adatto ai più giovani, è disponibile sul sito alla pagina https://familysync.eu/legal/minori."),
     ],
   },
   {

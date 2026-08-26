@@ -13,6 +13,8 @@ The backend (port 5000) serves a static Expo web export from `web-build/` alongs
 
 **Important:** `npm run expo:static:build` produces the native Expo Go `static-build/` bundles, not the `web-build/` served by Express. It cannot refresh the browser preview or the published web app.
 
+**Export timestamp:** moving a freshly exported directory can preserve an old `web-build/index.html` timestamp. The staleness endpoint compares that timestamp with the last frontend commit, so it can falsely report a stale preview even when the bundle is current. After swapping the directory, run `touch web-build/index.html` before restarting the backend.
+
 **In-session regen works with Metro STOPPED:** with no Metro/Frontend workflow running, a backgrounded `CI=1 npx expo export --platform web --output-dir web-build-new` completes in ~100s. It can still die silently at "Starting Metro Bundler" even without Metro: verify with pgrep + grep for a new testID in the bundle, and retry once with `NODE_OPTIONS=--max-old-space-size=8192` before falling back to republish. The contention failure below applies when Metro 8081 is already running.
 
 **Local export bakes NO domain:** without EXPO_PUBLIC_DOMAIN, `getApiUrl()`'s throw is inlined in the bundle ("EXPO_PUBLIC_DOMAIN is not set"). Playwright e2e tests (see `e2e/recipes-keyboard.test.ts`) work around it by intercepting `**/_expo/static/js/**` and rewriting the inlined throw to return the test base URL, plus stubbing all `**/api/**` routes — hermetic, no DB/AI.
