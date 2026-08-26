@@ -337,7 +337,8 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
 /**
  * Presa visione dell'avviso "Privacy Policy aggiornata": salva la versione
  * corrente come vista, così il banner in-app non viene più mostrato.
- * È un'informativa (non un consenso): nessuna registrazione nel registro consensi.
+ * La presa visione aggiorna la versione mostrata; il consenso al trattamento
+ * resta quello già prestato con l'accettazione della Privacy Policy.
  */
 router.post('/privacy-policy-ack', authenticate, blockChildAccount, async (req: Request, res: Response) => {
   try {

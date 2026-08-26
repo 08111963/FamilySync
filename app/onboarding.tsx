@@ -71,7 +71,7 @@ export default function OnboardingScreen() {
       >
         <Text style={[styles.title, { color: colors.text }]}>Un ultimo passaggio</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Abbiamo aggiornato la nostra Privacy Policy. Per continuare a usare FamilySync ti chiediamo la fascia di età e l'accettazione dei Termini d'Uso.
+          Abbiamo aggiornato la nostra Privacy Policy. Per continuare a usare FamilySync ti chiediamo la fascia di età, la presa visione della Policy con il consenso al trattamento descritto e l'accettazione dei Termini d'Uso.
         </Text>
 
         {!!error && (
@@ -120,14 +120,14 @@ export default function OnboardingScreen() {
             {acceptedTerms && <Ionicons name="checkmark" size={14} color="#fff" />}
           </View>
           <Text style={[styles.termsText, { color: colors.textSecondary }]}>
-            Dichiaro di aver letto la{' '}
+            Dichiaro di aver letto e accettato la{' '}
             <Text
               style={[styles.termsLink, { color: colors.primary }]}
               onPress={(e) => { e.stopPropagation?.(); router.push('/legal/privacy'); }}
             >
               Privacy Policy
             </Text>
-            {' '}e accetto i{' '}
+            {' '}e presto il consenso al trattamento descritto, comprese le funzioni AI e le allergie/intolleranze, e accetto i{' '}
             <Text
               style={[styles.termsLink, { color: colors.primary }]}
               onPress={(e) => { e.stopPropagation?.(); router.push('/legal/terms'); }}

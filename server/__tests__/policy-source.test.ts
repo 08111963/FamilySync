@@ -38,6 +38,8 @@ test("la fonte unica contiene le correzioni obbligatorie v2.1", () => {
   assert.ok(all.includes("Fascia di età (obbligatoria)"), "età obbligatoria");
   assert.ok(all.includes("allergie e intolleranze"), "allergie descritte nella policy");
   assert.ok(all.includes("account idonei"), "AI disponibile senza toggle separato");
+  assert.ok(all.includes("consenso esplicito prestato con l'accettazione della Privacy Policy"), "consenso AI incluso nella policy");
+  assert.ok(all.includes("checkbox o revoche separate"), "nessun consenso separato");
   assert.ok(!all.includes("consenso specifico e separato"), "nessun consenso allergie separato");
   assert.ok(all.includes("alias temporanei"), "alias membri per ottimizzazione faccende");
   assert.ok(all.includes("dati personali di utilizzo"), "analytics come dati personali");

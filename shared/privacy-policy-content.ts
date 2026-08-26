@@ -71,7 +71,7 @@ export const PRIVACY_POLICY_SECTIONS: PolicySection[] = [
     blocks: [
       li("Erogazione del servizio (calendario, liste, faccende, chat, bollette, budget, ricette, sincronizzazione) → esecuzione del contratto (art. 6.1.b GDPR)"),
       li("Comunicazioni di servizio (verifica email, reset password, inviti) → esecuzione del contratto (art. 6.1.b)"),
-      li("Funzionalità di intelligenza artificiale richieste dall'utente → esecuzione del servizio (art. 6.1.b GDPR)"),
+      li("Funzionalità di intelligenza artificiale e relativi vincoli alimentari, comprese allergie e intolleranze, → consenso esplicito prestato con l'accettazione della Privacy Policy (art. 6.1.a e art. 9.2.a GDPR)"),
       li("Sincronizzazione facoltativa con Google Calendar → consenso esplicito (art. 6.1.a), prestato collegando il tuo account Google e revocabile in qualsiasi momento scollegandolo"),
       li("Sicurezza, prevenzione abusi, rate limiting, log tecnici → legittimo interesse (art. 6.1.f) alla sicurezza del servizio"),
       li("Analytics interna temporanea di test (eventi tecnici minimi) → legittimo interesse (art. 6.1.f) al miglioramento e alla stabilità del servizio"),
@@ -95,7 +95,7 @@ export const PRIVACY_POLICY_SECTIONS: PolicySection[] = [
   {
     title: "7. Funzionalità di Intelligenza Artificiale (AI)",
     blocks: [
-      p("FamilySync offre funzionalità basate sull'intelligenza artificiale tramite il fornitore **OpenAI**. Sono disponibili per gli account idonei dopo l'accettazione di Privacy Policy e Termini d'Uso; i profili sotto i 14 anni non possono usarle. I dati vengono inviati al fornitore solo quando utilizzi una funzione AI."),
+      p("FamilySync offre funzionalità basate sull'intelligenza artificiale tramite il fornitore **OpenAI**. Sono disponibili per gli account idonei dopo l'accettazione della Privacy Policy e dei Termini d'Uso; i profili sotto i 14 anni non possono usarle. Con l'accettazione della Privacy Policy presti il consenso al trattamento descritto in questa sezione, compreso l'uso di allergie e intolleranze come vincoli per ricette e piani pasti. Non è richiesto un consenso AI o allergie separato. I dati vengono inviati al fornitore solo quando utilizzi una funzione AI."),
       p("Le funzioni AI disponibili e i dati inviati al fornitore per ciascuna sono:"),
       li("**Suggerimenti spesa:** numero di membri (senza nomi), articoli recenti delle liste, contenuto della dispensa, titoli degli eventi in programma, stagione corrente"),
       li("**Ottimizzazione faccende:** punti accumulati, titoli e durata stimata delle faccende; i membri vengono indicati con alias temporanei (es. \"Membro 1\") e i soprannomi reali non vengono inviati"),
@@ -107,10 +107,10 @@ export const PRIVACY_POLICY_SECTIONS: PolicySection[] = [
       li("**Foto ricette AI:** il titolo della ricetta, usato per generare un'immagine illustrativa del piatto"),
       p("**Dati che non inviamo mai per progettazione al fornitore AI:** password, indirizzi email degli account, identificativi interni (ID utente, ID famiglia), dati di pagamento, allegati e ricevute. I contenuti già archiviati nella chat non vengono inviati automaticamente all'AI. Attenzione però: i **campi di testo libero** (testi di eventi, faccende, bollette, spese, note sui pasti, dettatura vocale) vengono inviati così come li scrivi o li detti; se vi inserisci tu stesso/a informazioni come indirizzi, numeri di telefono o dati di terzi, queste verranno trasmesse insieme al resto del testo."),
       p("**Avvertenza:** non inserire nei campi di testo libero dati sanitari non necessari, documenti di identità, credenziali, dati bancari, indirizzi, numeri di telefono o informazioni di terzi non necessarie. Un avviso equivalente è mostrato nell'app vicino alle funzioni AI."),
-      p("**Allergie e intolleranze:** possono costituire dati relativi alla salute (art. 9 GDPR). Se le indichi per ottenere ricette o piani pasti compatibili, vengono usate come vincoli della richiesta AI. Evita di inserire informazioni sanitarie non necessarie e non considerare i suggerimenti AI un parere medico."),
+      p("**Allergie e intolleranze:** possono costituire dati relativi alla salute (art. 9 GDPR). Se le indichi per ottenere ricette o piani pasti compatibili, vengono usate come vincoli della richiesta AI. Il consenso esplicito a questo trattamento è già compreso nell'accettazione della Privacy Policy: non viene richiesto un consenso aggiuntivo. Evita di inserire informazioni sanitarie non necessarie e non considerare i suggerimenti AI un parere medico."),
       p("In base ai termini contrattuali del fornitore applicabili all'uso via API, i dati inviati non vengono utilizzati per l'addestramento dei modelli. Il trattamento è regolato anche dalla Privacy Policy di OpenAI (https://openai.com/policies/privacy-policy)."),
       p("I contenuti generati dall'AI sono chiaramente presentati come tali nell'app. Hanno natura indicativa, possono contenere errori e non costituiscono consulenza professionale. FamilySync **non adotta decisioni basate unicamente su trattamenti automatizzati** che producano effetti giuridici o significativi sugli utenti."),
-      p("**Base giuridica:** esecuzione del servizio richiesto dall'utente (art. 6.1.b GDPR)."),
+      p("**Base giuridica:** consenso esplicito dell'utente, prestato con l'accettazione della Privacy Policy (art. 6.1.a GDPR; per i dati relativi alla salute, art. 9.2.a GDPR). Il consenso AI e quello relativo ad allergie e intolleranze sono quindi già compresi nella Privacy Policy e non richiedono checkbox o revoche separate."),
     ],
   },
   {
