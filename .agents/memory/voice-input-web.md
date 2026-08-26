@@ -18,6 +18,21 @@ Su web i tocchi del microfono NON passano dal Pressable (che confonde pointercan
 - Alert.alert di react-native-web è un NO-OP: su web ogni errore mostrato via Alert è invisibile. Usare un helper (window.alert o toast) per i messaggi d'errore utente su web (fatto in VoiceInput con showAlert).
 - Le PWA installate da familysync.eu conservano a lungo il bundle vecchio: dopo un Republish serve chiudere l'app e riaprirla (o reinstallarla) per vedere la versione nuova.
 
+## Avvio rapido del recorder
+- Se il browser ha già concesso il permesso, preparare il recorder prima della
+  pressione elimina il ritardo di inizializzazione; il click deve poi passare
+  direttamente a `record()`, senza una seconda acquisizione `getUserMedia`.
+- Il warm-up web deve leggere `navigator.permissions.query({name:"microphone"})`
+  e avviarsi solo con stato `granted`: il getter Expo può mostrare il prompt
+  quando lo stato è sconosciuto.
+
+**Why:** chiedere o riaprire il microfono dentro ogni gesto può tagliare la
+prima parola; chiederlo al mount invece viola l'aspettativa di consenso.
+
+**How to apply:** il primo tocco continua a richiedere esplicitamente il
+permesso e a preparare il recorder; per tocchi successivi già preparati,
+riutilizzare il recorder pronto.
+
 ## TTS su web (Chrome Android)
 - speechSynthesis viene bloccato se la prima speak() non parte dentro un gesto utente: chiamare `primeSpeech()` (components/VoiceInput.tsx) DENTRO l'handler del tocco, prima di qualsiasi await; la lettura a fine richiesta AI poi funziona.
 - Aggiungere sempre `speechSynthesis.resume()` prima di parlare: Chrome può restare "paused" senza errori.

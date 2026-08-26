@@ -79,6 +79,27 @@ const SPEECH_RECORDING_OPTIONS = {
   },
 };
 
+async function hasGrantedRecordingPermission(): Promise<boolean> {
+  if (Platform.OS === "web") {
+    try {
+      // Su alcuni browser getRecordingPermissionsAsync() richiede il permesso
+      // quando lo stato è "prompt". Qui vogliamo solo leggere lo stato, senza
+      // aprire finestre al caricamento della schermata.
+      const permissions = (globalThis as any)?.navigator?.permissions;
+      const status = await permissions?.query?.({ name: "microphone" });
+      return status?.state === "granted";
+    } catch {
+      return false;
+    }
+  }
+  try {
+    const permission = await AudioModule.getRecordingPermissionsAsync();
+    return permission.granted;
+  } catch {
+    return false;
+  }
+}
+
 interface VoiceInputProps {
   familyId: string;
   onTranscribed: (text: string) => void;
@@ -107,6 +128,8 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
   const justStoppedRef = useRef(false);
   const releasedWhileStartingRef = useRef(false);
   const lostPointerWhileStartingRef = useRef(false);
+  const recorderPreparedRef = useRef(false);
+  const recorderPreparingRef = useRef<Promise<boolean> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   // Suggerimento non bloccante (solo web): "tieni premuto mentre parli".
   const [hint, setHint] = useState<string | null>(null);
@@ -116,6 +139,34 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
     setHint(text);
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
     hintTimerRef.current = setTimeout(() => setHint(null), 2500);
+  };
+
+  // La preparazione del MediaRecorder è la parte lenta dell'avvio. Se il
+  // permesso è già stato concesso, la facciamo fuori dal gesto dell'utente;
+  // così una pressione successiva può chiamare record() quasi subito.
+  const prepareRecorder = async (): Promise<boolean> => {
+    if (recorderPreparedRef.current) return true;
+    if (recorderPreparingRef.current) return recorderPreparingRef.current;
+
+    const preparation = (async () => {
+      try {
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        await recorder.prepareToRecordAsync();
+        recorderPreparedRef.current = true;
+        return true;
+      } catch {
+        recorderPreparedRef.current = false;
+        return false;
+      }
+    })();
+    recorderPreparingRef.current = preparation;
+    try {
+      return await preparation;
+    } finally {
+      if (recorderPreparingRef.current === preparation) {
+        recorderPreparingRef.current = null;
+      }
+    }
   };
 
   useEffect(() => {
@@ -146,12 +197,36 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const warmUp = async () => {
+      try {
+        // Non chiediamo mai il permesso in anticipo: il prompt deve apparire
+        // solo dopo una pressione esplicita sul microfono.
+        if (!cancelled && await hasGrantedRecordingPermission()) {
+          await prepareRecorder();
+        }
+      } catch {
+        // Il primo tocco riproverà la preparazione e mostrerà l'errore solo se
+        // anche l'avvio richiesto dall'utente non è possibile.
+      }
+    };
+    void warmUp();
+    return () => {
+      cancelled = true;
+    };
+    // recorder.id identifica l'istanza nativa/web senza riavviare il warm-up a
+    // ogni render del componente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorder.id]);
+
   const cancelRecording = async () => {
     recordingRef.current = false;
     setRecording(false);
     try {
       await recorder.stop();
     } catch {}
+    recorderPreparedRef.current = false;
     await resetAudioMode();
     setActiveMic(null);
   };
@@ -164,19 +239,25 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
     releasedWhileStartingRef.current = false;
     lostPointerWhileStartingRef.current = false;
     try {
-      const perm = await AudioModule.requestRecordingPermissionsAsync();
-      if (!perm.granted) {
-        setActiveMic(null);
-        showAlert(
-          "Microfono non disponibile",
-          Platform.OS === "web"
-            ? "Il browser sta bloccando il microfono per questo sito. Tocca l'icona del lucchetto (o ⓘ) accanto all'indirizzo, apri Autorizzazioni e imposta Microfono su Consenti, poi ricarica la pagina."
-            : "Per usare la dettatura vocale, consenti l'accesso al microfono nelle impostazioni del dispositivo."
-        );
-        return;
+      // Se il warm-up ha già preparato il recorder, una nuova chiamata
+      // requestRecordingPermissionsAsync() farebbe un inutile getUserMedia
+      // prima di record(), reintroducendo il ritardo che stiamo evitando.
+      if (!recorderPreparedRef.current && !recorderPreparingRef.current) {
+        const perm = await AudioModule.requestRecordingPermissionsAsync();
+        if (!perm.granted) {
+          setActiveMic(null);
+          showAlert(
+            "Microfono non disponibile",
+            Platform.OS === "web"
+              ? "Il browser sta bloccando il microfono per questo sito. Tocca l'icona del lucchetto (o ⓘ) accanto all'indirizzo, apri Autorizzazioni e imposta Microfono su Consenti, poi ricarica la pagina."
+              : "Per usare la dettatura vocale, consenti l'accesso al microfono nelle impostazioni del dispositivo."
+          );
+          return;
+        }
       }
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      await recorder.prepareToRecordAsync();
+      if (!await prepareRecorder()) {
+        throw new Error("RECORDER_PREPARATION_FAILED");
+      }
       recorder.record();
       recordStartRef.current = Date.now();
       recordingRef.current = true;
@@ -234,6 +315,7 @@ export function VoiceInput({ familyId, onTranscribed, size = 22, disabled, conte
     } catch (err) {
       console.error("Errore stop registrazione:", err);
     } finally {
+        recorderPreparedRef.current = false;
       // Il ripristino dell'audio mode avviene SEMPRE, anche se stop() fallisce
       await resetAudioMode();
     }
