@@ -4,7 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
 import { z } from 'zod';
-import { eq, and, desc, isNull } from 'drizzle-orm';
+import { eq, and, desc, isNull, sql } from 'drizzle-orm';
 import { db } from '../db';
 import {
   bills,
@@ -367,11 +367,12 @@ router.get('/:familyId/:billId', requireFamilyMember(), async (req: Request, res
             memberId: billSplits.memberId,
             amount: billSplits.amount,
             isPaid: billSplits.isPaid,
-            memberName: familyMembers.nickname,
+            memberName: sql<string>`COALESCE(${users.name}, ${familyMembers.name}, ${familyMembers.nickname}, 'Membro')`,
             memberColor: familyMembers.color,
           })
           .from(billSplits)
           .leftJoin(familyMembers, eq(billSplits.memberId, familyMembers.id))
+          .leftJoin(users, eq(familyMembers.userId, users.id))
           .where(eq(billSplits.billId, billId))
       : [];
 
@@ -746,7 +747,10 @@ router.put('/:familyId/:billId/splits', requireFamilyMember(), requirePremium(),
     let rows: { memberId: string; amount: string }[] = [];
 
     if (parsed.data.type === 'equal') {
-      const memberIds = parsed.data.memberIds ?? [];
+      // Una stessa membership non può ricevere due quote nella medesima
+      // ripartizione: deduplicare qui mantiene il calcolo server-side corretto
+      // anche se un client vecchio invia accidentalmente lo stesso id due volte.
+      const memberIds = Array.from(new Set(parsed.data.memberIds ?? []));
       if (memberIds.length === 0) {
         return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Seleziona almeno un membro' } });
       }
@@ -756,6 +760,11 @@ router.put('/:familyId/:billId/splits', requireFamilyMember(), requirePremium(),
       const splits = parsed.data.splits ?? [];
       if (splits.length === 0) {
         return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Inserisci almeno una quota' } });
+      }
+      if (new Set(splits.map((split) => split.memberId)).size !== splits.length) {
+        return res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: 'Ogni membro può avere una sola quota' },
+        });
       }
       const splitTotal = splits.reduce((sum, s) => sum + s.amount, 0);
       // La somma delle quote deve coincidere con l'importo (tolleranza 1 centesimo).
@@ -792,11 +801,12 @@ router.put('/:familyId/:billId/splits', requireFamilyMember(), requirePremium(),
         memberId: billSplits.memberId,
         amount: billSplits.amount,
         isPaid: billSplits.isPaid,
-        memberName: familyMembers.nickname,
+        memberName: sql<string>`COALESCE(${users.name}, ${familyMembers.name}, ${familyMembers.nickname}, 'Membro')`,
         memberColor: familyMembers.color,
       })
       .from(billSplits)
       .leftJoin(familyMembers, eq(billSplits.memberId, familyMembers.id))
+      .leftJoin(users, eq(familyMembers.userId, users.id))
       .where(eq(billSplits.billId, billId));
 
     broadcastToFamily(familyId, 'bill_updated', { billId });

@@ -96,6 +96,16 @@ describe("Backend splits supporta custom con validazione (server/routes/bills.ts
     assert.match(src, /INVALID_MEMBER/);
   });
 
+  test("non permette quote duplicate per lo stesso membro", () => {
+    assert.match(src, /new Set\(splits\.map\(\(split\) => split\.memberId\)\)\.size !== splits\.length/);
+    assert.match(src, /Ogni membro può avere una sola quota/);
+  });
+
+  test("mostra il nome reale dell'account, non il nickname tecnico", () => {
+    assert.match(src, /COALESCE\(\$\{users\.name\}, \$\{familyMembers\.name\}, \$\{familyMembers\.nickname\}/);
+    assert.match(src, /leftJoin\(users, eq\(familyMembers\.userId, users\.id\)\)/);
+  });
+
   test("la rotta splits richiede Premium", () => {
     assert.match(src, /splits['"][\s\S]{0,120}requirePremium\(\)/);
   });
