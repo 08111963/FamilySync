@@ -17,10 +17,10 @@ const FALLBACK_BY_CODE: Record<string, string> = {
   AI_PROVIDER_ERROR: "Servizio AI temporaneamente non disponibile. Riprova tra poco.",
 };
 
-/** True se l'errore è dovuto al toggle AI disattivato (GDPR consent). */
+/** Compatibilità con le versioni precedenti che potevano restituire AI_DISABLED. */
 export function isAiDisabled(err: unknown): boolean {
   const e = err as AiErrorLike;
-  return e?.status === 403 || e?.body?.error?.code === "AI_DISABLED";
+  return e?.body?.error?.code === "AI_DISABLED";
 }
 
 /**
@@ -37,15 +37,14 @@ export function aiErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-/** Apre il Centro Privacy, dove si trova l'interruttore delle Funzioni AI. */
+/** Apre il Centro Privacy con policy, termini e registro delle accettazioni. */
 export function openAiSettings() {
   router.push("/privacy-center");
 }
 
 /**
- * Mostra l'errore AI all'utente. Se l'errore è AI_DISABLED (consenso AI
- * disattivato), l'alert offre anche l'azione "Vai alle impostazioni" che
- * porta direttamente all'interruttore nel Centro Privacy.
+ * Mostra l'errore AI all'utente. Le risposte AI_DISABLED di client/server
+ * precedenti restano gestite con un link al Centro Privacy.
  * Per gli altri errori mostra il solito messaggio con OK.
  */
 export function showAiErrorAlert(err: unknown, fallback: string, title = "Errore") {

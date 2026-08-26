@@ -75,9 +75,10 @@ export async function ensureVipAccount(): Promise<EnsureVipResult> {
           passwordHash,
           name: "Francesco",
           emailVerified: true,
-          // Anche il VIP esprime i consensi al primo accesso (onboarding).
+          // Anche il VIP completa la fascia d'età e i Termini al primo accesso.
           termsAcceptedAt: null,
-          aiFeaturesEnabled: false,
+          aiFeaturesEnabled: true,
+          aiHealthConsent: true,
         })
         .returning();
       userId = user.id;

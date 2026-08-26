@@ -100,8 +100,6 @@ const signupSchema = z.object({
   ageBand: z.enum(["under14", "14_17", "adult"], {
     errorMap: () => ({ message: "La fascia d'età è obbligatoria" }),
   }),
-  // Consenso AI facoltativo e MAI preselezionato lato client.
-  aiConsent: z.boolean().optional(),
   returnTo: z.string().max(2048).optional(),
 });
 
@@ -139,7 +137,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       });
     }
 
-    const { email, password, name, ageBand, aiConsent } = parsed.data;
+    const { email, password, name, ageBand } = parsed.data;
     const returnTo = parsed.data.returnTo
       ? safeReturnTo(parsed.data.returnTo)
       : undefined;
@@ -173,14 +171,12 @@ router.post('/signup', async (req: Request, res: Response) => {
       termsAcceptedAt: new Date(),
       privacyPolicySeenVersion: PRIVACY_POLICY_VERSION,
       ageBand,
-      // Consenso AI esplicito e facoltativo: se non espresso resta disattivo
-      // (opt-in, mai preselezionato). Riattivabile dalle impostazioni.
-      aiFeaturesEnabled: aiConsent === true,
+      aiFeaturesEnabled: true,
+      aiHealthConsent: true,
     }).returning();
 
-    // Registro consensi (append-only): versione Termini accettata + scelta AI.
+    // Registro append-only dell'accettazione dei Termini.
     await recordConsent(newUser.id, "terms", true);
-    await recordConsent(newUser.id, "ai_features", aiConsent === true);
     
     // Pulizia opportunistica (throttled, non bloccante) dei token scaduti.
     scheduleAuthTokenCleanup();
@@ -365,7 +361,6 @@ const onboardingSchema = z.object({
     errorMap: () => ({ message: "La fascia d'età è obbligatoria" }),
   }),
   acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare i Termini d'Uso" }) }),
-  aiConsent: z.boolean().optional(),
 });
 
 /**
@@ -379,7 +374,7 @@ router.post('/onboarding', authenticate, blockChildAccount, async (req: Request,
     if (!parsed.success) {
       return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0]?.message || 'Dati non validi' } });
     }
-    const { ageBand, aiConsent } = parsed.data;
+    const { ageBand } = parsed.data;
     if (ageBand === 'under14') {
       return res.status(403).json({ error: { code: 'AGE_RESTRICTED', message: "Sotto i 14 anni l'account deve essere gestito da un genitore o tutore." } });
     }
@@ -388,9 +383,10 @@ router.post('/onboarding', authenticate, blockChildAccount, async (req: Request,
         ageBand,
         termsAcceptedAt: new Date(),
         privacyPolicySeenVersion: PRIVACY_POLICY_VERSION,
+        aiFeaturesEnabled: true,
+        aiHealthConsent: true,
         updatedAt: new Date(),
       };
-      if (typeof aiConsent === 'boolean') setValues.aiFeaturesEnabled = aiConsent;
       const [row] = await tx
         .update(users)
         .set(setValues)
@@ -398,9 +394,6 @@ router.post('/onboarding', authenticate, blockChildAccount, async (req: Request,
         .returning({ id: users.id, ageBand: users.ageBand });
       if (!row) throw new Error('USER_NOT_FOUND');
       await recordConsent(req.user!.userId, 'terms', true, tx, { strict: true });
-      if (typeof aiConsent === 'boolean') {
-        await recordConsent(req.user!.userId, 'ai_features', aiConsent, tx, { strict: true });
-      }
       return row;
     });
     res.json({ ok: true, ageBand: updated.ageBand });
@@ -804,12 +797,11 @@ const socialCompleteSchema = z.object({
     errorMap: () => ({ message: "La fascia d'età è obbligatoria" }),
   }),
   acceptedTerms: z.literal(true, { errorMap: () => ({ message: "Devi accettare i Termini d'Uso" }) }),
-  aiConsent: z.boolean().optional(),
 });
 
 /**
  * Completamento della registrazione social: consuma il token monouso in
- * transazione, crea l'account con i consensi espressi ORA dall'utente e
+ * transazione, crea l'account dopo l'accettazione di Policy e Termini e
  * restituisce la sessione. Nessun account viene creato prima di questo punto.
  */
 router.post('/social/complete', socialLoginLimiter, async (req: Request, res: Response) => {
@@ -817,7 +809,7 @@ router.post('/social/complete', socialLoginLimiter, async (req: Request, res: Re
   if (!parsed.success) {
     return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0]?.message || 'Dati non validi' } });
   }
-  const { signupToken, name, ageBand, aiConsent } = parsed.data;
+  const { signupToken, name, ageBand } = parsed.data;
   if (ageBand === 'under14') {
     return res.status(403).json({ error: { code: 'AGE_RESTRICTED', message: "Sotto i 14 anni l'account deve essere creato da un genitore o tutore." } });
   }
@@ -851,9 +843,8 @@ router.post('/social/complete', socialLoginLimiter, async (req: Request, res: Re
         termsAcceptedAt: new Date(),
         privacyPolicySeenVersion: PRIVACY_POLICY_VERSION,
         ageBand,
-        // Opt-in esplicito: attivo SOLO se l'utente ha spuntato la casella.
-        aiFeaturesEnabled: aiConsent === true,
-        aiHealthConsent: false,
+        aiFeaturesEnabled: true,
+        aiHealthConsent: true,
       }).returning();
       return created;
     });
@@ -861,7 +852,6 @@ router.post('/social/complete', socialLoginLimiter, async (req: Request, res: Re
       return res.status(401).json({ error: { code: 'INVALID_SIGNUP_TOKEN', message: 'Registrazione scaduta o già completata. Riprova ad accedere.' } });
     }
     await recordConsent(result.id, 'terms', true);
-    await recordConsent(result.id, 'ai_features', aiConsent === true);
     await activatePendingTrialsForUser(result.id);
     res.status(201).json(issueSessionResponse(result));
   } catch (error: any) {

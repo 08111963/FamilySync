@@ -9,7 +9,6 @@ import { authenticate } from "../middleware/auth";
 import { requireFamilyAdmin } from "../middleware/family";
 import { logger } from "../lib/logger";
 import { invalidateBlockCache } from "../lib/websocket";
-import { recordConsent } from "../lib/consents";
 
 const router = Router();
 
@@ -279,51 +278,9 @@ router.get("/blocks/:familyId", authenticate, async (req: Request, res: Response
 });
 
 router.patch("/preferences", authenticate, async (req: Request, res: Response) => {
-  try {
-    const { aiFeaturesEnabled, aiHealthConsent } = req.body;
-
-    const hasAiToggle = typeof aiFeaturesEnabled === "boolean";
-    const hasHealthToggle = typeof aiHealthConsent === "boolean";
-    if (!hasAiToggle && !hasHealthToggle) {
-      return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "Indicare aiFeaturesEnabled e/o aiHealthConsent come booleano" },
-      });
-    }
-
-    // Transazione: il cambio di consenso e la sua registrazione (GDPR art. 7)
-    // devono riuscire insieme — se il registro non scrive, il toggle viene annullato.
-    const updated = await db.transaction(async (tx) => {
-      const setValues: Record<string, unknown> = { updatedAt: new Date() };
-      if (hasAiToggle) setValues.aiFeaturesEnabled = aiFeaturesEnabled;
-      if (hasHealthToggle) setValues.aiHealthConsent = aiHealthConsent;
-      // Se l'AI viene disattivata, decade anche il consenso salute (dipendente).
-      if (hasAiToggle && aiFeaturesEnabled === false) setValues.aiHealthConsent = false;
-      const [row] = await tx
-        .update(users)
-        .set(setValues)
-        .where(eq(users.id, req.user!.userId))
-        .returning({
-          id: users.id,
-          aiFeaturesEnabled: users.aiFeaturesEnabled,
-          aiHealthConsent: users.aiHealthConsent,
-        });
-      if (row) {
-        if (hasAiToggle) {
-          await recordConsent(req.user!.userId, "ai_features", aiFeaturesEnabled, tx, { strict: true });
-        }
-        if (hasHealthToggle || (hasAiToggle && aiFeaturesEnabled === false)) {
-          const healthValue = hasAiToggle && aiFeaturesEnabled === false ? false : aiHealthConsent;
-          await recordConsent(req.user!.userId, "ai_health", healthValue, tx, { strict: true });
-        }
-      }
-      return row;
-    });
-
-    res.json(updated);
-  } catch (error) {
-    logger.error("Update preferences error", { error: String(error) });
-    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nell'aggiornamento preferenze" } });
-  }
+  // Endpoint mantenuto solo per client pubblicati precedenti: i due toggle non
+  // sono più modificabili e le funzioni restano attive per gli account idonei.
+  res.json({ aiFeaturesEnabled: true, aiHealthConsent: true });
 });
 
 // Registro consensi (GDPR): l'utente può consultare lo storico dei propri consensi.
@@ -350,22 +307,7 @@ router.get("/consents", authenticate, async (req: Request, res: Response) => {
 });
 
 router.get("/preferences", authenticate, async (req: Request, res: Response) => {
-  try {
-    const [user] = await db
-      .select({ aiFeaturesEnabled: users.aiFeaturesEnabled, aiHealthConsent: users.aiHealthConsent })
-      .from(users)
-      .where(eq(users.id, req.user!.userId))
-      .limit(1);
-
-    // Fail-closed: se l'utente non viene trovato, l'AI risulta disattiva (opt-in).
-    res.json({
-      aiFeaturesEnabled: user?.aiFeaturesEnabled ?? false,
-      aiHealthConsent: user?.aiHealthConsent ?? false,
-    });
-  } catch (error) {
-    logger.error("Get preferences error", { error: String(error) });
-    res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero preferenze" } });
-  }
+  res.json({ aiFeaturesEnabled: true, aiHealthConsent: true });
 });
 
 export default router;

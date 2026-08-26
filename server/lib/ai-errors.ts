@@ -6,7 +6,6 @@ export type AiErrorCode =
   | "AI_TIMEOUT"
   | "AI_BAD_RESPONSE"
   | "AI_CONSTRAINT_VIOLATION"
-  | "AI_HEALTH_CONSENT_REQUIRED"
   | "AI_MODEL_CALL_BUDGET_EXHAUSTED"
   | "AI_PROVIDER_ERROR";
 
@@ -20,7 +19,6 @@ const USER_MESSAGES: Record<AiErrorCode, string> = {
   AI_TIMEOUT: "L'AI ci sta mettendo troppo tempo. Riprova tra poco.",
   AI_BAD_RESPONSE: "La risposta dell'AI non era completa o nel formato previsto. Non è stato creato alcun piano: riprova.",
   AI_CONSTRAINT_VIOLATION: "Il risultato dell'AI non è compatibile con il profilo scelto. Non è stato creato alcun piano: riprova.",
-  AI_HEALTH_CONSENT_REQUIRED: "Per usare le allergie nella generazione devi prima abilitare il consenso AI per i dati relativi alla salute.",
   AI_MODEL_CALL_BUDGET_EXHAUSTED: "Non è stato possibile completare un piano verificato entro il limite di elaborazione. Riprova tra poco.",
   AI_PROVIDER_ERROR: "Servizio AI temporaneamente non disponibile. Riprova tra poco.",
 };
@@ -33,7 +31,6 @@ const HTTP_STATUS: Record<AiErrorCode, number> = {
   AI_TIMEOUT: 504,
   AI_BAD_RESPONSE: 502,
   AI_CONSTRAINT_VIOLATION: 422,
-  AI_HEALTH_CONSENT_REQUIRED: 403,
   AI_MODEL_CALL_BUDGET_EXHAUSTED: 503,
   AI_PROVIDER_ERROR: 502,
 };

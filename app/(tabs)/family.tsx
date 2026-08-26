@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, TextInput, Platform, Alert, Switch } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, TextInput, Platform, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -55,13 +55,6 @@ export default function FamilyScreen() {
   const leaderboard = getLeaderboard();
   const familyId = currentFamily?.id;
 
-  // Le rotte di moderazione (preferenze AI, blocchi) sono vietate agli account
-  // "dispositivo bambino" lato server: non interrogarle affatto per loro.
-  const { data: prefsData } = useQuery<{ aiFeaturesEnabled: boolean }>({
-    queryKey: ["/api/moderation/preferences"],
-    enabled: !!user && user.isChildAccount !== true,
-  });
-
   const { data: blocksData } = useQuery<{ id: string; blockedUserId: string; blockedUserName: string }[]>({
     queryKey: ["/api/moderation/blocks", familyId],
     enabled: !!familyId && user?.isChildAccount !== true,
@@ -84,15 +77,6 @@ export default function FamilyScreen() {
     enabled: !!user,
     retry: false,
   });
-
-  const handleToggleAI = async (value: boolean) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      await apiRequest("PATCH", "/api/moderation/preferences", { aiFeaturesEnabled: value });
-      queryClient.invalidateQueries({ queryKey: ["/api/moderation/preferences"] });
-      trackEvent("ai_toggle_changed", { familyId, metadata: { enabled: value } });
-    } catch {}
-  };
 
   const handleBlockUser = async (blockedUserId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -725,25 +709,6 @@ export default function FamilyScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Funzionalita</Text>
         </View>
         <View style={{ gap: 12 }}>
-          <Card>
-            <View style={styles.featureLinkRow}>
-              <View style={[styles.featureLinkIcon, { backgroundColor: colors.secondary + "20" }]}>
-                <Ionicons name="sparkles-outline" size={24} color={colors.secondary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Funzionalita AI</Text>
-                <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
-                  Consenti suggerimenti intelligenti tramite AI
-                </Text>
-              </View>
-              <Switch
-                value={prefsData?.aiFeaturesEnabled ?? false}
-                onValueChange={handleToggleAI}
-                trackColor={{ false: colors.border, true: colors.secondary }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </Card>
           <Card onPress={() => router.push("/premium")}>
             <View style={styles.featureLinkRow}>
               <View style={[styles.featureLinkIcon, { backgroundColor: "#FFD60A30" }]}>
@@ -835,7 +800,7 @@ export default function FamilyScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.featureLinkTitle, { color: colors.text }]}>Centro Privacy</Text>
                 <Text style={[styles.featureLinkSubtitle, { color: colors.textSecondary }]}>
-                  Consenso AI, registro consensi e informative
+                  Informative e registro delle accettazioni
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />

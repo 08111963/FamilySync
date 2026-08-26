@@ -30,8 +30,6 @@ export default function SocialCompleteScreen() {
   const [name, setName] = useState((suggestedName as string) || '');
   const [ageBand, setAgeBand] = useState<'under14' | '14_17' | 'adult' | null>(null);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  // Consenso AI: MAI preselezionato (opt-in esplicito, GDPR).
-  const [aiConsent, setAiConsent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -64,7 +62,6 @@ export default function SocialCompleteScreen() {
         name: name.trim(),
         ageBand,
         acceptedTerms: true,
-        aiConsent,
       });
       await applySession(session.user, session.accessToken, session.refreshToken);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -184,24 +181,6 @@ export default function SocialCompleteScreen() {
               .
             </Text>
           </Pressable>
-
-          {ageBand !== 'under14' && (
-            <Pressable
-              style={styles.termsRow}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setAiConsent(!aiConsent);
-              }}
-              testID="ai-consent-checkbox"
-            >
-              <View style={[styles.checkbox, { borderColor: colors.border }, aiConsent && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
-                {aiConsent && <Ionicons name="checkmark" size={14} color="#fff" />}
-              </View>
-              <Text style={[styles.termsText, { color: colors.textSecondary }]}>
-                (Facoltativo) Attivo le funzioni di intelligenza artificiale: alcuni dati minimizzati verranno inviati al fornitore AI (OpenAI) per generare i suggerimenti. Posso cambiare idea in qualsiasi momento dalle impostazioni.
-              </Text>
-            </Pressable>
-          )}
 
           <TouchableOpacity
             style={[styles.submitButton, { backgroundColor: colors.primary }, isSubmitting && styles.submitButtonDisabled]}

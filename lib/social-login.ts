@@ -147,13 +147,12 @@ export async function loginWithGoogle(returnTo?: string): Promise<SocialLoginRes
   return completeOauth(loginCode);
 }
 
-/** Completa la registrazione social con i consensi espressi dall'utente. */
+/** Completa la registrazione social dopo l'accettazione di Policy e Termini. */
 export async function completeSocialSignup(data: {
   signupToken: string;
   name: string;
   ageBand: "under14" | "14_17" | "adult";
   acceptedTerms: true;
-  aiConsent?: boolean;
 }): Promise<SocialSession> {
   const url = new URL("/api/auth/social/complete", getApiUrl());
   const res = await fetch(url.toString(), {

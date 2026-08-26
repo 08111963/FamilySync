@@ -1,11 +1,9 @@
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Switch, ActivityIndicator, Linking } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator, Linking } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/hooks/useTheme";
-import { apiRequest, queryClient } from "@/lib/query-client";
 import { PRIVACY_POLICY_VERSION, PRIVACY_POLICY_DATE, TERMS_VERSION } from "@/shared/policy-version";
 
 interface ConsentRecord {
@@ -18,8 +16,6 @@ interface ConsentRecord {
 
 const CONSENT_LABELS: Record<string, string> = {
   terms: "Accettazione dei Termini d'Uso",
-  ai_features: "Funzioni AI",
-  ai_health: "Dati su allergie e intolleranze (AI)",
 };
 
 export default function PrivacyCenterScreen() {
@@ -28,40 +24,14 @@ export default function PrivacyCenterScreen() {
   const topInset = Platform.OS === "web" ? 67 : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const { data: prefsData } = useQuery<{ aiFeaturesEnabled: boolean; aiHealthConsent: boolean }>({
-    queryKey: ["/api/moderation/preferences"],
-  });
-
   const { data: consents, isLoading: consentsLoading } = useQuery<ConsentRecord[]>({
     queryKey: ["/api/moderation/consents"],
   });
 
-  const handleToggleAI = async (value: boolean) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      await apiRequest("PATCH", "/api/moderation/preferences", { aiFeaturesEnabled: value });
-      queryClient.invalidateQueries({ queryKey: ["/api/moderation/preferences"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/moderation/consents"] });
-    } catch {
-      // lo stato reale verrà rifetchato
-      queryClient.invalidateQueries({ queryKey: ["/api/moderation/preferences"] });
-    }
-  };
-
-  const handleToggleAiHealth = async (value: boolean) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      await apiRequest("PATCH", "/api/moderation/preferences", { aiHealthConsent: value });
-      queryClient.invalidateQueries({ queryKey: ["/api/moderation/preferences"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/moderation/consents"] });
-    } catch {
-      queryClient.invalidateQueries({ queryKey: ["/api/moderation/preferences"] });
-    }
-  };
-
-  const latestTermsConsent = consents
+  const termsConsents = consents
     ?.filter((c) => c.consentType === "terms" && c.granted)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const latestTermsConsent = termsConsents?.[0];
 
   const formatDate = (iso: string) => {
     try {
@@ -88,48 +58,6 @@ export default function PrivacyCenterScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + 32 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>CONSENSI</Text>
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.row}>
-            <View style={[styles.rowIcon, { backgroundColor: colors.secondary + "20" }]}>
-              <Ionicons name="sparkles-outline" size={22} color={colors.secondary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowTitle, { color: colors.text }]}>Funzioni AI</Text>
-              <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
-                Se attive, alcuni dati minimizzati vengono inviati al fornitore AI (OpenAI) per generare suggerimenti. Revocabile in qualsiasi momento.
-              </Text>
-            </View>
-            <Switch
-              value={prefsData?.aiFeaturesEnabled ?? false}
-              onValueChange={handleToggleAI}
-              trackColor={{ false: colors.border, true: colors.secondary }}
-              thumbColor="#FFFFFF"
-              testID="ai-consent-switch"
-            />
-          </View>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <View style={styles.row}>
-            <View style={[styles.rowIcon, { backgroundColor: "#FF3B3020" }]}>
-              <Ionicons name="medkit-outline" size={22} color="#FF3B30" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowTitle, { color: colors.text }]}>Allergie e intolleranze (AI)</Text>
-              <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
-                Consenso separato: se attivo, le allergie/intolleranze salvate nelle preferenze pasti vengono incluse nelle richieste AI (ricette e piani pasti). Richiede le Funzioni AI attive.
-              </Text>
-            </View>
-            <Switch
-              value={prefsData?.aiHealthConsent ?? false}
-              onValueChange={handleToggleAiHealth}
-              disabled={!(prefsData?.aiFeaturesEnabled ?? false)}
-              trackColor={{ false: colors.border, true: colors.secondary }}
-              thumbColor="#FFFFFF"
-              testID="ai-health-consent-switch"
-            />
-          </View>
-        </View>
-
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>INFORMATIVE</Text>
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Pressable style={styles.row} onPress={() => router.push("/legal/privacy")} testID="link-privacy">
@@ -166,20 +94,20 @@ export default function PrivacyCenterScreen() {
           </Pressable>
         </View>
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>REGISTRO DEI TUOI CONSENSI</Text>
+        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>REGISTRO DELLE TUE ACCETTAZIONI</Text>
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {consentsLoading ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator color={colors.primary} />
             </View>
-          ) : !consents || consents.length === 0 ? (
+          ) : !termsConsents || termsConsents.length === 0 ? (
             <View style={styles.loadingBox}>
               <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
-                Nessun consenso registrato finora.
+                Nessuna accettazione registrata finora.
               </Text>
             </View>
           ) : (
-            consents.map((c, idx) => (
+            termsConsents.map((c, idx) => (
               <View key={c.id}>
                 {idx > 0 && <View style={[styles.divider, { backgroundColor: colors.border }]} />}
                 <View style={styles.row}>
@@ -193,7 +121,7 @@ export default function PrivacyCenterScreen() {
                       {CONSENT_LABELS[c.consentType] ?? c.consentType}
                     </Text>
                     <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
-                      {c.granted ? "Prestato" : "Revocato/Non prestato"} · {formatDate(c.createdAt)} · Policy v{c.policyVersion}
+                      Accettati · {formatDate(c.createdAt)} · Termini v{c.policyVersion}
                     </Text>
                   </View>
                 </View>
@@ -238,7 +166,7 @@ export default function PrivacyCenterScreen() {
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]}>
-                Replit (hosting) · Neon (database) · Resend (email) · OpenAI (funzioni AI, solo con consenso) · RevenueCat (abbonamenti) · Apple e Google (acquisti, login e notifiche). L'elenco completo è nella Privacy Policy.
+                Replit (hosting) · Neon (database) · Resend (email) · OpenAI (funzioni AI) · RevenueCat (abbonamenti) · Apple e Google (acquisti, login e notifiche). L'elenco completo è nella Privacy Policy.
               </Text>
             </View>
           </View>

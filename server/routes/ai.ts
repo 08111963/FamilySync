@@ -71,24 +71,6 @@ function resolveAiRequestContext(req: Request, operation: string): AiRequestCont
 }
 
 /** Mappa un AiError sul suo HTTP status + messaggio utente; altrimenti 500 generico. */
-/**
- * Consenso salute (art. 9 GDPR): allergie/intolleranze possono rivelare dati
- * relativi alla salute. Verifica fail-closed: in caso di dubbio o errore,
- * il dato NON viene inviato a OpenAI.
- */
-async function userHasAiHealthConsent(userId: string): Promise<boolean> {
-  try {
-    const [user] = await db
-      .select({ aiHealthConsent: users.aiHealthConsent })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    return user?.aiHealthConsent === true;
-  } catch {
-    return false;
-  }
-}
-
 const mealPlanPreferencesSchema = z.object({
   dietProfile: z.string().trim().max(80).optional(),
   // Accettati esclusivamente per non rompere client già pubblicati. Non sono
@@ -106,14 +88,16 @@ type PreparedMealPlanPreferences =
   | { ok: false; status: number; body: { error: { code: string; message: string } } };
 
 /**
- * Le allergie sono dati sanitari: se presenti senza consenso la generazione
- * si blocca. Non vengono più eliminate silenziosamente, perché produrre un
- * piano che sembra sicuro senza poter usare il vincolo sarebbe pericoloso.
+ * Le note sanitarie non supportate bloccano la generazione: non devono essere
+ * eliminate silenziosamente, perché produrre un piano che sembra sicuro senza
+ * poter usare il vincolo sarebbe pericoloso.
  */
 export async function prepareMealPlanPreferences(
-  userId: string,
+  _userId: string,
   raw: unknown,
-  hasAiHealthConsent: (userId: string) => Promise<boolean> = userHasAiHealthConsent,
+  // Compatibilità con i chiamanti precedenti: il consenso salute non modifica
+  // più il risultato, ma accettiamo il parametro finché esistono client legacy.
+  _legacyHasAiHealthConsent?: (userId: string) => Promise<boolean>,
 ): Promise<PreparedMealPlanPreferences> {
   const parsed = mealPlanPreferencesSchema.safeParse(raw);
   if (!parsed.success) {
@@ -751,9 +735,9 @@ router.post('/:familyId/recipe-suggestions', authenticate, requireAiEnabled, req
     const members = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
 
     const { dietaryPreferences, allergies, maxTimeMinutes, cuisinePreferences, excludedIngredients, count, excludeTitles } = req.body || {};
-    // Allergie/intolleranze = possibili dati salute (art. 9 GDPR): vanno a
-    // OpenAI SOLO con il consenso specifico ai_health attivo.
-    const allowedAllergies = (await userHasAiHealthConsent(userId)) ? allergies : undefined;
+    // Le allergie e intolleranze indicate dall'utente partecipano sempre alla
+    // richiesta AI: non esiste più un consenso separato da attivare.
+    const allowedAllergies = allergies;
 
     const existingRecipes = await db.select({ title: recipes.title })
       .from(recipes)

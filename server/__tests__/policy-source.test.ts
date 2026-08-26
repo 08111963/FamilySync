@@ -36,7 +36,9 @@ test("la fonte unica contiene le correzioni obbligatorie v2.1", () => {
   assert.equal(PRIVACY_POLICY_SECTIONS.length, 23);
   assert.match(PRIVACY_POLICY_INTRO, new RegExp(PRIVACY_POLICY_VERSION.replace(".", "\\.")));
   assert.ok(all.includes("Fascia di età (obbligatoria)"), "età obbligatoria");
-  assert.ok(all.includes("consenso specifico e separato"), "consenso ai_health separato");
+  assert.ok(all.includes("allergie e intolleranze"), "allergie descritte nella policy");
+  assert.ok(all.includes("account idonei"), "AI disponibile senza toggle separato");
+  assert.ok(!all.includes("consenso specifico e separato"), "nessun consenso allergie separato");
   assert.ok(all.includes("alias temporanei"), "alias membri per ottimizzazione faccende");
   assert.ok(all.includes("dati personali di utilizzo"), "analytics come dati personali");
   assert.ok(all.includes("massimo **30 giorni**"), "retention analytics 30 giorni");

@@ -42,8 +42,6 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [ageBand, setAgeBand] = useState<'under14' | '14_17' | 'adult' | null>(null);
-  // Consenso AI: MAI preselezionato (opt-in esplicito, GDPR).
-  const [aiConsent, setAiConsent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [socialSubmitting, setSocialSubmitting] = useState<'google' | 'apple' | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
@@ -193,7 +191,6 @@ export default function LoginScreen() {
           name.trim(),
           acceptedTerms,
           ageBand === 'under14' ? undefined : (ageBand ?? undefined),
-          aiConsent,
           destination,
         );
       } else {
@@ -231,7 +228,6 @@ export default function LoginScreen() {
     setConfirmPassword('');
     setAcceptedTerms(false);
     setAgeBand(null);
-    setAiConsent(false);
   };
 
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
@@ -434,30 +430,6 @@ export default function LoginScreen() {
                     Termini d'Uso
                   </Text>
                   .
-                </Text>
-              </Pressable>
-            )}
-
-            {isSignup && ageBand !== 'under14' && (
-              <Pressable
-                style={styles.termsRow}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setAiConsent(!aiConsent);
-                }}
-                testID="ai-consent-checkbox"
-              >
-                <View style={[
-                  styles.checkbox,
-                  { borderColor: colors.border },
-                  aiConsent && styles.checkboxChecked,
-                ]}>
-                  {aiConsent && (
-                    <Ionicons name="checkmark" size={14} color="#fff" />
-                  )}
-                </View>
-                <Text style={[styles.termsText, { color: colors.textSecondary }]}>
-                  (Facoltativo) Attivo le funzioni di intelligenza artificiale: alcuni dati minimizzati verranno inviati al fornitore AI (OpenAI) per generare i suggerimenti. Posso cambiare idea in qualsiasi momento dalle impostazioni.
                 </Text>
               </Pressable>
             )}

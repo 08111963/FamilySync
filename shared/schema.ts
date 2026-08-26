@@ -49,14 +49,16 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   emailVerified: boolean("email_verified").default(false),
   termsAcceptedAt: timestamp("terms_accepted_at"),
-  aiFeaturesEnabled: boolean("ai_features_enabled").default(false).notNull(),
+  // Le funzioni AI sono parte del servizio per gli account idonei; i profili
+  // bambino restano bloccati lato server indipendentemente da questo valore.
+  aiFeaturesEnabled: boolean("ai_features_enabled").default(true).notNull(),
   // Fascia d'età dichiarata in registrazione: 'under14' | '14_17' | 'adult'.
   // NULL per gli account creati prima dell'introduzione (trattati come adulti,
   // vedi Privacy Policy). Nessuna data di nascita completa: minimizzazione.
   ageBand: varchar("age_band", { length: 10 }),
-  // Consenso storico per funzioni legacy che possono trattare dati sanitari.
-  // Il Piano Pasti usa ora solo profili dieta chiusi e non legge allergie.
-  aiHealthConsent: boolean("ai_health_consent").default(false).notNull(),
+  // Campo storico mantenuto per compatibilità: allergie e intolleranze sono
+  // sempre incluse nei flussi AI idonei, senza un toggle separato.
+  aiHealthConsent: boolean("ai_health_consent").default(true).notNull(),
   // Versione della Privacy Policy di cui l'utente ha dichiarato presa visione
   // (informativa, NON consenso contrattuale). NULL = mai registrata.
   privacyPolicySeenVersion: varchar("privacy_policy_seen_version", { length: 20 }),

@@ -132,8 +132,8 @@ router.post('/:code/accept', async (req: Request, res: Response) => {
           name,
           emailVerified: false,
           termsAcceptedAt: new Date(),
-          // Consenso AI opt-in: mai attivo di default per i nuovi account.
-          aiFeaturesEnabled: false,
+          aiFeaturesEnabled: true,
+          aiHealthConsent: true,
         }).returning();
 
         const [member] = await tx.insert(familyMembers).values({
@@ -149,9 +149,8 @@ router.post('/:code/accept', async (req: Request, res: Response) => {
       });
       createdUser = result.user;
       createdMember = result.member;
-      // Registro consensi (fail-safe): Termini accettati; AI opt-in disattivo.
+      // Registro dell'accettazione dei Termini.
       await recordConsent(createdUser.id, "terms", true);
-      await recordConsent(createdUser.id, "ai_features", false);
     } catch (txError: any) {
       if (txError?.message === 'MEMBER_LIMIT_REACHED') {
         return res.status(403).json({

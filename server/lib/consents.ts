@@ -9,10 +9,9 @@ type ConsentType = "terms" | "ai_features" | "ai_health";
  * Registra una variazione di consenso (append-only, GDPR art. 7).
  * - Default fail-safe: un errore di registrazione viene loggato ma non blocca
  *   l'operazione principale (es. signup) — il valore effettivo del consenso
- *   resta comunque su users.aiFeaturesEnabled / termsAcceptedAt.
- * - Con `strict: true` (es. toggle AI in transazione) l'errore viene rilanciato,
- *   così l'operazione principale viene annullata se la prova del consenso non
- *   può essere scritta.
+ *   resta comunque su users.termsAcceptedAt.
+ * - Con `strict: true` l'errore viene rilanciato, così l'operazione principale
+ *   viene annullata se la prova dell'accettazione non può essere scritta.
  */
 export async function recordConsent(
   userId: string,
@@ -23,7 +22,7 @@ export async function recordConsent(
 ): Promise<void> {
   const now = new Date();
   const policyVersion = consentType === "terms" ? TERMS_VERSION : PRIVACY_POLICY_VERSION;
-  // 'ai_features' e 'ai_health' fanno riferimento alla Privacy Policy corrente.
+  // I tipi storici AI fanno riferimento alla Privacy Policy corrente.
   try {
     await (tx ?? db).insert(consentRecords).values({
       userId,

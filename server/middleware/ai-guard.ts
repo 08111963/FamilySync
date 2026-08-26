@@ -9,26 +9,27 @@ import { isPremium as isFamilyPremium } from "../lib/entitlements";
  * Controllo accesso alle funzionalità AI.
  *
  * Regola (vedi anche config.aiRequiresPremium):
- * 1. L'utente deve avere il consenso AI attivo (toggle GDPR users.aiFeaturesEnabled).
+ * 1. L'utente deve avere completato l'onboarding e non essere un profilo
+ *    bambino o sotto i 14 anni.
  * 2. Se config.aiRequiresPremium è true, la famiglia indicata in :familyId deve
  *    risultare Premium secondo isPremium(familyId) (fonte di verità unica =
  *    entitlements/acquisti store-native). Con il flag a false (stato attuale)
- *    l'AI resta accessibile a tutti gli utenti consenzienti, e la differenza
+ *    l'AI resta accessibile a tutti gli utenti idonei, e la differenza
  *    free/premium è SOLO nelle quote (vedi ai-usage.ts).
  */
 export async function requireAiEnabled(req: Request, res: Response, next: NextFunction) {
   try {
     const [user] = await db
-      .select({ aiFeaturesEnabled: users.aiFeaturesEnabled, ageBand: users.ageBand })
+      .select({ ageBand: users.ageBand, isChildAccount: users.isChildAccount })
       .from(users)
       .where(eq(users.id, req.user!.userId))
       .limit(1);
 
-    if (!user || !user.aiFeaturesEnabled) {
+    if (!user) {
       return res.status(403).json({
         error: {
-          code: "AI_DISABLED",
-          message: "Le funzionalità AI sono disabilitate. Attivale nelle impostazioni per continuare.",
+          code: "AI_UNAVAILABLE",
+          message: "Le funzionalità AI non sono disponibili per questo account.",
         },
       });
     }
@@ -46,7 +47,7 @@ export async function requireAiEnabled(req: Request, res: Response, next: NextFu
 
     // Le funzioni AI non sono progettate per l'uso autonomo da parte di
     // minori di 14 anni: blocco lato server indipendente dal toggle.
-    if (user.ageBand === "under14") {
+    if (user.ageBand === "under14" || user.isChildAccount) {
       return res.status(403).json({
         error: {
           code: "AI_DISABLED_MINOR",

@@ -124,9 +124,10 @@ async function createTester(tx: Tx, cred: TesterCredential, now: Date): Promise<
       name: cred.name,
       emailVerified: true, // tutte le /api richiedono email verificata
       // NIENTE consensi pre-impostati: al primo accesso il tester passa
-      // dall'onboarding (fascia d'età, Termini, consenso AI opt-in).
+      // dall'onboarding (fascia d'età e Termini).
       termsAcceptedAt: null,
-      aiFeaturesEnabled: false,
+      aiFeaturesEnabled: true,
+      aiHealthConsent: true,
     })
     .returning();
 
