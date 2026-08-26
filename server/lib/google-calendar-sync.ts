@@ -728,6 +728,7 @@ export async function syncCreatedEvents(
       try {
         let allOk = true;
         for (const ev of events) {
+          if (ev.visibility === 'private' && ev.createdBy !== userId) continue;
           const ok = await pushEventToUser(userId, ev);
           if (!ok) allOk = false;
         }
@@ -752,6 +753,11 @@ export async function syncUpdatedEvent(event: CalendarEvent): Promise<void> {
       .from(googleCalendarEventLinks)
       .where(eq(googleCalendarEventLinks.eventId, event.id));
     for (const link of links) {
+      if (event.visibility === 'private' && link.userId !== event.createdBy) {
+        await syncDeletedEvents([link]);
+        await db.delete(googleCalendarEventLinks).where(eq(googleCalendarEventLinks.id, link.id));
+        continue;
+      }
       try {
         const result = await alignGoogleEventToLatest(
           link.userId,
@@ -846,6 +852,7 @@ export async function backfillUserCalendar(userId: string): Promise<void> {
         .where(and(eq(calendarEvents.familyId, familyId), gte(calendarEvents.date, today)));
       for (const ev of events) {
         if (existing.has(ev.id)) continue;
+        if (ev.visibility === 'private' && ev.createdBy !== userId) continue;
         if (ev.createdBy && ev.createdBy !== userId && blockRelated.has(ev.createdBy)) continue;
         if (pushed >= BACKFILL_MAX_EVENTS) return;
         await pushEventToUser(userId, ev);

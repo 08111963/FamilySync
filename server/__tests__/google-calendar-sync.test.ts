@@ -341,6 +341,48 @@ describe("google calendar sync end-to-end (fetch mockato)", { skip: hasDb ? fals
     assert.equal(conn.lastError, null);
   });
 
+  test("evento privato → viene copiato soltanto nel Google Calendar del creatore", async () => {
+    const familyId = await makeFamily();
+    const ownerId = await makeUser("private-owner", familyId);
+    const otherId = await makeUser("private-other", familyId);
+    const created = await makeDbEvent("Visita privata", ownerId, familyId);
+    const [privateEvent] = await db
+      .update(calendarEvents)
+      .set({ visibility: "private" })
+      .where(eq(calendarEvents.id, created.id))
+      .returning();
+
+    await syncCreatedEvents(familyId, [privateEvent as CalendarEvent], ownerId);
+
+    const posts = calls.filter((c) => c.url === CAL_PREFIX && c.method === "POST");
+    assert.equal(posts.length, 1, "nessuna copia dell'evento privato per gli altri membri");
+    const links = await getLinksForEvents([created.id]);
+    assert.deepEqual(links.map((link) => link.userId), [ownerId]);
+    assert.ok(!links.some((link) => link.userId === otherId));
+  });
+
+  test("evento reso privato → rimuove le copie Google degli altri membri", async () => {
+    const familyId = await makeFamily();
+    const ownerId = await makeUser("private-update-owner", familyId);
+    const otherId = await makeUser("private-update-other", familyId);
+    const created = await makeDbEvent("Evento da rendere privato", ownerId, familyId);
+    await syncCreatedEvents(familyId, [created], ownerId);
+    calls = [];
+
+    const [privateEvent] = await db
+      .update(calendarEvents)
+      .set({ visibility: "private" })
+      .where(eq(calendarEvents.id, created.id))
+      .returning();
+    await syncUpdatedEvent(privateEvent as CalendarEvent);
+
+    const deletes = calls.filter((c) => c.method === "DELETE");
+    assert.equal(deletes.length, 1, "la copia Google dell'altro membro viene rimossa");
+    const links = await getLinksForEvents([created.id]);
+    assert.deepEqual(links.map((link) => link.userId), [ownerId]);
+    assert.ok(!links.some((link) => link.userId === otherId));
+  });
+
   test("evento modificato → PATCH sull'id Google giusto", async () => {
     const familyId = await makeFamily();
     const userId = await makeUser("update", familyId);

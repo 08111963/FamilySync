@@ -83,4 +83,7 @@ test('hardening: il feed ICS non espone description e location', async () => {
   assert.doesNotMatch(src, /`LOCATION:/);
   // Anti-indicizzazione sul feed
   assert.match(src, /X-Robots-Tag',\s*'noindex, nofollow'/);
+  // Il link è della famiglia e non identifica chi lo apre: gli eventi "Solo tu"
+  // non devono mai entrare nel feed condivisibile.
+  assert.match(src, /eq\(calendarEvents\.visibility,\s*"family"\)/);
 });

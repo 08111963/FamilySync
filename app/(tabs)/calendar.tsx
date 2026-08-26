@@ -264,7 +264,15 @@ export default function CalendarScreen() {
                   <View style={[styles.eventColorBar, { backgroundColor: event.color }]} />
                   <View style={styles.eventContent}>
                     <View style={styles.eventHeader}>
-                      <Text style={[styles.eventTitle, { color: colors.text }]}>{event.title}</Text>
+                      <View style={styles.eventTitleRow}>
+                        <Text style={[styles.eventTitle, { color: colors.text }]}>{event.title}</Text>
+                        {event.visibility === "private" && (
+                          <View style={[styles.privateBadge, { backgroundColor: colors.primary + "18" }]}>
+                            <Ionicons name="lock-closed-outline" size={12} color={colors.primary} />
+                            <Text style={[styles.privateBadgeText, { color: colors.primary }]}>Solo tu</Text>
+                          </View>
+                        )}
+                      </View>
                       <View style={styles.eventActions}>
                         {Platform.OS !== "web" && (
                           <Pressable
@@ -520,6 +528,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+  },
+  eventTitleRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  privateBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  privateBadgeText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
   },
   eventTitle: {
     fontSize: 16,

@@ -22,6 +22,7 @@ import { z } from "zod";
 export const roleEnum = pgEnum("role", ["admin", "adult", "teen", "child"]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["free", "premium", "canceled"]);
 export const eventCategoryEnum = pgEnum("event_category", ["work", "school", "sport", "health", "social", "family", "other"]);
+export const eventVisibilityEnum = pgEnum("event_visibility", ["family", "private"]);
 export const reportTargetTypeEnum = pgEnum("report_target_type", ["calendar_event", "shopping_item", "chore", "user"]);
 export const reportReasonEnum = pgEnum("report_reason", ["spam", "harassment", "hate", "sexual", "violence", "other"]);
 export const reportStatusEnum = pgEnum("report_status", ["open", "actioned", "dismissed"]);
@@ -170,6 +171,7 @@ export const calendarEvents = pgTable("calendar_events", {
   location: varchar("location", { length: 255 }),
   color: varchar("color", { length: 7 }).notNull(),
   memberId: uuid("member_id").references(() => familyMembers.id, { onDelete: "set null" }),
+  visibility: eventVisibilityEnum("visibility").default("family").notNull(),
   recurrenceRule: text("recurrence_rule"),
   // Identificatore condiviso dalle occorrenze materializzate della stessa serie
   // ricorrente: permette di eliminare "tutta la serie" senza ambiguità.

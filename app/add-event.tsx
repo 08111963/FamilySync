@@ -82,6 +82,9 @@ export default function AddEventScreen() {
       ""
   );
   const [selectedColor, setSelectedColor] = useState(editingEvent?.color || EVENT_COLORS[0]);
+  const [visibility, setVisibility] = useState<"family" | "private">(
+    editingEvent?.visibility === "private" ? "private" : "family"
+  );
   const [repeat, setRepeat] = useState<RepeatValue>("none");
   // Date aggiuntive proposte dall'AI (es. "giovedì e venerdì prossimo" = 2
   // eventi singoli): al salvataggio viene creato un evento anche per ognuna.
@@ -105,6 +108,7 @@ export default function AddEventScreen() {
     setIsAllDay(!!editingEvent.allDay);
     if (editingEvent.memberId) setSelectedMember(editingEvent.memberId);
     if (editingEvent.color) setSelectedColor(editingEvent.color);
+    setVisibility(editingEvent.visibility === "private" ? "private" : "family");
     setHydratedEdit(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingEvent, hydratedEdit]);
@@ -212,8 +216,9 @@ export default function AddEventScreen() {
           time: isAllDay ? null : time || null,
           endTime: isAllDay ? null : endTime || null,
           allDay: isAllDay,
-          memberId: selectedMember || null,
+          memberId: visibility === "family" ? selectedMember || null : null,
           color: selectedColor,
+          visibility,
         } as unknown as Parameters<typeof updateEvent>[1]);
         router.back();
         return;
@@ -231,9 +236,10 @@ export default function AddEventScreen() {
           date: extraDate,
           time: isAllDay ? undefined : time || undefined,
           endTime: isAllDay ? undefined : endTime || undefined,
-          memberId: selectedMember || undefined,
+          memberId: visibility === "family" ? selectedMember || undefined : undefined,
           color: selectedColor,
           allDay: isAllDay,
+          visibility,
         });
       }
       addEvent({
@@ -243,9 +249,10 @@ export default function AddEventScreen() {
         date,
         time: isAllDay ? undefined : time || undefined,
         endTime: isAllDay ? undefined : endTime || undefined,
-        memberId: selectedMember || undefined,
+        memberId: visibility === "family" ? selectedMember || undefined : undefined,
         color: selectedColor,
         allDay: isAllDay,
+        visibility,
         recurrenceRule:
           repeat === "none"
             ? undefined
@@ -650,7 +657,61 @@ export default function AddEventScreen() {
         </View>
         )}
 
-        {data.members.length > 0 && (
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: colors.text }]}>Visibilità</Text>
+          <View style={styles.visibilityOptions}>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setVisibility("family");
+              }}
+              style={[
+                styles.visibilityOption,
+                {
+                  backgroundColor: visibility === "family" ? colors.primary : colors.surface,
+                  borderColor: visibility === "family" ? colors.primary : colors.border,
+                },
+              ]}
+              testID="event-visibility-family"
+            >
+              <Ionicons name="people-outline" size={18} color={visibility === "family" ? "#FFFFFF" : colors.textSecondary} />
+              <View style={styles.visibilityCopy}>
+                <Text style={[styles.visibilityTitle, { color: visibility === "family" ? "#FFFFFF" : colors.text }]}>
+                  Tutti in famiglia
+                </Text>
+                <Text style={[styles.visibilityHint, { color: visibility === "family" ? "#FFFFFFCC" : colors.textSecondary }]}>
+                  L’evento è visibile a tutti i membri.
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setVisibility("private");
+              }}
+              style={[
+                styles.visibilityOption,
+                {
+                  backgroundColor: visibility === "private" ? colors.primary : colors.surface,
+                  borderColor: visibility === "private" ? colors.primary : colors.border,
+                },
+              ]}
+              testID="event-visibility-private"
+            >
+              <Ionicons name="lock-closed-outline" size={18} color={visibility === "private" ? "#FFFFFF" : colors.textSecondary} />
+              <View style={styles.visibilityCopy}>
+                <Text style={[styles.visibilityTitle, { color: visibility === "private" ? "#FFFFFF" : colors.text }]}>
+                  Solo tu
+                </Text>
+                <Text style={[styles.visibilityHint, { color: visibility === "private" ? "#FFFFFFCC" : colors.textSecondary }]}>
+                  Non sarà visibile né notificato agli altri membri.
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+
+        {visibility === "family" && data.members.length > 0 && (
           <View style={styles.field}>
             <Text style={[styles.label, { color: colors.text }]}>Assegna a</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberScroll}>
@@ -813,6 +874,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  visibilityOptions: {
+    gap: 10,
+  },
+  visibilityOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  visibilityCopy: {
+    flex: 1,
+  },
+  visibilityTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  visibilityHint: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
   },
   repeatOption: {
     paddingVertical: 8,

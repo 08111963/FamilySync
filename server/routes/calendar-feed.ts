@@ -133,7 +133,11 @@ router.get('/:token', async (req: Request, res: Response) => {
         updatedAt: calendarEvents.updatedAt,
       })
       .from(calendarEvents)
-      .where(and(eq(calendarEvents.familyId, family.id), gte(calendarEvents.date, fromStr)));
+        .where(and(
+          eq(calendarEvents.familyId, family.id),
+          gte(calendarEvents.date, fromStr),
+          eq(calendarEvents.visibility, "family"),
+        ));
 
     const lines: string[] = [
       'BEGIN:VCALENDAR',

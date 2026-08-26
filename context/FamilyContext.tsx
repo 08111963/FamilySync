@@ -55,6 +55,7 @@ interface CalendarEvent {
   location?: string;
   color: string;
   memberId?: string;
+  visibility?: "family" | "private";
   recurrenceRule?: string;
   createdBy: string;
 }

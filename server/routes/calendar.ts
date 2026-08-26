@@ -5,7 +5,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
 import { calendarEvents, familyMembers, families, users } from '../../shared/schema';
-import { eq, and, gte, lte, isNull, inArray } from 'drizzle-orm';
+import { eq, and, or, gte, lte, isNull, inArray } from 'drizzle-orm';
 import { authenticate, blockChildAccount, CHILD_FORBIDDEN } from '../middleware/auth';
 import { requireFamilyMember } from '../middleware/family';
 import { broadcastToFamily, notifyUserInFamily } from '../lib/websocket';
@@ -104,6 +104,7 @@ export const createEventSchema = z.object({
   location: cleanText(z.string().max(500)).optional(),
   color: z.string().optional().default("#6366F1"),
   memberId: z.string().optional(),
+  visibility: z.enum(["family", "private"]).optional().default("family"),
   recurrenceRule: z.string().optional(),
 });
 
@@ -118,6 +119,7 @@ export const updateEventSchema = z.object({
   location: cleanText(z.string().max(500)).nullable().optional(),
   color: z.string().optional(),
   memberId: z.string().nullable().optional(),
+  visibility: z.enum(["family", "private"]).optional(),
   recurrenceRule: z.string().nullable().optional(),
 }).strict();
 
@@ -198,6 +200,11 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
     }
     const blockFilter = applyBlockedFilter(calendarEvents.createdBy, blockedIds);
     if (blockFilter) conditions.push(blockFilter);
+    // Gli eventi privati sono leggibili esclusivamente dal loro autore.
+    conditions.push(or(
+      eq(calendarEvents.visibility, "family"),
+      eq(calendarEvents.createdBy, req.user!.userId),
+    )!);
 
     const events = await db.select().from(calendarEvents).where(and(...conditions));
 
@@ -257,14 +264,19 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
     // Un solo broadcast anche per gli eventi ricorrenti: i client ricaricano
     // comunque l'intera lista (una raffica di 50+ messaggi faceva scattare il
     // rate limiter globale e il calendario restava vuoto).
-    broadcastToFamily(familyId, 'event_created', event);
-    void notifyAssignedMember(familyId, event, req.user!.userId);
+    if (event.visibility === "private") {
+      await notifyUserInFamily(familyId, req.user!.userId, 'event_created', event);
+    } else {
+      broadcastToFamily(familyId, 'event_created', event);
+      void notifyAssignedMember(familyId, event, req.user!.userId);
+    }
     // Scrittura immediata nei Google Calendar collegati (in background).
     void syncCreatedEvents(familyId, inserted, req.user!.userId);
 
     // Push agli altri membri della famiglia (l'assegnatario riceve già la sua
     // notifica dedicata; esclusi anche gli utenti in blocco reciproco col creatore).
     void (async () => {
+      if (event.visibility === "private") return;
       const creatorId = req.user!.userId;
       const excluded = new Set<string>(await getBlockRelatedUserIds(creatorId, familyId));
       excluded.add(creatorId);
@@ -290,6 +302,7 @@ router.post('/:familyId', authenticate, requireFamilyMember(), async (req: Reque
     // gli utenti in blocco reciproco). UNA sola email anche per le serie
     // ricorrenti: l'inserimento della serie avviene in questa singola POST.
     void (async () => {
+      if (event.visibility === "private") return;
       if (!isEmailConfigured()) return;
       const creatorId = req.user!.userId;
       const blockRelated = new Set<string>(await getBlockRelatedUserIds(creatorId, familyId));
@@ -356,16 +369,27 @@ router.put('/:familyId/:eventId', authenticate, requireFamilyMember(), async (re
       });
     }
 
+    const [existing] = await db
+      .select({ createdBy: calendarEvents.createdBy, visibility: calendarEvents.visibility })
+      .from(calendarEvents)
+      .where(and(eq(calendarEvents.id, eventId), eq(calendarEvents.familyId, familyId)))
+      .limit(1);
+    if (!existing) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Evento non trovato" } });
+    }
+    // Un evento privato non può essere né scoperto né modificato dagli altri
+    // membri. Solo il creatore può rendere privato un evento condiviso.
+    if (existing.visibility === "private" && existing.createdBy !== req.user!.userId) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Evento non trovato" } });
+    }
+    if (parsed.data.visibility === "private" && existing.createdBy !== req.user!.userId) {
+      return res.status(403).json({
+        error: { code: "PRIVATE_EVENT_OWNER_ONLY", message: "Solo chi ha creato l'evento può renderlo privato" },
+      });
+    }
     // Account bambino: può modificare SOLO gli eventi creati da sé.
-    if (req.user!.isChildAccount) {
-      const [existing] = await db
-        .select({ createdBy: calendarEvents.createdBy })
-        .from(calendarEvents)
-        .where(and(eq(calendarEvents.id, eventId), eq(calendarEvents.familyId, familyId)))
-        .limit(1);
-      if (existing && existing.createdBy !== req.user!.userId) {
-        return res.status(403).json(CHILD_FORBIDDEN);
-      }
+    if (req.user!.isChildAccount && existing.createdBy !== req.user!.userId) {
+      return res.status(403).json(CHILD_FORBIDDEN);
     }
 
     const [event] = await db.update(calendarEvents)
@@ -377,9 +401,18 @@ router.put('/:familyId/:eventId', authenticate, requireFamilyMember(), async (re
       return res.status(404).json({ error: { code: "NOT_FOUND", message: "Evento non trovato" } });
     }
 
-    broadcastToFamily(familyId, 'event_updated', event);
+    if (event.visibility === "private") {
+      await notifyUserInFamily(familyId, req.user!.userId, 'event_updated', event);
+    } else {
+      broadcastToFamily(familyId, 'event_updated', event);
+    }
     // Aggiornamento immediato nei Google Calendar collegati (in background).
     void syncUpdatedEvent(event);
+    if (event.visibility === "family") {
+      // Se un evento prima privato diventa condiviso, crea le copie Google
+      // mancanti anche per gli altri membri collegati.
+      void syncCreatedEvents(familyId, [event], event.createdBy);
+    }
     res.json(event);
   } catch (error) {
     logger.error('Update event error', { error: String(error) });
@@ -405,6 +438,10 @@ router.delete('/:familyId/:eventId', authenticate, requireFamilyMember(), async 
     if (!target) {
       broadcastToFamily(familyId, 'event_deleted', { eventId, scope: 'single' });
       return res.json({ message: 'Evento eliminato' });
+    }
+
+    if (target.visibility === "private" && target.createdBy !== req.user!.userId) {
+      return res.status(404).json({ error: { code: "NOT_FOUND", message: "Evento non trovato" } });
     }
 
     // Account bambino: può eliminare SOLO gli eventi creati da sé.
@@ -453,7 +490,12 @@ router.delete('/:familyId/:eventId', authenticate, requireFamilyMember(), async 
     // Rimozione immediata dai Google Calendar collegati (in background).
     void syncDeletedEvents(gcalLinks);
 
-    broadcastToFamily(familyId, 'event_deleted', { eventId, scope: scope === 'series' ? 'series' : 'single' });
+    const deletionEvent = { eventId, scope: scope === 'series' ? 'series' as const : 'single' as const };
+    if (target.visibility === "private") {
+      await notifyUserInFamily(familyId, req.user!.userId, 'event_deleted', deletionEvent);
+    } else {
+      broadcastToFamily(familyId, 'event_deleted', deletionEvent);
+    }
     res.json({ message: 'Evento eliminato' });
   } catch (error) {
     logger.error('Delete event error', { error: String(error) });

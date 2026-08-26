@@ -88,6 +88,7 @@ async function processKind(kind: ReminderKind, date: string): Promise<void> {
 
   for (const event of events) {
     try {
+      if (event.visibility === 'private') continue;
       const claimed = await claimReminder(event.id, kind);
       if (!claimed) continue;
 

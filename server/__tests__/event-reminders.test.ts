@@ -36,6 +36,7 @@ describe("event reminders (DB)", { skip: hasDb ? false : "DATABASE_URL non impos
   let eventTodayId: string;
   let eventTomorrowId: string;
   let eventFarId: string;
+  let privateTodayId: string;
   const savedResendKey = process.env.RESEND_API_KEY;
 
   const TZ = "Europe/Rome";
@@ -78,6 +79,18 @@ describe("event reminders (DB)", { skip: hasDb ? false : "DATABASE_URL non impos
     eventTodayId = await mkEvent(today);
     eventTomorrowId = await mkEvent(addDays(today, 1));
     eventFarId = await mkEvent(addDays(today, 10));
+    const [privateEvent] = await db
+      .insert(calendarEvents)
+      .values({
+        familyId,
+        title: "Evento privato senza promemoria famiglia",
+        date: today,
+        color: "#ff0000",
+        createdBy: userId,
+        visibility: "private",
+      })
+      .returning({ id: calendarEvents.id });
+    privateTodayId = privateEvent!.id;
   });
 
   after(async () => {
@@ -107,6 +120,12 @@ describe("event reminders (DB)", { skip: hasDb ? false : "DATABASE_URL non impos
       .from(eventReminderLog)
       .where(eq(eventReminderLog.eventId, eventFarId));
     assert.equal(logFar.length, 0);
+
+    const logPrivate = await db
+      .select()
+      .from(eventReminderLog)
+      .where(eq(eventReminderLog.eventId, privateTodayId));
+    assert.equal(logPrivate.length, 0, "un evento privato non crea promemoria alla famiglia");
   });
 
   test("secondo giro: nessun doppio invio (dedup)", async () => {
