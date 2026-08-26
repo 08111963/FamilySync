@@ -367,9 +367,13 @@ export default function BillsScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 12, backgroundColor: colors.background }]}>
-        <View>
+        <View style={styles.headerCopy}>
           <Text style={[styles.headerTitle, { color: colors.text }]}>Bollette</Text>
-          <Text style={[styles.headerSub, { color: filter === "scaduta" && groups.scaduta.data.length > 0 ? STATUS_META.scaduta.color : colors.textSecondary }]}>
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={[styles.headerSub, { color: filter === "scaduta" && groups.scaduta.data.length > 0 ? STATUS_META.scaduta.color : colors.textSecondary }]}
+          >
             {headerSub}
           </Text>
         </View>
@@ -530,16 +534,18 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "flex-end",
-    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingBottom: 12,
+    gap: 12,
   },
+  headerCopy: { flex: 1, minWidth: 0 },
   headerTitle: { fontSize: 28, fontFamily: "Inter_700Bold" },
   headerSub: { fontSize: 14, fontFamily: "Inter_400Regular", marginTop: 2 },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    flexShrink: 0,
+    gap: 8,
   },
   budgetButton: {
     height: 44,
