@@ -18,13 +18,35 @@ function getBaseUrl(req: Request): string {
   return config.getBaseUrl(req);
 }
 
-function htmlWrapper(title: string, body: string, lastUpdated: string = LAST_UPDATED): string {
+const OG_IMAGE = "https://familysync.eu/og-image.png";
+
+function htmlWrapper(
+  title: string,
+  description: string,
+  canonicalUrl: string,
+  body: string,
+  lastUpdated: string = LAST_UPDATED
+): string {
+  const fullTitle = `${title} - ${APP_NAME}`;
   return `<!DOCTYPE html>
 <html lang="it">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} - ${APP_NAME}</title>
+  <title>${fullTitle}</title>
+  <meta name="description" content="${description}">
+  <link rel="canonical" href="${canonicalUrl}">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="${APP_NAME}">
+  <meta property="og:locale" content="it_IT">
+  <meta property="og:title" content="${fullTitle}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:url" content="${canonicalUrl}">
+  <meta property="og:image" content="${OG_IMAGE}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${fullTitle}">
+  <meta name="twitter:description" content="${description}">
+  <meta name="twitter:image" content="${OG_IMAGE}">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -133,7 +155,7 @@ function renderPolicyBlocks(blocks: PolicyBlock[]): string {
   return parts.join('\n    ');
 }
 
-router.get('/privacy', (_req: Request, res: Response) => {
+router.get('/privacy', (req: Request, res: Response) => {
   // Il contenuto proviene dalla FONTE UNICA condivisa (shared/privacy-policy-content.ts),
   // la stessa usata dalla schermata mobile e dal DOCX di consegna.
   const sectionsHtml = PRIVACY_POLICY_SECTIONS.map(
@@ -146,11 +168,13 @@ router.get('/privacy', (_req: Request, res: Response) => {
     ${sectionsHtml}
   `;
 
+  const canonicalUrl = `${getBaseUrl(req)}/legal/privacy`;
+  const description = `Informativa sulla privacy di ${APP_NAME}: quali dati personali raccogliamo, come li utilizziamo, come li proteggiamo e i tuoi diritti GDPR.`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(htmlWrapper('Privacy Policy', body));
+  res.send(htmlWrapper('Privacy Policy', description, canonicalUrl, body));
 });
 
-router.get('/minori', (_req: Request, res: Response) => {
+router.get('/minori', (req: Request, res: Response) => {
   const body = `
     <p><strong>Informativa privacy semplificata per ragazze e ragazzi</strong></p>
 
@@ -192,11 +216,13 @@ router.get('/minori', (_req: Request, res: Response) => {
     <p>Un adulto della tua famiglia puo' scriverci a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
   `;
 
+  const canonicalUrl = `${getBaseUrl(req)}/legal/minori`;
+  const description = `Informativa privacy semplificata per ragazze e ragazzi che usano ${APP_NAME}, con indicazioni su dati, accesso e sicurezza.`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(htmlWrapper('Privacy per Ragazze e Ragazzi', body));
+  res.send(htmlWrapper('Privacy per Ragazze e Ragazzi', description, canonicalUrl, body));
 });
 
-router.get('/terms', (_req: Request, res: Response) => {
+router.get('/terms', (req: Request, res: Response) => {
   const body = `
     <h2>1. Accettazione dei Termini</h2>
     <p>Utilizzando ${APP_NAME}, accetti di essere vincolato dai presenti Termini d'Uso. Se non accetti questi termini, ti preghiamo di non utilizzare l'applicazione.</p>
@@ -357,11 +383,13 @@ router.get('/terms', (_req: Request, res: Response) => {
     <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
   `;
 
+  const canonicalUrl = `${getBaseUrl(req)}/legal/terms`;
+  const description = `Termini d'Uso di ${APP_NAME}: regole di utilizzo del servizio, responsabilità, abbonamenti Premium e condizioni generali per l'accesso all'app.`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(htmlWrapper("Termini d'Uso", body, TERMS_DATE));
+  res.send(htmlWrapper("Termini d'Uso", description, canonicalUrl, body, TERMS_DATE));
 });
 
-router.get('/delete-account', (_req: Request, res: Response) => {
+router.get('/delete-account', (req: Request, res: Response) => {
   const body = `
     <h2>Come eliminare il tuo account ${APP_NAME}</h2>
     <p>Questa pagina spiega come eliminare il tuo account ${APP_NAME} e quali dati vengono rimossi. L'eliminazione e <strong>definitiva e irreversibile</strong>.</p>
@@ -407,8 +435,10 @@ router.get('/delete-account', (_req: Request, res: Response) => {
     <p>Per qualsiasi domanda relativa all'eliminazione del tuo account, scrivi a <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
   `;
 
+  const canonicalUrl = `${getBaseUrl(req)}/legal/delete-account`;
+  const description = `Come eliminare il tuo account ${APP_NAME}: procedura guidata dall'app, richiesta via email, dati rimossi e gestione degli abbonamenti Premium.`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(htmlWrapper("Eliminazione Account", body));
+  res.send(htmlWrapper("Eliminazione Account", description, canonicalUrl, body));
 });
 
 export default router;

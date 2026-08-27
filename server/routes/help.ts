@@ -2,11 +2,13 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { config } from '../lib/config';
 
 const router = Router();
 
 const APP_NAME = "FamilySync";
 const DEVELOPER = "FamilySync Team";
+const OG_IMAGE = "https://familysync.eu/og-image.png";
 
 function markdownToHtml(md: string): string {
   let html = md;
@@ -192,16 +194,36 @@ function extractFaqJsonLd(md: string): string | null {
   return JSON.stringify(schema, null, 2);
 }
 
-function htmlWrapper(title: string, body: string, faqJsonLd?: string | null): string {
+function htmlWrapper(
+  title: string,
+  description: string,
+  canonicalUrl: string,
+  body: string,
+  faqJsonLd?: string | null
+): string {
   const ldScript = faqJsonLd
     ? `\n  <script type="application/ld+json">\n${faqJsonLd}\n  </script>`
     : '';
+  const fullTitle = `${title} - ${APP_NAME}`;
   return `<!DOCTYPE html>
 <html lang="it">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} - ${APP_NAME}</title>${ldScript}
+  <title>${fullTitle}</title>
+  <meta name="description" content="${description}">
+  <link rel="canonical" href="${canonicalUrl}">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="${APP_NAME}">
+  <meta property="og:locale" content="it_IT">
+  <meta property="og:title" content="${fullTitle}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:url" content="${canonicalUrl}">
+  <meta property="og:image" content="${OG_IMAGE}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${fullTitle}">
+  <meta name="twitter:description" content="${description}">
+  <meta name="twitter:image" content="${OG_IMAGE}">${ldScript}
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -351,16 +373,18 @@ function htmlWrapper(title: string, body: string, faqJsonLd?: string | null): st
 </html>`;
 }
 
-router.get('/user-guide', (_req: Request, res: Response) => {
+router.get('/user-guide', (req: Request, res: Response) => {
   try {
     const mdPath = path.resolve(process.cwd(), 'docs', 'guida-utente.md');
     const mdContent = fs.readFileSync(mdPath, 'utf-8');
     const bodyHtml = markdownToHtml(mdContent);
     const faqJsonLd = extractFaqJsonLd(mdContent);
+    const canonicalUrl = `${config.getBaseUrl(req)}/help/user-guide`;
+    const description = `Guida completa a ${APP_NAME}: calendario condiviso, lista spesa, faccende domestiche, bollette, chat familiare, ricette e piani pasti. Tutto quello che puoi fare con l'app.`;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.removeHeader('X-Frame-Options');
     res.setHeader('Content-Security-Policy', "frame-ancestors *");
-    res.send(htmlWrapper('Guida Utente', bodyHtml, faqJsonLd));
+    res.send(htmlWrapper('Guida Utente', description, canonicalUrl, bodyHtml, faqJsonLd));
   } catch (err) {
     res.status(500).send('Errore nel caricamento della guida utente.');
   }
