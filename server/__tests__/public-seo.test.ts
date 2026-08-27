@@ -84,6 +84,8 @@ const appShellPages: SeoPage[] = [
   },
 ];
 
+const socialImageUrl = "https://familysync.eu/og-image.png";
+
 function parseAttributes(tag: string): Map<string, string> {
   const attributes = new Map<string, string>();
   const attributePattern = /([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
@@ -262,5 +264,25 @@ describe("metadati SEO nel server di produzione", () => {
       });
       assert.equal(response.headers.get("x-robots-tag"), "noindex, nofollow", page.path);
     }
+  });
+
+  test("l'immagine social pubblica è disponibile senza autenticazione", async () => {
+    const imagePath = new URL(socialImageUrl).pathname;
+    const response = await fetch(`${baseUrl}${imagePath}`);
+
+    assert.equal(
+      response.status,
+      200,
+      `Immagine social non disponibile pubblicamente: ${socialImageUrl}`,
+    );
+    assert.match(
+      response.headers.get("content-type") ?? "",
+      /^image\//i,
+      `L'asset social ${socialImageUrl} non restituisce un Content-Type immagine`,
+    );
+    assert.ok(
+      (await response.arrayBuffer()).byteLength > 0,
+      `L'asset social ${socialImageUrl} è vuoto`,
+    );
   });
 });

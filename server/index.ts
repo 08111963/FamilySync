@@ -299,6 +299,7 @@ const RESET_PASSWORD_META: RouteMeta = {
   description: "Crea una nuova password sicura per il tuo account FamilySync.",
 };
 const SOCIAL_IMAGE = "https://familysync.eu/og-image.png";
+const SOCIAL_IMAGE_PATH = path.resolve(process.cwd(), "assets/images/icon-512.png");
 
 const PUBLIC_ROUTE_META: Record<string, RouteMeta> = {
   "/": {
@@ -524,6 +525,19 @@ export function configureExpoAndLanding(app: express.Application) {
   app.get("/api/version", (_req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
     res.json({ version: buildVersion || "unknown" });
+  });
+
+  // L'immagine usata dai meta tag social deve restare raggiungibile senza
+  // autenticazione. Un handler esplicito evita che la SPA intercetti l'URL
+  // mancante restituendo HTML con status 200, che produce anteprime senza foto.
+  app.get("/og-image.png", (_req: Request, res: Response) => {
+    if (!fs.existsSync(SOCIAL_IMAGE_PATH)) {
+      return res
+        .status(404)
+        .type("text/plain")
+        .send("Social preview image is not available");
+    }
+    return res.sendFile(SOCIAL_IMAGE_PATH);
   });
 
   log(
