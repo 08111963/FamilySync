@@ -2,6 +2,7 @@ import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
 import type { Server } from "node:http";
+import sharp from "sharp";
 import { configureExpoAndLanding } from "../index";
 import helpRoutes from "../routes/help";
 import legalRoutes from "../routes/legal";
@@ -85,6 +86,8 @@ const appShellPages: SeoPage[] = [
 ];
 
 const socialImageUrl = "https://familysync.eu/og-image.png";
+const socialImageWidth = 1200;
+const socialImageHeight = 630;
 
 function parseAttributes(tag: string): Map<string, string> {
   const attributes = new Map<string, string>();
@@ -134,6 +137,8 @@ function assertSeoMetadata(html: string, page: SeoPage, baseUrl: string): void {
   assert.equal(findMetaContent(html, "property", "og:description"), page.description);
   assert.equal(findMetaContent(html, "property", "og:url"), canonical);
   assert.equal(findMetaContent(html, "property", "og:image"), "https://familysync.eu/og-image.png");
+  assert.equal(findMetaContent(html, "property", "og:image:width"), String(socialImageWidth));
+  assert.equal(findMetaContent(html, "property", "og:image:height"), String(socialImageHeight));
 
   assert.equal(findMetaContent(html, "name", "twitter:card"), "summary_large_image");
   assert.equal(findMetaContent(html, "name", "twitter:title"), page.title);
@@ -280,9 +285,12 @@ describe("metadati SEO nel server di produzione", () => {
       /^image\//i,
       `L'asset social ${socialImageUrl} non restituisce un Content-Type immagine`,
     );
-    assert.ok(
-      (await response.arrayBuffer()).byteLength > 0,
-      `L'asset social ${socialImageUrl} è vuoto`,
-    );
+    const imageBytes = Buffer.from(await response.arrayBuffer());
+    assert.ok(imageBytes.byteLength > 0, `L'asset social ${socialImageUrl} è vuoto`);
+
+    const metadata = await sharp(imageBytes).metadata();
+    assert.equal(metadata.format, "png", `L'asset social ${socialImageUrl} deve essere PNG`);
+    assert.equal(metadata.width, socialImageWidth, `L'asset social ${socialImageUrl} deve essere largo ${socialImageWidth}px`);
+    assert.equal(metadata.height, socialImageHeight, `L'asset social ${socialImageUrl} deve essere alto ${socialImageHeight}px`);
   });
 });

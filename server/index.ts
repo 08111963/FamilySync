@@ -299,7 +299,9 @@ const RESET_PASSWORD_META: RouteMeta = {
   description: "Crea una nuova password sicura per il tuo account FamilySync.",
 };
 const SOCIAL_IMAGE = "https://familysync.eu/og-image.png";
-const SOCIAL_IMAGE_PATH = path.resolve(process.cwd(), "assets/images/icon-512.png");
+const SOCIAL_IMAGE_PATH = path.resolve(process.cwd(), "assets/images/og-image.png");
+const SOCIAL_IMAGE_WIDTH = 1200;
+const SOCIAL_IMAGE_HEIGHT = 630;
 
 const PUBLIC_ROUTE_META: Record<string, RouteMeta> = {
   "/": {
@@ -360,6 +362,8 @@ function buildWelcomeHtml(meta: RouteMeta, canonical: string): string {
   <meta property="og:site_name" content="FamilySync">
   <meta property="og:locale" content="it_IT">
   <meta property="og:image" content="${SOCIAL_IMAGE}">
+   <meta property="og:image:width" content="${SOCIAL_IMAGE_WIDTH}">
+   <meta property="og:image:height" content="${SOCIAL_IMAGE_HEIGHT}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${title}">
   <meta name="twitter:description" content="${description}">
@@ -412,6 +416,8 @@ function buildSeoTags(meta: RouteMeta, canonical: string): string {
     `<meta property="og:site_name" content="FamilySync">`,
     `<meta property="og:locale" content="it_IT">`,
     `<meta property="og:image" content="${SOCIAL_IMAGE}">`,
+     `<meta property="og:image:width" content="${SOCIAL_IMAGE_WIDTH}">`,
+     `<meta property="og:image:height" content="${SOCIAL_IMAGE_HEIGHT}">`,
     `<meta name="twitter:card" content="summary_large_image">`,
     `<meta name="twitter:title" content="${esc(meta.title)}">`,
     `<meta name="twitter:description" content="${esc(meta.description)}">`,

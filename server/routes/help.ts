@@ -9,6 +9,8 @@ const router = Router();
 const APP_NAME = "FamilySync";
 const DEVELOPER = "FamilySync Team";
 const OG_IMAGE = "https://familysync.eu/og-image.png";
+const OG_IMAGE_WIDTH = 1200;
+const OG_IMAGE_HEIGHT = 630;
 
 function markdownToHtml(md: string): string {
   let html = md;
@@ -220,6 +222,8 @@ function htmlWrapper(
   <meta property="og:description" content="${description}">
   <meta property="og:url" content="${canonicalUrl}">
   <meta property="og:image" content="${OG_IMAGE}">
+  <meta property="og:image:width" content="${OG_IMAGE_WIDTH}">
+  <meta property="og:image:height" content="${OG_IMAGE_HEIGHT}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${fullTitle}">
   <meta name="twitter:description" content="${description}">

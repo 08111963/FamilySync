@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">FamilySync</title>
+  <desc id="desc">La tua famiglia, perfettamente coordinata</desc>
+  <defs>
+    <linearGradient id="wash" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFF9F1"/>
+      <stop offset="1" stop-color="#F2FBF8"/>
+    </linearGradient>
+    <linearGradient id="coralTeal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF6B6B"/>
+      <stop offset="1" stop-color="#4ECDC4"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#25454B" flood-opacity=".12"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" rx="34" fill="url(#wash)"/>
+  <circle cx="1090" cy="-24" r="190" fill="#4ECDC4" opacity=".16"/>
+  <circle cx="1110" cy="620" r="230" fill="#FF6B6B" opacity=".10"/>
+  <circle cx="70" cy="610" r="170" fill="#FFE66D" opacity=".22"/>
+  <path d="M0 80C170 22 232 108 370 50s206-38 302 4" fill="none" stroke="#FF6B6B" stroke-opacity=".12" stroke-width="24" stroke-linecap="round"/>
+
+  <g transform="translate(104 116)">
+    <rect width="292" height="42" rx="21" fill="#FFFFFF" opacity=".78"/>
+    <circle cx="24" cy="21" r="8" fill="#FF6B6B"/>
+    <text x="45" y="27" fill="#496166" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" letter-spacing="2">COORDINAMENTO FAMILIARE</text>
+  </g>
+  <text x="104" y="270" fill="#263B40" font-family="Arial, Helvetica, sans-serif" font-size="88" font-weight="700" letter-spacing="-3">FamilySync</text>
+  <text x="108" y="322" fill="#5B7478" font-family="Arial, Helvetica, sans-serif" font-size="29" font-weight="400">La tua famiglia, perfettamente coordinata</text>
+
+  <g transform="translate(104 394)">
+    <g>
+      <rect width="150" height="54" rx="27" fill="#FFFFFF" opacity=".86"/>
+      <circle cx="30" cy="27" r="8" fill="#74B9FF"/>
+      <text x="49" y="34" fill="#496166" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="600">Calendario</text>
+    </g>
+    <g transform="translate(164)">
+      <rect width="128" height="54" rx="27" fill="#FFFFFF" opacity=".86"/>
+      <circle cx="30" cy="27" r="8" fill="#4ECDC4"/>
+      <text x="49" y="34" fill="#496166" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="600">Spesa</text>
+    </g>
+    <g transform="translate(306)">
+      <rect width="146" height="54" rx="27" fill="#FFFFFF" opacity=".86"/>
+      <circle cx="30" cy="27" r="8" fill="#FF6B6B"/>
+      <text x="49" y="34" fill="#496166" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="600">Faccende</text>
+    </g>
+  </g>
+
+  <g transform="translate(785 94)" filter="url(#shadow)">
+    <rect width="308" height="442" rx="48" fill="#FFFFFF" opacity=".9"/>
+    <circle cx="154" cy="221" r="122" fill="#F8F7EA"/>
+    <path d="M75 208L154 146l79 62v105c0 13-11 24-24 24H99c-13 0-24-11-24-24V208Z" fill="none" stroke="url(#coralTeal)" stroke-width="22" stroke-linejoin="round"/>
+    <path d="M70 209l84-67 84 67" fill="none" stroke="url(#coralTeal)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M154 295c-8-7-55-37-55-72 0-24 27-36 46-18l9 9 9-9c19-18 46-6 46 18 0 35-47 65-55 72Z" fill="#FF6B6B"/>
+    <path d="M154 295c-8-7-55-37-55-72 0-24 27-36 46-18l9 9" fill="none" stroke="#FF8E8E" stroke-width="7" stroke-linecap="round" opacity=".75"/>
+    <text x="154" y="402" text-anchor="middle" fill="#263B40" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="700" letter-spacing="1">INSIEME, OGNI GIORNO</text>
+  </g>
+</svg>
