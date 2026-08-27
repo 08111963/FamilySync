@@ -80,6 +80,26 @@ const familyPhotoUpload = multer({
   },
 });
 
+type FamilyPhotoMutation = "upload" | "delete";
+let familyPhotoMutationHookForTests:
+  | ((mutation: FamilyPhotoMutation) => Promise<void>)
+  | null = null;
+
+/**
+ * SOLO PER TEST: sincronizza due richieste appena prima del compare-and-swap
+ * della foto, così i test possono verificare davvero il ramo di conflitto senza
+ * dipendere dai tempi casuali di rete e database.
+ */
+export function __setFamilyPhotoMutationHookForTests(
+  hook: ((mutation: FamilyPhotoMutation) => Promise<void>) | null,
+): void {
+  familyPhotoMutationHookForTests = hook;
+}
+
+async function waitForFamilyPhotoMutationHook(mutation: FamilyPhotoMutation): Promise<void> {
+  await familyPhotoMutationHookForTests?.(mutation);
+}
+
 function handleFamilyPhotoUploadError(
   err: unknown,
   _req: Request,
@@ -296,6 +316,7 @@ router.post(
         });
       }
 
+      await waitForFamilyPhotoMutationHook("upload");
       const [updatedFamily] = await db
         .update(families)
         .set({ avatarUrl: newUrl, updatedAt: new Date() })
@@ -349,6 +370,7 @@ router.delete('/:familyId/avatar', authenticate, requireFamilyMember(), async (r
       return res.json({ ok: true });
     }
 
+    await waitForFamilyPhotoMutationHook("delete");
     const [updatedFamily] = await db
       .update(families)
       .set({ avatarUrl: null, updatedAt: new Date() })
