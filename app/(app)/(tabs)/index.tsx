@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, TextInput, ActivityIndicator, Alert, Image } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, TextInput, ActivityIndicator, Alert, Image, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -19,6 +19,7 @@ import { useMediaToken } from "@/hooks/useMediaToken";
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { colors } = useTheme();
   const { data, isLoading, families, currentFamily, createFamily, getUpcomingEvents, getPendingChores, getLeaderboard, refetchAll } = useFamily();
   const { user, logout } = useAuth();
@@ -198,6 +199,7 @@ export default function HomeScreen() {
   };
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
+  const isCompactHeader = windowWidth < 640;
 
   if (isLoading) {
     return (
@@ -292,13 +294,14 @@ export default function HomeScreen() {
       contentInsetAdjustmentBehavior="automatic"
     >
       <View style={styles.header}>
-        <View style={styles.familyHeaderRow}>
+        <View style={[styles.familyHeaderRow, isCompactHeader && styles.familyHeaderRowCompact]}>
           {canEditFamilyPhoto ? (
             <Pressable
               onPress={handlePickFamilyPhoto}
               disabled={isUploadingFamilyPhoto}
               style={({ pressed }) => [
                 styles.familyPhotoButton,
+                isCompactHeader && styles.familyPhotoButtonCompact,
                 { borderColor: colors.border, opacity: pressed || isUploadingFamilyPhoto ? 0.72 : 1 },
               ]}
               accessibilityRole="button"
@@ -325,7 +328,7 @@ export default function HomeScreen() {
               </View>
             </Pressable>
           ) : (
-            <View style={[styles.familyPhotoButton, { borderColor: colors.border }]}>
+            <View style={[styles.familyPhotoButton, isCompactHeader && styles.familyPhotoButtonCompact, { borderColor: colors.border }]}>
               {familyPhotoUri ? (
                 <Image source={{ uri: familyPhotoUri }} style={styles.familyPhoto} />
               ) : (
@@ -341,12 +344,7 @@ export default function HomeScreen() {
           )}
           <View style={styles.familyHeaderContent}>
             <Text style={[styles.greeting, { color: colors.textSecondary }]}>Bentornata famiglia</Text>
-            <View style={styles.familyTitleRow}>
-              <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>{data.familyName}</Text>
-              <Text style={[styles.todayDate, { color: colors.textSecondary }]} testID="home-today-date">
-                {todayLabel}
-              </Text>
-            </View>
+            <Text style={[styles.title, isCompactHeader && styles.titleCompact, { color: colors.text }]} numberOfLines={1}>{data.familyName}</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
               {data.members.length} membr{data.members.length !== 1 ? "i" : "o"}
             </Text>
@@ -374,6 +372,21 @@ export default function HomeScreen() {
                 )}
               </View>
             )}
+          </View>
+          <View style={[
+            styles.familyDateBlock,
+            isCompactHeader && styles.familyDateBlockCompact,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}>
+            <View style={[styles.familyDateIcon, { backgroundColor: colors.primary + "16" }]}>
+              <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.familyDateText}>
+              <Text style={[styles.familyDateLabel, { color: colors.textSecondary }]}>Oggi</Text>
+              <Text style={[styles.todayDate, { color: colors.text }]} numberOfLines={2} testID="home-today-date">
+                {todayLabel}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -612,7 +625,11 @@ const styles = StyleSheet.create({
   familyHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: 16,
+  },
+  familyHeaderRowCompact: {
+    flexWrap: "wrap",
+    gap: 12,
   },
   familyPhotoButton: {
     width: 76,
@@ -621,6 +638,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: "visible",
     position: "relative",
+  },
+  familyPhotoButtonCompact: {
+    width: 68,
+    height: 68,
+    borderRadius: 20,
   },
   familyPhoto: {
     width: "100%",
@@ -654,21 +676,53 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     marginBottom: 2,
   },
-  familyTitleRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    flexWrap: "wrap",
-    columnGap: 8,
-  },
   title: {
     fontSize: 30,
     fontFamily: "Inter_700Bold",
     flexShrink: 1,
   },
+  titleCompact: {
+    fontSize: 26,
+  },
+  familyDateBlock: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 178,
+    maxWidth: 250,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  familyDateBlockCompact: {
+    flexBasis: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+  },
+  familyDateIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  familyDateText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  familyDateLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+    marginBottom: 2,
+  },
   todayDate: {
     fontSize: 13,
     fontFamily: "Inter_500Medium",
     textTransform: "capitalize",
+    lineHeight: 18,
   },
   subtitle: {
     fontSize: 16,
