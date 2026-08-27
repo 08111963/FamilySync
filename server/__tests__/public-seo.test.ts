@@ -344,7 +344,12 @@ describe("metadati SEO con export Expo statico", () => {
       });
       assert.equal(response.status, 200, page.path);
       assert.equal(response.headers.get("cache-control"), "no-store", page.path);
-      assertSeoMetadata(await response.text(), page, seoOrigin);
+      const html = await response.text();
+      assertSeoMetadata(html, page, seoOrigin);
+      if (page.path === "/welcome") {
+        assert.doesNotMatch(html, /La tua famiglia, perfettamente coordinata/);
+        assert.doesNotMatch(html, /background:linear-gradient\(160deg,#FF6B6B/);
+      }
     }
   });
 });

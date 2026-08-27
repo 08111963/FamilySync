@@ -341,67 +341,6 @@ function isNoindexRoute(routePath: string): boolean {
   );
 }
 
-function buildWelcomeHtml(meta: RouteMeta, canonical: string): string {
-  const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-  const title = esc(meta.title);
-  const description = esc(meta.description);
-  const url = esc(canonical);
-  return `<!DOCTYPE html>
-<html lang="it">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${title}</title>
-  <meta name="description" content="${description}">
-  <link rel="canonical" href="${url}">
-  <meta property="og:title" content="${title}">
-  <meta property="og:description" content="${description}">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="${url}">
-  <meta property="og:site_name" content="FamilySync">
-  <meta property="og:locale" content="it_IT">
-  <meta property="og:image" content="${SOCIAL_IMAGE}">
-   <meta property="og:image:width" content="${SOCIAL_IMAGE_WIDTH}">
-   <meta property="og:image:height" content="${SOCIAL_IMAGE_HEIGHT}">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="${title}">
-  <meta name="twitter:description" content="${description}">
-  <meta name="twitter:image" content="${SOCIAL_IMAGE}">
-  <style>
-    *,*::before,*::after{box-sizing:border-box}
-    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(160deg,#FF6B6B,#FF8E8E,#FFB5B5);min-height:100vh;color:#fff}
-    .c{max-width:480px;margin:0 auto;padding:72px 24px 48px}
-    .hero{text-align:center;margin-bottom:40px}.logo{width:80px;height:80px;border-radius:40px;background:rgba(255,255,255,.25);display:inline-flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:16px}
-    h1{font-size:40px;font-weight:700;letter-spacing:-1.5px;margin:0}.sub{font-size:16px;opacity:.85;margin-top:8px}
-    .features{display:flex;flex-direction:column;gap:12px;margin-bottom:40px}.label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;opacity:.65;margin-bottom:4px}
-    .feat{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.12);border-radius:16px;padding:16px;border:1px solid rgba(255,255,255,.08)}
-    .icon{width:52px;height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}.feat h2{font-size:16px;font-weight:600;margin:0 0 3px}.feat p{font-size:13px;opacity:.8;margin:0;line-height:1.4}
-    .cta{display:block;background:#fff;color:#FF6B6B;font-size:18px;font-weight:700;text-align:center;padding:18px;border-radius:16px;text-decoration:none;margin-bottom:20px;box-shadow:0 4px 12px rgba(0,0,0,.15)}
-    .trust,.legal{display:flex;justify-content:center;align-items:center;gap:12px;font-size:13px;opacity:.75;margin-bottom:20px;flex-wrap:wrap}.sep{width:1px;height:14px;background:rgba(255,255,255,.35)}.legal{font-size:12px;margin:0}.legal a{color:rgba(255,255,255,.7)}
-  </style>
-</head>
-<body>
-  <main class="c">
-    <header class="hero"><div class="logo" aria-hidden="true">👨‍👩‍👧‍👦</div><h1>FamilySync</h1><p class="sub">La tua famiglia, perfettamente coordinata</p></header>
-    <section class="features" aria-label="Funzionalità">
-      <p class="label">Cosa puoi fare</p>
-      <article class="feat"><div class="icon" aria-hidden="true">📅</div><div><h2>Calendario condiviso</h2><p>Organizza eventi e appuntamenti visibili a tutta la famiglia.</p></div></article>
-      <article class="feat"><div class="icon" aria-hidden="true">🛒</div><div><h2>Liste della spesa</h2><p>Crea liste collaborative, senza doppioni al supermercato.</p></div></article>
-      <article class="feat"><div class="icon" aria-hidden="true">✅</div><div><h2>Faccende con punti</h2><p>Assegna compiti, guadagna punti e scala la classifica.</p></div></article>
-      <article class="feat"><div class="icon" aria-hidden="true">✨</div><div><h2>Suggerimenti AI</h2><p>Ricevi consigli intelligenti per gestire meglio la casa.</p></div></article>
-      <article class="feat"><div class="icon" aria-hidden="true">💬</div><div><h2>Chat familiare</h2><p>Condividi messaggi, foto e file in tempo reale.</p></div></article>
-      <article class="feat"><div class="icon" aria-hidden="true">🔄</div><div><h2>Sincronizzazione real-time</h2><p>Ogni modifica si aggiorna su tutti i dispositivi.</p></div></article>
-      <article class="feat"><div class="icon" aria-hidden="true">🏆</div><div><h2>Classifica familiare</h2><p>Motiva tutti con punti e classifiche per le faccende.</p></div></article>
-    </section>
-    <a href="/login" class="cta">Inizia ora →</a>
-    <div class="trust"><span>Sicuro</span><span class="sep"></span><span>Sincronizzato</span><span class="sep"></span><span>Gratuito</span></div>
-    <nav class="legal"><a href="/legal/privacy">Privacy Policy</a><a href="/legal/terms">Termini d'uso</a><a href="/help/user-guide">Guida utente</a></nav>
-  </main>
-</body>
-</html>`;
-}
-
 function buildSeoTags(meta: RouteMeta, canonical: string): string {
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -608,7 +547,7 @@ export function configureExpoAndLanding(app: express.Application) {
       const canonical = `${baseUrl}${routePath}`;
       if (routePath === "/" || routePath === "/welcome") {
         const meta = PUBLIC_ROUTE_META[routePath] ?? PUBLIC_ROUTE_META["/welcome"];
-        const html = buildWelcomeHtml(meta, canonical);
+        const html = injectRouteMeta(baseHtml, meta, canonical);
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.setHeader("Cache-Control", "no-store");
         return res.send(html);
