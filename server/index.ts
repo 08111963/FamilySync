@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
+import { fileURLToPath } from "node:url";
 import { config } from './lib/config';
 import { logger, generateRequestId } from './lib/logger';
 import { seedOwnerEntitlements } from './lib/entitlements';
@@ -297,6 +298,7 @@ const RESET_PASSWORD_META: RouteMeta = {
   title: "Reimposta Password – FamilySync",
   description: "Crea una nuova password sicura per il tuo account FamilySync.",
 };
+const SOCIAL_IMAGE = "https://familysync.eu/og-image.png";
 
 const PUBLIC_ROUTE_META: Record<string, RouteMeta> = {
   "/": {
@@ -355,9 +357,12 @@ function buildWelcomeHtml(meta: RouteMeta, canonical: string): string {
   <meta property="og:type" content="website">
   <meta property="og:url" content="${url}">
   <meta property="og:site_name" content="FamilySync">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:locale" content="it_IT">
+  <meta property="og:image" content="${SOCIAL_IMAGE}">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${title}">
   <meta name="twitter:description" content="${description}">
+  <meta name="twitter:image" content="${SOCIAL_IMAGE}">
   <style>
     *,*::before,*::after{box-sizing:border-box}
     body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(160deg,#FF6B6B,#FF8E8E,#FFB5B5);min-height:100vh;color:#fff}
@@ -404,9 +409,12 @@ function buildSeoTags(meta: RouteMeta, canonical: string): string {
     `<meta property="og:type" content="website">`,
     `<meta property="og:url" content="${esc(canonical)}">`,
     `<meta property="og:site_name" content="FamilySync">`,
-    `<meta name="twitter:card" content="summary">`,
+    `<meta property="og:locale" content="it_IT">`,
+    `<meta property="og:image" content="${SOCIAL_IMAGE}">`,
+    `<meta name="twitter:card" content="summary_large_image">`,
     `<meta name="twitter:title" content="${esc(meta.title)}">`,
     `<meta name="twitter:description" content="${esc(meta.description)}">`,
+    `<meta name="twitter:image" content="${SOCIAL_IMAGE}">`,
   ].join("\n    ");
 }
 
@@ -426,7 +434,7 @@ export function computeWebBuildVersion(indexHtml: string): string {
   const canonical = Array.from(new Set(bundlePaths)).sort().join("|");
   return crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 16);
 }
-function configureExpoAndLanding(app: express.Application) {
+export function configureExpoAndLanding(app: express.Application) {
   const templatePath = path.resolve(
     process.cwd(),
     "server",
@@ -686,7 +694,7 @@ function setupErrorHandler(app: express.Application) {
   });
 }
 
-(async () => {
+export async function startServer() {
   await initStripe();
   
   setupCors(app);
@@ -797,4 +805,11 @@ function setupErrorHandler(app: express.Application) {
       startGcalReconcileScheduler();
     },
   );
-})();
+}
+
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  void startServer();
+}
