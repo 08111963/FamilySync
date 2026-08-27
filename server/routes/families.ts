@@ -1,7 +1,12 @@
-import { Router } from 'express';
+import { Router, type NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { getParam } from '../lib/http-params';
 import type { Request, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
+import crypto from 'crypto';
+import fs from 'fs';
+import sharp from 'sharp';
 import { z } from 'zod';
 import { db } from '../db';
 import { families, familyMembers, familyInvites, users, calendarEvents, shoppingItems, shoppingLists, chores, childAccessCodes } from '../../shared/schema';
@@ -16,6 +21,8 @@ import { logger } from '../lib/logger';
 import { trackServerEvent, trackSecondMemberActiveIfEligible } from '../lib/test-analytics';
 import { generateInviteToken, hashInviteToken, generateJoinCode } from '../lib/invite-token';
 import { isFamilyMemberLimitReached, isFamilyMemberLimitReachedTx, FREE_MAX_FAMILY_MEMBERS } from '../lib/entitlements';
+import { deleteStoredUploads, persistUploadedFile } from '../lib/upload-storage';
+import { buildStoredFilename, isAllowedUploadMime, readMagicBytes, verifyMagicBytes } from './chat';
 
 const router = Router();
 
@@ -45,6 +52,83 @@ const createInviteLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// La foto della famiglia è condivisa, ma resta un upload distinto dagli avatar
+// personali per poter sostituire/rimuovere una sola risorsa senza toccare i
+// profili dei membri.
+const familyPhotosDir = path.resolve("uploads/family-avatars");
+if (!fs.existsSync(familyPhotosDir)) {
+  fs.mkdirSync(familyPhotosDir, { recursive: true });
+}
+
+const MAX_FAMILY_PHOTO_BYTES = 5 * 1024 * 1024;
+const MAX_FAMILY_PHOTO_PIXELS = 16 * 1024 * 1024;
+const MAX_FAMILY_PHOTO_DIMENSION = 4096;
+const familyPhotoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, familyPhotosDir),
+    filename: (_req, file, cb) =>
+      cb(null, buildStoredFilename(file.mimetype, crypto.randomBytes(16).toString("hex"))),
+  }),
+  limits: { fileSize: MAX_FAMILY_PHOTO_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/") && isAllowedUploadMime(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Tipo di file non supportato"));
+    }
+  },
+});
+
+function handleFamilyPhotoUploadError(
+  err: unknown,
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  if (!err) return next();
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({
+        error: { code: "FILE_TOO_LARGE", message: "Immagine troppo grande (max 5MB)" },
+      });
+    }
+    return res.status(400).json({
+      error: { code: "UPLOAD_ERROR", message: "Errore nel caricamento dell'immagine" },
+    });
+  }
+  return res.status(415).json({
+    error: { code: "UNSUPPORTED_TYPE", message: "Tipo di file non supportato" },
+  });
+}
+
+async function isDecodableFamilyPhoto(filePath: string): Promise<boolean> {
+  try {
+    const metadata = await sharp(filePath, {
+      limitInputPixels: MAX_FAMILY_PHOTO_PIXELS,
+      failOn: "error",
+    }).metadata();
+
+    if (
+      !metadata.width ||
+      !metadata.height ||
+      metadata.width > MAX_FAMILY_PHOTO_DIMENSION ||
+      metadata.height > MAX_FAMILY_PHOTO_DIMENSION
+    ) {
+      return false;
+    }
+
+    // Forza la decodifica completa del payload: una firma valida da sola non
+    // basta a garantire che il browser possa rendere un'immagine non corrotta.
+    await sharp(filePath, {
+      limitInputPixels: MAX_FAMILY_PHOTO_PIXELS,
+      failOn: "error",
+    }).rotate().raw().toBuffer();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 router.post('/', authenticate, async (req: Request, res: Response) => {
   try {
@@ -155,6 +239,139 @@ router.get('/:familyId', authenticate, requireFamilyMember(), async (req: Reques
   } catch (error) {
     logger.error('Get family detail error', { error: String(error) });
     res.status(500).json({ error: { code: "SERVER_ERROR", message: "Errore nel recupero della famiglia" } });
+  }
+});
+
+// La foto condivisa può essere aggiornata da ogni membro con account completo.
+// Il middleware blockChildWrites, applicato al mount /api/families, mantiene
+// esclusi gli account bambino con codice PIN.
+router.post(
+  '/:familyId/avatar',
+  authenticate,
+  requireFamilyMember(),
+  (req: Request, res: Response, next: NextFunction) => {
+    familyPhotoUpload.single("file")(req, res, (err) =>
+      handleFamilyPhotoUploadError(err, req, res, next),
+    );
+  },
+  async (req: Request, res: Response) => {
+    const familyId = getParam(req, 'familyId');
+    const file = req.file;
+
+    try {
+      if (!file) {
+        return res.status(400).json({
+          error: { code: "NO_FILE", message: "Nessuna immagine ricevuta" },
+        });
+      }
+
+      const magic = readMagicBytes(file.path);
+      if (!verifyMagicBytes(magic, file.mimetype)) {
+        await deleteStoredUploads([`/uploads/family-avatars/${file.filename}`]);
+        return res.status(415).json({
+          error: { code: "INVALID_IMAGE", message: "Il file non è un'immagine valida" },
+        });
+      }
+
+      if (!await isDecodableFamilyPhoto(file.path)) {
+        await deleteStoredUploads([`/uploads/family-avatars/${file.filename}`]);
+        return res.status(415).json({
+          error: { code: "INVALID_IMAGE", message: "Il file non è un'immagine valida" },
+        });
+      }
+
+      const newUrl = `/uploads/family-avatars/${file.filename}`;
+      await persistUploadedFile(file.path, newUrl);
+
+      const [previous] = await db
+        .select({ avatarUrl: families.avatarUrl })
+        .from(families)
+        .where(eq(families.id, familyId))
+        .limit(1);
+
+      if (!previous) {
+        await deleteStoredUploads([newUrl]);
+        return res.status(404).json({
+          error: { code: "NOT_FOUND", message: "Famiglia non trovata" },
+        });
+      }
+
+      const [updatedFamily] = await db
+        .update(families)
+        .set({ avatarUrl: newUrl, updatedAt: new Date() })
+        // Non sovrascrivere una foto appena cambiata da un altro membro: il
+        // file nuovo viene eliminato sotto e il client aggiorna lo stato.
+        .where(and(
+          eq(families.id, familyId),
+          previous.avatarUrl ? eq(families.avatarUrl, previous.avatarUrl) : isNull(families.avatarUrl),
+        ))
+        .returning();
+
+      if (!updatedFamily) {
+        await deleteStoredUploads([newUrl]);
+        return res.status(409).json({
+          error: { code: "FAMILY_PHOTO_CHANGED", message: "La foto è stata modificata da un altro membro. Riprova." },
+        });
+      }
+
+      if (previous.avatarUrl && previous.avatarUrl.startsWith("/uploads/family-avatars/")) {
+        await deleteStoredUploads([previous.avatarUrl]);
+      }
+
+      broadcastToFamily(familyId, 'family_updated', updatedFamily);
+      res.json({ avatarUrl: updatedFamily.avatarUrl });
+    } catch (error) {
+      if (file) await deleteStoredUploads([`/uploads/family-avatars/${file.filename}`]);
+      logger.error('Family photo upload error', { error: String(error) });
+      res.status(500).json({
+        error: { code: "SERVER_ERROR", message: "Errore nel salvataggio della foto della famiglia" },
+      });
+    }
+  },
+);
+
+router.delete('/:familyId/avatar', authenticate, requireFamilyMember(), async (req: Request, res: Response) => {
+  const familyId = getParam(req, 'familyId');
+  try {
+    const [previous] = await db
+      .select({ avatarUrl: families.avatarUrl })
+      .from(families)
+      .where(eq(families.id, familyId))
+      .limit(1);
+
+    if (!previous) {
+      return res.status(404).json({
+        error: { code: "NOT_FOUND", message: "Famiglia non trovata" },
+      });
+    }
+
+    if (!previous.avatarUrl) {
+      return res.json({ ok: true });
+    }
+
+    const [updatedFamily] = await db
+      .update(families)
+      .set({ avatarUrl: null, updatedAt: new Date() })
+      .where(and(eq(families.id, familyId), eq(families.avatarUrl, previous.avatarUrl)))
+      .returning();
+
+    if (!updatedFamily) {
+      return res.status(409).json({
+        error: { code: "FAMILY_PHOTO_CHANGED", message: "La foto è stata modificata da un altro membro. Riprova." },
+      });
+    }
+
+    if (previous.avatarUrl.startsWith("/uploads/family-avatars/")) {
+      await deleteStoredUploads([previous.avatarUrl]);
+    }
+
+    broadcastToFamily(familyId, 'family_updated', updatedFamily);
+    res.json({ ok: true });
+  } catch (error) {
+    logger.error('Family photo delete error', { error: String(error) });
+    res.status(500).json({
+      error: { code: "SERVER_ERROR", message: "Errore nella rimozione della foto della famiglia" },
+    });
   }
 });
 

@@ -174,6 +174,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     next();
   };
+  // Foto personali e condivise: nessuna indicizzazione e cache solo privata
+  // (browser), mai in cache condivise o proxy.
+  const avatarPrivacyHeaders = (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Cache-Control', 'private, max-age=604800');
+    next();
+  };
 
   app.use(
     '/uploads/recipe-images',
@@ -182,20 +189,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     express.static('uploads/recipe-images', { maxAge: '30d', immutable: true })
   );
 
+  // Foto condivise della famiglia: possono includere minori/dati domestici,
+  // quindi richiedono sempre un media-token firmato e scoped alla famiglia.
+  // Il token è aggiunto dal client solo dopo aver verificato l'appartenenza.
+  app.use(
+    '/uploads/family-avatars',
+    authenticateMedia,
+    requireEmailVerified,
+    allowCrossOriginImages,
+    avatarPrivacyHeaders,
+    createUploadsObjectHandler('/uploads/family-avatars', { cacheControl: 'private, max-age=300' }),
+    express.static('uploads/family-avatars', {
+      maxAge: '5m',
+      setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'private, max-age=300');
+      },
+    })
+  );
+
   // Foto profilo (avatar): immagini di profilo mostrate ovunque nell'app, senza
   // dati sensibili. Servite pubblicamente (come le foto ricette) per non dover
   // propagare il media-token in ogni Avatar. Montate PRIMA di /uploads autenticato.
   // In modalità STORAGE_MODE=object-storage i file /uploads vengono serviti dal
   // bucket Replit Object Storage (persistente su autoscale); express.static resta
   // come fallback per eventuali file legacy ancora su disco locale.
-  // Hardening: niente indicizzazione da parte dei motori di ricerca e cache
-  // solo privata (browser), mai in cache condivise/proxy: se un URL avatar
-  // dovesse trapelare, non deve finire indicizzato né restare in cache intermedie.
-  const avatarPrivacyHeaders = (_req: Request, res: Response, next: NextFunction) => {
-    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
-    res.setHeader('Cache-Control', 'private, max-age=604800');
-    next();
-  };
   app.use(
     '/uploads/avatars',
     allowCrossOriginImages,

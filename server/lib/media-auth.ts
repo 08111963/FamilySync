@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { chatMessages, billAttachments, familyMembers, blocks } from '../../shared/schema';
+import { chatMessages, billAttachments, families, familyMembers, blocks } from '../../shared/schema';
 import { eq, and, or } from 'drizzle-orm';
 import { isPremium } from './entitlements';
 
@@ -62,6 +62,11 @@ export interface MediaAccessStore {
     userId: string,
     fileUrl: string
   ): Promise<{ familyId: string } | null>;
+  /** Foto condivisa: leggibile solo dai membri della relativa famiglia. */
+  findFamilyAvatarAccess?(
+    userId: string,
+    fileUrl: string
+  ): Promise<{ familyId: string } | null>;
   /** Relazione di blocco fra due utenti nella stessa famiglia (solo chat). */
   hasBlockRelationship(userA: string, userB: string, familyId: string): Promise<boolean>;
   /** Famiglia Premium? Gli allegati bolletta sono una funzione Premium. */
@@ -87,6 +92,15 @@ const dbMediaAccessStore: MediaAccessStore = {
       .limit(1);
     return row ?? null;
   },
+  async findFamilyAvatarAccess(userId, fileUrl) {
+    const [row] = await db
+      .select({ familyId: families.id })
+      .from(families)
+      .innerJoin(familyMembers, eq(familyMembers.familyId, families.id))
+      .where(and(eq(families.avatarUrl, fileUrl), eq(familyMembers.userId, userId)))
+      .limit(1);
+    return row ?? null;
+  },
   async hasBlockRelationship(userA, userB, familyId) {
     return usersHaveBlockRelationship(userA, userB, familyId);
   },
@@ -109,7 +123,8 @@ export function __resetMediaAccessStoreForTest(): void {
  * Risolve l'accesso a un file in /uploads per un dato utente.
  * Ritorna la familyId proprietaria del file se l'accesso è consentito, altrimenti null.
  *
- * Ordine: prima i file della chat, poi gli allegati delle bollette.
+ * Ordine: prima i file della chat, poi le foto famiglia, infine gli allegati
+ * delle bollette.
  * - Chat: l'utente deve essere membro; se non è l'autore e c'è un blocco -> negato.
  * - Allegati bollette: l'utente deve essere membro E la famiglia deve essere Premium
  *   (gli allegati sono una funzione Premium, gating fail-closed anche in lettura).
@@ -137,8 +152,13 @@ export async function resolveUploadFileAccess(
   // Account "dispositivo bambino": le bollette sono un'area vietata, quindi
   // anche i loro allegati NON sono mai risolvibili (fail-closed).
   if (opts?.excludeBillAttachments) {
-    return null;
+    // Le foto famiglia sono visibili anche agli account bambino; le bollette no.
+    const familyAvatarRow = await activeMediaAccessStore.findFamilyAvatarAccess?.(userId, fileUrl);
+    return familyAvatarRow?.familyId ?? null;
   }
+
+  const familyAvatarRow = await activeMediaAccessStore.findFamilyAvatarAccess?.(userId, fileUrl);
+  if (familyAvatarRow) return familyAvatarRow.familyId;
 
   const billRow = await activeMediaAccessStore.findBillAttachmentAccess(userId, fileUrl);
   if (billRow) {

@@ -74,7 +74,10 @@ export async function authenticateMedia(req: Request, res: Response, next: NextF
     return res.status(401).json({ error: { code: "INVALID_TOKEN", message: "Token non valido o scaduto" } });
   }
 
-  const requestedFileUrl = normalizeUploadFileUrl(req.path);
+  // req.path è relativo al mount Express. Per i mount specifici (es.
+  // /uploads/family-avatars) ricomponiamo il percorso completo, altrimenti il
+  // token verrebbe controllato contro /uploads/<file> invece di /uploads/family-avatars/<file>.
+  const requestedFileUrl = normalizeUploadFileUrl(`${req.baseUrl}${req.path}`);
 
   try {
     // Il claim child nel media token esclude gli allegati bollette anche in

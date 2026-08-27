@@ -103,6 +103,7 @@ interface Chore {
 interface FamilyInfo {
   id: string;
   name: string;
+  avatarUrl?: string | null;
   colorTheme?: string;
   myRole?: string;
   myMemberId?: string;
@@ -112,6 +113,7 @@ interface FamilyInfo {
 interface FamilyData {
   familyName: string;
   familyId: string | null;
+  familyAvatarUrl: string | null;
   members: FamilyMember[];
   events: CalendarEvent[];
   shoppingLists: ShoppingList[];
@@ -156,6 +158,7 @@ const FamilyContext = createContext<FamilyContextType | null>(null);
 const defaultData: FamilyData = {
   familyName: "FamilySync",
   familyId: null,
+  familyAvatarUrl: null,
   members: [],
   events: [],
   shoppingLists: [],
@@ -254,6 +257,9 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   const data: FamilyData = useMemo(() => ({
     familyName: currentFamily?.name || "FamilySync",
     familyId: currentFamilyId,
+    // Il dettaglio si aggiorna via WebSocket quando un membro cambia la foto;
+    // il valore della lista resta un fallback utile durante il primo caricamento.
+    familyAvatarUrl: familyDetailQuery.data?.avatarUrl ?? currentFamily?.avatarUrl ?? null,
     members,
     events,
     shoppingLists,
@@ -263,7 +269,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       isRecurring: !!c.recurrenceRule,
       frequency: c.recurrenceRule || undefined,
     })),
-  }), [currentFamily, currentFamilyId, members, events, shoppingLists, choresList]);
+  }), [currentFamily, currentFamilyId, familyDetailQuery.data?.avatarUrl, members, events, shoppingLists, choresList]);
 
   const refetchAll = useCallback(() => {
     if (currentFamilyId) {

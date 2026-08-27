@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import { db } from "../db";
-import { chatMessages, users, billAttachments } from "../../shared/schema";
+import { chatMessages, users, families, billAttachments } from "../../shared/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { logger } from "./logger";
 import {
@@ -38,7 +38,7 @@ export function isAutoCleanEnabled(): boolean {
 }
 
 export interface OrphanRecord {
-  source: "chat_messages" | "users" | "bill_attachments";
+  source: "chat_messages" | "users" | "families" | "bill_attachments";
   rowId: string;
   fileUrl: string;
   /** "missing" = file assente ovunque; "invalid" = URL malformato/traversal. */
@@ -142,6 +142,11 @@ async function cleanupOrphan(orphan: OrphanRecord): Promise<boolean> {
         .update(users)
         .set({ avatarUrl: null })
         .where(and(eq(users.id, orphan.rowId), eq(users.avatarUrl, orphan.fileUrl)));
+    } else if (orphan.source === "families") {
+      await db
+        .update(families)
+        .set({ avatarUrl: null })
+        .where(and(eq(families.id, orphan.rowId), eq(families.avatarUrl, orphan.fileUrl)));
     } else {
       // bill_attachments: file_url è NOT NULL, la riga senza file non ha senso.
       await db
@@ -241,6 +246,13 @@ export async function runUploadIntegrityScanOnce(): Promise<UploadIntegrityRepor
         .select({ id: users.id, fileUrl: users.avatarUrl })
         .from(users)
         .where(isNotNull(users.avatarUrl)),
+    },
+    {
+      source: "families",
+      rows: await db
+        .select({ id: families.id, fileUrl: families.avatarUrl })
+        .from(families)
+        .where(isNotNull(families.avatarUrl)),
     },
     {
       source: "bill_attachments",

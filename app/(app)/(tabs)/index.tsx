@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, TextInput, ActivityIndicator } from "react-native";
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, TextInput, ActivityIndicator, Alert, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 
 import { useTheme } from "@/hooks/useTheme";
 import { useFamily } from "@/context/FamilyContext";
@@ -13,18 +14,44 @@ import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
 import { WebPushBanner } from "@/components/WebPushBanner";
 import { AssistantChat } from "@/components/AssistantChat";
+import { apiRequest, apiUpload, getApiErrorMessage, getApiUrl, queryClient } from "@/lib/query-client";
+import { useMediaToken } from "@/hooks/useMediaToken";
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { data, isLoading, families, currentFamily, createFamily, getUpcomingEvents, getPendingChores, getLeaderboard } = useFamily();
+  const { data, isLoading, families, currentFamily, createFamily, getUpcomingEvents, getPendingChores, getLeaderboard, refetchAll } = useFamily();
   const { user, logout } = useAuth();
   const [familyName, setFamilyName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [isUploadingFamilyPhoto, setIsUploadingFamilyPhoto] = useState(false);
 
   const upcomingEvents = getUpcomingEvents(3);
   const pendingChores = getPendingChores().slice(0, 3);
   const leaderboard = getLeaderboard().slice(0, 3);
+  const familyId = data.familyId;
+  const { mediaToken } = useMediaToken(familyId ?? undefined);
+  const isChildAccount = user?.isChildAccount === true;
+  const canEditFamilyPhoto = !!familyId && !isChildAccount;
+  const hasFamilyPhoto = !!data.familyAvatarUrl;
+  const todayLabel = new Date().toLocaleDateString("it-IT", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  const familyPhotoUri = (() => {
+    if (!data.familyAvatarUrl || !mediaToken) return null;
+    if (/^https?:\/\//i.test(data.familyAvatarUrl)) return data.familyAvatarUrl;
+    try {
+      const url = new URL(data.familyAvatarUrl, getApiUrl());
+      if (mediaToken) url.searchParams.set("token", mediaToken);
+      return url.toString();
+    } catch {
+      return null;
+    }
+  })();
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -59,6 +86,115 @@ export default function HomeScreen() {
     } finally {
       setCreating(false);
     }
+  };
+
+  const showPhotoMessage = (title: string, message: string) => {
+    if (Platform.OS === "web") {
+      alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
+  const updateFamilyPhotoInCache = (avatarUrl: string | null) => {
+    if (!familyId) return;
+    queryClient.setQueryData<any[]>(["/api/families"], (previous) =>
+      previous?.map((family) => family.id === familyId ? { ...family, avatarUrl } : family)
+    );
+    queryClient.setQueryData<any>(["/api/families", familyId], (previous: any) =>
+      previous ? { ...previous, avatarUrl } : previous
+    );
+    refetchAll();
+  };
+
+  const uploadFamilyPhoto = async (asset: ImagePicker.ImagePickerAsset) => {
+    if (!familyId) return;
+    setIsUploadingFamilyPhoto(true);
+    try {
+      const formData = new FormData();
+      const ext = asset.uri.split(".").pop()?.split("?")[0] || "jpg";
+      const fileName = `family_${Date.now()}.${ext}`;
+
+      if (Platform.OS === "web") {
+        const response = await fetch(asset.uri);
+        formData.append("file", await response.blob(), fileName);
+      } else {
+        formData.append("file", {
+          uri: asset.uri,
+          name: fileName,
+          type: asset.mimeType || `image/${ext}`,
+        } as any);
+      }
+
+      const result = await apiUpload<{ avatarUrl: string }>(
+        `/api/families/${familyId}/avatar`,
+        formData,
+      );
+      updateFamilyPhotoInCache(result.avatarUrl);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error("Errore upload foto famiglia:", error);
+      showPhotoMessage(
+        "Impossibile caricare la foto",
+        getApiErrorMessage(error, "Riprova tra qualche istante."),
+      );
+    } finally {
+      setIsUploadingFamilyPhoto(false);
+    }
+  };
+
+  const handlePickFamilyPhoto = async () => {
+    if (!canEditFamilyPhoto || isUploadingFamilyPhoto) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      showPhotoMessage("Permesso necessario", "Serve il permesso per accedere alla galleria.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [1, 1],
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await uploadFamilyPhoto(result.assets[0]);
+  };
+
+  const removeFamilyPhoto = async () => {
+    if (!familyId || isUploadingFamilyPhoto) return;
+    setIsUploadingFamilyPhoto(true);
+    try {
+      await apiRequest("DELETE", `/api/families/${familyId}/avatar`);
+      updateFamilyPhotoInCache(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error("Errore rimozione foto famiglia:", error);
+      showPhotoMessage(
+        "Impossibile rimuovere la foto",
+        getApiErrorMessage(error, "Riprova tra qualche istante."),
+      );
+    } finally {
+      setIsUploadingFamilyPhoto(false);
+    }
+  };
+
+  const confirmRemoveFamilyPhoto = () => {
+    if (!canEditFamilyPhoto || !hasFamilyPhoto) return;
+    if (Platform.OS === "web") {
+      if (confirm("Rimuovere la foto condivisa della famiglia?")) {
+        void removeFamilyPhoto();
+      }
+      return;
+    }
+    Alert.alert(
+      "Rimuovere la foto?",
+      "Tutti i membri vedranno di nuovo l'icona della famiglia.",
+      [
+        { text: "Annulla", style: "cancel" },
+        { text: "Rimuovi", style: "destructive", onPress: () => void removeFamilyPhoto() },
+      ],
+    );
   };
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
@@ -156,11 +292,90 @@ export default function HomeScreen() {
       contentInsetAdjustmentBehavior="automatic"
     >
       <View style={styles.header}>
-        <Text style={[styles.greeting, { color: colors.textSecondary }]}>Bentornata famiglia</Text>
-        <Text style={[styles.title, { color: colors.text }]}>{data.familyName}</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          {data.members.length} membr{data.members.length !== 1 ? "i" : "o"}
-        </Text>
+        <View style={styles.familyHeaderRow}>
+          {canEditFamilyPhoto ? (
+            <Pressable
+              onPress={handlePickFamilyPhoto}
+              disabled={isUploadingFamilyPhoto}
+              style={({ pressed }) => [
+                styles.familyPhotoButton,
+                { borderColor: colors.border, opacity: pressed || isUploadingFamilyPhoto ? 0.72 : 1 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={familyPhotoUri ? "Cambia foto della famiglia" : "Aggiungi foto della famiglia"}
+              testID="home-family-photo-button"
+            >
+              {familyPhotoUri ? (
+                <Image source={{ uri: familyPhotoUri }} style={styles.familyPhoto} />
+              ) : (
+                <View style={[styles.familyPhotoPlaceholder, { backgroundColor: colors.primary + "16" }]}>
+                  {hasFamilyPhoto ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Ionicons name="people" size={30} color={colors.primary} />
+                  )}
+                </View>
+              )}
+              <View style={[styles.familyPhotoEditBadge, { backgroundColor: colors.primary }]}>
+                {isUploadingFamilyPhoto ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="camera" size={14} color="#FFFFFF" />
+                )}
+              </View>
+            </Pressable>
+          ) : (
+            <View style={[styles.familyPhotoButton, { borderColor: colors.border }]}>
+              {familyPhotoUri ? (
+                <Image source={{ uri: familyPhotoUri }} style={styles.familyPhoto} />
+              ) : (
+                <View style={[styles.familyPhotoPlaceholder, { backgroundColor: colors.primary + "16" }]}>
+                  {hasFamilyPhoto ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Ionicons name="people" size={30} color={colors.primary} />
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+          <View style={styles.familyHeaderContent}>
+            <Text style={[styles.greeting, { color: colors.textSecondary }]}>Bentornata famiglia</Text>
+            <View style={styles.familyTitleRow}>
+              <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>{data.familyName}</Text>
+              <Text style={[styles.todayDate, { color: colors.textSecondary }]} testID="home-today-date">
+                {todayLabel}
+              </Text>
+            </View>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              {data.members.length} membr{data.members.length !== 1 ? "i" : "o"}
+            </Text>
+            {canEditFamilyPhoto && (
+              <View style={styles.familyPhotoActions}>
+                <Pressable
+                  onPress={handlePickFamilyPhoto}
+                  disabled={isUploadingFamilyPhoto}
+                  hitSlop={8}
+                  testID="home-family-photo-change"
+                >
+                  <Text style={[styles.familyPhotoActionText, { color: colors.primary }]}>
+                    {hasFamilyPhoto ? "Cambia foto" : "Aggiungi foto"}
+                  </Text>
+                </Pressable>
+                {hasFamilyPhoto && (
+                  <Pressable
+                    onPress={confirmRemoveFamilyPhoto}
+                    disabled={isUploadingFamilyPhoto}
+                    hitSlop={8}
+                    testID="home-family-photo-remove"
+                  >
+                    <Text style={[styles.familyPhotoActionText, { color: colors.error }]}>Rimuovi</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+          </View>
+        </View>
       </View>
 
       {Platform.OS === "web" && <WebPushBanner />}
@@ -394,19 +609,81 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 24,
   },
+  familyHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  familyPhotoButton: {
+    width: 76,
+    height: 76,
+    borderRadius: 22,
+    borderWidth: 1,
+    overflow: "visible",
+    position: "relative",
+  },
+  familyPhoto: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 21,
+  },
+  familyPhotoPlaceholder: {
+    flex: 1,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  familyPhotoEditBadge: {
+    position: "absolute",
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    right: -6,
+    bottom: -6,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  familyHeaderContent: {
+    flex: 1,
+    minWidth: 0,
+  },
   greeting: {
     fontSize: 15,
     fontFamily: "Inter_500Medium",
     marginBottom: 2,
   },
+  familyTitleRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    flexWrap: "wrap",
+    columnGap: 8,
+  },
   title: {
-    fontSize: 32,
+    fontSize: 30,
     fontFamily: "Inter_700Bold",
+    flexShrink: 1,
+  },
+  todayDate: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    textTransform: "capitalize",
   },
   subtitle: {
     fontSize: 16,
     fontFamily: "Inter_400Regular",
     marginTop: 4,
+  },
+  familyPhotoActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginTop: 6,
+  },
+  familyPhotoActionText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
   },
   feedbackBanner: {
     flexDirection: "row",
