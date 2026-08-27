@@ -1,4 +1,5 @@
 - [EAS/CI lockfile proxy URLs](eas-lockfile-proxy-urls.md) — `npm ci` crashes ("Exit handler never called!") on EAS/GitHub CI when package-lock.json resolved URLs point to `package-firewall.replit.local`; rewrite to registry.npmjs.org.
+- [EAS build queue e Git ref](eas-build-queue-and-git-ref.md) — build CLI locali possono mostrare solo il commit; verificare sempre ID, profilo e artefatto perché le build in coda possono finire fuori ordine.
 - [Metro environment quirks](metro-environment-quirks.md) — `.local` must stay in metro blockList (FallbackWatcher ENOENT crash); clear Metro cache after installing native modules; `/tmp/logs` are stale snapshots.
 - [Expo dev connectivity (exps://)](expo-dev-connectivity.md) — Android via `expo start --tunnel` (exp.direct); personal ngrok v3 DEAD (free bandwidth cap ERR_NGROK_725); patch-package `exp`→`exps` per dominio Replit.
 - [API native Expo Go](expo-native-api-url.md) — Expo Go espone `window.location` del tunnel Metro: rilevare il web con `Platform.OS`, mai con la sola presenza di `window`.
