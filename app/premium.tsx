@@ -24,7 +24,7 @@ const PLAN_FEATURES: PlanFeature[] = [
   { label: "Consigli AI famiglia", free: "1/settimana", premium: "5/settimana" },
   { label: "Ottimizzazione faccende AI", free: "1/giorno", premium: "5/giorno" },
   { label: "Foto ricette AI", free: "2/giorno", premium: "10/giorno" },
-  { label: "Dettatura vocale", free: "3/giorno", premium: "20/giorno" },
+  { label: "Microfono e dettatura vocale", free: "3/giorno", premium: "20/giorno" },
   { label: "Calendario, spesa, faccende, chat", free: "Illimitati", premium: "Illimitati" },
   { label: "Bollette attive", free: "Fino a 5", premium: "Illimitate" },
   { label: "Funzioni avanzate bollette", free: "Limitate", premium: "Incluse" },
