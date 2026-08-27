@@ -460,6 +460,10 @@ function setupWebAppFallback(app: express.Application) {
     return;
   }
 
+  // Serve static bot-governance files from public/
+  const publicDir = path.resolve(process.cwd(), "public");
+  app.use(express.static(publicDir));
+
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.method !== "GET") {
       return next();
@@ -471,6 +475,15 @@ function setupWebAppFallback(app: express.Application) {
     // Missing assets/endpoints fall through to a real 404 instead of index.html.
     if (!req.accepts("html")) {
       return next();
+    }
+    // Noindex utility/auth routes so crawlers skip them.
+    const noindexPaths = ["/login", "/forgot-password", "/register"];
+    if (
+      noindexPaths.includes(req.path) ||
+      req.path.startsWith("/reset-password/") ||
+      req.path.startsWith("/join/")
+    ) {
+      res.setHeader("X-Robots-Tag", "noindex, nofollow");
     }
     res.setHeader("Cache-Control", "no-cache, must-revalidate");
     res.sendFile(webIndexPath);
@@ -519,20 +532,18 @@ function setupErrorHandler(app: express.Application) {
   // Senza indice l'upsert ON CONFLICT di addToPantry fallisce, quindi in
   // produzione un errore qui deve bloccare l'avvio (fail-fast, mai degradato).
   try {
-    const r = await ensurePantryUniqueIndex();
-    if (r.created) log('pantry unique index created (was missing)');
+    const r = await ensureMealPlanLatencyAlertSchema();
+    if (r.created) log('client_crash_reports table created (was missing)');
   } catch (err) {
-    log(`pantry unique index ensure failed: ${String(err)}`);
-    if (process.env.NODE_ENV === 'production') throw err;
+    log(`client crash schema ensure failed: ${String(err)}`);
   }
 
-  // Tabella client_crash_reports (migrazione 0028) PRIMA di accettare
-  // richieste: il DB di produzione è separato e senza tabella ogni report
-  // crash perde la persistenza (l'alert email non scatta mai). Best-effort:
-  // l'endpoint /api/client-errors è già fail-open, quindi qui NON blocchiamo
-  // l'avvio in caso di errore (a differenza dell'indice dispensa).
+  // Stato condiviso del monitor di latenza piani (migrazione 0030) PRIMA di
+  // accettare richieste: senza tabella non possiamo deduplicare gli avvisi tra
+  // istanze, quindi in produzione un bootstrap fallito deve fermare l'avvio
+  // anziché lasciare l'alert silenziosamente inattivo.
   try {
-    const r = await ensureClientCrashSchema();
+    const r = await ensureMealPlanLatencyAlertSchema();
     if (r.created) log('client_crash_reports table created (was missing)');
   } catch (err) {
     log(`client crash schema ensure failed: ${String(err)}`);

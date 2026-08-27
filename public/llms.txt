@@ -1,0 +1,21 @@
+# FamilySync
+
+> FamilySync è un'app mobile per il coordinamento familiare: calendario condiviso, liste della spesa, faccende, bollette, ricette e chat interna in tempo reale.
+
+FamilySync aiuta le famiglie a organizzarsi insieme da iOS, Android e web. Offre sincronizzazione in tempo reale tra tutti i membri, suggerimenti AI e un'esperienza pensata per un uso quotidiano.
+
+## Pagine principali
+
+- [Home](https://familysync.eu/): Presentazione dell'app e accesso al download.
+- [Guida utente](https://familysync.eu/help/user-guide): Documentazione completa su tutte le funzionalità.
+- [Privacy Policy](https://familysync.eu/legal/privacy): Informativa sul trattamento dei dati personali (GDPR).
+- [Termini di servizio](https://familysync.eu/legal/terms): Condizioni d'uso dell'applicazione.
+
+## Escludi
+
+Le seguenti superfici non contengono contenuto utile per i modelli AI:
+
+- /api/* — endpoint REST privati
+- /login, /register, /forgot-password, /reset-password/* — flussi di autenticazione
+- /join/* — link di invito famiglia (token monouso)
+- /calendar-feed/* — feed ICS privati per utente
