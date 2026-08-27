@@ -11,3 +11,28 @@ assets/store
 scripts
 docs
 *.log
+
+# Local delivery archives and compressed build artifacts
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Generated outputs are rebuilt by their respective workflows and are not
+# inputs to the Android native build.
+web-build
+web-build-old
+static-build
+server_dist
+exports
+
+# Local runtime data; production uploads use object storage.
+uploads
+
+# Replit/agent environment metadata is not part of the app source.
+.config
+.pythonlibs
+.upm
+.agents
+.replit_integration_files
