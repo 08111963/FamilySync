@@ -48,6 +48,10 @@ docs/tester-accounts.pdf
 
 # archivi di consegna e file temporanei
 *.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
 tmp/
 *.log
 .agents/agent_assets_metadata.toml
@@ -58,3 +62,5 @@ tmp/
 *vapid*key*
 web-build-old/
 server_dist/
+static-build/
+exports/
