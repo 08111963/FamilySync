@@ -11,13 +11,16 @@ import {
 } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { FamilyProvider } from "@/context/FamilyContext";
+import { BillNotificationsSyncProvider } from "@/context/BillNotificationsProvider";
+import { SubscriptionProvider, initializeRevenueCat } from "@/lib/revenuecat";
 import { trackEvent, trackScreenView } from "@/lib/test-analytics";
 import {
   getNotificationsModule,
@@ -261,6 +264,14 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+  useEffect(() => {
+    try {
+      initializeRevenueCat();
+    } catch (err: any) {
+      Alert.alert("RevenueCat non disponibile", err?.message ?? "Errore sconosciuto");
+    }
+  }, []);
+
   // On web, render immediately with system fonts so public routes are not
   // blocked by font downloads (avoids a render-blocking asset for crawlers).
   // On native, keep the splash screen until fonts are ready for a polished UX.
@@ -274,13 +285,19 @@ export default function RootLayout() {
         <AuthProvider>
           <GestureHandlerRootView>
             <KeyboardProvider>
-              <AuthGate>
-                <TestAnalyticsTracker />
-                <PushNotificationsManager />
-                <RootLayoutNav />
-                <PolicyUpdateBanner />
-                {Platform.OS === "web" && <WebUpdateBanner />}
-              </AuthGate>
+              <FamilyProvider>
+                <SubscriptionProvider>
+                  <BillNotificationsSyncProvider>
+                    <AuthGate>
+                      <TestAnalyticsTracker />
+                      <PushNotificationsManager />
+                      <RootLayoutNav />
+                      <PolicyUpdateBanner />
+                      {Platform.OS === "web" && <WebUpdateBanner />}
+                    </AuthGate>
+                  </BillNotificationsSyncProvider>
+                </SubscriptionProvider>
+              </FamilyProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </AuthProvider>
