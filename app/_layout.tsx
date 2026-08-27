@@ -193,6 +193,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
+      {/* I gruppi tra parentesi sono schermate di primo livello per Expo
+          Router: nascondiamo qui l'header tecnico, prima delle route figlie. */}
+      <Stack.Screen name="(public)" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)" options={{ headerShown: false }} />
       <Stack.Screen name="(public)/welcome" options={{ headerShown: false }} />
       <Stack.Screen name="(public)/login" options={{ headerShown: false }} />
       <Stack.Screen name="(public)/verify-email" options={{ headerShown: false, gestureEnabled: false }} />

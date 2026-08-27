@@ -552,9 +552,10 @@ export function configureExpoAndLanding(app: express.Application) {
       : "Serving static Expo files with dynamic manifest routing",
   );
 
-  // Le build statiche contengono HTML per route; per una build singola usiamo
-  // invece il solo shell SPA come base per i metadati.
-  const baseHtml = hasWebBuild && !isStaticBuild
+  // Anche le build statiche mantengono index.html come shell affidabile per
+  // le route pubbliche dinamiche (login, reset ecc.). Lo usiamo sempre come
+  // base per iniettare i metadati prima che express.static risponda.
+  const baseHtml = hasWebBuild
     ? fs.readFileSync(webIndexPath, "utf-8")
     : "";
   const baseUrl = (process.env.CLIENT_URL || "https://familysync.eu").replace(
@@ -594,7 +595,7 @@ export function configureExpoAndLanding(app: express.Application) {
       });
     }
 
-    if (!hasWebBuild || isStaticBuild) {
+    if (!hasWebBuild) {
       return next();
     }
 

@@ -2,6 +2,8 @@ import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
 import type { Server } from "node:http";
+import fs from "node:fs";
+import path from "node:path";
 import sharp from "sharp";
 import { configureExpoAndLanding } from "../index";
 import helpRoutes from "../routes/help";
@@ -292,5 +294,57 @@ describe("metadati SEO nel server di produzione", () => {
     assert.equal(metadata.format, "png", `L'asset social ${socialImageUrl} deve essere PNG`);
     assert.equal(metadata.width, socialImageWidth, `L'asset social ${socialImageUrl} deve essere largo ${socialImageWidth}px`);
     assert.equal(metadata.height, socialImageHeight, `L'asset social ${socialImageUrl} deve essere alto ${socialImageHeight}px`);
+  });
+});
+
+describe("metadati SEO con export Expo statico", () => {
+  let server: Server;
+  let baseUrl: string;
+  let previousStaticMarker: Buffer | null = null;
+  const staticMarker = path.resolve(process.cwd(), "web-build", "welcome.html");
+  const previousClientUrl = process.env.CLIENT_URL;
+  const previousNodeEnv = process.env.NODE_ENV;
+  const mutableEnv = process.env as Record<string, string | undefined>;
+  const seoOrigin = "https://seo-static.familysync.example";
+
+  before(async () => {
+    if (fs.existsSync(staticMarker)) {
+      previousStaticMarker = fs.readFileSync(staticMarker);
+    }
+    fs.writeFileSync(staticMarker, "<!doctype html><title>Static marker</title>");
+
+    mutableEnv.CLIENT_URL = seoOrigin;
+    mutableEnv.NODE_ENV = "production";
+
+    const app = express();
+    app.set("trust proxy", 1);
+    configureExpoAndLanding(app);
+    server = app.listen(0);
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    baseUrl = `http://127.0.0.1:${address.port}`;
+  });
+
+  after(async () => {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+    if (previousStaticMarker === null) fs.rmSync(staticMarker, { force: true });
+    else fs.writeFileSync(staticMarker, previousStaticMarker);
+    if (previousClientUrl === undefined) delete mutableEnv.CLIENT_URL;
+    else mutableEnv.CLIENT_URL = previousClientUrl;
+    if (previousNodeEnv === undefined) delete mutableEnv.NODE_ENV;
+    else mutableEnv.NODE_ENV = previousNodeEnv;
+  });
+
+  test("home e login mantengono i tag social anche con output statico", async () => {
+    for (const page of appShellPages.filter((page) => page.path === "/" || page.path === "/login")) {
+      const response = await fetch(`${baseUrl}${page.path}`, {
+        headers: { Accept: "text/html" },
+      });
+      assert.equal(response.status, 200, page.path);
+      assert.equal(response.headers.get("cache-control"), "no-store", page.path);
+      assertSeoMetadata(await response.text(), page, seoOrigin);
+    }
   });
 });
