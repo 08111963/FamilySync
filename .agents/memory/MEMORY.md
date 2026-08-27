@@ -68,3 +68,4 @@
 - [Dati demo per immagini store](store-assets-demo-data.md) — negli screenshot pubblici usare solo la Famiglia Bianchi fittizia; mai dati o schermate provenienti dalla produzione.
 - [Copertura regressioni SEO](seo-metadata-regression-tests.md) — i metadati pubblici hanno due percorsi SSR: router documentali e injection dell’HTML Expo; testare entrambi via HTTP.
 - [Determinismo test di concorrenza](race-test-determinism.md) — richieste HTTP concorrenti possono linearizzarsi: sincronizzare dopo la lettura dello stato per provare davvero CAS e cleanup.
+- [Autenticazione GitHub in Replit](replit-github-git-auth.md) — pannello Git e terminale possono usare credenziali diverse; errore shell `UNAUTHENTICATED` richiede spesso reconnect nel pannello.
