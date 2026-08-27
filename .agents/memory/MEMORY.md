@@ -1,5 +1,6 @@
 - [EAS/CI lockfile proxy URLs](eas-lockfile-proxy-urls.md) — `npm ci` crashes ("Exit handler never called!") on EAS/GitHub CI when package-lock.json resolved URLs point to `package-firewall.replit.local`; rewrite to registry.npmjs.org.
 - [EAS build queue e Git ref](eas-build-queue-and-git-ref.md) — build CLI locali possono mostrare solo il commit; verificare sempre ID, profilo e artefatto perché le build in coda possono finire fuori ordine.
+- [Attesa build EAS remota](eas-remote-build-wait.md) — avviare EAS con `--no-wait` e fare polling per evitare che il timeout locale annulli il job remoto.
 - [Metro environment quirks](metro-environment-quirks.md) — `.local` must stay in metro blockList (FallbackWatcher ENOENT crash); clear Metro cache after installing native modules; `/tmp/logs` are stale snapshots.
 - [Expo dev connectivity (exps://)](expo-dev-connectivity.md) — Android via `expo start --tunnel` (exp.direct); personal ngrok v3 DEAD (free bandwidth cap ERR_NGROK_725); patch-package `exp`→`exps` per dominio Replit.
 - [API native Expo Go](expo-native-api-url.md) — Expo Go espone `window.location` del tunnel Metro: rilevare il web con `Platform.OS`, mai con la sola presenza di `window`.
@@ -14,9 +15,6 @@
 - [Stripe payments conventions](stripe-payments-conventions.md) — subscriptions are family-scoped; never trust client priceId (resolve server-side); webhooks must reconcile the families table; Stripe stays dormant and must NOT unlock mobile premium (entitlements do).
 - [RevenueCat Premium (FamilySync)](revenuecat-premium.md) — Premium store-native via RevenueCat: client non decide, backend sync /api/purchases/sync -> tabella entitlements; ruolo admin; webhook fail-closed in prod.
 - [Recipe gen sessions](recipe-gen-sessions.md) — generazione incrementale ricette persistita su DB con heartbeat updatedAt; GET chiude sessioni stantie (interrupted), quota mai riconsumata dal polling.
-- [Upload su Object Storage](upload-object-storage.md) — /uploads persistenti via bucket Replit con STORAGE_MODE=object-storage (solo prod); Client sempre con bucketId esplicito; delete disco+bucket.
-- [Foto ricette AI](recipe-images.md) — foto AI = asset pubblici cache cross-family per titolo; cache-hit senza quota; sharp 512px WebP; rotte con familyId nel body richiedono requireFamilyMember().
-- [Demo account seed](demo-account-seed.md) — scripts/seed-demo-account.ts per revisori store: demo DEVE avere emailVerified=true (tutte le /api lo richiedono) + entitlements active per Premium; cleanup solo famiglia marker, in transazione.
 - [Resend email (FamilySync)](resend-email.md) — email via Resend (RESEND_API_KEY); from noreply@familysync.eu, reply-to assistenza@familysync.it; dominio .eu verificato; redeploy prod per caricare nuove env/secret.
 - [Expo Go push crash (SDK 53+)](expo-go-push-notifications.md) — getExpoPushTokenAsync crasha SOLO in Expo Go/"Simulate on Android"; guardare con Constants.executionEnvironment===StoreClient; web :5000 sano (non confondere ambienti).
 - [Web deployment](web-deployment.md) — familysync.eu serves the REAL Expo web app; deploy build = `expo export --platform web` to web-build; Express SPA-serves it; target "vm" richiede unpublish+publish (Republish ignora il cambio); il probe VM usa la porta externalPort 80 → deve essere il backend 5000, mai Metro 8081.
@@ -70,3 +68,6 @@
 - [Copertura regressioni SEO](seo-metadata-regression-tests.md) — i metadati pubblici hanno due percorsi SSR: router documentali e injection dell’HTML Expo; testare entrambi via HTTP.
 - [Determinismo test di concorrenza](race-test-determinism.md) — richieste HTTP concorrenti possono linearizzarsi: sincronizzare dopo la lettura dello stato per provare davvero CAS e cleanup.
 - [Autenticazione GitHub in Replit](replit-github-git-auth.md) — pannello Git e terminale possono usare credenziali diverse; errore shell `UNAUTHENTICATED` richiede spesso reconnect nel pannello.
+- [Upload su Object Storage](upload-object-storage.md) — /uploads persistenti via bucket Replit con STORAGE_MODE=object-storage (solo prod); Client sempre con bucketId esplicito; delete disco+bucket.
+- [Foto ricette AI](recipe-images.md) — foto AI = asset pubblici cache cross-family per titolo; cache-hit senza quota; sharp 512px WebP; rotte con familyId nel body richiedono requireFamilyMember().
+- [Demo account seed](demo-account-seed.md) — scripts/seed-demo-account.ts per revisori store: demo DEVE avere emailVerified=true (tutte le /api lo richiedono) + entitlements active per Premium; cleanup solo famiglia marker, in transazione.
