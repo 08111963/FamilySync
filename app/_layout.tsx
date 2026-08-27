@@ -2,19 +2,22 @@
 // in-app WhatsApp/Gmail) — vedi lib/runtime-polyfills.ts.
 import "@/lib/runtime-polyfills";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack, useGlobalSearchParams, usePathname, useRouter, useSegments } from "expo-router";
+import {
+  Stack,
+  useGlobalSearchParams,
+  usePathname,
+  useRouter,
+  useSegments,
+} from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
-import { Alert, Platform, View } from "react-native";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
-import { FamilyProvider } from "@/context/FamilyContext";
-import { BillNotificationsSyncProvider } from "@/context/BillNotificationsProvider";
-import { SubscriptionProvider, initializeRevenueCat } from "@/lib/revenuecat";
 import { trackEvent, trackScreenView } from "@/lib/test-analytics";
 import {
   getNotificationsModule,
@@ -22,11 +25,11 @@ import {
   registerForPushNotifications,
 } from "@/lib/push-notifications";
 import { firstStringParam, safeReturnTo } from "@/lib/safe-return-to";
-
-// Registra il token push quando l'utente è autenticato e gestisce il tap
-// sulla notifica navigando alla schermata indicata in data.route.
 import { WebUpdateBanner } from "@/components/WebUpdateBanner";
 import { PolicyUpdateBanner } from "@/components/PolicyUpdateBanner";
+
+SplashScreen.preventAutoHideAsync();
+
 function PushNotificationsManager() {
   const { isAuthenticated, accessToken, user } = useAuth();
   const router = useRouter();
@@ -59,8 +62,6 @@ function PushNotificationsManager() {
   return null;
 }
 
-// Analytics interna TEMPORANEA (periodo di test): traccia apertura app e cambio
-// schermata SOLO per utenti autenticati. Fire-and-forget, mai bloccante.
 function TestAnalyticsTracker() {
   const { isAuthenticated } = useAuth();
   const pathname = usePathname();
@@ -82,15 +83,11 @@ function TestAnalyticsTracker() {
   return null;
 }
 
-SplashScreen.preventAutoHideAsync();
-
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const pathname = usePathname();
-  // NB: nel layout radice serve useGlobalSearchParams: useLocalSearchParams
-  // non vede i parametri della schermata attiva (returnTo arriverebbe vuoto).
   const params = useGlobalSearchParams<{
     returnTo?: string | string[];
     familyId?: string | string[];
@@ -101,11 +98,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isLoading) return;
 
-    const root = segments[0];
-    // Inviti e promemoria faccende devono sopravvivere a login, verifica email
-    // e onboarding. L'helper accetta soltanto destinazioni interne allow-listed.
+    const root = segments[0] as string | undefined;
+    // I gruppi sono trasparenti nell'URL, ma presenti nei segmenti Expo.
+    const inPublicGroup = root === "(public)";
+    const inAppGroup = root === "(app)";
+    const seg1 = segments[1] as string | undefined;
+    const legacyPublic =
+      root === "child-login" ||
+      root === "social-complete" ||
+      root === "join-link";
     const directInviteReturnTo =
-      (root === "join" || root === "join-link") && pathname
+      ((inPublicGroup && seg1 === "join") || root === "join-link") && pathname
         ? safeReturnTo(pathname)
         : undefined;
     const directChoreReturnTo =
@@ -126,34 +129,49 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       pendingReturnTo
         ? `${base}?returnTo=${encodeURIComponent(pendingReturnTo)}`
         : base;
-    // "social-complete" è pubblica: il nuovo utente Google/Apple arriva qui
-    // NON ancora autenticato (ha solo il signupToken) per completare la
-    // registrazione; senza questa eccezione verrebbe rimbalzato su /welcome.
-    const inPublicGroup = root === "login" || root === "welcome" || root === "join" || root === "join-link" || root === "legal" || root === "help" || root === "forgot-password" || root === "reset-password" || root === "social-complete" || root === "child-login";
+    const inPublicRoute = inPublicGroup || legacyPublic;
+
     const needsVerification = isAuthenticated && !!user && user.emailVerified === false;
-    const inVerifyScreen = root === "verify-email";
-    // Onboarding privacy: utenti esistenti senza fascia d'età / accettazione Termini.
+    const inVerifyScreen =
+      (inPublicGroup && seg1 === "verify-email") || root === "verify-email";
     const needsOnboarding = isAuthenticated && !!user && user.needsOnboarding === true;
     const inOnboardingScreen = root === "onboarding";
-    const onboardingAllowed = inOnboardingScreen || root === "legal" || root === "help" || root === "delete-account";
-    // L'eliminazione account e un diritto fondamentale: deve restare accessibile
-    // anche a utenti autenticati con email non ancora verificata.
-    // Le pagine invito restano accessibili anche con email non verificata:
-    // mostrano un avviso dedicato "Verifica prima la tua email" con link alla
-    // verifica, più chiaro del redirect immediato alla schermata generica.
-    const verificationAllowed = inVerifyScreen || root === "legal" || root === "help" || root === "delete-account" || root === "join" || root === "join-link";
 
-    if (!isAuthenticated && !inPublicGroup && !inVerifyScreen) {
+    const verificationAllowed =
+      inVerifyScreen ||
+      (inPublicGroup && (seg1 === "legal" || seg1 === "help")) ||
+      (inAppGroup && seg1 === "delete-account") ||
+      (inPublicGroup && seg1 === "join") ||
+      root === "join-link";
+    const onboardingAllowed =
+      inOnboardingScreen ||
+      (inPublicGroup && (seg1 === "legal" || seg1 === "help")) ||
+      (inAppGroup && seg1 === "delete-account");
+
+    const allowedPublicWhenAuthenticated =
+      inPublicGroup &&
+      (seg1 === "join" ||
+        seg1 === "legal" ||
+        seg1 === "help" ||
+        seg1 === "forgot-password" ||
+        seg1 === "reset-password" ||
+         seg1 === "verify-email") ||
+      root === "join-link";
+
+    if (!isAuthenticated && !inPublicRoute && !inVerifyScreen) {
       router.replace(withReturnTo("/welcome") as any);
     } else if (needsVerification && !verificationAllowed) {
       router.replace(withReturnTo("/verify-email") as any);
     } else if (needsOnboarding && !needsVerification && !onboardingAllowed) {
-      // NB: la guardia !needsVerification è essenziale. Un account con email
-      // NON verificata E onboarding incompleto altrimenti rimbalzerebbe
-      // all'infinito tra /verify-email e /onboarding (React #185): prima
-      // si verifica l'email, poi si completa l'onboarding.
       router.replace(withReturnTo("/onboarding") as any);
-    } else if (isAuthenticated && !needsVerification && !needsOnboarding && (inVerifyScreen || inOnboardingScreen || (inPublicGroup && root !== "join" && root !== "join-link" && root !== "legal" && root !== "help" && root !== "forgot-password" && root !== "reset-password"))) {
+    } else if (
+      isAuthenticated &&
+      !needsVerification &&
+      !needsOnboarding &&
+      (inVerifyScreen ||
+        inOnboardingScreen ||
+        (inPublicRoute && !allowedPublicWhenAuthenticated))
+    ) {
       router.replace((pendingReturnTo || "/") as any);
     }
   }, [
@@ -174,54 +192,59 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 function RootLayoutNav() {
   return (
-    <View style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerBackTitle: "Back" }}>
-      <Stack.Screen name="welcome" options={{ headerShown: false }} />
-      <Stack.Screen name="login" options={{ headerShown: false }} />
+    <Stack screenOptions={{ headerBackTitle: "Back" }}>
+      <Stack.Screen name="(public)/welcome" options={{ headerShown: false }} />
+      <Stack.Screen name="(public)/login" options={{ headerShown: false }} />
+      <Stack.Screen name="(public)/verify-email" options={{ headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen name="(public)/forgot-password" options={{ headerShown: false }} />
+      <Stack.Screen name="(public)/reset-password/[token]" options={{ headerShown: false }} />
+      <Stack.Screen name="(public)/join/[token]" options={{ headerShown: false }} />
+      <Stack.Screen name="(public)/legal/privacy" options={{ headerShown: false }} />
+      <Stack.Screen name="(public)/legal/terms" options={{ headerShown: false }} />
+      <Stack.Screen name="(public)/legal/minors" options={{ headerShown: false }} />
+      <Stack.Screen name="(public)/help/user-guide" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)/(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)/add-member" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/contact-support" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/change-password" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/delete-account" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/add-event" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/add-chore" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/add-bill" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/bill/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)/shopping-list" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)/premium" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/ai-insights" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/calendar-sync" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)/recipes/index" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)/recipes/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)/recipes/add" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/meal-plans/index" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)/meal-plans/edit" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)/meal-plans/view" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)/report-content" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/report-user" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="(app)/blocked-users" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)/admin-reports" options={{ headerShown: false }} />
       <Stack.Screen name="child-login" options={{ headerShown: false }} />
       <Stack.Screen name="social-complete" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="verify-email/index" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="verify-email/[token]" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="add-member" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="join-link/[code]" options={{ headerShown: false }} />
       <Stack.Screen name="promote-member" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="edit-profile" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="contact-support" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="change-password" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="delete-account" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
-      <Stack.Screen name="reset-password/[token]" options={{ headerShown: false }} />
-      <Stack.Screen name="add-event" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="add-chore" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="add-bill" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="bill/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="shopping-list" options={{ headerShown: false }} />
-      <Stack.Screen name="premium" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="ai-insights" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="calendar-sync" options={{ headerShown: false }} />
-      <Stack.Screen name="recipes/index" options={{ headerShown: false }} />
       <Stack.Screen name="rewards" options={{ headerShown: false }} />
       <Stack.Screen name="pantry" options={{ headerShown: false }} />
       <Stack.Screen name="budget" options={{ headerShown: false }} />
-      <Stack.Screen name="recipes/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="recipes/add" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="meal-plans/index" options={{ headerShown: false }} />
-      <Stack.Screen name="meal-plans/edit" options={{ headerShown: false }} />
-      <Stack.Screen name="join/[token]" options={{ headerShown: false }} />
-      <Stack.Screen name="join-link/[code]" options={{ headerShown: false }} />
-      <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
-      <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
-      <Stack.Screen name="legal/minors" options={{ headerShown: false }} />
-      <Stack.Screen name="help/user-guide" options={{ headerShown: false }} />
+      <Stack.Screen name="feedback" options={{ headerShown: false }} />
+      <Stack.Screen name="admin/feedback" options={{ headerShown: false }} />
       <Stack.Screen name="admin/test-analytics" options={{ headerShown: false }} />
     </Stack>
-    </View>
   );
 }
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
@@ -229,20 +252,15 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (fontsLoaded) {
+    if (fontsLoaded || fontError) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded, fontError]);
 
-  useEffect(() => {
-    try {
-      initializeRevenueCat();
-    } catch (err: any) {
-      Alert.alert("RevenueCat non disponibile", err?.message ?? "Errore sconosciuto");
-    }
-  }, []);
-
-  if (!fontsLoaded) {
+  // On web, render immediately with system fonts so public routes are not
+  // blocked by font downloads (avoids a render-blocking asset for crawlers).
+  // On native, keep the splash screen until fonts are ready for a polished UX.
+  if (!fontsLoaded && !fontError && Platform.OS !== "web") {
     return null;
   }
 
@@ -250,23 +268,17 @@ export default function RootLayout() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <FamilyProvider>
-            <SubscriptionProvider>
-              <BillNotificationsSyncProvider>
-                <GestureHandlerRootView>
-                  <KeyboardProvider>
-                    <AuthGate>
-                      <TestAnalyticsTracker />
-                      <PushNotificationsManager />
-                      <RootLayoutNav />
-                      <PolicyUpdateBanner />
-                      {Platform.OS === "web" && <WebUpdateBanner />}
-                    </AuthGate>
-                  </KeyboardProvider>
-                </GestureHandlerRootView>
-              </BillNotificationsSyncProvider>
-            </SubscriptionProvider>
-          </FamilyProvider>
+          <GestureHandlerRootView>
+            <KeyboardProvider>
+              <AuthGate>
+                <TestAnalyticsTracker />
+                <PushNotificationsManager />
+                <RootLayoutNav />
+                <PolicyUpdateBanner />
+                {Platform.OS === "web" && <WebUpdateBanner />}
+              </AuthGate>
+            </KeyboardProvider>
+          </GestureHandlerRootView>
         </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>

@@ -217,7 +217,7 @@ export default function JoinFamilyScreen() {
     }
   };
 
-  const goHome = () => router.replace("/(tabs)");
+  const goHome = () => router.replace("/(app)/(tabs)");
   const goLogin = () =>
     router.replace({ pathname: "/login", params: { redirect: `/join/${token}` } });
   const handleLogoutAndLogin = async () => {

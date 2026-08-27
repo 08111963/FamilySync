@@ -140,7 +140,7 @@ export default function RecipeDetailScreen() {
       } else {
         Alert.alert("Fatto!", msg, [
           { text: "OK" },
-          { text: "Vai alla spesa", onPress: () => router.push("/(tabs)/shopping") },
+          { text: "Vai alla spesa", onPress: () => router.push("/(app)/(tabs)/shopping") },
         ]);
       }
     },
@@ -159,7 +159,7 @@ export default function RecipeDetailScreen() {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { paddingTop: topInset + 16 }]}>
-          <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)")} style={styles.headerButton}>
+          <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(app)/(tabs)")} style={styles.headerButton}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: colors.text }]}>
@@ -183,7 +183,7 @@ export default function RecipeDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
-        <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)")} style={styles.headerButton}>
+        <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/(app)/(tabs)")} style={styles.headerButton}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <Text

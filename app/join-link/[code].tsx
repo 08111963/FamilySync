@@ -193,7 +193,7 @@ export default function JoinLinkScreen() {
     }
   };
 
-  const goHome = () => router.replace("/(tabs)");
+  const goHome = () => router.replace("/(app)/(tabs)");
 
   const renderIconState = (
     icon: keyof typeof Ionicons.glyphMap,

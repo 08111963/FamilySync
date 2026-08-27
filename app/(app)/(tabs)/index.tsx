@@ -183,7 +183,7 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Prossimi Eventi</Text>
-          <Pressable onPress={() => router.push("/(tabs)/calendar")}>
+          <Pressable onPress={() => router.push("/(app)/(tabs)/calendar")}>
             <Text style={[styles.seeAll, { color: colors.primary }]}>Vedi tutti</Text>
           </Pressable>
         </View>
@@ -233,12 +233,12 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Faccende da Fare</Text>
-          <Pressable onPress={() => router.push("/(tabs)/chores")}>
+          <Pressable onPress={() => router.push("/(app)/(tabs)/chores")}>
             <Text style={[styles.seeAll, { color: colors.primary }]}>Vedi tutte</Text>
           </Pressable>
         </View>
         {pendingChores.length === 0 ? (
-          <Card onPress={() => router.push("/(tabs)/chores")}>
+          <Card onPress={() => router.push("/(app)/(tabs)/chores")}>
             <EmptyState
               icon="checkmark-circle-outline"
               title="Tutto fatto!"
@@ -253,7 +253,7 @@ export default function HomeScreen() {
                 <Card
                   key={chore.id}
                   style={styles.choreCard}
-                  onPress={() => router.push("/(tabs)/chores")}
+                  onPress={() => router.push("/(app)/(tabs)/chores")}
                 >
                   <View style={styles.choreContent}>
                     <View style={styles.choreInfo}>

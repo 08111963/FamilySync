@@ -100,7 +100,7 @@ export default function VerifyEmailTokenScreen() {
         // Anche se il refresh fallisce, la verifica è avvenuta: prosegui.
       }
       await AsyncStorage.removeItem(PENDING_RETURN_TO_STORAGE_KEY).catch(() => {});
-      router.replace((destination || "/(tabs)") as any);
+      router.replace((destination || "/(app)/(tabs)") as any);
     } else {
       router.replace(
         destination

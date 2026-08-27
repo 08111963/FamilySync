@@ -288,6 +288,138 @@ function serveLandingPage({
   res.status(200).send(html);
 }
 
+interface RouteMeta {
+  title: string;
+  description: string;
+}
+
+const RESET_PASSWORD_META: RouteMeta = {
+  title: "Reimposta Password – FamilySync",
+  description: "Crea una nuova password sicura per il tuo account FamilySync.",
+};
+
+const PUBLIC_ROUTE_META: Record<string, RouteMeta> = {
+  "/": {
+    title: "FamilySync – App di Coordinamento Familiare",
+    description:
+      "FamilySync aiuta la tua famiglia a coordinare calendario, liste della spesa, faccende, bollette e chat in tempo reale. Gratuito e sicuro.",
+  },
+  "/welcome": {
+    title: "Benvenuto su FamilySync – Coordina la tua Famiglia",
+    description:
+      "Organizza la vita familiare con FamilySync: calendario condiviso, liste della spesa, faccende con punti, bollette e chat di gruppo. Inizia gratis.",
+  },
+  "/login": {
+    title: "Accedi o Registrati – FamilySync",
+    description:
+      "Accedi al tuo account FamilySync o registrati gratuitamente per iniziare a coordinare la tua famiglia.",
+  },
+  "/forgot-password": {
+    title: "Recupera Password – FamilySync",
+    description:
+      "Hai dimenticato la password FamilySync? Inserisci la tua email per ricevere le istruzioni di recupero accesso.",
+  },
+};
+
+function resolvePublicMeta(routePath: string): RouteMeta | undefined {
+  const meta = PUBLIC_ROUTE_META[routePath];
+  if (meta) return meta;
+  if (routePath.startsWith("/reset-password/")) return RESET_PASSWORD_META;
+  return undefined;
+}
+
+function isNoindexRoute(routePath: string): boolean {
+  return (
+    ["/login", "/forgot-password", "/register"].includes(routePath) ||
+    routePath.startsWith("/reset-password/") ||
+    routePath.startsWith("/join/")
+  );
+}
+
+function buildWelcomeHtml(meta: RouteMeta, canonical: string): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  const title = esc(meta.title);
+  const description = esc(meta.description);
+  const url = esc(canonical);
+  return `<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title}</title>
+  <meta name="description" content="${description}">
+  <link rel="canonical" href="${url}">
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="${url}">
+  <meta property="og:site_name" content="FamilySync">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:description" content="${description}">
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(160deg,#FF6B6B,#FF8E8E,#FFB5B5);min-height:100vh;color:#fff}
+    .c{max-width:480px;margin:0 auto;padding:72px 24px 48px}
+    .hero{text-align:center;margin-bottom:40px}.logo{width:80px;height:80px;border-radius:40px;background:rgba(255,255,255,.25);display:inline-flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:16px}
+    h1{font-size:40px;font-weight:700;letter-spacing:-1.5px;margin:0}.sub{font-size:16px;opacity:.85;margin-top:8px}
+    .features{display:flex;flex-direction:column;gap:12px;margin-bottom:40px}.label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;opacity:.65;margin-bottom:4px}
+    .feat{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.12);border-radius:16px;padding:16px;border:1px solid rgba(255,255,255,.08)}
+    .icon{width:52px;height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}.feat h2{font-size:16px;font-weight:600;margin:0 0 3px}.feat p{font-size:13px;opacity:.8;margin:0;line-height:1.4}
+    .cta{display:block;background:#fff;color:#FF6B6B;font-size:18px;font-weight:700;text-align:center;padding:18px;border-radius:16px;text-decoration:none;margin-bottom:20px;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+    .trust,.legal{display:flex;justify-content:center;align-items:center;gap:12px;font-size:13px;opacity:.75;margin-bottom:20px;flex-wrap:wrap}.sep{width:1px;height:14px;background:rgba(255,255,255,.35)}.legal{font-size:12px;margin:0}.legal a{color:rgba(255,255,255,.7)}
+  </style>
+</head>
+<body>
+  <main class="c">
+    <header class="hero"><div class="logo" aria-hidden="true">👨‍👩‍👧‍👦</div><h1>FamilySync</h1><p class="sub">La tua famiglia, perfettamente coordinata</p></header>
+    <section class="features" aria-label="Funzionalità">
+      <p class="label">Cosa puoi fare</p>
+      <article class="feat"><div class="icon" aria-hidden="true">📅</div><div><h2>Calendario condiviso</h2><p>Organizza eventi e appuntamenti visibili a tutta la famiglia.</p></div></article>
+      <article class="feat"><div class="icon" aria-hidden="true">🛒</div><div><h2>Liste della spesa</h2><p>Crea liste collaborative, senza doppioni al supermercato.</p></div></article>
+      <article class="feat"><div class="icon" aria-hidden="true">✅</div><div><h2>Faccende con punti</h2><p>Assegna compiti, guadagna punti e scala la classifica.</p></div></article>
+      <article class="feat"><div class="icon" aria-hidden="true">✨</div><div><h2>Suggerimenti AI</h2><p>Ricevi consigli intelligenti per gestire meglio la casa.</p></div></article>
+      <article class="feat"><div class="icon" aria-hidden="true">💬</div><div><h2>Chat familiare</h2><p>Condividi messaggi, foto e file in tempo reale.</p></div></article>
+      <article class="feat"><div class="icon" aria-hidden="true">🔄</div><div><h2>Sincronizzazione real-time</h2><p>Ogni modifica si aggiorna su tutti i dispositivi.</p></div></article>
+      <article class="feat"><div class="icon" aria-hidden="true">🏆</div><div><h2>Classifica familiare</h2><p>Motiva tutti con punti e classifiche per le faccende.</p></div></article>
+    </section>
+    <a href="/login" class="cta">Inizia ora →</a>
+    <div class="trust"><span>Sicuro</span><span class="sep"></span><span>Sincronizzato</span><span class="sep"></span><span>Gratuito</span></div>
+    <nav class="legal"><a href="/legal/privacy">Privacy Policy</a><a href="/legal/terms">Termini d'uso</a><a href="/help/user-guide">Guida utente</a></nav>
+  </main>
+</body>
+</html>`;
+}
+
+function buildSeoTags(meta: RouteMeta, canonical: string): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  return [
+    `<title>${meta.title}</title>`,
+    `<meta name="description" content="${esc(meta.description)}">`,
+    `<link rel="canonical" href="${esc(canonical)}">`,
+    `<meta property="og:title" content="${esc(meta.title)}">`,
+    `<meta property="og:description" content="${esc(meta.description)}">`,
+    `<meta property="og:type" content="website">`,
+    `<meta property="og:url" content="${esc(canonical)}">`,
+    `<meta property="og:site_name" content="FamilySync">`,
+    `<meta name="twitter:card" content="summary">`,
+    `<meta name="twitter:title" content="${esc(meta.title)}">`,
+    `<meta name="twitter:description" content="${esc(meta.description)}">`,
+  ].join("\n    ");
+}
+
+function injectRouteMeta(
+  html: string,
+  meta: RouteMeta,
+  canonical: string
+): string {
+  const tags = buildSeoTags(meta, canonical);
+  // Replace the generic <title> tag emitted by the Expo SPA shell.
+  return html.replace(/<title>[^<]*<\/title>/, tags);
+}
+
 export function computeWebBuildVersion(indexHtml: string): string {
   const bundlePaths = indexHtml.match(/\/_expo\/static\/js\/[^"' >]+\.js/g) ?? [];
   if (bundlePaths.length === 0) return "";
@@ -305,7 +437,11 @@ function configureExpoAndLanding(app: express.Application) {
   const appName = getAppName();
 
   const webBuildDir = path.resolve(process.cwd(), "web-build");
-  const hasWebBuild = fs.existsSync(path.join(webBuildDir, "index.html"));
+  const webIndexPath = path.join(webBuildDir, "index.html");
+  const hasWebBuild = fs.existsSync(webIndexPath);
+  const isStaticBuild =
+    fs.existsSync(path.join(webBuildDir, "welcome", "index.html")) ||
+    fs.existsSync(path.join(webBuildDir, "welcome.html"));
 
   // Versione della build web corrente: derivata dai percorsi (con hash nel
   // nome) dei bundle JS referenziati da index.html. Il client web calcola lo
@@ -384,13 +520,26 @@ function configureExpoAndLanding(app: express.Application) {
 
   log(
     hasWebBuild
-      ? "Serving Expo web app from web-build with native manifest routing"
+      ? `Serving Expo web app from web-build (${isStaticBuild ? "static" : "single"} output) with native manifest routing`
       : "Serving static Expo files with dynamic manifest routing",
+  );
+
+  // Le build statiche contengono HTML per route; per una build singola usiamo
+  // invece il solo shell SPA come base per i metadati.
+  const baseHtml = hasWebBuild && !isStaticBuild
+    ? fs.readFileSync(webIndexPath, "utf-8")
+    : "";
+  const baseUrl = (process.env.CLIENT_URL || "https://familysync.eu").replace(
+    /\/$/,
+    ""
   );
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/api")) {
       return next();
+    }
+    if (req.method === "GET" && isNoindexRoute(req.path)) {
+      res.setHeader("X-Robots-Tag", "noindex, nofollow");
     }
 
     if (req.path === "/" || req.path === "/manifest") {
@@ -415,6 +564,33 @@ function configureExpoAndLanding(app: express.Application) {
         landingPageTemplate,
         appName,
       });
+    }
+
+    if (!hasWebBuild || isStaticBuild) {
+      return next();
+    }
+
+    // Intercept HTML browser requests for known public routes BEFORE
+    // express.static serves the generic index.html.  This ensures the
+    // initial HTML response carries per-route title/description/OG tags
+    // even when express.static would otherwise short-circuit the fallback.
+    if (req.method === "GET" && req.accepts("html")) {
+      const routePath = req.path === "/" ? "/" : req.path.replace(/\/$/, "");
+      const canonical = `${baseUrl}${routePath}`;
+      if (routePath === "/" || routePath === "/welcome") {
+        const meta = PUBLIC_ROUTE_META[routePath] ?? PUBLIC_ROUTE_META["/welcome"];
+        const html = buildWelcomeHtml(meta, canonical);
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        return res.send(html);
+      }
+      const meta = resolvePublicMeta(routePath);
+      if (meta) {
+        const html = injectRouteMeta(baseHtml, meta, canonical);
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        return res.send(html);
+      }
     }
 
     next();
@@ -455,14 +631,16 @@ function configureExpoAndLanding(app: express.Application) {
 }
 
 function setupWebAppFallback(app: express.Application) {
+  // Governance files are useful even when the Expo web build is unavailable.
+  app.use(express.static(path.resolve(process.cwd(), "public")));
+
   const webIndexPath = path.resolve(process.cwd(), "web-build", "index.html");
   if (!fs.existsSync(webIndexPath)) {
     return;
   }
-
-  // Serve static bot-governance files from public/
-  const publicDir = path.resolve(process.cwd(), "public");
-  app.use(express.static(publicDir));
+  const isStaticBuild =
+    fs.existsSync(path.join(path.dirname(webIndexPath), "welcome", "index.html")) ||
+    fs.existsSync(path.join(path.dirname(webIndexPath), "welcome.html"));
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.method !== "GET") {
@@ -476,14 +654,11 @@ function setupWebAppFallback(app: express.Application) {
     if (!req.accepts("html")) {
       return next();
     }
-    // Noindex utility/auth routes so crawlers skip them.
-    const noindexPaths = ["/login", "/forgot-password", "/register"];
-    if (
-      noindexPaths.includes(req.path) ||
-      req.path.startsWith("/reset-password/") ||
-      req.path.startsWith("/join/")
-    ) {
+    if (isNoindexRoute(req.path)) {
       res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    }
+    if (isStaticBuild) {
+      return next();
     }
     res.setHeader("Cache-Control", "no-cache, must-revalidate");
     res.sendFile(webIndexPath);
@@ -532,18 +707,20 @@ function setupErrorHandler(app: express.Application) {
   // Senza indice l'upsert ON CONFLICT di addToPantry fallisce, quindi in
   // produzione un errore qui deve bloccare l'avvio (fail-fast, mai degradato).
   try {
-    const r = await ensureMealPlanLatencyAlertSchema();
-    if (r.created) log('client_crash_reports table created (was missing)');
+    const r = await ensurePantryUniqueIndex();
+    if (r.created) log('pantry unique index created (was missing)');
   } catch (err) {
-    log(`client crash schema ensure failed: ${String(err)}`);
+    log(`pantry unique index ensure failed: ${String(err)}`);
+    if (process.env.NODE_ENV === 'production') throw err;
   }
 
-  // Stato condiviso del monitor di latenza piani (migrazione 0030) PRIMA di
-  // accettare richieste: senza tabella non possiamo deduplicare gli avvisi tra
-  // istanze, quindi in produzione un bootstrap fallito deve fermare l'avvio
-  // anziché lasciare l'alert silenziosamente inattivo.
+  // Tabella client_crash_reports (migrazione 0028) PRIMA di accettare
+  // richieste: il DB di produzione è separato e senza tabella ogni report
+  // crash perde la persistenza (l'alert email non scatta mai). Best-effort:
+  // l'endpoint /api/client-errors è già fail-open, quindi qui NON blocchiamo
+  // l'avvio in caso di errore (a differenza dell'indice dispensa).
   try {
-    const r = await ensureMealPlanLatencyAlertSchema();
+    const r = await ensureClientCrashSchema();
     if (r.created) log('client_crash_reports table created (was missing)');
   } catch (err) {
     log(`client crash schema ensure failed: ${String(err)}`);

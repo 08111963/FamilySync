@@ -18,7 +18,7 @@ import { Input } from "@/components/Input";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
 import { presentLocalNotification } from "@/hooks/usePushNotifications";
-import { CATEGORY_META, formatEuro, formatDueDate, billDueLabel, type BillComputedStatus } from "@/app/(tabs)/bills";
+import { CATEGORY_META, formatEuro, formatDueDate, billDueLabel, type BillComputedStatus } from "@/app/(app)/(tabs)/bills";
 
 const AUTH_STORAGE_KEY = "@family_sync_auth";
 

@@ -13,7 +13,7 @@ import { Button } from "@/components/Button";
 import { Avatar } from "@/components/Avatar";
 import { DateField } from "@/components/DateField";
 import { apiRequest, queryClient } from "@/lib/query-client";
-import { CATEGORY_META, type Bill } from "@/app/(tabs)/bills";
+import { CATEGORY_META, type Bill } from "@/app/(app)/(tabs)/bills";
 
 const CATEGORIES = ["luce", "gas", "acqua", "telefono", "scuola", "assicurazione", "tasse", "altro"] as const;
 
@@ -157,7 +157,7 @@ function BillForm({
       }
       queryClient.invalidateQueries({ queryKey: [`/api/bills/${familyId}`] });
       if (router.canGoBack()) router.back();
-      else router.replace("/(tabs)/bills");
+      else router.replace("/(app)/(tabs)/bills");
     } catch (e: any) {
       const msg = String(e?.message ?? "");
       if (msg.includes("FREE_LIMIT_REACHED") || msg.includes("403")) {
@@ -175,7 +175,7 @@ function BillForm({
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topInset + 16 }]}>
-        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/bills"))} style={styles.closeButton}>
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/(app)/(tabs)/bills"))} style={styles.closeButton}>
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.title, { color: colors.text }]}>
