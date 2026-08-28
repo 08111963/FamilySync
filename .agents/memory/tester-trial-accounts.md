@@ -19,3 +19,7 @@ description: How the 15 Google Play tester accounts and the time-limited free tr
 - **`docs/tester-accounts.pdf` è gitignored** (contiene password in chiaro): NON versionare, rigenerare on-demand e consegnare in canale sicuro.
 - Seed è idempotente a boot (gate `ENABLE_TESTER_ACCOUNTS=true`), marker-scoped su famiglie "Famiglia Tester", advisory-lock transazionale come demo-account.
 - Colonna prod: `migrations/0005_add_entitlements_trial_days.sql` (dev applicata via drizzle-kit push).
+
+## Inviti Google Play
+
+La mailing list del test interno abilita gli account, ma non è una lista di distribuzione email: Play Console non invia automaticamente un invito a ogni indirizzo. Il proprietario deve copiare il link di partecipazione e condividerlo manualmente; ogni tester deve aprirlo con lo stesso Account Google presente nella lista e aderire al test. Dopo la prima pubblicazione del test, il link o gli aggiornamenti possono richiedere alcune ore per diventare disponibili.
