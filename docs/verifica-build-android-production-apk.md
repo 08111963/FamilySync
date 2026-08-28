@@ -1,44 +1,55 @@
-# Verifica build Android `production-apk`
+# Verifica versioni build Android `production-apk`
 
 ## Esito
 
-La build EAS Android avviata dopo la riduzione dell'archivio è terminata con
-successo e ha prodotto l'APK.
+Il 28 agosto 2026 sono state completate due build EAS Android reali. La prima
+ha verificato i valori correnti di `app.json`; la seconda ha verificato che EAS
+leggesse anche i valori incrementati localmente. Dopo l'upload della seconda
+build, `app.json` è stato ripristinato a `1.0.3` / `8`.
 
 | Voce | Valore |
 | --- | --- |
-| Stato EAS | `FINISHED` |
-| Build ID | `99667843-2113-4361-9587-495bc02c43d4` |
-| Profilo | `production-apk` |
-| Piattaforma | Android |
-| Commit sorgente | `b7e2cada10deb8456283173bd43d2c543bff2b05` |
-| Versione / versionCode | `1.0.3` / `8` |
-| Completata il | 2026-08-27T16:55:54.772Z |
-| Errore EAS | nessuno (`null`) |
-| Dimensione APK | 106.087.986 byte |
+| Configurazione EAS | `cli.appVersionSource: "local"` |
+| Build corrente | `dad980fa-bf7f-441b-9439-f4f5d876f6b5` |
+| Stato / versione | `FINISHED` — `1.0.3` / `8` |
+| Manifest APK | `versionName=1.0.3`, `versionCode=8` |
+| Dimensione / SHA-256 | 106.087.986 byte / `f3e0b7400aca7848ea1bbb49effa31e7bac3cc9c3b1017f7ab06b5deec7f9786` |
+| Build incrementata | `51e961fa-940f-41a9-b720-caa2b5bc90da` |
+| Stato / versione | `FINISHED` — `1.0.4` / `9` |
+| Manifest APK | `versionName=1.0.4`, `versionCode=9` |
+| Dimensione / SHA-256 | 106.087.990 byte / `406de1d9e1a56cf3dfd5a7819b138455c6ed1ff96fe64ea0cd64675cd130c801` |
 
-## Artefatto
+Entrambi i record EAS riportano `error: null`. Nei log, l'unica occorrenza di
+`appVersionSource` è la lettura della configurazione con valore `local`: il
+precedente avviso sulla fonte della versione non compare.
 
-[Scarica l'APK prodotto da EAS](https://expo.dev/artifacts/eas/cvwrVACyMVc4bOaBgeZKIlG87CZd4cNkMuOwC27QjAA.apk)
+## Artefatti
 
-Il controllo HTTP dell'artefatto ha restituito `200` con allegato
-`application-99667843-2113-4361-9587-495bc02c43d4.apk`.
+- [APK `1.0.3` / `8`](https://expo.dev/artifacts/eas/w_DZCUIzXPputoxVuKxdZEQnIOgM8CocLDjEYBMJY_k.apk)
+- [APK di prova `1.0.4` / `9`](https://expo.dev/artifacts/eas/iAyAvnl1JeO97GrC-eD8_FcwX2BOpruoJxVEf9A5F_c.apk)
 
-## Verifiche effettuate
+## Procedura ripetibile
 
-- Il profilo `production-apk` ha usato `android.buildType: "apk"`.
-- Il file `.easignore` usato dalla build coincide con quello verificato dopo il
-  rebase: gli output generati e gli archivi locali sono esclusi, non gli input
-  nativi dell'app.
-- EAS non ha riportato errori di compilazione, dipendenze o asset mancanti e ha
-  pubblicato l'artefatto APK indicato sopra.
+1. Impostare `expo.version` e `expo.android.versionCode` in `app.json`.
+2. Avviare la build senza attesa integrata:
 
-## Nota su `expo doctor`
+   ```sh
+   npx eas-cli build --platform android --profile production-apk \
+     --non-interactive --no-wait --json
+   ```
 
-`expo doctor` segnala 12 versioni di pacchetti non perfettamente allineate al
-patch level di Expo SDK 54, inclusa una discrepanza maggiore per
-`expo-apple-authentication`. È un controllo di allineamento delle versioni,
-non un errore di dipendenza o asset mancante: la build EAS ha installato il
-lockfile corrente e ha concluso con successo. L'aggiornamento coordinato dei
-pacchetti richiede una modifica separata, perché cambierebbe le dipendenze al
-di fuori della verifica dell'archivio EAS.
+3. Attendere `FINISHED` interrogando l'ID restituito:
+
+   ```sh
+   npx eas-cli build:view <build-id> --json
+   ```
+
+4. Scaricare l'APK e verificare direttamente il manifest binario:
+
+   ```sh
+   node scripts/verify-android-apk-version.mjs app.apk 1.0.3 8
+   ```
+
+Il comando termina con codice diverso da zero se `versionName` o `versionCode`
+non coincidono con i valori attesi. Ripetere questa verifica a ogni incremento
+in `app.json`.
