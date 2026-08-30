@@ -97,19 +97,22 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     date?: string | string[];
     choreId?: string | string[];
   }>();
+  const root = segments[0] as string | undefined;
+  const seg1 = segments[1] as string | undefined;
+  // I gruppi sono trasparenti nell'URL, ma presenti nei segmenti Expo.
+  const inPublicGroup = root === "(public)";
+  const inAppGroup = root === "(app)";
+  const legacyPublic =
+    root === "child-login" ||
+    root === "social-complete" ||
+    root === "join-link";
+  const inPublicRoute = inPublicGroup || legacyPublic;
+  const inVerifyScreen =
+    (inPublicGroup && seg1 === "verify-email") || root === "verify-email";
 
   useEffect(() => {
     if (isLoading) return;
 
-    const root = segments[0] as string | undefined;
-    // I gruppi sono trasparenti nell'URL, ma presenti nei segmenti Expo.
-    const inPublicGroup = root === "(public)";
-    const inAppGroup = root === "(app)";
-    const seg1 = segments[1] as string | undefined;
-    const legacyPublic =
-      root === "child-login" ||
-      root === "social-complete" ||
-      root === "join-link";
     const directInviteReturnTo =
       ((inPublicGroup && seg1 === "join") || root === "join-link") && pathname
         ? safeReturnTo(pathname)
@@ -132,11 +135,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       pendingReturnTo
         ? `${base}?returnTo=${encodeURIComponent(pendingReturnTo)}`
         : base;
-    const inPublicRoute = inPublicGroup || legacyPublic;
-
     const needsVerification = isAuthenticated && !!user && user.emailVerified === false;
-    const inVerifyScreen =
-      (inPublicGroup && seg1 === "verify-email") || root === "verify-email";
     const needsOnboarding = isAuthenticated && !!user && user.needsOnboarding === true;
     const inOnboardingScreen = root === "onboarding";
 
@@ -189,6 +188,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     params.choreId,
     router,
   ]);
+
+  // L'export statico non può conoscere la sessione salvata nel browser. Non
+  // prerenderizzare una schermata privata mentre l'autenticazione è incerta:
+  // server e primo render client restano entrambi vuoti, poi il gate monta la
+  // Home autenticata oppure reindirizza alla pagina pubblica.
+  if (!inPublicRoute && !inVerifyScreen && (isLoading || !isAuthenticated)) {
+    return null;
+  }
 
   return <>{children}</>;
 }

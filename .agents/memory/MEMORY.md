@@ -6,6 +6,7 @@
 - [API native Expo Go](expo-native-api-url.md) — Expo Go espone `window.location` del tunnel Metro: rilevare il web con `Platform.OS`, mai con la sola presenza di `window`.
 - [Compatibilità WebView in-app](webview-compat.md) — bundle web crashava su browser in-app WhatsApp (findLast/toSorted mancanti); polyfill in lib/runtime-polyfills.ts, PRIMO import di app/_layout.tsx.
 - [Static web-build staleness](expo-static-web-build.md) — backend serves a static Expo export from `web-build/`; regenerate + swap + restart after user-visible frontend changes or previews show old UI.
+- [Expo static auth hydration](expo-static-auth-hydration.md) — non prerenderizzare route private finché la sessione web è incerta; viewport, tema e data dipendenti dal client vanno applicati dopo il mount.
 - [Test UI e2e committati](e2e-ui-tests.md) — task "test UI" chiusi con Playwright committato in e2e/ (API stubbate, dialog handler, race sul testo già visibile); run del subagent da soli non passano il review.
 - [Backend testing approach](backend-testing.md) — no test runner configured; run `npx tsx server/__tests__/*.test.ts` with node:test, no package.json edits.
 - [Express 5 + TS params](express5-typescript.md) — req.params/query are string|string[] in @types/express 5; use server/lib/http-params helpers; Drizzle numeric/enum/NOT-NULL insert gotchas

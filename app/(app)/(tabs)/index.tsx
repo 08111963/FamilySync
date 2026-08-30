@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, Text, View, ScrollView, Pressable, Platform, TextInput, ActivityIndicator, Alert, Image, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,6 +26,8 @@ export default function HomeScreen() {
   const [familyName, setFamilyName] = useState("");
   const [creating, setCreating] = useState(false);
   const [isUploadingFamilyPhoto, setIsUploadingFamilyPhoto] = useState(false);
+  const [hasMounted, setHasMounted] = useState(Platform.OS !== "web");
+  const [todayLabel, setTodayLabel] = useState("");
 
   const upcomingEvents = getUpcomingEvents(3);
   const pendingChores = getPendingChores().slice(0, 3);
@@ -35,12 +37,15 @@ export default function HomeScreen() {
   const isChildAccount = user?.isChildAccount === true;
   const canEditFamilyPhoto = !!familyId && !isChildAccount;
   const hasFamilyPhoto = !!data.familyAvatarUrl;
-  const todayLabel = new Date().toLocaleDateString("it-IT", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  useEffect(() => {
+    setHasMounted(true);
+    setTodayLabel(new Date().toLocaleDateString("it-IT", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }));
+  }, []);
 
   const familyPhotoUri = (() => {
     if (!data.familyAvatarUrl || !mediaToken) return null;
@@ -199,7 +204,9 @@ export default function HomeScreen() {
   };
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
-  const isCompactHeader = windowWidth < 640;
+  // L'export statico non conosce la larghezza del browser: il primo render
+  // web resta uguale al prerender, poi passa alla variante compatta.
+  const isCompactHeader = hasMounted && windowWidth < 640;
 
   if (isLoading) {
     return (

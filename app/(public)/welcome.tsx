@@ -1,6 +1,5 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
-  Dimensions,
   Platform,
   Pressable,
   ScrollView,
@@ -8,6 +7,7 @@ import {
   Text,
   useColorScheme,
   useWindowDimensions,
+  type DimensionValue,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,7 +19,6 @@ import { router, useLocalSearchParams } from "expo-router";
 import Animated, { FadeInDown, Easing, interpolate, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { firstStringParam, safeReturnTo } from "@/lib/safe-return-to";
 
-const { width } = Dimensions.get("window");
 type Feature = { icon: keyof typeof Ionicons.glyphMap; title: string; description: string; gradient: [string, string] };
 
 const ADVANTAGES = [
@@ -46,7 +45,7 @@ const FEATURES: Feature[] = [
   { icon: "trophy", title: "Classifica familiare", description: "Un modo leggero per riconoscere l'impegno di tutti.", gradient: ["#F783AC", "#D9488B"] },
 ];
 
-function FloatingOrb({ delay, x, size, color }: { delay: number; x: number; size: number; color: string }) {
+function FloatingOrb({ delay, x, size, color }: { delay: number; x: DimensionValue; size: number; color: string }) {
   const value = useSharedValue(0);
   useEffect(() => {
     value.value = withDelay(delay, withRepeat(withTiming(1, { duration: 6500, easing: Easing.inOut(Easing.ease) }), -1, true));
@@ -138,9 +137,15 @@ function FeatureSection({ item, index, isWide }: { item: Feature; index: number;
 
 export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
-  const isDark = useColorScheme() === "dark";
+  const colorScheme = useColorScheme();
   const { width: windowWidth } = useWindowDimensions();
-  const isWide = windowWidth >= 700;
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => setHasMounted(true), []);
+  // Il prerender web non conosce viewport e tema del dispositivo. Il primo
+  // render client deve restare identico all'HTML statico; subito dopo il mount
+  // applichiamo layout responsive e tema reale senza hydration mismatch.
+  const isDark = hasMounted && colorScheme === "dark";
+  const isWide = hasMounted && windowWidth >= 700;
   const params = useLocalSearchParams<{ returnTo?: string | string[] }>();
   const returnTo = safeReturnTo(firstStringParam(params.returnTo));
   const handleGetStarted = () => {
@@ -152,7 +157,7 @@ export default function WelcomeScreen() {
     );
   };
   return <LinearGradient colors={isDark ? ["#0C292B", "#103D3D", "#14514D"] : ["#0D9488", "#14B8A6", "#5EEAD4"]} style={styles.container}>
-    <FloatingOrb delay={0} x={width * .08} size={130} color="#fff" /><FloatingOrb delay={800} x={width * .66} size={82} color="#fff" />
+    <FloatingOrb delay={0} x="8%" size={130} color="#fff" /><FloatingOrb delay={800} x="66%" size={82} color="#fff" />
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingTop: (Platform.OS === "web" ? 58 : insets.top) + 30, paddingBottom: (Platform.OS === "web" ? 32 : insets.bottom) + 30 }]}>
       <Animated.View entering={FadeInDown.delay(80).duration(650)} style={[styles.hero, isWide && styles.heroWide]}><Image source={require("@/assets/images/icon.png")} style={[styles.logo, isWide && styles.logoWide]} contentFit="cover" /><Text style={[styles.appTitle, isWide && styles.appTitleWide]}>FamilySync</Text><Text style={[styles.subtitle, isWide && styles.subtitleWide]}>La tua famiglia, finalmente sincronizzata</Text><Text style={[styles.tagline, isWide && styles.taglineWide]}>Calendario, spesa, faccende, bollette e chat: tutto in un unico posto.</Text></Animated.View>
       <View style={[styles.features, isWide && styles.featuresWide]}><View style={[styles.featuresInner, isWide && styles.featuresInnerWide]}><Animated.View entering={FadeInDown.delay(300).duration(500)}><Text style={styles.eyebrow}>COSA PUOI FARE</Text><Text style={[styles.sectionTitle, isWide && styles.sectionTitleWide]}>Tutta la famiglia organizzata, in un'unica app.</Text><Text style={[styles.sectionIntro, isWide && styles.sectionIntroWide]}>Una vista chiara delle piccole cose che tengono insieme una famiglia.</Text><Pressable onPress={handleGetStarted} testID="features-get-started-button" style={({ pressed }) => [styles.featuresCtaButton, { transform: [{ scale: pressed ? .97 : 1 }] }]}><Text style={styles.featuresCtaText}>Inizia ora</Text><Ionicons name="arrow-forward" size={17} color="#fff" /></Pressable></Animated.View>{FEATURES.map((item, i) => <FeatureSection item={item} index={i} isWide={isWide} key={item.title} />)}</View></View>
