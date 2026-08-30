@@ -204,42 +204,11 @@ function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
       {/* I gruppi tra parentesi sono schermate di primo livello per Expo
-          Router: nascondiamo qui l'header tecnico, prima delle route figlie. */}
+          Router: nascondiamo qui l'header tecnico. Le schermate contenute
+          nei gruppi non vanno dichiarate di nuovo in questo Stack: qui sono
+          route annidate e Expo Router le segnala come inesistenti. */}
       <Stack.Screen name="(public)" options={{ headerShown: false }} />
       <Stack.Screen name="(app)" options={{ headerShown: false }} />
-      <Stack.Screen name="(public)/welcome" options={{ headerShown: false }} />
-      <Stack.Screen name="(public)/login" options={{ headerShown: false }} />
-      <Stack.Screen name="(public)/verify-email" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="(public)/forgot-password" options={{ headerShown: false }} />
-      <Stack.Screen name="(public)/reset-password/[token]" options={{ headerShown: false }} />
-      <Stack.Screen name="(public)/join/[token]" options={{ headerShown: false }} />
-      <Stack.Screen name="(public)/legal/privacy" options={{ headerShown: false }} />
-      <Stack.Screen name="(public)/legal/terms" options={{ headerShown: false }} />
-      <Stack.Screen name="(public)/legal/minors" options={{ headerShown: false }} />
-      <Stack.Screen name="(public)/help/user-guide" options={{ headerShown: false }} />
-      <Stack.Screen name="(app)/(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="(app)/add-member" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/contact-support" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/change-password" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/delete-account" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/add-event" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/add-chore" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/add-bill" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/bill/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="(app)/shopping-list" options={{ headerShown: false }} />
-      <Stack.Screen name="(app)/premium" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/ai-insights" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/calendar-sync" options={{ headerShown: false }} />
-      <Stack.Screen name="(app)/recipes/index" options={{ headerShown: false }} />
-      <Stack.Screen name="(app)/recipes/[id]" options={{ headerShown: false }} />
-      <Stack.Screen name="(app)/recipes/add" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/meal-plans/index" options={{ headerShown: false }} />
-      <Stack.Screen name="(app)/meal-plans/edit" options={{ headerShown: false }} />
-      <Stack.Screen name="(app)/meal-plans/view" options={{ headerShown: false }} />
-      <Stack.Screen name="(app)/report-content" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/report-user" options={{ presentation: "modal", headerShown: false }} />
-      <Stack.Screen name="(app)/blocked-users" options={{ headerShown: false }} />
-      <Stack.Screen name="(app)/admin-reports" options={{ headerShown: false }} />
       <Stack.Screen name="child-login" options={{ headerShown: false }} />
       <Stack.Screen name="social-complete" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
