@@ -497,6 +497,21 @@ export function configureExpoAndLanding(app: express.Application) {
   const baseHtml = hasWebBuild
     ? fs.readFileSync(webIndexPath, "utf-8")
     : "";
+  const getStaticRouteHtml = (routePath: string): string => {
+    if (!isStaticBuild || routePath === "/") {
+      return baseHtml;
+    }
+    const relativeRoute = routePath.replace(/^\/+|\/+$/g, "");
+    if (!relativeRoute) {
+      return baseHtml;
+    }
+    const candidates = [
+      path.join(webBuildDir, `${relativeRoute}.html`),
+      path.join(webBuildDir, relativeRoute, "index.html"),
+    ];
+    const routeFile = candidates.find((candidate) => fs.existsSync(candidate));
+    return routeFile ? fs.readFileSync(routeFile, "utf-8") : baseHtml;
+  };
   const baseUrl = (process.env.CLIENT_URL || "https://familysync.eu").replace(
     /\/$/,
     ""
@@ -547,14 +562,14 @@ export function configureExpoAndLanding(app: express.Application) {
       const canonical = `${baseUrl}${routePath}`;
       if (routePath === "/" || routePath === "/welcome") {
         const meta = PUBLIC_ROUTE_META[routePath] ?? PUBLIC_ROUTE_META["/welcome"];
-        const html = injectRouteMeta(baseHtml, meta, canonical);
+        const html = injectRouteMeta(getStaticRouteHtml(routePath), meta, canonical);
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.setHeader("Cache-Control", "no-store");
         return res.send(html);
       }
       const meta = resolvePublicMeta(routePath);
       if (meta) {
-        const html = injectRouteMeta(baseHtml, meta, canonical);
+        const html = injectRouteMeta(getStaticRouteHtml(routePath), meta, canonical);
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.setHeader("Cache-Control", "no-store");
         return res.send(html);
@@ -576,6 +591,33 @@ export function configureExpoAndLanding(app: express.Application) {
   });
 
   if (hasWebBuild) {
+    // Un browser può avere ancora in memoria una shell HTML di una build
+    // precedente e chiedere quindi un entry bundle hashato che non esiste più
+    // sul server. Restituire l'HTML 404 con MIME JavaScript causa il crash
+    // dell'artifact; riallineiamo solo i vecchi entry bundle al file corrente.
+    const currentEntryMatch = baseHtml.match(
+      /\/_expo\/static\/js\/web\/(entry-[a-z0-9]+\.js)/i,
+    );
+    const currentEntryFile = currentEntryMatch?.[1];
+    if (currentEntryFile) {
+      app.use("/_expo/static/js/web", (req: Request, res: Response, next: NextFunction) => {
+        if (req.method !== "GET") {
+          return next();
+        }
+        const requestedEntry = path.basename(req.path);
+        if (
+          requestedEntry === currentEntryFile ||
+          !/^entry-[a-z0-9]+\.js$/i.test(requestedEntry)
+        ) {
+          return next();
+        }
+        res.setHeader("Cache-Control", "no-store");
+        return res.sendFile(
+          path.join(webBuildDir, "_expo", "static", "js", "web", currentEntryFile),
+        );
+      });
+    }
+
     // index.html (e sw.js) NON devono restare in cache sul telefono, altrimenti
     // dopo una pubblicazione l'utente continua a vedere il bundle vecchio.
     // I bundle JS in _expo/ hanno hash nel nome: cache lunga e sicura.
