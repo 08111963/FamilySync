@@ -15,6 +15,7 @@
     "lint": "npx expo lint",
     "lint:fix": "npx expo lint --fix",
     "typecheck": "tsc --noEmit",
+    "test:mobile-startup": "npx tsx e2e/mobile-startup-hydration.test.ts",
     "test:public-seo": "npx tsx server/__tests__/public-seo.test.ts",
     "generate:og-image": "node scripts/generate-og-image.mjs",
     "test:security": "npx tsx server/__tests__/chat-upload-security.test.ts && npx tsx server/__tests__/typing-block.test.ts",

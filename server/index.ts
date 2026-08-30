@@ -371,7 +371,7 @@ function injectRouteMeta(
 ): string {
   const tags = buildSeoTags(meta, canonical);
   // Replace the generic <title> tag emitted by the Expo SPA shell.
-  return html.replace(/<title>[^<]*<\/title>/, tags);
+  return html.replace(/<title\b[^>]*>[^<]*<\/title>/i, tags);
 }
 
 export function computeWebBuildVersion(indexHtml: string): string {
@@ -380,6 +380,42 @@ export function computeWebBuildVersion(indexHtml: string): string {
   const canonical = Array.from(new Set(bundlePaths)).sort().join("|");
   return crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 16);
 }
+
+function resolveStaticRouteFile(webBuildDir: string, requestPath: string): string | null {
+  const segments = requestPath.split("/").filter(Boolean);
+  if (segments.length === 0 || segments.some((segment) => segment === "." || segment === "..")) {
+    return null;
+  }
+
+  let currentDir = webBuildDir;
+  try {
+    for (let index = 0; index < segments.length - 1; index++) {
+      const exactDir = path.join(currentDir, segments[index]);
+      if (!fs.existsSync(exactDir) || !fs.statSync(exactDir).isDirectory()) {
+        return null;
+      }
+      currentDir = exactDir;
+    }
+
+    const leaf = segments.at(-1)!;
+    const exactCandidates = [
+      path.join(currentDir, `${leaf}.html`),
+      path.join(currentDir, leaf, "index.html"),
+    ];
+    const exact = exactCandidates.find((candidate) => fs.existsSync(candidate));
+    if (exact) {
+      return exact;
+    }
+
+    const dynamicLeaf = fs
+      .readdirSync(currentDir)
+      .find((entry) => /^\[[^/]+\]\.html$/.test(entry));
+    return dynamicLeaf ? path.join(currentDir, dynamicLeaf) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function configureExpoAndLanding(app: express.Application) {
   const templatePath = path.resolve(
     process.cwd(),
@@ -501,15 +537,7 @@ export function configureExpoAndLanding(app: express.Application) {
     if (!isStaticBuild || routePath === "/") {
       return baseHtml;
     }
-    const relativeRoute = routePath.replace(/^\/+|\/+$/g, "");
-    if (!relativeRoute) {
-      return baseHtml;
-    }
-    const candidates = [
-      path.join(webBuildDir, `${relativeRoute}.html`),
-      path.join(webBuildDir, relativeRoute, "index.html"),
-    ];
-    const routeFile = candidates.find((candidate) => fs.existsSync(candidate));
+    const routeFile = resolveStaticRouteFile(webBuildDir, routePath);
     return routeFile ? fs.readFileSync(routeFile, "utf-8") : baseHtml;
   };
   const baseUrl = (process.env.CLIENT_URL || "https://familysync.eu").replace(
@@ -651,6 +679,7 @@ function setupWebAppFallback(app: express.Application) {
   const isStaticBuild =
     fs.existsSync(path.join(path.dirname(webIndexPath), "welcome", "index.html")) ||
     fs.existsSync(path.join(path.dirname(webIndexPath), "welcome.html"));
+  const webBuildDir = path.dirname(webIndexPath);
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.method !== "GET") {
@@ -668,6 +697,11 @@ function setupWebAppFallback(app: express.Application) {
       res.setHeader("X-Robots-Tag", "noindex, nofollow");
     }
     if (isStaticBuild) {
+      const dynamicRouteFile = resolveStaticRouteFile(webBuildDir, req.path);
+      if (dynamicRouteFile) {
+        res.setHeader("Cache-Control", "no-cache, must-revalidate");
+        return res.sendFile(dynamicRouteFile);
+      }
       return next();
     }
     res.setHeader("Cache-Control", "no-cache, must-revalidate");
